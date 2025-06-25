@@ -11,5 +11,4 @@ dist
 .DS_Store
 *.log
 
-# Docker
-docker-compose.override.yml
+

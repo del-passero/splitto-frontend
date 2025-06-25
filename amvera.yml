@@ -6,14 +6,8 @@ meta:
 
 build:
   context: .
-  skip: false
-  artifacts:
-    - build
-  commands:
-    - npm install
-    - npm run build
 
 run:
-  command: npx serve -s build
+  command: serve -s dist -l 80
   containerPort: "80"
   servicePort: "80"
