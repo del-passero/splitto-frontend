@@ -5,7 +5,7 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Копируем package.json и устанавливаем зависимости
-COPY package*.json ./
+COPY . .
 RUN npm install
 
 # Копируем остальные файлы и собираем проект
