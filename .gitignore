@@ -1,0 +1,15 @@
+# node
+node_modules
+dist
+.env
+
+# IDE
+.vscode
+.idea
+
+# system
+.DS_Store
+*.log
+
+# Docker
+docker-compose.override.yml
