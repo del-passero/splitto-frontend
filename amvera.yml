@@ -1,0 +1,19 @@
+meta:
+  environment: node
+  toolchain:
+    name: npm
+    version: "18"
+
+build:
+  context: .
+  skip: false
+  artifacts:
+    - build
+  commands:
+    - npm install
+    - npm run build
+
+run:
+  command: npx serve -s build
+  containerPort: "80"
+  servicePort: "80"
