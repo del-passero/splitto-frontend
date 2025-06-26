@@ -1,0 +1,22 @@
+:root {
+  --telegram-blue: #229ED9;
+  --telegram-header: #222222;
+  --telegram-header-dark: #FFFFFF;
+  --telegram-main: #222222;
+  --telegram-main-dark: #FFFFFF;
+  --telegram-secondary: #777777;
+  --telegram-secondary-dark: #D6D6D6;
+  --telegram-card: #F7F7F7;
+  --telegram-card-dark: #23262B;
+  --telegram-bg: #FFFFFF;
+  --telegram-bg-dark: #181B20;
+  --telegram-green: #3DC97B;
+  --telegram-red: #FF6159;
+  --telegram-border: #E5E5E5;
+  --telegram-border-dark: #23262B;
+}
+
+body.dark {
+  background: var(--telegram-bg-dark);
+  color: var(--telegram-main-dark);
+}

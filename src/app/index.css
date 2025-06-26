@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Telegram-палитра для кастомных компонентов */
+body {
+  font-family: 'SF Pro', 'Roboto', system-ui, Arial, sans-serif;
+  background: var(--telegram-bg);
+  color: var(--telegram-main);
+}
