@@ -1,22 +1,18 @@
 :root {
-  --telegram-blue: #229ED9;
-  --telegram-header: #222222;
-  --telegram-header-dark: #FFFFFF;
-  --telegram-main: #222222;
-  --telegram-main-dark: #FFFFFF;
-  --telegram-secondary: #777777;
-  --telegram-secondary-dark: #D6D6D6;
-  --telegram-card: #F7F7F7;
-  --telegram-card-dark: #23262B;
-  --telegram-bg: #FFFFFF;
-  --telegram-bg-dark: #181B20;
-  --telegram-green: #3DC97B;
-  --telegram-red: #FF6159;
-  --telegram-border: #E5E5E5;
-  --telegram-border-dark: #23262B;
+  /* Telegram themeParams fallback */
+  --tg-theme-bg-color: #ffffff;
+  --tg-theme-text-color: #222222;
+  --tg-theme-hint-color: #888888;
+  --tg-theme-link-color: #229ed9;
+  --tg-theme-button-color: #229ed9;
+  --tg-theme-button-text-color: #ffffff;
+  --tg-theme-secondary-bg-color: #f7f7f7;
+  --tg-theme-header-bg-color: #ffffff;
+  --tg-theme-destructive-text-color: #ff6159;
 }
 
-body.dark {
-  background: var(--telegram-bg-dark);
-  color: var(--telegram-main-dark);
+body,
+html {
+  background: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
 }

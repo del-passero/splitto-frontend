@@ -1,28 +1,16 @@
 import React, { useState } from "react";
 import OnboardingSlide from "./OnboardingSlide";
 import ProgressDots from "./ProgressDots";
+import { ReactComponent as Ill1 } from "./OnboardingIllustration1.svg";
+import { ReactComponent as Ill2 } from "./OnboardingIllustration2.svg";
+import { ReactComponent as Ill3 } from "./OnboardingIllustration3.svg";
+import { ReactComponent as Ill4 } from "./OnboardingIllustration4.svg";
 
-// Импортируем SVG-иллюстрации как ReactComponent
-import Ill1 from "./OnboardingIllustration1.svg?react";
-import Ill2 from "./OnboardingIllustration2.svg?react";
-import Ill3 from "./OnboardingIllustration3.svg?react";
-import Ill4 from "./OnboardingIllustration4.svg?react";
-
-
-/**
- * Onboarding — обёртка-карусель для всех слайдов онбординга.
- * Управляет текущим шагом, навигацией, кнопками и обработкой завершения/пропуска.
- * НЕ содержит прямого API, только UI и навигацию!
- *
- * @param onFinish — обработчик при завершении (нажатии “НАЧАТЬ”)
- * @param onSkip — обработчик нажатия “Пропустить обучение”
- */
 interface OnboardingProps {
-  onFinish: () => void; // Вызывается, когда пользователь завершает онбординг
-  onSkip: () => void;   // Вызывается, если пользователь жмёт “Пропустить”
+  onFinish: () => void;
+  onSkip: () => void;
 }
 
-// Данные всех слайдов — обычно потом подгружаются из i18n!
 const slides = [
   {
     illustration: <Ill1 />,
@@ -49,26 +37,24 @@ const slides = [
 ];
 
 const Onboarding: React.FC<OnboardingProps> = ({ onFinish, onSkip }) => {
-  // Текущий слайд (индекс)
   const [current, setCurrent] = useState(0);
 
-  // Перейти на следующий слайд
   const handleNext = () => {
     if (current < slides.length - 1) setCurrent((c) => c + 1);
   };
-
-  // Перейти на предыдущий слайд (по желанию, можно убрать)
   const handlePrev = () => {
     if (current > 0) setCurrent((c) => c - 1);
   };
-
-  // Текущий слайд для рендера
   const slide = slides[current];
 
-  // Разметка компонента
   return (
-    <div className="flex flex-col justify-between min-h-screen bg-telegram-bg dark:bg-telegram-bg-dark">
-      {/* Основной контент (слайд) */}
+    <div
+      className="flex flex-col justify-between min-h-screen"
+      style={{
+        background: "var(--tg-theme-bg-color, #fff)",
+        color: "var(--tg-theme-text-color, #222)",
+      }}
+    >
       <div className="flex-1 flex flex-col justify-center">
         <OnboardingSlide
           illustration={slide.illustration}
@@ -79,37 +65,43 @@ const Onboarding: React.FC<OnboardingProps> = ({ onFinish, onSkip }) => {
           onButtonClick={onFinish}
         />
       </div>
-
-      {/* Индикатор прогресса */}
       <ProgressDots count={slides.length} activeIndex={current} />
-
-      {/* Нижняя панель с кнопками */}
       <div className="flex justify-between items-center px-6 pb-6 gap-2">
-        {/* Назад (опционально, можно убрать для минимализма) */}
         {current > 0 ? (
           <button
-            className="px-6 py-2 rounded-xl bg-telegram-card dark:bg-telegram-card-dark border border-telegram-blue text-telegram-blue font-medium"
+            className="px-6 py-2 rounded-xl font-medium"
+            style={{
+              background: "var(--tg-theme-secondary-bg-color, #f7f7f7)",
+              color: "var(--tg-theme-link-color, #229ed9)",
+              border: "1px solid var(--tg-theme-link-color, #229ed9)",
+            }}
             onClick={handlePrev}
             type="button"
           >
             Назад
           </button>
-        ) : <div style={{ width: 80 }} />} {/* Заглушка для выравнивания */}
-
-        {/* Далее или ничего (если последний слайд) */}
+        ) : <div style={{ width: 80 }} />}
         {current < slides.length - 1 ? (
           <button
-            className="px-6 py-2 rounded-xl bg-telegram-blue text-white font-medium"
+            className="px-6 py-2 rounded-xl font-medium"
+            style={{
+              background: "var(--tg-theme-link-color, #229ed9)",
+              color: "#fff",
+              border: "none",
+            }}
             onClick={handleNext}
             type="button"
           >
             Далее
           </button>
-        ) : <div style={{ width: 80 }} />} {/* Заглушка для выравнивания */}
-
-        {/* Пропустить обучение — всегда справа */}
+        ) : <div style={{ width: 80 }} />}
         <button
-          className="px-6 py-2 rounded-xl bg-transparent border border-telegram-blue text-telegram-blue font-medium"
+          className="px-6 py-2 rounded-xl font-medium"
+          style={{
+            background: "transparent",
+            color: "var(--tg-theme-link-color, #229ed9)",
+            border: "1px solid var(--tg-theme-link-color, #229ed9)",
+          }}
           onClick={onSkip}
           type="button"
         >

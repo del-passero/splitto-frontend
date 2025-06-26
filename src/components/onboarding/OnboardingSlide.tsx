@@ -2,15 +2,16 @@ import React from "react";
 
 /**
  * OnboardingSlide — atomic-компонент для одного слайда онбординга.
- * Показывает иллюстрацию, заголовок, основной текст, опционально мелкий текст и/или кнопку.
+ * SVG иллюстрация, заголовок, текст, опциональный мелкий текст и/или кнопка.
+ * Поддержка Telegram-темы!
  */
 export interface OnboardingSlideProps {
-  illustration: React.ReactNode;      // SVG или React-компонент иллюстрации
-  title: string;                      // Заголовок (обычно из i18n)
-  text: string;                       // Основной текст
-  smallText?: string;                 // Мелкий (дополнительный) текст
-  buttonText?: string;                // Текст кнопки (если нужна)
-  onButtonClick?: () => void;         // Обработчик нажатия на кнопку
+  illustration: React.ReactNode;
+  title: string;
+  text: string;
+  smallText?: string;
+  buttonText?: string;
+  onButtonClick?: () => void;
 }
 
 const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
@@ -29,29 +30,42 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       max-w-onboarding mx-auto
     "
   >
-    {/* SVG-иллюстрация */}
-    <div className="w-full flex justify-center mb-6 mt-2">
-      <div className="max-h-[180px] w-auto">{illustration}</div>
+    {/* SVG-иллюстрация с ограничением размера */}
+    <div className="flex justify-center mb-6 mt-2">
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 220,
+          maxHeight: 140,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        {illustration}
+      </div>
     </div>
 
     {/* Заголовок */}
     <h2
-      className="
-        font-bold text-[22px] leading-tight mb-3
-        text-telegram-header dark:text-telegram-header-dark
-      "
-      style={{ wordBreak: "break-word" }}
+      className="font-bold text-[22px] leading-tight mb-3"
+      style={{
+        color: "var(--tg-theme-text-color)",
+        wordBreak: "break-word",
+      }}
     >
       {title}
     </h2>
 
-    {/* Основной текст */}
+    {/* Основной текст (с auto line-break) */}
     <div
-      className="
-        font-medium text-[17px] leading-snug
-        text-telegram-main dark:text-telegram-main-dark mb-2
-      "
-      style={{ wordBreak: "break-word" }}
+      className="font-medium text-[17px] leading-snug mb-2"
+      style={{
+        color: "var(--tg-theme-text-color)",
+        wordBreak: "break-word",
+        whiteSpace: "pre-line",
+      }}
     >
       {text}
     </div>
@@ -59,10 +73,8 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
     {/* Дополнительный (мелкий) текст */}
     {smallText && (
       <div
-        className="
-          font-normal text-[15px] leading-normal
-          text-telegram-secondary dark:text-telegram-secondary-dark mb-4
-        "
+        className="font-normal text-[15px] leading-normal mb-4"
+        style={{ color: "var(--tg-theme-hint-color)" }}
       >
         {smallText}
       </div>
@@ -71,11 +83,12 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
     {/* Кнопка (если нужна) */}
     {buttonText && onButtonClick && (
       <button
-        className="
-          mt-3 px-8 py-3 rounded-xl bg-telegram-blue text-white
-          text-[17px] font-bold transition active:bg-telegram-blue/80
-          shadow-sm focus:outline-none w-full max-w-[320px]
-        "
+        className="mt-3 px-8 py-3 rounded-xl text-[17px] font-bold transition shadow-sm focus:outline-none w-full max-w-[320px]"
+        style={{
+          background: "var(--tg-theme-button-color)",
+          color: "var(--tg-theme-button-text-color)",
+          border: "none",
+        }}
         type="button"
         onClick={onButtonClick}
       >
