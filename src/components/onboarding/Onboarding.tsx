@@ -3,10 +3,11 @@ import OnboardingSlide from "./OnboardingSlide";
 import ProgressDots from "./ProgressDots";
 
 // Импортируем SVG-иллюстрации как ReactComponent
-import { ReactComponent as Ill1 } from "./OnboardingIllustration1.svg";
-import { ReactComponent as Ill2 } from "./OnboardingIllustration2.svg";
-import { ReactComponent as Ill3 } from "./OnboardingIllustration3.svg";
-import { ReactComponent as Ill4 } from "./OnboardingIllustration4.svg";
+import Ill1 from "./OnboardingIllustration1.svg?react";
+import Ill2 from "./OnboardingIllustration2.svg?react";
+import Ill3 from "./OnboardingIllustration3.svg?react";
+import Ill4 from "./OnboardingIllustration4.svg?react";
+
 
 /**
  * Onboarding — обёртка-карусель для всех слайдов онбординга.
