@@ -1,21 +1,17 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ThemeProvider } from "../context/ThemeContext";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import StartPage from "../pages/StartPage";
 import OnboardingPage from "../pages/OnboardingPage";
-import MainPage from "../pages/MainPage";
+import MainPage from "../pages/MainPage"; // предположим, что есть
 
 const App: React.FC = () => (
-  <ThemeProvider>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<StartPage />} />
-        <Route path="/onboarding" element={<OnboardingPage />} />
-        <Route path="/main" element={<MainPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  </ThemeProvider>
+  <Router>
+    <Routes>
+      <Route path="/" element={<StartPage />} />
+      <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/main" element={<MainPage />} />
+    </Routes>
+  </Router>
 );
 
 export default App;
