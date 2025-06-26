@@ -1,12 +1,8 @@
 import React from "react";
+import type { ReactNode } from "react";
 
-/**
- * OnboardingSlide — atomic-компонент для одного слайда онбординга.
- * SVG иллюстрация, заголовок, текст, опциональный мелкий текст и/или кнопка.
- * Поддержка Telegram-темы!
- */
 export interface OnboardingSlideProps {
-  illustration: React.ReactNode;
+  illustration: ReactNode;
   title: string;
   text: string;
   smallText?: string;
@@ -30,7 +26,6 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       max-w-onboarding mx-auto
     "
   >
-    {/* SVG-иллюстрация с ограничением размера */}
     <div className="flex justify-center mb-6 mt-2">
       <div
         style={{
@@ -47,7 +42,6 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       </div>
     </div>
 
-    {/* Заголовок */}
     <h2
       className="font-bold text-[22px] leading-tight mb-3"
       style={{
@@ -58,7 +52,6 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       {title}
     </h2>
 
-    {/* Основной текст (с auto line-break) */}
     <div
       className="font-medium text-[17px] leading-snug mb-2"
       style={{
@@ -70,7 +63,6 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       {text}
     </div>
 
-    {/* Дополнительный (мелкий) текст */}
     {smallText && (
       <div
         className="font-normal text-[15px] leading-normal mb-4"
@@ -80,7 +72,6 @@ const OnboardingSlide: React.FC<OnboardingSlideProps> = ({
       </div>
     )}
 
-    {/* Кнопка (если нужна) */}
     {buttonText && onButtonClick && (
       <button
         className="mt-3 px-8 py-3 rounded-xl text-[17px] font-bold transition shadow-sm focus:outline-none w-full max-w-[320px]"

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
 type ThemeParams = {
   [key: string]: string | undefined;
@@ -21,7 +22,6 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    // 1. Пробуем получить themeParams из Telegram WebApp API
     const tg = (window as any).Telegram?.WebApp;
     let params: ThemeParams = {};
     let dark = false;
@@ -30,7 +30,6 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       params = tg.themeParams;
       dark = tg.colorScheme === "dark";
     } else {
-      // Fallback для локального теста
       params = {};
       dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
     }
@@ -38,23 +37,23 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setThemeParams(params);
     setIsDark(dark);
 
-    // 2. Применяем все параметры как CSS custom properties
     const root = document.documentElement;
     Object.entries(params).forEach(([k, v]) => {
-      if (v)
+      if (typeof v === "string") {
         root.style.setProperty(`--tg-theme-${k.replace(/_/g, "-")}`, v);
+      }
     });
     root.classList.toggle("dark", dark);
 
-    // 3. Подписываемся на смену темы из Telegram (если поддерживается)
     if (tg && tg.onEvent) {
       const handler = () => {
         const updParams = tg.themeParams || {};
         setThemeParams(updParams);
         setIsDark(tg.colorScheme === "dark");
         Object.entries(updParams).forEach(([k, v]) => {
-          if (v)
+          if (typeof v === "string") {
             root.style.setProperty(`--tg-theme-${k.replace(/_/g, "-")}`, v);
+          }
         });
         root.classList.toggle("dark", tg.colorScheme === "dark");
       };
