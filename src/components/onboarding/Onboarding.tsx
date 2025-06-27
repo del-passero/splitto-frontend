@@ -1,3 +1,4 @@
+// src/components/onboarding/Onboarding.tsx
 import React, { useEffect, useState } from "react";
 
 export interface OnboardingProps {
@@ -5,10 +6,12 @@ export interface OnboardingProps {
   onSkip: () => void;
 }
 
-// Универсальная функция получения цвета из Telegram themeParams
 function getThemeParam(name: string, fallback: string) {
-  // @ts-ignore — типы мы уже добавили, но иногда линтер ругается
-  return window.Telegram?.WebApp?.themeParams?.[name] || fallback;
+  // @ts-ignore
+  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.themeParams) {
+    return (window.Telegram.WebApp.themeParams as any)[name] || fallback;
+  }
+  return fallback;
 }
 
 const Onboarding: React.FC<OnboardingProps> = ({ onFinish, onSkip }) => {
@@ -31,20 +34,18 @@ const Onboarding: React.FC<OnboardingProps> = ({ onFinish, onSkip }) => {
   }, []);
 
   return (
-    <div
-      style={{
-        background: colors.bg,
-        color: colors.text,
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        fontFamily: "system-ui, sans-serif",
-        transition: "background 0.2s",
-      }}
-    >
+    <div style={{
+      background: colors.bg,
+      color: colors.text,
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24,
+      fontFamily: "system-ui, sans-serif",
+      transition: "background 0.2s",
+    }}>
       <img
         src="https://cdn4.iconfinder.com/data/icons/social-media-rounded-corners/512/Telegram-512.png"
         alt="Splitto"
