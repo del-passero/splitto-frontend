@@ -2,7 +2,7 @@ import type { User } from "../types/user";
 
 // Получить текущего пользователя через Telegram WebApp API
 export async function authTelegramUser(initData: string): Promise<User> {
-  const res = await fetch("/api/auth/telegram", {
+  const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/telegram`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData }),
@@ -13,7 +13,7 @@ export async function authTelegramUser(initData: string): Promise<User> {
 
 // Получить всех пользователей (передаём initData в заголовке)
 export async function getAllUsers(initData: string): Promise<User[]> {
-  const res = await fetch("/api/users/", {
+  const res = await fetch(`${import.meta.env.VITE_API_BASE}/users/`, {
     headers: {
       "Content-Type": "application/json",
       "x-telegram-initdata": initData,
