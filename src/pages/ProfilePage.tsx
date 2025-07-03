@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { authTelegramUser, getAllUsers } from "../api/usersApi";
 import type { User } from "../types/user";
 
