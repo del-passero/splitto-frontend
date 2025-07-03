@@ -8,5 +8,5 @@
     }
   }}
 >
-  Проверить Telegram API
+  Проверить ли Telegram API
 </button>
