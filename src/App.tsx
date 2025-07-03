@@ -1,4 +1,4 @@
-import React, { useEffect } from "react"; // обязательно импорт useEffect
+import { useEffect } from "react";
 
 const tg = window.Telegram?.WebApp;
 
@@ -18,7 +18,7 @@ export default function App() {
         }
       }}
     >
-      Проверить уже Telegram API
+      Проверить Telegram API
     </button>
   );
 }
