@@ -18,7 +18,7 @@ export default function App() {
         }
       }}
     >
-      Проверить ли Telegram API
+      Проверить уже Telegram API
     </button>
   );
 }
