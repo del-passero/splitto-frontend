@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { authTelegramUser, getAllUsers } from "../api/usersApi";
-import { User } from "../types/user";
+import type { User } from "../types/user";
+
 
 export default function ProfilePage() {
   const [me, setMe] = useState<User | null>(null);

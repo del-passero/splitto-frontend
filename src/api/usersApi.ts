@@ -1,4 +1,4 @@
-import { User } from "../types/user";
+import type { User } from "../types/user";
 
 // Получить текущего пользователя через Telegram WebApp API
 export async function authTelegramUser(initData: string): Promise<User> {
