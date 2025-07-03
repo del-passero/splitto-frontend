@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import ProfilePage from "./pages/ProfilePage";
 
+console.log('VITE_API_BASE =', import.meta.env.VITE_API_BASE);
+
 function HomePage() {
   return (
     <div className="max-w-xl mx-auto p-4 text-center">
