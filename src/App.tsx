@@ -13,7 +13,7 @@ export default function App() {
         if (tg) {
           tg.showAlert("Это Telegram WebApp!");
         } else {
-          alert("Вы не в Telegram WebApp");
+          alert("Вы не в Telegram WebApp!!!");
         }
       }}
     >
