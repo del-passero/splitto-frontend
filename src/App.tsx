@@ -1,33 +1,33 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function App() {
+  const [initData, setInitData] = useState("");
+
   useEffect(() => {
-    // Всегда логируем, что получили из window
-    console.log("[App] window.Telegram =", window.Telegram);
-    // Проверяем загрузился ли Telegram WebApp API
-    if (window.Telegram && window.Telegram.WebApp) {
-      window.Telegram.WebApp.ready();
-      console.log("[App] Telegram WebApp API готов");
+    const tg = window.Telegram?.WebApp;
+    tg?.ready();
+    if (tg?.initData) {
+      setInitData(tg.initData);
+      console.log("[App] Telegram initData:", tg.initData);
     } else {
-      console.warn("[App] Telegram WebApp API не найден! (window.Telegram = undefined)");
+      setInitData("window.Telegram.WebApp.initData отсутствует!");
+      console.warn("[App] window.Telegram.WebApp.initData = undefined");
     }
   }, []);
 
   return (
     <div>
       <h2>Splitto TEST WebApp</h2>
+      <div>
+        <b>initData:</b>
+        <pre style={{ fontSize: "10px", whiteSpace: "pre-wrap" }}>{initData}</pre>
+      </div>
       <button
         onClick={() => {
-          if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.showAlert(
-              "initData: " + window.Telegram.WebApp.initData
-            );
-          } else {
-            alert("window.Telegram.WebApp отсутствует!");
-          }
+          alert("Тут будет отправка на backend!\ninitData (первые 100 символов):\n" + initData.slice(0, 100));
         }}
       >
-        Проверить Telegram API
+        Отправить initData на backend
       </button>
     </div>
   );
