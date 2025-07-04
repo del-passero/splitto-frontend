@@ -13,7 +13,7 @@ const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api ";
 
 /**
  * Авторизует пользователя через Telegram WebApp.
- * Отправляет initData как form-data (x-www-form-urlencoded).
+ * Отправляет initData как application/x-www-form-urlencoded.
  */
 export async function authTelegramUser(initData: string): Promise<User> {
   console.log("[authTelegramUser] initData =", initData);
@@ -28,9 +28,9 @@ export async function authTelegramUser(initData: string): Promise<User> {
   const res = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/x-www-form-urlencoded", // ← важно!
     },
-    body: formData.toString(),
+    body: formData.toString(), // ← строка вида "initData=..."
   });
 
   if (!res.ok) {
@@ -38,27 +38,5 @@ export async function authTelegramUser(initData: string): Promise<User> {
     throw new Error(`Ошибка авторизации: ${errorText}`);
   }
 
-  return res.json();
-}
-
-/**
- * Получает список всех пользователей.
- * Требует передачи initData в заголовке.
- */
-export async function getAllUsers(initData: string): Promise<User[]> {
-  console.log("[getAllUsers] initData =", initData);
-
-  const res = await fetch(`${API_URL}/users/`, {
-    headers: {
-      "Content-Type": "application/json",
-      "x-telegram-initdata": initData,
-    },
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Ошибка получения списка пользователей: ${errorText}`);
-  }
-
-  return res.json();
+  return res.json(); // Возвращает UserOut из FastAPI
 }
