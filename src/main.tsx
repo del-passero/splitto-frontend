@@ -1,7 +1,10 @@
-// src/main.tsx
+// frontend/src/main.tsx
+
 import { createRoot } from "react-dom/client";
 import App from "./App";
 
-console.log("[main.tsx] starting app");
+// Telegram WebApp ready
+window.Telegram?.WebApp?.ready?.();
+
 const root = createRoot(document.getElementById("root")!);
 root.render(<App />);

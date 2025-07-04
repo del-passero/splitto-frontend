@@ -1,58 +1,75 @@
+// frontend/src/ProfilePage.tsx
+
 import { useEffect, useState } from "react";
 import { authTelegramUser, getAllUsers } from "../api/usersApi";
+import type { User } from "../api/usersApi";
+
+
+
+const tg = window.Telegram?.WebApp;
 
 export default function ProfilePage() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [users, setUsers] = useState<any[]>([]);
+  const [me, setMe] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // initData из Telegram WebApp
-    // @ts-ignore
-    const tg = window.Telegram?.WebApp;
-    const initData = tg?.initData || "";
-    console.log("[ProfilePage] Telegram initData:", initData);
+  // Берём initData из Telegram WebApp API
+  const initData = tg?.initData || "";
 
-    if (!initData) {
-      setError("Нет initData от Telegram WebApp");
-      return;
+  const handleAuth = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const user = await authTelegramUser(initData);
+      setMe(user);
+      await loadUsers();
+    } catch (e: any) {
+      setError(e.message);
     }
+    setLoading(false);
+  };
 
-    authTelegramUser(initData)
-      .then((user) => {
-        console.log("[ProfilePage] Current user:", user);
-        setCurrentUser(user);
-      })
-      .catch((err) => {
-        console.error("[ProfilePage] Ошибка авторизации:", err);
-        setError(String(err));
-      });
+  const loadUsers = async () => {
+    try {
+      const users = await getAllUsers(initData);
+      setUsers(users);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
 
-    getAllUsers(initData)
-      .then((allUsers) => {
-        console.log("[ProfilePage] All users:", allUsers);
-        setUsers(allUsers);
-      })
-      .catch((err) => {
-        console.error("[ProfilePage] Ошибка получения списка пользователей:", err);
-        setError(String(err));
-      });
-  }, []);
+  useEffect(() => {
+    // Можно сразу загрузить список пользователей
+    if (initData) loadUsers();
+  }, [initData]);
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ maxWidth: 400, margin: "0 auto", padding: 20 }}>
       <h2>Профиль</h2>
-      {error && <div style={{ color: "red" }}>Ошибка: {error}</div>}
-
-      <div style={{ marginBottom: 16 }}>
-        <b>Текущий пользователь:</b>
-        <pre>{currentUser ? JSON.stringify(currentUser, null, 2) : "Загрузка..."}</pre>
-      </div>
-
-      <div>
-        <b>Все пользователи:</b>
-        <pre>{users.length ? JSON.stringify(users, null, 2) : "Загрузка..."}</pre>
-      </div>
+      <button onClick={handleAuth} disabled={loading || !initData}>
+        {loading ? "Сохраняем..." : "Сохранить меня в базу"}
+      </button>
+      {error && <div style={{ color: "red", margin: "8px 0" }}>{error}</div>}
+      {me && (
+        <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 12, margin: "16px 0" }}>
+          <div><b>Вы:</b></div>
+          <div>Имя: {me.first_name} {me.last_name}</div>
+          <div>Username: {me.username}</div>
+          <div>telegram_id: {me.telegram_id}</div>
+          {me.photo_url && (
+            <img src={me.photo_url} alt="avatar" width={64} style={{ borderRadius: 32 }} />
+          )}
+        </div>
+      )}
+      <h3>Пользователи</h3>
+      <ul>
+        {users.map(u => (
+          <li key={u.telegram_id}>
+            {u.telegram_id} — @{u.username || <i>без username</i>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
