@@ -1,37 +1,32 @@
-// !!! Используем жёстко прописанный путь !!!
-const API_BASE = "https://splitto-backend-prod-ugraf.amvera.io/api";
+import type { User } from "../types/user";
 
+// ЯВНЫЙ путь к API — вставь свой!
+const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api";
+console.log("API_URL =", API_URL);
+
+// Получить текущего пользователя через Telegram WebApp API
 export async function authTelegramUser(initData: string): Promise<User> {
-  console.log('[authTelegramUser] initData =', initData);
-  console.log('[authTelegramUser] URL = https://splitto-backend-prod-ugraf.amvera.io/api', `${API_BASE}/auth/telegram`);
-
-  const res = await fetch(`${API_BASE}/auth/telegram`, {
+  console.log("[authTelegramUser] initData =", initData);
+  const res = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData }),
   });
-  console.log('[authTelegramUser] Response status =', res.status);
-  const text = await res.text();
-  console.log('[authTelegramUser] Response text =', text);
-
-  if (!res.ok) throw new Error("Ошибка авторизации: " + text);
-  return JSON.parse(text);
+  console.log("[authTelegramUser] response status:", res.status);
+  if (!res.ok) throw new Error("Ошибка авторизации: " + (await res.text()));
+  return res.json();
 }
 
+// Получить всех пользователей (передаём initData в заголовке)
 export async function getAllUsers(initData: string): Promise<User[]> {
-  console.log('[getAllUsers] initData =', initData);
-  console.log('[getAllUsers] URL =', `${API_BASE}/users/`);
-
-  const res = await fetch(`${API_BASE}/users/`, {
+  console.log("[getAllUsers] initData =", initData);
+  const res = await fetch(`${API_URL}/users/`, {
     headers: {
       "Content-Type": "application/json",
       "x-telegram-initdata": initData,
     },
   });
-  console.log('[getAllUsers] Response status =', res.status);
-  const text = await res.text();
-  console.log('[getAllUsers] Response text =', text);
-
-  if (!res.ok) throw new Error("Ошибка получения пользователей: " + text);
-  return JSON.parse(text);
+  console.log("[getAllUsers] response status:", res.status);
+  if (!res.ok) throw new Error("Ошибка получения пользователей: " + (await res.text()));
+  return res.json();
 }
