@@ -30,7 +30,7 @@ export default function App() {
       <p>
         <b>initData:</b>{" "}
         <span style={{ wordBreak: "break-all", color: initData ? "#060" : "#c00" }}>
-          {initData || "Нет блядь данных!"}
+          {initData || "Нет блядь!!!! данных!"}
         </span>
       </p>
       <button
