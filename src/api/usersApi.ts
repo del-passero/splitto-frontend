@@ -1,20 +1,13 @@
-// frontend/src/api/usersApi.ts
-
 export interface User {
   id: number;
   telegram_id: number;
-  username: string;
-  first_name: string;
-  last_name: string;
+  name: string;
+  username: string | null;
   photo_url: string | null;
 }
 
 const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api ";
 
-/**
- * Авторизует пользователя через Telegram WebApp.
- * Отправляет initData как application/x-www-form-urlencoded.
- */
 export async function authTelegramUser(initData: string): Promise<User> {
   console.log("[authTelegramUser] initData =", initData);
 
@@ -28,9 +21,9 @@ export async function authTelegramUser(initData: string): Promise<User> {
   const res = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded", // ← важно!
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: formData.toString(), // ← строка вида "initData=..."
+    body: formData.toString(),
   });
 
   if (!res.ok) {
@@ -38,5 +31,5 @@ export async function authTelegramUser(initData: string): Promise<User> {
     throw new Error(`Ошибка авторизации: ${errorText}`);
   }
 
-  return res.json(); // Возвращает UserOut из FastAPI
+  return res.json();
 }
