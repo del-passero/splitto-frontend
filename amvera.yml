@@ -7,8 +7,6 @@ meta:
 build:
   dockerfile: Dockerfile
   skip: false
-  env: 
-    VITE_API_BASE: ${VITE_API_BASE}
 run:
   image: null
   command: null
