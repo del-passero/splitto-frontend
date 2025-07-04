@@ -13,7 +13,7 @@ export default function ProfilePage() {
     const tg = window.Telegram?.WebApp;
     const initData = tg?.initData;
     if (!initData) {
-      setError("Нет initData из Telegram ");
+      setError("Нет initData из Telegram WebApp, вот так вот!!!!");
       setLoading(false);
       return;
     }
