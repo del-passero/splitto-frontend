@@ -1,56 +1,76 @@
 // src/pages/ProfilePage.tsx
+
 import { useEffect, useState } from "react";
 import { authTelegramUser, getAllUsers, type User } from "../api/usersApi";
 
 export default function ProfilePage() {
-  const [me, setMe] = useState<User | null>(null);
+  const tg = (window as any).Telegram?.WebApp;
+  const [initData] = useState(tg?.initData || "");
+  const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Получаем initData из Telegram WebApp API
-  const initData = window.Telegram?.WebApp?.initData || "";
-
-  const handleAuth = async () => {
-    setLoading(true);
-    try {
-      const user = await authTelegramUser(initData);
-      setMe(user);
-      const all = await getAllUsers(initData);
-      setUsers(all);
-    } catch (err) {
-      alert("Ошибка авторизации: " + (err as Error).message);
-    }
-    setLoading(false);
-  };
-
+  // Автоматически получить всех пользователей при загрузке
   useEffect(() => {
-    // handleAuth(); // Если хочешь авто-логин по загрузке — раскомментируй
+    getAllUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, []);
 
+  // Авторизация по кнопке
+  async function handleAuth() {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const user = await authTelegramUser(initData);
+      setUser(user);
+      // После успешной авторизации — обновим список всех пользователей
+      getAllUsers().then(setUsers);
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ maxWidth: 500, margin: "0 auto" }}>
       <h1>Профиль</h1>
-      <button onClick={handleAuth} disabled={loading}>
-        {loading ? "Загрузка..." : "Войти через Telegram"}
+      <div>
+        <b>initData:</b>
+        <div style={{ fontSize: 10, wordBreak: "break-all" }}>{initData || "(нет)"}</div>
+      </div>
+      <button style={{ width: "100%", marginTop: 12 }} onClick={handleAuth} disabled={loading}>
+        {loading ? "Загрузка..." : "Авторизоваться через Telegram (отправить initData)"}
       </button>
-      {me && (
+      {authError && <div style={{ color: "red", marginTop: 8 }}>Ошибка авторизации: {authError}</div>}
+      <hr />
+      <div>
+        <b>Текущий пользователь:</b>
         <div>
-          <h2>Вы:</h2>
-          <div>
-            <b>ID:</b> {me.telegram_id}<br />
-            <b>Username:</b> {me.username || "—"}<br />
-            <b>Имя:</b> {me.first_name} {me.last_name}
-          </div>
+          {user ? (
+            <>
+              <div>telegram_id: {user.telegram_id}</div>
+              <div>username: {user.username}</div>
+              <div>Имя: {user.name}</div>
+            </>
+          ) : (
+            <div>Авторизуйтесь через Telegram</div>
+          )}
         </div>
-      )}
-      <h2>Все пользователи:</h2>
-      <ul>
-        {users.map((u) => (
-          <li key={u.telegram_id}>
-            {u.telegram_id} – @{u.username || "—"}
-          </li>
-        ))}
-      </ul>
+      </div>
+      <hr />
+      <div>
+        <b>Все пользователи:</b>
+        <ul>
+          {users.map((u) => (
+            <li key={u.id}>
+              telegram_id: {u.telegram_id}, username: {u.username}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

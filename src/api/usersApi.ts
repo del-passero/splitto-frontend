@@ -1,15 +1,20 @@
 // src/api/usersApi.ts
-export type User = {
+
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
+
+// Тип пользователя
+export interface User {
+  id: number;
   telegram_id: number;
+  first_name: string;
+  last_name: string;
   username: string;
-  first_name?: string;
-  last_name?: string;
-  photo_url?: string;
-  language_code?: string;
-};
+  photo_url: string;
+  language_code: string;
+  name: string;
+}
 
-const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api";
-
+// Авторизация через Telegram (POST /api/auth/telegram)
 export async function authTelegramUser(initData: string): Promise<User> {
   const res = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
@@ -20,13 +25,9 @@ export async function authTelegramUser(initData: string): Promise<User> {
   return res.json();
 }
 
-export async function getAllUsers(initData: string): Promise<User[]> {
-  const res = await fetch(`${API_URL}/users/`, {
-    headers: {
-      "Content-Type": "application/json",
-      "x-telegram-initdata": initData,
-    },
-  });
+// Получить всех пользователей (GET /api/users/)
+export async function getAllUsers(): Promise<User[]> {
+  const res = await fetch(`${API_URL}/users/`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
