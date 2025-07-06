@@ -1,35 +1,32 @@
-export interface User {
-  id: number;
+// src/api/usersApi.ts
+export type User = {
   telegram_id: number;
-  name: string;
-  username: string | null;
-  photo_url: string | null;
-}
+  username: string;
+  first_name?: string;
+  last_name?: string;
+  photo_url?: string;
+  language_code?: string;
+};
 
-const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api ";
+const API_URL = "https://splitto-backend-prod-ugraf.amvera.io/api";
 
 export async function authTelegramUser(initData: string): Promise<User> {
-  console.log("[authTelegramUser] initData =", initData);
-
-  if (!initData) {
-    throw new Error("initData не может быть пустым");
-  }
-
-  const formData = new URLSearchParams();
-  formData.append("initData", initData);
-
   const res = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: formData.toString(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData }),
   });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Ошибка авторизации: ${errorText}`);
-  }
-
+export async function getAllUsers(initData: string): Promise<User[]> {
+  const res = await fetch(`${API_URL}/users/`, {
+    headers: {
+      "Content-Type": "application/json",
+      "x-telegram-initdata": initData,
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
