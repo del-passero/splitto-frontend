@@ -15,14 +15,16 @@ export interface User {
 }
 
 // Авторизация через Telegram (POST /api/auth/telegram)
-export async function authTelegramUser(initData: string): Promise<User> {
-  const res = await fetch(`${API_URL}/auth/telegram`, {
+export async function authTelegramUser(initData: string) {
+  const response = await fetch(`${API_URL}/auth/telegram`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData }),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return await response.json();
 }
 
 // Получить всех пользователей (GET /api/users/)
