@@ -1,12 +1,12 @@
-export type User = {
+// src/types/user.ts
+
+export interface User {
   id: number;
   telegram_id: number;
-  username?: string;
-  first_name?: string;
-  last_name?: string;
-  name?: string;
-  photo_url?: string;
-  language_code?: string;
-  created_at: string;
-  updated_at: string;
-};
+  first_name: string;
+  last_name: string;
+  username: string;
+  photo_url: string;
+  language_code: string;
+  name: string;
+}

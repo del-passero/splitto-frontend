@@ -11,7 +11,7 @@ type ThemeType = "auto" | "light" | "dark";
 interface ThemeLangContextValue {
   theme: ThemeType;
   setTheme: (t: ThemeType) => void;
-  realTheme: "light" | "dark";
+  realTheme: ThemeType; // <-- исправил тут!
   themeParams: any;
   lang: LangCode;
   setLang: (l: LangCode) => void;
@@ -53,12 +53,12 @@ export function ThemeLangProvider({ children }: { children: ReactNode }) {
       : "en";
 
   // Тема Telegram
-  const realTheme: "light" | "dark" =
+  const realThemeTelegram: "light" | "dark" =
     themeParams?.bg_color && themeParams.bg_color.toLowerCase() === "#ffffff"
       ? "light"
       : "dark";
 
-  const currentTheme = theme === "auto" ? realTheme : theme;
+  const currentTheme: ThemeType = theme === "auto" ? "auto" : theme;
   const currentLang = lang === "auto" ? tgLang : lang;
 
   return (
@@ -66,7 +66,7 @@ export function ThemeLangProvider({ children }: { children: ReactNode }) {
       value={{
         theme,
         setTheme,
-        realTheme: currentTheme,
+        realTheme: currentTheme, // <-- исправлено!
         themeParams,
         lang,
         setLang,

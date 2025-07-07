@@ -3,9 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import type { User } from "../types/user";
 import { getTelegramInitData } from "../hooks/useTelegramUser";
-
-// Сюда — константа, как в usersApi.ts:
-const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
+import { authTelegramUser } from "../api/usersApi";
 
 interface UserContextValue {
   user: User | null;
@@ -41,14 +39,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        // ВАЖНО! Используем API_URL с дефолтом!
-        const resp = await fetch(`${API_URL}/auth/telegram`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData: getTelegramInitData() }),
-        });
-        if (!resp.ok) throw new Error(await resp.text());
-        const data: User = await resp.json();
+        const data = await authTelegramUser(getTelegramInitData());
         setUser(data);
         localStorage.setItem("user", JSON.stringify(data));
       } catch (e: any) {

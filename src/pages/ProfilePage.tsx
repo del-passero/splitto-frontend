@@ -3,24 +3,102 @@
 import { useThemeLang } from "../contexts/ThemeLangContext";
 import { useUser } from "../contexts/UserContext";
 import { useEffect, useState } from "react";
-import { getAllUsers, User as OtherUser } from "../api/usersApi";
+import { getAllUsers } from "../api/usersApi";
+import type { User } from "../types/user";
+import UsersList from "../components/UsersList";
+import ProfileInfoCard from "../components/ProfileInfoCard";
+import ProfileTabs from "../components/ProfileTabs";
+
+// Тип для темы (исправлено: добавлен вариант "auto")
+type ThemeType = "light" | "dark" | "auto";
+
+// Настройки (SettingsSection)
+function SettingsSection() {
+  const { realTheme, setTheme, realLang, setLang } = useThemeLang();
+
+  return (
+    <div className="space-y-5">
+      {/* Тема */}
+      <div>
+        <div className="font-semibold mb-2">Тема:</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setTheme("auto")}
+            className={`px-3 py-2 rounded-lg ${realTheme === "auto" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Наследовать
+          </button>
+          <button
+            onClick={() => setTheme("light")}
+            className={`px-3 py-2 rounded-lg ${realTheme === "light" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Светлая
+          </button>
+          <button
+            onClick={() => setTheme("dark")}
+            className={`px-3 py-2 rounded-lg ${realTheme === "dark" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Тёмная
+          </button>
+        </div>
+      </div>
+      {/* Язык */}
+      <div>
+        <div className="font-semibold mb-2">Язык:</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setLang("auto")}
+            className={`px-3 py-2 rounded-lg ${realLang === "auto" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Наследовать
+          </button>
+          <button
+            onClick={() => setLang("ru")}
+            className={`px-3 py-2 rounded-lg ${realLang === "ru" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Русский
+          </button>
+          <button
+            onClick={() => setLang("en")}
+            className={`px-3 py-2 rounded-lg ${realLang === "en" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            English
+          </button>
+          <button
+            onClick={() => setLang("es")}
+            className={`px-3 py-2 rounded-lg ${realLang === "es" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
+          >
+            Español
+          </button>
+        </div>
+      </div>
+      {/* Заглушки: версия и ссылки */}
+      <div className="mt-4 text-xs opacity-50 text-center">
+        v0.1 • <a href="#" className="underline">Privacy Policy</a>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { user, loading, error, logout } = useUser();
   const { themeParams } = useThemeLang();
 
-  // Список всех пользователей
-  const [users, setUsers] = useState<OtherUser[]>([]);
+  const [tab, setTab] = useState<"profile" | "settings">("profile");
+  // Критично! ЯВНО типизируем users
+  const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
 
   useEffect(() => {
-    setUsersLoading(true);
-    getAllUsers()
-      .then(setUsers)
-      .catch((e) => setUsersError(e.message || "Ошибка загрузки пользователей"))
-      .finally(() => setUsersLoading(false));
-  }, []);
+    if (tab === "profile") {
+      setUsersLoading(true);
+      getAllUsers()
+        .then(setUsers)
+        .catch((e) => setUsersError(e.message || "Ошибка загрузки пользователей"))
+        .finally(() => setUsersLoading(false));
+    }
+  }, [tab]);
 
   if (loading) {
     return (
@@ -53,108 +131,39 @@ export default function ProfilePage() {
       }}
     >
       <div className="max-w-md mx-auto pt-8 px-4">
-        {/* Карточка пользователя */}
-        <div
-          className="flex items-center rounded-2xl shadow p-4 mb-6"
-          style={{
-            background: themeParams?.secondary_bg_color || "#f4f4f5",
-          }}
-        >
-          {/* Аватар или инициалы */}
-          {user.photo_url ? (
-            <img
-              src={user.photo_url}
-              alt="avatar"
-              className="rounded-full w-16 h-16 object-cover border"
-            />
-          ) : (
-            <div
-              className="rounded-full w-16 h-16 flex items-center justify-center font-bold text-2xl"
+        <ProfileTabs tab={tab} setTab={setTab} />
+        {tab === "profile" ? (
+          <>
+            <ProfileInfoCard user={user} />
+            <button
+              onClick={logout}
+              className="w-full py-3 rounded-2xl text-white font-semibold text-lg"
               style={{
-                background: themeParams?.hint_color || "#e0e0e0",
-                color: themeParams?.text_color || "#222",
+                background: "#ea5757", // danger style
+                marginBottom: 18,
               }}
             >
-              {user.first_name?.charAt(0)}
-              {user.last_name?.charAt(0)}
+              Выйти
+            </button>
+            <div className="mt-6">
+              <div className="text-sm mb-1 font-bold opacity-60">Все пользователи:</div>
+              {usersLoading && <div className="text-sm opacity-70">Загрузка списка…</div>}
+              {usersError && <div className="text-red-600 text-sm">{usersError}</div>}
+              <UsersList users={users} />
             </div>
-          )}
-          {/* Инфо о пользователе */}
-          <div className="flex-1 ml-4">
-            <div className="text-xl font-semibold">{user.name}</div>
-            <div className="opacity-70 text-sm">@{user.username}</div>
-            <div className="flex items-center mt-2">
-              {/* Бейдж Премиум (заглушка) */}
-              <span
-                className="ml-auto px-3 py-0.5 rounded-lg text-xs font-bold"
-                style={{
-                  background: themeParams?.button_color || "#e3e6f1",
-                  color: themeParams?.button_text_color || "#377df7",
-                }}
-              >
-                Обычный
-              </span>
+            <div
+              className="rounded-xl p-3 text-xs bg-[var(--tg-theme-secondary-bg-color)] mt-4"
+              style={{
+                color: themeParams?.text_color,
+                background: themeParams?.secondary_bg_color,
+              }}
+            >
+              <pre className="whitespace-pre-wrap">{JSON.stringify(user, null, 2)}</pre>
             </div>
-          </div>
-        </div>
-        {/* Кнопка Выйти */}
-        <button
-          onClick={logout}
-          className="w-full py-3 rounded-2xl text-white font-semibold text-lg"
-          style={{
-            background: "#ea5757", // danger style
-            marginBottom: 18,
-          }}
-        >
-          Выйти
-        </button>
-
-        {/* --- Список всех пользователей --- */}
-        <div className="mt-6">
-          <div className="text-sm mb-1 font-bold opacity-60">Все пользователи:</div>
-          {usersLoading && <div className="text-sm opacity-70">Загрузка списка…</div>}
-          {usersError && <div className="text-red-600 text-sm">{usersError}</div>}
-          <div className="space-y-2">
-            {users.map((u, i) => (
-              <div
-                key={u.id}
-                className="flex items-center rounded-xl p-3 shadow bg-[var(--tg-theme-secondary-bg-color)]"
-                style={{
-                  background: themeParams?.secondary_bg_color || "#f4f4f5",
-                  color: themeParams?.text_color || "#222",
-                }}
-              >
-                {/* Аватар */}
-                {u.photo_url ? (
-                  <img src={u.photo_url} alt="avatar" className="w-10 h-10 rounded-full object-cover" />
-                ) : (
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold bg-gray-300 text-gray-800"
-                  >
-                    {u.first_name?.[0] || "?"}
-                    {u.last_name?.[0] || ""}
-                  </div>
-                )}
-                <div className="ml-3 flex-1">
-                  <div className="font-medium">{u.name}</div>
-                  <div className="text-xs opacity-70">@{u.username}</div>
-                </div>
-                <div className="text-xs opacity-50 ml-auto">{i + 1}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Демо: информация о текущем пользователе */}
-        <div
-          className="rounded-xl p-3 text-xs bg-[var(--tg-theme-secondary-bg-color)] mt-4"
-          style={{
-            color: themeParams?.text_color,
-            background: themeParams?.secondary_bg_color,
-          }}
-        >
-          <pre className="whitespace-pre-wrap">{JSON.stringify(user, null, 2)}</pre>
-        </div>
+          </>
+        ) : (
+          <SettingsSection />
+        )}
       </div>
     </div>
   );
