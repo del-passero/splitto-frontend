@@ -4,6 +4,10 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import type { User } from "../types/user";
 import { getTelegramInitData } from "../hooks/useTelegramUser";
 
+console.log("VITE_API_URL in code =", import.meta.env.VITE_API_URL);
+console.log("All envs:", import.meta.env);
+
+
 interface UserContextValue {
   user: User | null;
   setUser: (u: User | null) => void;
