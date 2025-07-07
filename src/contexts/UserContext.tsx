@@ -4,9 +4,8 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import type { User } from "../types/user";
 import { getTelegramInitData } from "../hooks/useTelegramUser";
 
-console.log("VITE_API_URL in code =", import.meta.env.VITE_API_URL);
-console.log("All envs:", import.meta.env);
-
+// Сюда — константа, как в usersApi.ts:
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
 
 interface UserContextValue {
   user: User | null;
@@ -42,7 +41,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const resp = await fetch(import.meta.env.VITE_API_URL + "/auth/telegram", {
+        // ВАЖНО! Используем API_URL с дефолтом!
+        const resp = await fetch(`${API_URL}/auth/telegram`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ initData: getTelegramInitData() }),
