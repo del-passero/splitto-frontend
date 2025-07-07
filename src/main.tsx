@@ -1,8 +1,10 @@
 // src/main.tsx
+
+/**
+ * Точка входа приложения. Монтирует App в root элемент.
+ */
 import { createRoot } from "react-dom/client";
 import App from "./App";
 
-const root = document.getElementById("root");
-if (root) {
-  createRoot(root).render(<App />);
-}
+// Рендерим приложение
+createRoot(document.getElementById("root")!).render(<App />);
