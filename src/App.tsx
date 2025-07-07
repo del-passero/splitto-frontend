@@ -1,15 +1,15 @@
 // src/App.tsx
 
-/**
- * Главный компонент приложения.
- * Показывает страницу профиля (или можно добавить роутинг для других страниц).
- */
+import { Routes, Route, Navigate } from "react-router-dom";
 import ProfilePage from "./pages/ProfilePage";
+// TODO: сюда добавим остальные страницы (Home, Friends, Groups, Feed)
 
 export default function App() {
   return (
-    <div>
-      <ProfilePage />
-    </div>
+    <Routes>
+      <Route path="/profile" element={<ProfilePage />} />
+      {/* TODO: Добавить остальные маршруты позже */}
+      <Route path="*" element={<Navigate to="/profile" />} />
+    </Routes>
   );
 }
