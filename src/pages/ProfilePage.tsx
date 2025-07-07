@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { authTelegramUser, getAllUsers, User } from "../api/usersApi";
+import { authTelegramUser, getAllUsers } from "../api/usersApi";
+import type { User } from "../api/usersApi";
+
 
 /**
  * Страница профиля пользователя + список всех пользователей.
