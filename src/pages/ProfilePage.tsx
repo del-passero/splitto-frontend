@@ -5,87 +5,17 @@ import { useUser } from "../contexts/UserContext";
 import { useEffect, useState } from "react";
 import { getAllUsers } from "../api/usersApi";
 import type { User } from "../types/user";
-import UsersList from "../components/UsersList";
-import ProfileInfoCard from "../components/ProfileInfoCard";
-import ProfileTabs from "../components/ProfileTabs";
-
-// Тип для темы (исправлено: добавлен вариант "auto")
-type ThemeType = "light" | "dark" | "auto";
-
-// Настройки (SettingsSection)
-function SettingsSection() {
-  const { realTheme, setTheme, realLang, setLang } = useThemeLang();
-
-  return (
-    <div className="space-y-5">
-      {/* Тема */}
-      <div>
-        <div className="font-semibold mb-2">Тема:</div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setTheme("auto")}
-            className={`px-3 py-2 rounded-lg ${realTheme === "auto" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Наследовать
-          </button>
-          <button
-            onClick={() => setTheme("light")}
-            className={`px-3 py-2 rounded-lg ${realTheme === "light" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Светлая
-          </button>
-          <button
-            onClick={() => setTheme("dark")}
-            className={`px-3 py-2 rounded-lg ${realTheme === "dark" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Тёмная
-          </button>
-        </div>
-      </div>
-      {/* Язык */}
-      <div>
-        <div className="font-semibold mb-2">Язык:</div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setLang("auto")}
-            className={`px-3 py-2 rounded-lg ${realLang === "auto" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Наследовать
-          </button>
-          <button
-            onClick={() => setLang("ru")}
-            className={`px-3 py-2 rounded-lg ${realLang === "ru" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Русский
-          </button>
-          <button
-            onClick={() => setLang("en")}
-            className={`px-3 py-2 rounded-lg ${realLang === "en" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            English
-          </button>
-          <button
-            onClick={() => setLang("es")}
-            className={`px-3 py-2 rounded-lg ${realLang === "es" ? "bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]" : "bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)]"}`}
-          >
-            Español
-          </button>
-        </div>
-      </div>
-      {/* Заглушки: версия и ссылки */}
-      <div className="mt-4 text-xs opacity-50 text-center">
-        v0.1 • <a href="#" className="underline">Privacy Policy</a>
-      </div>
-    </div>
-  );
-}
+import ProfileInfoCard from "../components/Profile/ProfileInfoCard";
+import LogoutButton from "../components/Profile/LogoutButton";
+import ProfileTabs from "../components/Profile/ProfileTabs";
+import SettingsSection from "../components/Profile/SettingsSection";
+import UsersList from "../components/Users/UsersList";
 
 export default function ProfilePage() {
   const { user, loading, error, logout } = useUser();
   const { themeParams } = useThemeLang();
 
   const [tab, setTab] = useState<"profile" | "settings">("profile");
-  // Критично! ЯВНО типизируем users
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -135,16 +65,7 @@ export default function ProfilePage() {
         {tab === "profile" ? (
           <>
             <ProfileInfoCard user={user} />
-            <button
-              onClick={logout}
-              className="w-full py-3 rounded-2xl text-white font-semibold text-lg"
-              style={{
-                background: "#ea5757", // danger style
-                marginBottom: 18,
-              }}
-            >
-              Выйти
-            </button>
+            <LogoutButton onClick={logout} />
             <div className="mt-6">
               <div className="text-sm mb-1 font-bold opacity-60">Все пользователи:</div>
               {usersLoading && <div className="text-sm opacity-70">Загрузка списка…</div>}

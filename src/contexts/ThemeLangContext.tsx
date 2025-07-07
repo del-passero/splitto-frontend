@@ -4,18 +4,21 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { useTelegramThemeParams } from "../hooks/useTelegramTheme";
 import { getTelegramUser } from "../hooks/useTelegramUser";
 
+// Поддерживаемые языки и типы
 const SUPPORTED_LANGS = ["en", "ru", "es"] as const;
 type LangCode = typeof SUPPORTED_LANGS[number] | "auto";
 type ThemeType = "auto" | "light" | "dark";
+type RealTheme = "light" | "dark";
 
+// Интерфейс контекста
 interface ThemeLangContextValue {
-  theme: ThemeType;
+  theme: ThemeType;                 // выбранная пользователем тема
   setTheme: (t: ThemeType) => void;
-  realTheme: ThemeType; // <-- исправил тут!
-  themeParams: any;
-  lang: LangCode;
+  realTheme: RealTheme;             // реально используемая тема (light/dark)
+  themeParams: any;                 // параметры темы из Telegram
+  lang: LangCode;                   // выбранный язык
   setLang: (l: LangCode) => void;
-  realLang: LangCode;
+  realLang: LangCode;               // реально используемый язык
 }
 
 const ThemeLangContext = createContext<ThemeLangContextValue | undefined>(undefined);
@@ -52,25 +55,27 @@ export function ThemeLangProvider({ children }: { children: ReactNode }) {
       ? (tgUser.language_code as LangCode)
       : "en";
 
-  // Тема Telegram
-  const realThemeTelegram: "light" | "dark" =
+  // Тема Telegram (определяем по bg_color, fallback dark)
+  const realThemeTelegram: RealTheme =
     themeParams?.bg_color && themeParams.bg_color.toLowerCase() === "#ffffff"
       ? "light"
       : "dark";
 
-  const currentTheme: ThemeType = theme === "auto" ? "auto" : theme;
-  const currentLang = lang === "auto" ? tgLang : lang;
+  // Реально используемая тема
+  const realTheme: RealTheme = theme === "auto" ? realThemeTelegram : theme as RealTheme;
+  // Реально используемый язык
+  const realLang: LangCode = lang === "auto" ? tgLang : lang;
 
   return (
     <ThemeLangContext.Provider
       value={{
         theme,
         setTheme,
-        realTheme: currentTheme, // <-- исправлено!
+        realTheme,
         themeParams,
         lang,
         setLang,
-        realLang: currentLang,
+        realLang,
       }}
     >
       {children}
