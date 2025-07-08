@@ -1,15 +1,14 @@
 // src/App.tsx
-
-import { Routes, Route, Navigate } from "react-router-dom";
-import ProfilePage from "./pages/ProfilePage";
-// TODO: сюда добавим остальные страницы (Home, Friends, Groups, Feed)
+import { ThemeLangProvider } from "./contexts/ThemeLangContext"
+import { UserProvider } from "./contexts/UserContext"
+import ProfilePage from "./pages/ProfilePage"
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/profile" element={<ProfilePage />} />
-      {/* TODO: Добавить остальные маршруты позже */}
-      <Route path="*" element={<Navigate to="/profile" />} />
-    </Routes>
-  );
+    <ThemeLangProvider>
+      <UserProvider>
+        <ProfilePage />
+      </UserProvider>
+    </ThemeLangProvider>
+  )
 }

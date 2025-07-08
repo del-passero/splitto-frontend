@@ -1,3 +1,8 @@
 // src/telegram.ts
-
-export const tg = window.Telegram?.WebApp;
+// Типы Telegram WebApp API + экспорт window.Telegram
+export {}
+declare global {
+  interface Window {
+    Telegram?: any
+  }
+}

@@ -1,91 +1,66 @@
 // src/pages/ProfilePage.tsx
 
-import { useThemeLang } from "../contexts/ThemeLangContext";
-import { useUser } from "../contexts/UserContext";
-import { useEffect, useState } from "react";
-import { getAllUsers } from "../api/usersApi";
-import type { User } from "../types/user";
-import ProfileInfoCard from "../components/Profile/ProfileInfoCard";
-import LogoutButton from "../components/Profile/LogoutButton";
-import ProfileTabs from "../components/Profile/ProfileTabs";
-import SettingsSection from "../components/Profile/SettingsSection";
-import UsersList from "../components/Users/UsersList";
+import { useUser } from "../contexts/UserContext"
+import { useThemeLang } from "../contexts/ThemeLangContext"
+import ProfileCard from "../components/profile/ProfileCard"
+import ProDonateBlock from "../components/monetization/ProDonateBlock"
+import SettingsBlock from "../components/settings/SettingsBlock"
+import SecurityBlock from "../components/security/SecurityBlock"
+import InfoBlock from "../components/info/InfoBlock"
+import Divider from "../components/common/Divider"
+import { t } from "../locales/locale"
 
+/**
+ * Главная страница профиля Splitto — с поддержкой темы и локализации Telegram
+ */
 export default function ProfilePage() {
-  const { user, loading, error, logout } = useUser();
-  const { themeParams } = useThemeLang();
-
-  const [tab, setTab] = useState<"profile" | "settings">("profile");
-  const [users, setUsers] = useState<User[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (tab === "profile") {
-      setUsersLoading(true);
-      getAllUsers()
-        .then(setUsers)
-        .catch((e) => setUsersError(e.message || "Ошибка загрузки пользователей"))
-        .finally(() => setUsersLoading(false));
-    }
-  }, [tab]);
+  const { user, loading, error, logout } = useUser()
+  const { lang } = useThemeLang()
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        <span className="text-lg font-semibold">Загрузка…</span>
+        <span className="text-lg font-semibold">{t("profile.loading", lang)}</span>
       </div>
-    );
+    )
   }
-  if (error) {
+  if (error || !user) {
     return (
       <div className="flex items-center justify-center h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        <span className="text-red-600 text-lg">{error}</span>
+        <span className="text-red-600 text-lg">{error || t("profile.no_user", lang)}</span>
       </div>
-    );
-  }
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        <span className="text-lg">Нет данных пользователя</span>
-      </div>
-    );
+    )
   }
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        background: themeParams?.bg_color || "#fff",
-        color: themeParams?.text_color || "#222",
-      }}
-    >
-      <div className="max-w-md mx-auto pt-8 px-4">
-        <ProfileTabs tab={tab} setTab={setTab} />
-        {tab === "profile" ? (
-          <>
-            <ProfileInfoCard user={user} />
-            <LogoutButton onClick={logout} />
-            <div className="mt-6">
-              <div className="text-sm mb-1 font-bold opacity-60">Все пользователи:</div>
-              {usersLoading && <div className="text-sm opacity-70">Загрузка списка…</div>}
-              {usersError && <div className="text-red-600 text-sm">{usersError}</div>}
-              <UsersList users={users} />
-            </div>
-            <div
-              className="rounded-xl p-3 text-xs bg-[var(--tg-theme-secondary-bg-color)] mt-4"
-              style={{
-                color: themeParams?.text_color,
-                background: themeParams?.secondary_bg_color,
-              }}
-            >
-              <pre className="whitespace-pre-wrap">{JSON.stringify(user, null, 2)}</pre>
-            </div>
-          </>
-        ) : (
-          <SettingsSection />
-        )}
+    <div className="min-h-screen px-2 pb-6 bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
+      {/* Карточка пользователя */}
+      <ProfileCard user={user} lang={lang} onEdit={() => alert("Скоро редактирование профиля!")} />
+      <Divider />
+      {/* Блок PRO и доната */}
+      <ProDonateBlock />
+      <Divider />
+      {/* Настройки */}
+      <SettingsBlock />
+      <Divider />
+      {/* Безопасность */}
+      <SecurityBlock />
+      <Divider />
+      {/* Информация, версия, поддержка */}
+      <InfoBlock />
+      <div className="text-xs opacity-60 text-center mt-8">
+        Splitto &copy; 2025 — v1.0.0
       </div>
+      {/* Кнопка Выйти */}
+      <button
+        onClick={logout}
+        className="w-full mt-4 py-3 rounded-2xl text-white font-semibold text-lg"
+        style={{
+          background: "#ea5757",
+        }}
+      >
+        {t("profile.logout", lang)}
+      </button>
     </div>
-  );
+  )
 }
