@@ -1,3 +1,4 @@
+// src/locales/index.ts
 import ru from "./ru"
 import en from "./en"
 import es from "./es"

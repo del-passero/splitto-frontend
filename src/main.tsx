@@ -1,12 +1,9 @@
 // src/main.tsx
-import { StrictMode } from "react"
-import { createRoot } from "react-dom/client"
-import App from "./App"
 import "./styles/index.css"
-import "./test.css"
+import ReactDOM from "react-dom/client"
+import ProfilePage from "./pages/ProfilePage"
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
+// Стартуем сразу страницу профиля
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <ProfilePage />
 )

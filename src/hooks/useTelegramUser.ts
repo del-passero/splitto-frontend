@@ -3,25 +3,24 @@ import { useEffect } from "react"
 import { useUserStore } from "../store/userStore"
 import type { User } from "../types/user"
 
-// Получить TelegramUser как есть (до авторизации в backend)
+// Получить TelegramUser из Telegram WebApp
 export function getTelegramUser() {
   //@ts-ignore
   return window?.Telegram?.WebApp?.initDataUnsafe?.user || null
 }
 
-// Получить строку initData для передачи в backend
+// Получить строку initData для авторизации через backend
 export function getTelegramInitData() {
   //@ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
 }
 
-// Хук для использования Telegram User в frontend (до авторизации в backend)
+// Хук для загрузки и сохранения TelegramUser (минимальный формат)
 export function useTelegramUser() {
   const { user, setUser } = useUserStore()
   useEffect(() => {
     const tgUser = getTelegramUser()
     if (tgUser) {
-      // Минимальная трансформация для интерфейса (не для backend!)
       setUser({
         id: 0,
         telegram_id: tgUser.id,
