@@ -1,16 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Telegram Wallet-like переменные — для fallback (Telegram WebApp сам их переопределяет!) */
 :root {
-  --tg-bg-color: #fff;
+  --tg-bg-color: #f8faff;
   --tg-text-color: #222;
   --tg-hint-color: #888;
-  --tg-link-color: #5598ee;
+  --tg-link-color: #5393e7;
   --tg-secondary-bg-color: #f1f1f3;
+  --tg-accent-bg-color: #e3ecfc;
 }
 body {
+  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
   background: var(--tg-bg-color);
   color: var(--tg-text-color);
-  font-family: 'Inter', 'Roboto', 'Arial', sans-serif;
 }

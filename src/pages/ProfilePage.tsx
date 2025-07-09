@@ -1,4 +1,3 @@
-// src/pages/ProfilePage.tsx
 import { useState } from "react"
 import { Paintbrush, Languages } from "lucide-react"
 import { useUserStore } from "../store/userStore"
@@ -6,6 +5,7 @@ import { useSettingsStore } from "../store/settingsStore"
 import { getLocale } from "../locales"
 import UserCard from "../components/UserCard"
 import SettingItem from "../components/SettingItem"
+import CardSection from "../components/CardSection"
 import { ModalSelector } from "../components/ModalSelector"
 
 const themeOptions = [
@@ -28,33 +28,44 @@ const ProfilePage = () => {
   const [langOpen, setLangOpen] = useState(false)
 
   return (
-    <div className="max-w-md mx-auto pt-4 pb-20 min-h-screen bg-[var(--tg-bg-color)]">
-      <UserCard
-        name={`${user?.first_name || ""} ${user?.last_name || ""}`.trim() || user?.username || "User"}
-        username={user?.username || undefined}
-        photo_url={user?.photo_url || undefined}
-      />
-      <div className="mb-4 px-2">
-        <div className="font-semibold text-[var(--tg-hint-color)] mb-2">{t.settings}</div>
-        <SettingItem
-          icon={<Paintbrush className="text-[var(--tg-link-color)]" size={22} />}
-          label={t.theme}
-          value={t[`theme_${theme}`]}
-          onClick={() => setThemeOpen(true)}
+    <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
+      <div className="w-full max-w-md mx-auto rounded-2xl overflow-hidden shadow-lg mt-4">
+        <UserCard
+          name={`${user?.first_name || ""} ${user?.last_name || ""}`.trim() || user?.username || "User"}
+          username={user?.username || undefined}
+          photo_url={user?.photo_url || undefined}
         />
-        <SettingItem
-          icon={<Languages className="text-[var(--tg-link-color)]" size={22} />}
-          label={t.language}
-          value={t[`language_${lang}`]}
-          onClick={() => setLangOpen(true)}
-        />
-      </div>
-      <div className="px-2">
-        <div className="font-semibold text-[var(--tg-hint-color)] mb-2">{t.about}</div>
-        <div className="w-full flex items-center rounded-xl py-3 px-4 bg-[var(--tg-bg-color)] shadow">
-          <span className="flex-1 text-left text-[var(--tg-text-color)]">{t.app_version}</span>
-          <span className="text-[var(--tg-hint-color)]">1.0.0</span>
+
+        {/* ПРОВЕРКА TAILWIND — ВСТАВЬ СЮДА! */}
+        <div className="bg-red-400 text-white text-xl p-4 mb-4 text-center rounded-2xl shadow">
+        <div className="test-red">Test css import</div>
+
+          Проверка Tailwind
         </div>
+
+        <CardSection className="mt-0">
+          <div className="font-semibold text-[var(--tg-hint-color)] mb-2 tracking-wide">НАСТРОЙКИ</div>
+          <SettingItem
+            icon={<Paintbrush className="text-[var(--tg-link-color)]" size={22} />}
+            label={t.theme}
+            value={t[`theme_${theme}`]}
+            onClick={() => setThemeOpen(true)}
+          />
+          <SettingItem
+            icon={<Languages className="text-[var(--tg-link-color)]" size={22} />}
+            label={t.language}
+            value={t[`language_${lang}`]}
+            onClick={() => setLangOpen(true)}
+            last
+          />
+        </CardSection>
+        <CardSection>
+          <div className="font-semibold text-[var(--tg-hint-color)] mb-2 tracking-wide">О ПРИЛОЖЕНИИ</div>
+          <div className="w-full flex items-center py-3 px-1">
+            <span className="flex-1 text-left text-[var(--tg-text-color)]">{t.app_version}</span>
+            <span className="text-[var(--tg-hint-color)]">1.0.0</span>
+          </div>
+        </CardSection>
       </div>
       <ModalSelector
         title={t.theme}

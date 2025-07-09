@@ -1,0 +1,8 @@
+/* src/test.css */
+.test-red {
+  background: red !important;
+  color: white !important;
+  padding: 20px !important;
+  font-size: 20px !important;
+  border-radius: 20px !important;
+}
