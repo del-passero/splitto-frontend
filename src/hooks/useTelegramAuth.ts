@@ -4,7 +4,7 @@ import { useUserStore } from "../store/userStore"
 import { authTelegramUser } from "../api/usersApi"
 import { getTelegramInitData } from "./useTelegramUser"
 
-// Хук для авторизации пользователя через backend
+// Хук авторизации через backend (сохраняет user в Zustand)
 export function useTelegramAuth() {
   const setUser = useUserStore(s => s.setUser)
   useEffect(() => {

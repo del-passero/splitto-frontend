@@ -9,6 +9,7 @@ import SettingItem from "../components/SettingItem"
 import CardSection from "../components/CardSection"
 import { ModalSelector } from "../components/ModalSelector"
 import { useSyncTelegramThemeLang } from "../hooks/useSyncTelegramThemeLang"
+import { useTelegramAuth } from "../hooks/useTelegramAuth"
 
 const themeOptions = [
   { value: "auto", label: "Из Telegram" },
@@ -25,7 +26,8 @@ const langOptions = [
 const APP_VERSION = "0.1"
 
 const ProfilePage = () => {
-  useSyncTelegramThemeLang()
+  useSyncTelegramThemeLang() // Наследование темы/языка
+  useTelegramAuth() // Авторизация пользователя (userStore)
   const user = useUserStore(s => s.user)
   const { theme, lang, setTheme, setLang } = useSettingsStore()
   const t = getLocale(lang)
