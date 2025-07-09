@@ -26,8 +26,8 @@ const langOptions = [
 const APP_VERSION = "0.1"
 
 const ProfilePage = () => {
-  useSyncTelegramThemeLang() // Наследование темы/языка
-  useTelegramAuth() // Авторизация пользователя (userStore)
+  useSyncTelegramThemeLang()
+  useTelegramAuth()
   const user = useUserStore(s => s.user)
   const { theme, lang, setTheme, setLang } = useSettingsStore()
   const t = getLocale(lang)
@@ -35,9 +35,8 @@ const ProfilePage = () => {
   const [langOpen, setLangOpen] = useState(false)
 
   return (
-    <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center pb-6">
-      <div className="w-full max-w-md mx-auto">
-
+    <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-6">
+      <div className="w-full max-w-[420px] mx-auto px-2">
         {/* Секция Аккаунт */}
         <CardSection title={t.account}>
           <UserCard
@@ -50,7 +49,6 @@ const ProfilePage = () => {
             photo_url={user?.photo_url}
           />
         </CardSection>
-
         {/* Секция Настройки */}
         <CardSection title={t.settings}>
           <SettingItem
@@ -59,25 +57,22 @@ const ProfilePage = () => {
             value={t[`theme_${theme}` as keyof typeof t] || ""}
             onClick={() => setThemeOpen(true)}
           />
+          <div className="h-px bg-[var(--tg-hint-color)] opacity-20 mx-6" />
           <SettingItem
             icon={<Languages className="text-[var(--tg-link-color)]" size={22} />}
             label={t.language}
             value={t[`language_${lang}` as keyof typeof t] || ""}
             onClick={() => setLangOpen(true)}
-            last
           />
         </CardSection>
-
         {/* Секция О приложении */}
         <CardSection title={t.about}>
-          <div className="flex items-center px-5 py-4">
+          <div className="flex items-center px-6 py-4">
             <Info className="text-[var(--tg-link-color)] mr-3" size={20} />
             <span className="flex-1 text-left text-[var(--tg-text-color)]">{t.version}</span>
             <span className="text-[var(--tg-hint-color)]">{APP_VERSION}</span>
           </div>
         </CardSection>
-
-        {/* Модальное окно выбора темы */}
         <ModalSelector
           title={t.choose_theme}
           open={themeOpen}
@@ -86,8 +81,6 @@ const ProfilePage = () => {
           onChange={v => { setTheme(v as any); setThemeOpen(false) }}
           onClose={() => setThemeOpen(false)}
         />
-
-        {/* Модальное окно выбора языка */}
         <ModalSelector
           title={t.choose_language}
           open={langOpen}
@@ -96,7 +89,6 @@ const ProfilePage = () => {
           onChange={v => { setLang(v as any); setLangOpen(false) }}
           onClose={() => setLangOpen(false)}
         />
-
       </div>
     </div>
   )

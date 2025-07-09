@@ -2,6 +2,7 @@
 import { useEffect } from "react"
 import { useSettingsStore, Lang } from "../store/settingsStore"
 
+// Хук для auto-наследования темы и языка из Telegram WebApp
 export function useSyncTelegramThemeLang() {
   const { theme, lang, setLang } = useSettingsStore()
   useEffect(() => {

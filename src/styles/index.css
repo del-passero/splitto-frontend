@@ -6,22 +6,24 @@
 
 :root {
   --tg-bg-color: #f8faff;
+  --tg-card-bg: #fff;
   --tg-text-color: #222;
   --tg-hint-color: #888;
   --tg-link-color: #5393e7;
-  --tg-secondary-bg-color: #f1f1f3;
-  --tg-accent-bg-color: #e3ecfc;
 }
 body.light {
-  --tg-bg-color: #fff;
+  --tg-bg-color: #f8faff;
+  --tg-card-bg: #fff;
   --tg-text-color: #222;
 }
 body.dark {
   --tg-bg-color: #18191b;
+  --tg-card-bg: #232b3b;
   --tg-text-color: #f2f2f7;
 }
 body {
   font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
   background: var(--tg-bg-color);
   color: var(--tg-text-color);
+  min-height: 100vh;
 }
