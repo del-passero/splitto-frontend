@@ -1,33 +1,46 @@
 // src/contexts/UserContext.tsx
-import { createContext, useContext, useState, useEffect } from "react"
-import { User } from "../types/user"
+import { createContext, useContext, useEffect, useState, ReactNode } from "react"
+import type { User } from "../types/user"
 import { authTelegramUser } from "../api/usersApi"
 import { getTelegramInitData } from "../hooks/useTelegramUser"
 
-interface UserContextProps {
+interface UserContextValue {
   user: User | null
+  setUser: (u: User | null) => void
   loading: boolean
   error: string | null
   logout: () => void
 }
 
-const UserContext = createContext<UserContextProps | undefined>(undefined)
+const UserContext = createContext<UserContextValue | undefined>(undefined)
 
-export function UserProvider({ children }: { children: React.ReactNode }) {
+export function useUser() {
+  const ctx = useContext(UserContext)
+  if (!ctx) throw new Error("useUser must be used inside UserProvider")
+  return ctx
+}
+
+export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchUser() {
       setLoading(true)
       setError(null)
+      const cached = localStorage.getItem("user")
+      if (cached) {
+        setUser(JSON.parse(cached))
+        setLoading(false)
+        return
+      }
       try {
-        const initData = getTelegramInitData()
-        const u = await authTelegramUser(initData)
-        setUser(u)
+        const data = await authTelegramUser(getTelegramInitData())
+        setUser(data)
+        localStorage.setItem("user", JSON.stringify(data))
       } catch (e: any) {
-        setError("Auth error: " + (e.message || e))
+        setError(e.message || "Auth error")
       } finally {
         setLoading(false)
       }
@@ -35,7 +48,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     fetchUser()
   }, [])
 
-  function logout() {
+  const logout = () => {
     setUser(null)
     localStorage.clear()
     sessionStorage.clear()
@@ -43,14 +56,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <UserContext.Provider value={{ user, loading, error, logout }}>
+    <UserContext.Provider value={{ user, setUser, loading, error, logout }}>
       {children}
     </UserContext.Provider>
   )
-}
-
-export function useUser() {
-  const ctx = useContext(UserContext)
-  if (!ctx) throw new Error("useUser must be used inside UserProvider")
-  return ctx
 }

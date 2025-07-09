@@ -1,38 +1,18 @@
-// src/locales/en.ts
 const en = {
-  profile: {
-    title: "Profile",
-    edit: "Edit",
-    pro: "Premium",
-    logout: "Logout",
-    phone: "Phone",
-    non_pro: "Standard",
-  },
-  settings: {
-    title: "Settings",
-    language: "Language",
-    theme: "Theme",
-    currency: "Currency",
-    dark: "Dark",
-    light: "Light",
-    ru: "Russian",
-    en: "English",
-    es: "Spanish",
-  },
-  pro: {
-    buy: "Buy PRO",
-    donate: "Donate",
-  },
-  security: {
-    title: "Security",
-    pin: "PIN-code",
-    biometrics: "Biometrics",
-  },
-  info: {
-    title: "About",
-    privacy: "Privacy Policy",
-    support: "Support",
-    version: "Version",
-  },
-};
-export default en;
+  profile: "Profile",
+  theme: "Theme",
+  theme_auto: "From Telegram",
+  theme_light: "Light",
+  theme_dark: "Dark",
+  language: "Language",
+  language_auto: "From Telegram",
+  language_ru: "Русский",
+  language_en: "English",
+  language_es: "Español",
+  settings: "Settings",
+  about: "About",
+  app_version: "App version",
+  loading: "Loading...",
+  telegram_username: "Telegram username",
+}
+export default en

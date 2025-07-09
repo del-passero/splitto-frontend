@@ -1,8 +1,16 @@
 // src/types/telegram-web-app.d.ts
 
-// Типизация для Telegram WebApp SDK — расширяет глобальное пространство имён
+interface TelegramWebAppUser {
+  id: number;
+  is_bot: boolean;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+  photo_url?: string;
+}
 
-export interface TelegramThemeParams {
+interface TelegramWebAppThemeParams {
   bg_color?: string;
   text_color?: string;
   hint_color?: string;
@@ -12,15 +20,27 @@ export interface TelegramThemeParams {
   secondary_bg_color?: string;
 }
 
-export interface TelegramInitDataUnsafe {
-  user?: {
-    id: number;
-    first_name: string;
-    last_name?: string;
-    username?: string;
-    language_code?: string;
-    is_premium?: boolean;
-    photo_url?: string;
+interface TelegramWebAppInitDataUnsafe {
+  query_id?: string;
+  user?: TelegramWebAppUser;
+  receiver?: TelegramWebAppUser;
+  chat_type?: string;
+  chat_instance?: string;
+  auth_date?: number;
+  hash?: string;
+}
+
+interface TelegramWebApp {
+  initData: string;
+  initDataUnsafe: TelegramWebAppInitDataUnsafe;
+  themeParams: TelegramWebAppThemeParams;
+  close: () => void;
+  onEvent?: (eventType: string, callback: (...args: any[]) => void) => void;
+  offEvent?: (eventType: string, callback: (...args: any[]) => void) => void;
+}
+
+interface Window {
+  Telegram?: {
+    WebApp?: TelegramWebApp;
   };
-  // + любые другие параметры по мере надобности
 }

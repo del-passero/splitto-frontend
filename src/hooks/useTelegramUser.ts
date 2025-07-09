@@ -1,29 +1,41 @@
 // src/hooks/useTelegramUser.ts
+import { useEffect } from "react"
+import { useUserStore } from "../store/userStore"
+import type { User } from "../types/user"
 
-import { useEffect, useState } from "react";
-
-export function useTelegramUser() {
-  const [tgUser, setTgUser] = useState<any>(null);
-
-  useEffect(() => {
-    if (
-      window.Telegram &&
-      window.Telegram.WebApp &&
-      window.Telegram.WebApp.initDataUnsafe
-    ) {
-      setTgUser(window.Telegram.WebApp.initDataUnsafe.user || null);
-    }
-  }, []);
-
-  return tgUser;
-}
-
+// Получить TelegramUser как есть (до авторизации в backend)
 export function getTelegramUser() {
-  return window.Telegram?.WebApp?.initDataUnsafe?.user || null;
+  //@ts-ignore
+  return window?.Telegram?.WebApp?.initDataUnsafe?.user || null
 }
-export function getTelegramInitData(): string {
-  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
-    return window.Telegram.WebApp.initData
-  }
-  return ""
+
+// Получить строку initData для передачи в backend
+export function getTelegramInitData() {
+  //@ts-ignore
+  return window?.Telegram?.WebApp?.initData || ""
+}
+
+// Хук для использования Telegram User в frontend (до авторизации в backend)
+export function useTelegramUser() {
+  const { user, setUser } = useUserStore()
+  useEffect(() => {
+    const tgUser = getTelegramUser()
+    if (tgUser) {
+      // Минимальная трансформация для интерфейса (не для backend!)
+      setUser({
+        id: 0,
+        telegram_id: tgUser.id,
+        username: tgUser.username ?? undefined,
+        first_name: tgUser.first_name ?? undefined,
+        last_name: tgUser.last_name ?? undefined,
+        name: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" "),
+        photo_url: tgUser.photo_url ?? undefined,
+        language_code: tgUser.language_code ?? undefined,
+        allows_write_to_pm: undefined,
+        created_at: undefined,
+        updated_at: undefined,
+      })
+    }
+  }, [setUser])
+  return user
 }

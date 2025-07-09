@@ -1,14 +1,11 @@
 // src/App.tsx
-import { ThemeLangProvider } from "./contexts/ThemeLangContext"
-import { UserProvider } from "./contexts/UserContext"
 import ProfilePage from "./pages/ProfilePage"
+import { useInitThemeLang } from "./hooks/useInitThemeLang"
+import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
-export default function App() {
-  return (
-    <ThemeLangProvider>
-      <UserProvider>
-        <ProfilePage />
-      </UserProvider>
-    </ThemeLangProvider>
-  )
+const App = () => {
+  useInitThemeLang()
+  useTelegramAuth()
+  return <ProfilePage />
 }
+export default App

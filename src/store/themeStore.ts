@@ -1,25 +1,17 @@
-// src/store/themeStore.ts
-
-/**
- * Zustand-store для хранения текущей темы и языка приложения.
- * Это альтернатива Context для использования вне React-дерева (например, в сервисах или хуках).
- */
-
 import { create } from "zustand";
 
-type ThemeType = "auto" | "light" | "dark";
-type LangCode = "ru" | "en" | "es" | "auto";
-
-interface ThemeStore {
-  theme: ThemeType;
-  setTheme: (t: ThemeType) => void;
-  lang: LangCode;
-  setLang: (l: LangCode) => void;
+interface UserSettingsState {
+  theme: "auto" | "light" | "dark";
+  language: "auto" | "ru" | "en" | "es";
+  appVersion: string;
+  setTheme: (theme: UserSettingsState["theme"]) => void;
+  setLanguage: (lang: UserSettingsState["language"]) => void;
 }
 
-export const useThemeStore = create<ThemeStore>((set) => ({
+export const useUserSettings = create<UserSettingsState>((set) => ({
   theme: "auto",
+  language: "auto",
+  appVersion: "1.0.0",
   setTheme: (theme) => set({ theme }),
-  lang: "auto",
-  setLang: (lang) => set({ lang }),
+  setLanguage: (language) => set({ language }),
 }));

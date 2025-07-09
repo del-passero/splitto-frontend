@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tg-bg-color: #fff;
+  --tg-text-color: #222;
+  --tg-hint-color: #888;
+  --tg-link-color: #5598ee;
+  --tg-secondary-bg-color: #f1f1f3;
+}
+body {
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  font-family: 'Inter', 'Roboto', 'Arial', sans-serif;
+}

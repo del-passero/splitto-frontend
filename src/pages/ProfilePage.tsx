@@ -1,66 +1,78 @@
 // src/pages/ProfilePage.tsx
+import { useState } from "react"
+import { Paintbrush, Languages } from "lucide-react"
+import { useUserStore } from "../store/userStore"
+import { useSettingsStore } from "../store/settingsStore"
+import { getLocale } from "../locales"
+import UserCard from "../components/UserCard"
+import SettingItem from "../components/SettingItem"
+import { ModalSelector } from "../components/ModalSelector"
 
-import { useUser } from "../contexts/UserContext"
-import { useThemeLang } from "../contexts/ThemeLangContext"
-import ProfileCard from "../components/profile/ProfileCard"
-import ProDonateBlock from "../components/monetization/ProDonateBlock"
-import SettingsBlock from "../components/settings/SettingsBlock"
-import SecurityBlock from "../components/security/SecurityBlock"
-import InfoBlock from "../components/info/InfoBlock"
-import Divider from "../components/common/Divider"
-import { t } from "../locales/locale"
+const themeOptions = [
+  { value: "auto", label: "Из Telegram" },
+  { value: "light", label: "Светлая" },
+  { value: "dark", label: "Тёмная" },
+]
+const langOptions = [
+  { value: "auto", label: "Из Telegram" },
+  { value: "ru", label: "Русский" },
+  { value: "en", label: "English" },
+  { value: "es", label: "Español" },
+]
 
-/**
- * Главная страница профиля Splitto — с поддержкой темы и локализации Telegram
- */
-export default function ProfilePage() {
-  const { user, loading, error, logout } = useUser()
-  const { lang } = useThemeLang()
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        <span className="text-lg font-semibold">{t("profile.loading", lang)}</span>
-      </div>
-    )
-  }
-  if (error || !user) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        <span className="text-red-600 text-lg">{error || t("profile.no_user", lang)}</span>
-      </div>
-    )
-  }
+const ProfilePage = () => {
+  const user = useUserStore(s => s.user)
+  const { theme, lang, setTheme, setLang } = useSettingsStore()
+  const t = getLocale(lang) as Record<string, string>
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
 
   return (
-    <div className="min-h-screen px-2 pb-6 bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-      {/* Карточка пользователя */}
-      <ProfileCard user={user} lang={lang} onEdit={() => alert("Скоро редактирование профиля!")} />
-      <Divider />
-      {/* Блок PRO и доната */}
-      <ProDonateBlock />
-      <Divider />
-      {/* Настройки */}
-      <SettingsBlock />
-      <Divider />
-      {/* Безопасность */}
-      <SecurityBlock />
-      <Divider />
-      {/* Информация, версия, поддержка */}
-      <InfoBlock />
-      <div className="text-xs opacity-60 text-center mt-8">
-        Splitto &copy; 2025 — v1.0.0
+    <div className="max-w-md mx-auto pt-4 pb-20 min-h-screen bg-[var(--tg-bg-color)]">
+      <UserCard
+        name={`${user?.first_name || ""} ${user?.last_name || ""}`.trim() || user?.username || "User"}
+        username={user?.username || undefined}
+        photo_url={user?.photo_url || undefined}
+      />
+      <div className="mb-4 px-2">
+        <div className="font-semibold text-[var(--tg-hint-color)] mb-2">{t.settings}</div>
+        <SettingItem
+          icon={<Paintbrush className="text-[var(--tg-link-color)]" size={22} />}
+          label={t.theme}
+          value={t[`theme_${theme}`]}
+          onClick={() => setThemeOpen(true)}
+        />
+        <SettingItem
+          icon={<Languages className="text-[var(--tg-link-color)]" size={22} />}
+          label={t.language}
+          value={t[`language_${lang}`]}
+          onClick={() => setLangOpen(true)}
+        />
       </div>
-      {/* Кнопка Выйти */}
-      <button
-        onClick={logout}
-        className="w-full mt-4 py-3 rounded-2xl text-white font-semibold text-lg"
-        style={{
-          background: "#ea5757",
-        }}
-      >
-        {t("profile.logout", lang)}
-      </button>
+      <div className="px-2">
+        <div className="font-semibold text-[var(--tg-hint-color)] mb-2">{t.about}</div>
+        <div className="w-full flex items-center rounded-xl py-3 px-4 bg-[var(--tg-bg-color)] shadow">
+          <span className="flex-1 text-left text-[var(--tg-text-color)]">{t.app_version}</span>
+          <span className="text-[var(--tg-hint-color)]">1.0.0</span>
+        </div>
+      </div>
+      <ModalSelector
+        title={t.theme}
+        open={themeOpen}
+        options={themeOptions.map(opt => ({ ...opt, label: t[`theme_${opt.value}`] }))}
+        value={theme}
+        onChange={v => { setTheme(v as any); setThemeOpen(false) }}
+        onClose={() => setThemeOpen(false)}
+      />
+      <ModalSelector
+        title={t.language}
+        open={langOpen}
+        options={langOptions.map(opt => ({ ...opt, label: t[`language_${opt.value}`] }))}
+        value={lang}
+        onChange={v => { setLang(v as any); setLangOpen(false) }}
+        onClose={() => setLangOpen(false)}
+      />
     </div>
   )
 }
+export default ProfilePage

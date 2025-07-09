@@ -1,32 +1,25 @@
 // src/hooks/useTelegramTheme.ts
 
+import { useEffect, useState } from "react"
+
 /**
- * Хук для подписки на текущие themeParams Telegram и обновления их при смене темы в Telegram.
- * Позволяет UI динамически реагировать на изменения темы/цвета без reload.
+ * Хук для подписки на тему Telegram WebApp.
+ * Следит за изменениями темы (например, когда пользователь меняет тему в Telegram).
  */
-
-import { useEffect, useState } from "react";
-
 export function useTelegramThemeParams() {
-  const [themeParams, setThemeParams] = useState<any>(() => {
-    // Берём из SDK если доступно, иначе пустой объект
-    return window.Telegram?.WebApp?.themeParams || {};
-  });
+  const [themeParams, setThemeParams] = useState<any>(
+    window.Telegram?.WebApp?.themeParams || {}
+  )
 
   useEffect(() => {
-    // Функция обновления themeParams по событию из Telegram SDK
     const updateTheme = () => {
-      setThemeParams(window.Telegram?.WebApp?.themeParams || {});
-    };
-
-    // Подписываемся на событие смены темы (theme_changed)
-    window.Telegram?.WebApp?.onEvent?.("themeChanged", updateTheme);
-
-    // Отписка при размонтировании
+      setThemeParams(window.Telegram?.WebApp?.themeParams || {})
+    }
+    window.Telegram?.WebApp?.onEvent?.("themeChanged", updateTheme)
     return () => {
-      window.Telegram?.WebApp?.offEvent?.("themeChanged", updateTheme);
-    };
-  }, []);
+      window.Telegram?.WebApp?.offEvent?.("themeChanged", updateTheme)
+    }
+  }, [])
 
-  return themeParams;
+  return themeParams
 }
