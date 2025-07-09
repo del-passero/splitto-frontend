@@ -13,6 +13,6 @@ const ru = {
   about: "О приложении",
   app_version: "Версия приложения",
   loading: "Загрузка...",
-  telegram_username: "Юзернейм Telegram",
+  telegram_username: "НикTelegram",
 }
 export default ru
