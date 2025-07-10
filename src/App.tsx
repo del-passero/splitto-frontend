@@ -1,18 +1,11 @@
-// src/App.tsx
-import ProfilePage from "./pages/ProfilePage"
 import { useApplyTheme } from "./hooks/useApplyTheme"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
-import DebugTelegramInfo from "./components/DebugTelegramInfo" // <-- Импортируй!
+import ProfilePage from "./pages/ProfilePage"
 
 const App = () => {
   useApplyTheme()
   useTelegramAuth()
-  return (
-    <>
-      <DebugTelegramInfo /> {/* Вставь временно сюда! */}
-      <ProfilePage />
-    </>
-  )
+  return <ProfilePage />
 }
 
 export default App

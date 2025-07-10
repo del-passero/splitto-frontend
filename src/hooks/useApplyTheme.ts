@@ -1,15 +1,9 @@
-// src/hooks/useApplyTheme.ts
 import { useEffect } from "react"
 import { useSettingsStore } from "../store/settingsStore"
 
-function isDarkTelegramTheme(themeParams: any): boolean {
-  if (!themeParams) return false
-  // Можно сравнить по bg_color, accent_text_color или другому признаку
-  return (
-    themeParams.bg_color === "#18191b" ||
-    themeParams.bg_color === "#232b3b" ||
-    themeParams.bg_color === "#19191a"
-  )
+function isDarkTheme(themeParams: any): boolean {
+  // Твой bg_color тёмный => тема DARK!
+  return themeParams?.bg_color === "#17212b" || themeParams?.bg_color === "#232e3c"
 }
 
 export function useApplyTheme() {
@@ -18,7 +12,7 @@ export function useApplyTheme() {
     let finalTheme = theme
     if (theme === "auto") {
       const tgParams = window.Telegram?.WebApp?.themeParams
-      finalTheme = isDarkTelegramTheme(tgParams) ? "dark" : "light"
+      finalTheme = isDarkTheme(tgParams) ? "dark" : "light"
     }
     document.body.classList.remove("light", "dark")
     document.body.classList.add(finalTheme)

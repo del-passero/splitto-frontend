@@ -1,4 +1,3 @@
-// src/locales/index.ts
 import ru from "./ru"
 import en from "./en"
 import es from "./es"
@@ -8,11 +7,12 @@ const locales = { ru, en, es }
 
 export const getLocale = (lang: Lang) => {
   if (lang === "auto") {
-    const rawLang = window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code
-    const tgLang = typeof rawLang === "string" ? rawLang.slice(0, 2) : undefined
-    if (tgLang && ["ru", "en", "es"].includes(tgLang)) return locales[tgLang as "ru" | "en" | "es"]
+    const tgLang = window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code
+    if (tgLang && ["ru", "en", "es"].includes(tgLang.slice(0, 2))) {
+      return locales[tgLang.slice(0, 2) as "ru" | "en" | "es"]
+    }
     return locales["ru"]
   }
   if (lang === "ru" || lang === "en" || lang === "es") return locales[lang]
-  return locales["ru"] // fallback
+  return locales["ru"]
 }
