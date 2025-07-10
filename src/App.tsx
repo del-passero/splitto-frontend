@@ -1,9 +1,10 @@
-// src/App.tsx
-import ProfilePage from "./pages/ProfilePage"
 import { useApplyTheme } from "./hooks/useApplyTheme"
+import { useTelegramAuth } from "./hooks/useTelegramAuth"
+import ProfilePage from "./pages/ProfilePage"
 
 const App = () => {
-  useApplyTheme() // Следит за темой и всегда правильно меняет body
+  useApplyTheme()
+  useTelegramAuth() // <-- Добавь этот вызов сюда!
   return <ProfilePage />
 }
 
