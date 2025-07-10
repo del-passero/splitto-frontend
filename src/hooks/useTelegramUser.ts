@@ -17,24 +17,25 @@ export function getTelegramInitData() {
 
 // Хук для использования Telegram User в frontend (до авторизации в backend)
 export function useTelegramUser() {
-  const { user, setUser } = useUserStore()
+  const setUser = useUserStore(s => s.setUser)
   useEffect(() => {
-    const tgUser = getTelegramUser()
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user
     if (tgUser) {
       setUser({
         id: 0,
         telegram_id: tgUser.id,
-        username: tgUser.username ?? undefined,
-        first_name: tgUser.first_name ?? undefined,
-        last_name: tgUser.last_name ?? undefined,
+        username: tgUser.username ?? "",
+        first_name: tgUser.first_name ?? "",
+        last_name: tgUser.last_name ?? "",
         name: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" "),
-        photo_url: tgUser.photo_url ?? undefined,
-        language_code: tgUser.language_code ?? undefined,
-        allows_write_to_pm: undefined,
-        created_at: undefined,
-        updated_at: undefined,
+        photo_url: tgUser.photo_url ?? "",
+        language_code: tgUser.language_code ?? "",
+        allows_write_to_pm: true,
+        created_at: "",
+        updated_at: "",
+        is_pro: false,
+        invited_friends_count: 0,
       })
     }
   }, [setUser])
-  return user
 }

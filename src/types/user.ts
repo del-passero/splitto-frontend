@@ -9,8 +9,8 @@ export interface User {
   photo_url?: string
   language_code?: string
   allows_write_to_pm?: boolean
-  created_at: string
-  updated_at: string
+  created_at?: string
+  updated_at?: string
   is_pro: boolean
   invited_friends_count: number
 }
