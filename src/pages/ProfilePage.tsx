@@ -7,9 +7,9 @@ import SettingItem from "../components/SettingItem"
 import { useUserStore } from "../store/userStore"
 import { useSettingsStore } from "../store/settingsStore"
 import { getLocale } from "../locales"
-import { useSyncTelegramThemeLang } from "../hooks/useSyncTelegramThemeLang"
-import { useTelegramAuth } from "../hooks/useTelegramAuth"
-import { ModalSelector } from "../components/ModalSelector" // <-- используем именованный импорт!
+import { useApplyTheme } from "../hooks/useApplyTheme"
+import { ModalSelector } from "../components/ModalSelector"
+
 
 const themeOptions = [
   { value: "auto", label: "theme_auto" },
@@ -25,9 +25,7 @@ const langOptions = [
 const APP_VERSION = "0.1"
 
 const ProfilePage = () => {
-  useSyncTelegramThemeLang()
-  useTelegramAuth()
-
+  useApplyTheme() // <-- ключевой момент!
   const user = useUserStore(s => s.user)
   const { theme, lang, setTheme, setLang } = useSettingsStore()
   const t = getLocale(lang)
@@ -36,8 +34,7 @@ const ProfilePage = () => {
 
   return (
     <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-10">
-      <div className="w-full max-w-md flex flex-col space-y-12">
-        {/* 1. Секция Аккаунт */}
+      <div className="w-full max-w-md flex flex-col space-y-2">
         <CardSection title={t.account}>
           <UserCard
             name={
@@ -49,7 +46,6 @@ const ProfilePage = () => {
             photo_url={user?.photo_url}
           />
         </CardSection>
-        {/* 2. Секция Настройки */}
         <CardSection title={t.settings}>
           <SettingItem
             icon={<Paintbrush className="text-[var(--tg-link-color)]" size={22} />}
@@ -65,7 +61,6 @@ const ProfilePage = () => {
             isLast
           />
         </CardSection>
-        {/* 3. Секция О приложении */}
         <CardSection title={t.about}>
           <div className="flex items-center px-1 py-3">
             <Info className="text-[var(--tg-link-color)] mr-3" size={20} />
@@ -73,7 +68,6 @@ const ProfilePage = () => {
             <span className="text-[var(--tg-hint-color)]">{APP_VERSION}</span>
           </div>
         </CardSection>
-        {/* Модальные окна выбора */}
         <ModalSelector
           title={t.choose_theme}
           open={themeOpen}

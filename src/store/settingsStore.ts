@@ -2,7 +2,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-// Четкие типы тем и языков
 export type Theme = "auto" | "light" | "dark"
 export type Lang = "auto" | "ru" | "en" | "es"
 
@@ -13,7 +12,6 @@ interface SettingsStore {
   setLang: (lang: Lang) => void
 }
 
-// Zustand store с persist
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set, get) => ({
@@ -23,7 +21,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setLang: (lang) => set({ lang }),
     }),
     {
-      name: "settings-storage", // имя в localStorage
+      name: "settings-storage",
     }
   )
 )
