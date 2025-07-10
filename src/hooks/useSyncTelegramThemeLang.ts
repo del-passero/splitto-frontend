@@ -1,22 +1,22 @@
 // src/hooks/useSyncTelegramThemeLang.ts
 import { useEffect } from "react"
-import { useSettingsStore, Lang } from "../store/settingsStore"
+import { useSettingsStore } from "../store/settingsStore"
 
-// Хук для auto-наследования темы и языка из Telegram WebApp
+// Автонастройка темы и языка по Telegram WebApp (только если выбран "auto")
 export function useSyncTelegramThemeLang() {
-  const { theme, lang, setLang } = useSettingsStore()
+  const { theme, setTheme, lang, setLang } = useSettingsStore()
   useEffect(() => {
-    //@ts-ignore
-    const tg = window?.Telegram?.WebApp
-    if (theme === "auto") {
-      document.body.classList.remove("light", "dark")
-    } else {
-      document.body.classList.remove("light", "dark")
-      document.body.classList.add(theme)
+    const tg = window.Telegram?.WebApp
+    // Тема
+    if (theme === "auto" && tg?.themeParams) {
+      // Логика определения тёмной/светлой
+      const isDark = tg.themeParams.bg_color === "#18191b" || tg.themeParams.bg_color === "#232b3b"
+      setTheme(isDark ? "dark" : "light")
     }
-    const langCode = tg?.initDataUnsafe?.user?.language_code ?? ""
-    if (lang === "auto" && ["ru", "en", "es"].includes(langCode)) {
-      setLang(langCode as Lang)
+    // Язык
+    if (lang === "auto" && tg?.initDataUnsafe?.user?.language_code) {
+      const langCode = tg.initDataUnsafe.user.language_code.slice(0, 2)
+      if (["ru", "en", "es"].includes(langCode)) setLang(langCode as any)
     }
-  }, [theme, lang, setLang])
+  }, [theme, lang, setTheme, setLang])
 }

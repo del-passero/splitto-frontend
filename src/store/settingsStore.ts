@@ -1,27 +1,29 @@
 // src/store/settingsStore.ts
 import { create } from "zustand"
+import { persist } from "zustand/middleware"
 
-// Определяем типы темы и языка
+// Четкие типы тем и языков
 export type Theme = "auto" | "light" | "dark"
 export type Lang = "auto" | "ru" | "en" | "es"
 
-interface SettingsState {
+interface SettingsStore {
   theme: Theme
   lang: Lang
   setTheme: (theme: Theme) => void
   setLang: (lang: Lang) => void
 }
 
-// Начальные значения - auto (наследование из Telegram)
-export const useSettingsStore = create<SettingsState>(set => ({
-  theme: "auto",
-  lang: "auto",
-  setTheme: (theme) => {
-    set({ theme })
-    localStorage.setItem("theme", theme)
-  },
-  setLang: (lang) => {
-    set({ lang })
-    localStorage.setItem("lang", lang)
-  },
-}))
+// Zustand store с persist
+export const useSettingsStore = create<SettingsStore>()(
+  persist(
+    (set, get) => ({
+      theme: "auto",
+      lang: "auto",
+      setTheme: (theme) => set({ theme }),
+      setLang: (lang) => set({ lang }),
+    }),
+    {
+      name: "settings-storage", // имя в localStorage
+    }
+  )
+)

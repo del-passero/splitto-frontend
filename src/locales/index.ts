@@ -2,13 +2,11 @@
 import ru from "./ru"
 import en from "./en"
 import es from "./es"
+import { Lang } from "../store/settingsStore"
 
-export type Locale = typeof ru
+const locales = { ru, en, es }
 
-const locales: Record<string, Locale> = { ru, en, es }
-
-export function getLocale(lang: string): Locale {
-  if (lang.startsWith("ru")) return locales.ru
-  if (lang.startsWith("es")) return locales.es
-  return locales.en
+export const getLocale = (lang: Lang) => {
+  if (lang === "ru" || lang === "en" || lang === "es") return locales[lang]
+  return locales["ru"] // fallback, если auto
 }
