@@ -3,7 +3,7 @@ const ru = {
   profile: "Профиль",
   account: "Аккаунт",
   settings: "Настройки",
-  about: "О приложении",
+  about: "О приложен!ии",
   theme: "Сменить тему",
   theme_auto: "Из Telegram",
   theme_light: "Светлая",
