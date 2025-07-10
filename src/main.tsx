@@ -1,8 +1,12 @@
 // src/main.tsx
-import "./styles/index.css"
+import React from "react"
 import ReactDOM from "react-dom/client"
-import ProfilePage from "./pages/ProfilePage"
+import App from "./App"
+import "./styles/index.css" // Tailwind и кастомные переменные!
 
+// Точка входа, как требует Vite/React 18+
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <ProfilePage />
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
 )

@@ -1,11 +1,13 @@
 // src/App.tsx
 import ProfilePage from "./pages/ProfilePage"
-import { useInitThemeLang } from "./hooks/useInitThemeLang"
-import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
+// Главный компонент приложения — просто показывает страницу профиля (или роутер если нужен)
 const App = () => {
-  useInitThemeLang()
-  useTelegramAuth()
-  return <ProfilePage />
+  return (
+    <div className="min-h-screen w-full bg-[var(--tg-bg-color)]">
+      <ProfilePage />
+    </div>
+  )
 }
+
 export default App
