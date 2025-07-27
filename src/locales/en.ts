@@ -18,5 +18,11 @@ export default {
     language_ru: "Russian",
     language_en: "English",
     language_es: "Spanish",
+    empty_contacts: "You don't have any contacts yet...",
+    invite_friend: "Add friend",
+    search_placeholder: "Search...",
+    contacts_count: "{{count}} contacts",
+    filter: "Filter",
+    sort: "Sort",
     version: "Version"
 }
