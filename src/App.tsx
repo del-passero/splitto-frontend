@@ -5,9 +5,11 @@ import ContactsPage from "./pages/ContactsPage"
 import ProfilePage from "./pages/ProfilePage"
 import MainLayout from "./layouts/MainLayout"
 import { useApplyTheme } from "./hooks/useApplyTheme"
+import { useTelegramAuth } from "./hooks/useTelegramAuth" // <-- добавь импорт
 
 const App = () => {
     useApplyTheme()
+    useTelegramAuth() // <-- вызови хук здесь!
     return (
         <BrowserRouter>
             <MainLayout>
