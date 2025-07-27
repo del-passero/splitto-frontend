@@ -24,5 +24,11 @@ export default {
     contacts_count: "{{count}} контактов",
     filter: "Фильтр",
     sort: "Сортировка",
+    create_invite_link: "Создать ссылку-приглашение",
+    copy_link: "Скопировать ссылку",
+    copied: "Скопировано!",
+    share_link: "Поделиться (в Telegram)",
+    shared: "Ссылка готова для вставки!",
+    close: "Закрыть",
     version: "Версия"
 }

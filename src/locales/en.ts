@@ -24,5 +24,11 @@ export default {
     contacts_count: "{{count}} contacts",
     filter: "Filter",
     sort: "Sort",
+    create_invite_link: "Create invite link",
+    copy_link: "Copy link",
+    copied: "Copied!",
+    share_link: "Share (to Telegram)",
+    shared: "Ready to paste!",
+    close: "Close",
     version: "Version"
 }
