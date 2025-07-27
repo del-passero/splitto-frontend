@@ -1,18 +1,15 @@
 import ru from "./ru"
 import en from "./en"
 import es from "./es"
-import { Lang } from "../store/settingsStore"
 
-const locales = { ru, en, es }
+const locales: Record<string, any> = { ru, en, es }
 
-export const getLocale = (lang: Lang) => {
-  if (lang === "auto") {
-    const tgLang = window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code
-    if (tgLang && ["ru", "en", "es"].includes(tgLang.slice(0, 2))) {
-      return locales[tgLang.slice(0, 2) as "ru" | "en" | "es"]
+export function getLocale(lang: string | undefined): typeof ru {
+    if (!lang) return locales.en
+    if (lang in locales) return locales[lang]
+    if (lang.includes("-")) {
+        const short = lang.split("-")[0]
+        if (short in locales) return locales[short]
     }
-    return locales["ru"]
-  }
-  if (lang === "ru" || lang === "en" || lang === "es") return locales[lang]
-  return locales["ru"]
+    return locales.en
 }
