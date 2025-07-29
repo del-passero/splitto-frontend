@@ -28,7 +28,7 @@ const InviteFriendModal = ({ open, onClose }: Props) => {
     setError(null)
     try {
       const invite = await createInvite()
-      const url = `https://t.me/${BOT_USERNAME}?start=${invite.token}`
+      const url = `https://t.me/${BOT_USERNAME}/start?startapp=${invite.token}`
       setInviteLink(url)
     } catch (e: any) {
       setError(e.message || t("invite_error"))
