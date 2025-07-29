@@ -10,22 +10,23 @@ import InviteFriendModal from "../components/InviteFriendModal"
 import UserCard from "../components/UserCard"
 import { useFriendsStore } from "../store/friendsStore"
 
+// Страница контактов: выводит список друзей (поле user внутри friend)
 const ContactsPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState("")
   const { friends, loading, error, fetchFriends } = useFriendsStore()
 
-  // Загружаем друзей при первом рендере страницы
+  // Загружаем друзей при первом открытии страницы
   useEffect(() => {
     fetchFriends()
   }, [fetchFriends])
 
-  // Фильтрация по поиску (пока простейшая)
+  // Поиск по имени, фамилии или username
   const filteredFriends = friends.filter(friend =>
-    friend.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-    friend.last_name?.toLowerCase().includes(search.toLowerCase()) ||
-    friend.username?.toLowerCase().includes(search.toLowerCase())
+    friend.user.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+    friend.user.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+    friend.user.username?.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -34,6 +35,7 @@ const ContactsPage = () => {
         <h1 className="text-xl font-bold">{t("contacts")}</h1>
       </header>
 
+      {/* Фильтры, поиск, сортировка — пока просто отображаем, они не работают */}
       <div className="flex items-center gap-2 mb-4 px-2">
         <FilterButton onClick={() => {}} />
         <div className="flex-1">
@@ -54,18 +56,18 @@ const ContactsPage = () => {
             {t("empty_contacts")}
           </div>
         )}
-        {/* Отображаем друзей */}
+        {/* Выводим карточки друзей */}
         {filteredFriends.map(friend => (
           <UserCard
             key={friend.id}
-            name={`${friend.first_name ?? ""} ${friend.last_name ?? ""}`.trim()}
-            username={friend.username}
-            photo_url={friend.photo_url}
+            name={`${friend.user.first_name ?? ""} ${friend.user.last_name ?? ""}`.trim()}
+            username={friend.user.username}
+            photo_url={friend.user.photo_url}
           />
         ))}
       </div>
 
-      {/* FAB и подпись */}
+      {/* Кнопка “Добавить” и подпись */}
       <div className="absolute right-6 bottom-[90px] flex flex-col items-center z-40">
         <AddContactButton onClick={() => setInviteOpen(true)} />
         <span className="mt-1 text-xs font-medium text-[var(--tg-hint-color)] select-none">
