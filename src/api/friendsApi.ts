@@ -2,13 +2,24 @@
 
 import { Friend, FriendInvite } from "../types/friend"
 
-// Базовый путь до backend API
+// Получение initData из Telegram WebApp (как и в usersApi.ts)
+function getTelegramInitData(): string {
+  // @ts-ignore
+  return window?.Telegram?.WebApp?.initData || ""
+}
+
+// Универсальный API URL (dev/prod fallback)
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const BASE_URL = `${API_URL}/friends`
 
-// Вспомогательная функция для обработки fetch
+// Универсальный fetch с обработкой ошибок (и автоматическим добавлением авторизации)
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, init)
+  const headers: HeadersInit = {
+    ...(init?.headers || {}),
+    // Авторизация через initData — аналогично usersApi.ts!
+    "X-Telegram-Init-Data": getTelegramInitData(),
+  }
+  const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}))
     throw new Error(errorData.detail?.code || errorData.detail || res.statusText)
@@ -27,18 +38,17 @@ export async function createInvite(): Promise<FriendInvite> {
   return fetchJson<FriendInvite>(`${BASE_URL}/invite`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     }
   })
 }
 
 // Принять invite по токену (POST)
-// Токен должен быть в теле: { "token": "..." }
 export async function acceptInvite(token: string): Promise<{ success: boolean }> {
   return fetchJson<{ success: boolean }>(`${BASE_URL}/accept`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ token })
   })
