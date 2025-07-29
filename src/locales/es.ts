@@ -30,5 +30,8 @@ export default {
     share_link: "Compartir (en Telegram)",
     shared: "¡Listo para pegar!",
     close: "Cerrar",
+    loading: "Cargando...",
+    invite_error: "No se pudo crear el enlace de invitación. Inténtalo de nuevo más tarde.",
+    invite_message: "¡Únete a mí en Splitto, la forma más fácil de gestionar gastos compartidos sin salir de Telegram!\nAquí tienes tu enlace de invitación:\n{{link}}",
     version: "Versión"
 }

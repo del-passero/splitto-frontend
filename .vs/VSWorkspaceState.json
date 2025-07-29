@@ -1,6 +1,16 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\src",
+    "\\src\\api",
+    "\\src\\assets",
+    "\\src\\components",
+    "\\src\\contexts",
+    "\\src\\hooks",
+    "\\src\\layouts",
+    "\\src\\locales",
+    "\\src\\pages"
   ],
+  "SelectedNode": "\\src\\api\\friendsApi.ts",
   "PreviewInSolutionExplorer": false
 }
