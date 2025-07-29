@@ -21,8 +21,18 @@ const App = () => {
         //@ts-ignore
         console.log("initDataUnsafe:", tg?.initDataUnsafe)
         //@ts-ignore
-        const token = tg?.initDataUnsafe?.start_param
-        console.log("TOKEN из initDataUnsafe:", token)
+        const tokenFromInitData = tg?.initDataUnsafe?.start_param
+
+        // Для браузерного режима или на всякий случай ищем в URL:
+        const params = new URLSearchParams(window.location.search)
+        const tokenFromUrl = params.get("startapp") || params.get("start")
+
+        const token = tokenFromInitData || tokenFromUrl
+
+        console.log("TOKEN из initDataUnsafe:", tokenFromInitData)
+        console.log("TOKEN из URL:", tokenFromUrl)
+        console.log("Выбранный токен:", token)
+
         if (token) {
             acceptInvite(token)
                 .then(() => {
