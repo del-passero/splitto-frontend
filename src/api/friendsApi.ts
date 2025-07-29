@@ -2,7 +2,7 @@
 
 import { Friend, FriendInvite } from "../types/friend"
 
-// Получение initData из Telegram WebApp (как и в usersApi.ts)
+// Получение initData из Telegram WebApp
 function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
@@ -12,12 +12,12 @@ function getTelegramInitData(): string {
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const BASE_URL = `${API_URL}/friends`
 
-// Универсальный fetch с обработкой ошибок (и автоматическим добавлением авторизации)
+// Универсальный fetch с автоматическим добавлением авторизации
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    // Авторизация через initData — аналогично usersApi.ts!
-    "X-Telegram-Init-Data": getTelegramInitData(),
+    // Кладём initData строго как ждёт backend (x-telegram-initdata)
+    "x-telegram-initdata": getTelegramInitData(),
   }
   const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
