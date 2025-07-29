@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import DashboardPage from "./pages/DashboardPage"
 import GroupsPage from "./pages/GroupsPage"
@@ -5,11 +7,30 @@ import ContactsPage from "./pages/ContactsPage"
 import ProfilePage from "./pages/ProfilePage"
 import MainLayout from "./layouts/MainLayout"
 import { useApplyTheme } from "./hooks/useApplyTheme"
-import { useTelegramAuth } from "./hooks/useTelegramAuth" // <-- добавь импорт
+import { useTelegramAuth } from "./hooks/useTelegramAuth"
+import { useEffect } from "react"
+import { acceptInvite } from "./api/friendsApi"
 
 const App = () => {
     useApplyTheme()
-    useTelegramAuth() // <-- вызови хук здесь!
+    useTelegramAuth()
+
+    useEffect(() => {
+        //@ts-ignore
+        const tg = window?.Telegram?.WebApp
+        const initDataUnsafe = tg?.initDataUnsafe
+        const token = initDataUnsafe?.start_param
+        if (token) {
+            acceptInvite(token)
+                .then(() => {
+                    // Можно показать уведомление, что вы добавлены в друзья!
+                })
+                .catch((err) => {
+                    // Можно обработать ошибку (например, если уже в друзьях)
+                })
+        }
+    }, [])
+
     return (
         <BrowserRouter>
             <MainLayout>
@@ -23,4 +44,5 @@ const App = () => {
         </BrowserRouter>
     )
 }
+
 export default App
