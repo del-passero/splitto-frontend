@@ -19,15 +19,22 @@ const App = () => {
         //@ts-ignore
         const tg = window?.Telegram?.WebApp
         //@ts-ignore
+        console.log("initDataUnsafe:", tg?.initDataUnsafe)
+        //@ts-ignore
         const token = tg?.initDataUnsafe?.start_param
+        console.log("TOKEN из initDataUnsafe:", token)
         if (token) {
             acceptInvite(token)
                 .then(() => {
                     // Можно показать уведомление, что вы добавлены в друзья!
+                    console.log("acceptInvite вызван успешно")
                 })
                 .catch((err) => {
                     // Можно обработать ошибку (например, если уже в друзьях)
+                    console.error("Ошибка при вызове acceptInvite:", err)
                 })
+        } else {
+            console.log("Токен не найден — acceptInvite НЕ вызван")
         }
     }, [])
 
