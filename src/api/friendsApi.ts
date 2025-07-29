@@ -3,7 +3,8 @@
 import { Friend, FriendInvite } from "../types/friend"
 
 // Базовый путь до backend API
-const BASE_URL = `${import.meta.env.VITE_API_URL}/friends`
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+const BASE_URL = `${API_URL}/friends`
 
 // Вспомогательная функция для обработки fetch
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
