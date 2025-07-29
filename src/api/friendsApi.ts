@@ -3,7 +3,7 @@
 import { Friend, FriendInvite } from "../types/friend"
 
 // Базовый путь до backend API
-const BASE_URL = "/api/friends"
+const BASE_URL = `${import.meta.env.VITE_API_URL}/friends`
 
 // Вспомогательная функция для обработки fetch
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
