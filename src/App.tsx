@@ -18,8 +18,8 @@ const App = () => {
     useEffect(() => {
         //@ts-ignore
         const tg = window?.Telegram?.WebApp
-        const initDataUnsafe = tg?.initDataUnsafe
-        const token = initDataUnsafe?.start_param
+        //@ts-ignore
+        const token = tg?.initDataUnsafe?.start_param
         if (token) {
             acceptInvite(token)
                 .then(() => {
