@@ -9,12 +9,18 @@ const GroupsPage = () => {
     const { t } = useTranslation()
     const groups = useGroupsStore(state => state.groups)
     const fetchGroups = useGroupsStore(state => state.fetchGroups)
+    const createGroup = useGroupsStore(state => state.createGroup)
     const [addOpen, setAddOpen] = useState(false)
 
     useEffect(() => { fetchGroups() }, [])
 
     const handleCreateGroup = async (data: { name: string; description: string; members: Friend[] }) => {
-        await useGroupsStore.getState().createGroup(data)
+        // ВАЖНО: если у тебя API требует user_ids:
+        await createGroup({
+            name: data.name,
+            description: data.description,
+            user_ids: data.members.map(m => m.id), // <--- так!
+        })
         await fetchGroups()
     }
 

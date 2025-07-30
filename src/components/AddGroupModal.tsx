@@ -10,12 +10,11 @@ type Props = {
     onSave: (data: { name: string; description: string; members: Friend[] }) => Promise<any>
 }
 
-function friendDisplayName(friend: Friend) {
-    if (friend.first_name && friend.last_name) return `${friend.first_name} ${friend.last_name}`
-    if (friend.first_name) return friend.first_name
-    if (friend.last_name) return friend.last_name
+function getFriendDisplay(friend: Friend) {
+    if (friend.name) return friend.name
     if (friend.username) return "@" + friend.username
-    return "Unknown"
+    if (friend.telegram_id) return friend.telegram_id
+    return "Без имени"
 }
 
 const AddGroupModal = ({ open, onClose, onSave }: Props) => {
@@ -97,7 +96,7 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
                     <div className="flex flex-wrap gap-2 mb-2">
                         {members.map(friend => (
                             <span key={friend.id} className="px-2 py-1 bg-[var(--tg-secondary-bg)] rounded-lg flex items-center gap-2">
-                                {friendDisplayName(friend)}
+                                {getFriendDisplay(friend)}
                                 <button type="button" className="ml-1 text-red-400" onClick={() => handleRemove(friend.id)}>✕</button>
                             </span>
                         ))}
@@ -121,7 +120,7 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
                                         disabled={saving}
                                         onClick={() => handleAdd(friend)}
                                     >
-                                        {friendDisplayName(friend)}
+                                        {getFriendDisplay(friend)}
                                     </button>
                                 ))}
                             {!friends.length && <div className="text-[var(--tg-hint-color)]">{t("no_friends")}</div>}
