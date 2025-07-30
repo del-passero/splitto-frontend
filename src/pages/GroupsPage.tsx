@@ -34,7 +34,7 @@ const GroupsPage = () => {
         // eslint-disable-next-line
     }, [user?.id])
 
-    // Вот эта функция теперь реально создает группу через API, а потом обновляет список
+    // Функция для создания группы
     const handleCreateGroup = async (data: any) => {
         try {
             await createGroup(data)
@@ -66,7 +66,11 @@ const GroupsPage = () => {
 
             <div className="grid gap-3">
                 {groups.map(group => (
-                    <GroupCard key={group.id} group={group} />
+                    <GroupCard
+                        key={group.id}
+                        group={group}
+                        members={group.members || []} // <= чтобы не было ошибки TS
+                    />
                 ))}
             </div>
 
