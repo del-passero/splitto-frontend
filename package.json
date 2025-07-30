@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.7",
     "@reduxjs/toolkit": "^2.8.2",
     "@twa-dev/sdk": "^8.0.2",
+    "axios": "^1.11.0",
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.0",

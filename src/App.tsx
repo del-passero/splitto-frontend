@@ -3,14 +3,22 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import DashboardPage from "./pages/DashboardPage"
 import GroupsPage from "./pages/GroupsPage"
+import GroupDetailsPage from "./pages/GroupDetailsPage"
 import ContactsPage from "./pages/ContactsPage"
 import ProfilePage from "./pages/ProfilePage"
 import MainLayout from "./layouts/MainLayout"
 import { useApplyTheme } from "./hooks/useApplyTheme"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 import { useEffect } from "react"
-import { acceptInvite } from "./api/friendsApi"
+import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
+import { acceptGroupInvite } from "./api/groupsApi"
 
+/**
+ * Главный компонент приложения:
+ * - Навигация по всем страницам (группы, детали группы, контакты, профиль)
+ * - Тематизация и авторизация через Telegram
+ * - Логика приёма инвайта по токену (друзья/группа)
+ */
 const App = () => {
     useApplyTheme()
     useTelegramAuth()
@@ -19,32 +27,29 @@ const App = () => {
         //@ts-ignore
         const tg = window?.Telegram?.WebApp
         //@ts-ignore
-        console.log("initDataUnsafe:", tg?.initDataUnsafe)
-        //@ts-ignore
         const tokenFromInitData = tg?.initDataUnsafe?.start_param
 
-        // Для браузерного режима или на всякий случай ищем в URL:
+        // Для браузера: ищем token в URL (?startapp=...)
         const params = new URLSearchParams(window.location.search)
         const tokenFromUrl = params.get("startapp") || params.get("start")
-
         const token = tokenFromInitData || tokenFromUrl
 
-        console.log("TOKEN из initDataUnsafe:", tokenFromInitData)
-        console.log("TOKEN из URL:", tokenFromUrl)
-        console.log("Выбранный токен:", token)
-
         if (token) {
-            acceptInvite(token)
+            // Сначала пытаемся принять инвайт как "друга"
+            acceptFriendInvite(token)
                 .then(() => {
-                    // Можно показать уведомление, что вы добавлены в друзья!
-                    console.log("acceptInvite вызван успешно")
+                    // Можно отобразить уведомление "Добавлен в друзья"
                 })
-                .catch((err) => {
-                    // Можно обработать ошибку (например, если уже в друзьях)
-                    console.error("Ошибка при вызове acceptInvite:", err)
+                .catch(() => {
+                    // Если это не инвайт для друзей, пробуем принять как группу
+                    acceptGroupInvite(token)
+                        .then(() => {
+                            // Можно отобразить уведомление "Добавлен в группу"
+                        })
+                        .catch(() => {
+                            // Если токен не подошёл — просто игнорируем
+                        })
                 })
-        } else {
-            console.log("Токен не найден — acceptInvite НЕ вызван")
         }
     }, [])
 
@@ -54,6 +59,7 @@ const App = () => {
                 <Routes>
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/groups" element={<GroupsPage />} />
+                    <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
                     <Route path="/contacts" element={<ContactsPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                 </Routes>
