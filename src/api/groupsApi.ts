@@ -1,84 +1,97 @@
 // src/api/groupsApi.ts
 
-import axios from "axios"
 import type { Group, GroupWithMembers, GroupCreate } from "../types/group"
 
-// Настройка baseURL
+// Кладём сюда же функцию для получения initData
+function getTelegramInitData(): string {
+    // @ts-ignore
+    return window?.Telegram?.WebApp?.initData || ""
+}
+
+// Универсальный API URL (dev/prod fallback)
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const BASE_URL = `${API_URL}/groups`
 const MEMBERS_URL = `${API_URL}/group_members`
 
-/**
- * Получить список групп пользователя
- */
-export const getGroupsByUser = async (userId: number): Promise<Group[]> => {
-  const { data } = await axios.get(`${BASE_URL}/user/${userId}`)
-  return data
+// Универсальный fetchJson (как в friendsApi)
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+    const headers: HeadersInit = {
+        ...(init?.headers || {}),
+        "x-telegram-initdata": getTelegramInitData(),
+    }
+    const res = await fetch(input, { ...init, headers })
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.detail?.code || errorData.detail || res.statusText)
+    }
+    return await res.json()
 }
 
-/**
- * Получить детальную информацию о группе (без участников)
- */
-export const getGroupById = async (groupId: number): Promise<Group> => {
-  const { data } = await axios.get(`${BASE_URL}/${groupId}/detail/`)
-  return data
+// Получить список групп пользователя
+export async function getGroupsByUser(userId: number): Promise<Group[]> {
+    const url = `${BASE_URL}/user/${userId}`
+    return fetchJson<Group[]>(url)
 }
 
-/**
- * Получить детальную информацию о группе с участниками
- */
-export const getGroupWithMembers = async (groupId: number): Promise<GroupWithMembers> => {
-  const groupRes = await axios.get(`${BASE_URL}/${groupId}/detail/`)
-  const group: Group = groupRes.data
-  const membersRes = await axios.get(`${MEMBERS_URL}/group/${groupId}`)
-  const members = membersRes.data.map((item: any) => item.user)
-  return { ...group, members }
+// Получить группу по id (детали без участников)
+export async function getGroupById(groupId: number): Promise<Group> {
+    return fetchJson<Group>(`${BASE_URL}/${groupId}/detail/`)
 }
 
-/**
- * Создать новую группу
- */
-export const createGroup = async (data: GroupCreate): Promise<Group> => {
-  const { user_ids, ...groupData } = data
-  const groupRes = await axios.post(`${BASE_URL}/`, groupData)
-  const group: Group = groupRes.data
-  if (user_ids && user_ids.length > 0) {
-    await Promise.all(
-      user_ids.map(userId =>
-        axios.post(`${MEMBERS_URL}/`, { group_id: group.id, user_id: userId })
-      )
-    )
-  }
-  return group
+// Получить группу с участниками
+export async function getGroupWithMembers(groupId: number): Promise<GroupWithMembers> {
+    const group = await fetchJson<Group>(`${BASE_URL}/${groupId}/detail/`)
+    const membersRes = await fetchJson<any[]>(`${MEMBERS_URL}/group/${groupId}`)
+    const members = membersRes.map((item: any) => item.user)
+    return { ...group, members }
 }
 
-/**
- * Обновить группу (название, описание)
- */
-export const updateGroup = async (groupId: number, data: Partial<GroupCreate>): Promise<Group> => {
-  const { data: updated } = await axios.put(`${BASE_URL}/${groupId}/`, data)
-  return updated
+// Создать новую группу
+export async function createGroup(data: GroupCreate): Promise<Group> {
+    const { user_ids, ...groupData } = data
+    const group = await fetchJson<Group>(`${BASE_URL}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(groupData)
+    })
+    if (user_ids && user_ids.length > 0) {
+        await Promise.all(
+            user_ids.map(userId =>
+                fetchJson(`${MEMBERS_URL}/`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ group_id: group.id, user_id: userId })
+                })
+            )
+        )
+    }
+    return group
 }
 
-/**
- * Удалить группу
- */
-export const deleteGroup = async (groupId: number): Promise<void> => {
-  await axios.delete(`${BASE_URL}/${groupId}/`)
+// Обновить группу (название, описание)
+export async function updateGroup(groupId: number, data: Partial<GroupCreate>): Promise<Group> {
+    return fetchJson<Group>(`${BASE_URL}/${groupId}/`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    })
 }
 
-/**
- * Получить инвайт-ссылку (token) для группы
- */
-export const getGroupInvite = async (groupId: number): Promise<{ id: number, group_id: number, token: string }> => {
-  const { data } = await axios.post(`${BASE_URL}/${groupId}/invite`)
-  return data
+// Удалить группу
+export async function deleteGroup(groupId: number): Promise<void> {
+    await fetchJson(`${BASE_URL}/${groupId}/`, { method: "DELETE" })
 }
 
-/**
- * Принять инвайт для группы по токену (добавляет текущего пользователя)
- */
-export const acceptGroupInvite = async (token: string): Promise<any> => {
-  const { data } = await axios.post(`${BASE_URL}/accept-invite`, { token })
-  return data
+// Получить инвайт-ссылку (token) для группы
+export async function getGroupInvite(groupId: number): Promise<{ id: number, group_id: number, token: string }> {
+    return fetchJson(`${BASE_URL}/${groupId}/invite`, { method: "POST" })
+}
+
+// Принять инвайт для группы по токену (добавляет текущего пользователя)
+export async function acceptGroupInvite(token: string): Promise<any> {
+    return fetchJson(`${BASE_URL}/accept-invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+    })
 }
