@@ -1,5 +1,3 @@
-// src/pages/GroupsPage.tsx
-
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useUserStore } from "../store/userStore"
@@ -69,7 +67,7 @@ const GroupsPage = () => {
                     <GroupCard
                         key={group.id}
                         group={group}
-                        members={group.members || []} // <= чтобы не было ошибки TS
+                        members={group.members || []}
                     />
                 ))}
             </div>
