@@ -4,6 +4,8 @@ import { useGroupsStore } from "../store/useGroupsStore"
 import AddGroupModal from "../components/AddGroupModal"
 import GroupCard from "../components/GroupCard"
 import type { Friend } from "../types/friend"
+// Импортируй useTelegramUser, если у тебя есть такой хук! (или иначе получи свой telegram_id)
+import { useTelegramUser } from "../hooks/useTelegramUser"
 
 const GroupsPage = () => {
     const { t } = useTranslation()
@@ -12,14 +14,18 @@ const GroupsPage = () => {
     const createGroup = useGroupsStore(state => state.createGroup)
     const [addOpen, setAddOpen] = useState(false)
 
+    const telegramUser = useTelegramUser()
+    const owner_id = telegramUser?.id // замените на telegram_id если нужно
+
     useEffect(() => { fetchGroups() }, [])
 
     const handleCreateGroup = async (data: { name: string; description: string; members: Friend[] }) => {
-        // ВАЖНО: если у тебя API требует user_ids:
+        if (!owner_id) return // нельзя создавать без владельца!
         await createGroup({
             name: data.name,
             description: data.description,
-            user_ids: data.members.map(m => m.id), // <--- так!
+            owner_id: owner_id,
+            user_ids: data.members.map(m => m.id),
         })
         await fetchGroups()
     }

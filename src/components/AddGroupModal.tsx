@@ -10,11 +10,10 @@ type Props = {
     onSave: (data: { name: string; description: string; members: Friend[] }) => Promise<any>
 }
 
-function getFriendDisplay(friend: Friend) {
+function getFriendDisplay(friend: Friend): string {
     if (friend.name) return friend.name
     if (friend.username) return "@" + friend.username
-    if (friend.telegram_id) return friend.telegram_id
-    return "Без имени"
+    return String(friend.telegram_id)
 }
 
 const AddGroupModal = ({ open, onClose, onSave }: Props) => {
