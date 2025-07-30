@@ -1,59 +1,66 @@
 import { useState, useEffect } from "react"
+import { Dialog } from "@headlessui/react"
 import { useTranslation } from "react-i18next"
 import { useFriendsStore } from "../store/friendsStore"
-import Avatar from "./Avatar"
+import type { Friend } from "../types/friend"
 
 type Props = {
     open: boolean
     onClose: () => void
-    ownerId: number
-    onCreate: (data: { name: string; description: string; members: any[] }) => Promise<void>
+    onSave: (data: { name: string; description: string; members: Friend[] }) => Promise<any>
 }
 
-const AddGroupModal = ({ open, onClose, ownerId, onCreate }: Props) => {
+function friendDisplayName(friend: Friend) {
+    if (friend.first_name && friend.last_name) return `${friend.first_name} ${friend.last_name}`
+    if (friend.first_name) return friend.first_name
+    if (friend.last_name) return friend.last_name
+    if (friend.username) return "@" + friend.username
+    return "Unknown"
+}
+
+const AddGroupModal = ({ open, onClose, onSave }: Props) => {
     const { t } = useTranslation()
-    const friends = useFriendsStore(state => state.friends)
-    const fetchFriends = useFriendsStore(state => state.fetchFriends)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
-    const [selected, setSelected] = useState<any[]>([])
+    const [members, setMembers] = useState<Friend[]>([])
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    // Загрузить друзей при открытии модалки
+    const friends = useFriendsStore(state => state.friends)
+    const fetchFriends = useFriendsStore(state => state.fetchFriends)
+    const loadingFriends = useFriendsStore(state => state.loading)
+
     useEffect(() => {
-        if (open) fetchFriends()
-        if (!open) {
+        if (open) {
+            fetchFriends()
             setName("")
             setDescription("")
-            setSelected([])
+            setMembers([])
             setError(null)
         }
-    }, [open, fetchFriends])
+        // eslint-disable-next-line
+    }, [open])
 
-    // Добавить/убрать участника
-    const toggleMember = (user: any) => {
-        if (selected.find(u => u.id === user.id)) {
-            setSelected(selected.filter(u => u.id !== user.id))
-        } else {
-            setSelected([...selected, user])
+    const handleAdd = (friend: Friend) => {
+        if (!members.find(m => m.id === friend.id)) {
+            setMembers([...members, friend])
         }
     }
 
-    // Создать группу
-    const handleCreate = async () => {
+    const handleRemove = (id: number) => {
+        setMembers(members.filter(m => m.id !== id))
+    }
+
+    const handleSave = async () => {
+        setError(null)
         if (!name.trim()) {
             setError(t("group_name_required"))
             return
         }
         setSaving(true)
-        setError(null)
         try {
-            await onCreate({
-                name: name.trim(),
-                description: description.trim(),
-                members: [ownerId, ...selected.map(u => u.id)].filter((v, i, arr) => arr.indexOf(v) === i)
-            })
+            await onSave({ name: name.trim(), description: description.trim(), members })
+            onClose()
         } catch (e: any) {
             setError(e?.message || t("error_create_group"))
         } finally {
@@ -64,60 +71,72 @@ const AddGroupModal = ({ open, onClose, ownerId, onCreate }: Props) => {
     if (!open) return null
 
     return (
-        <div className="fixed z-50 inset-0 bg-black/40 flex items-center justify-center">
-            <div className="bg-[var(--tg-bg-color)] rounded-2xl shadow-xl w-[90vw] max-w-md p-6">
-                <div className="font-bold text-lg mb-4">{t("create_group")}</div>
+        <Dialog open={open} onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-[var(--tg-card-bg)] rounded-2xl p-6 w-full max-w-md">
+                <Dialog.Title className="text-xl font-bold mb-4">{t("create_group")}</Dialog.Title>
                 <input
-                    className="input w-full mb-2"
-                    placeholder={t("group_name_placeholder")}
-                    maxLength={40}
+                    className="input mb-2 w-full"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    disabled={saving}
+                    placeholder={t("group_name_placeholder")}
+                    maxLength={40}
                     autoFocus
+                    disabled={saving}
                 />
                 <input
-                    className="input w-full mb-4"
-                    placeholder={t("group_description_placeholder")}
-                    maxLength={120}
+                    className="input mb-4 w-full"
                     value={description}
                     onChange={e => setDescription(e.target.value)}
+                    placeholder={t("group_description_placeholder")}
+                    maxLength={120}
                     disabled={saving}
                 />
-                <div className="font-semibold mb-1">{t("add_participants")}</div>
-                {friends.length === 0 ? (
-                    <div className="text-[var(--tg-hint-color)] mb-3">{t("no_friends")}</div>
-                ) : (
-                    <div className="flex flex-wrap gap-2 mb-4">
-                        {friends.map(user => (
-                            <button
-                                type="button"
-                                key={user.id}
-                                className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition ${selected.find(u => u.id === user.id)
-                                        ? "bg-[var(--tg-link-color)] text-white"
-                                        : "bg-[var(--tg-secondary-bg)]"
-                                    }`}
-                                disabled={saving}
-                                onClick={() => toggleMember(user)}
-                            >
-                                <Avatar name={user.name} src={user.photo_url} size={24} />
-                                <span>{user.name}</span>
-                                {selected.find(u => u.id === user.id) && <span>✓</span>}
-                            </button>
+                {/* Участники */}
+                <div className="mb-2">
+                    <div className="font-semibold mb-1">{t("participants")}</div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {members.map(friend => (
+                            <span key={friend.id} className="px-2 py-1 bg-[var(--tg-secondary-bg)] rounded-lg flex items-center gap-2">
+                                {friendDisplayName(friend)}
+                                <button type="button" className="ml-1 text-red-400" onClick={() => handleRemove(friend.id)}>✕</button>
+                            </span>
                         ))}
+                        {!members.length && <span className="text-[var(--tg-hint-color)]">{t("no_participants")}</span>}
                     </div>
-                )}
+                </div>
+                {/* Список друзей */}
+                <div className="mb-4">
+                    <div className="font-semibold mb-1">{t("add_participants")}</div>
+                    {loadingFriends ? (
+                        <div>{t("loading")}</div>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {friends
+                                .filter(f => !members.find(m => m.id === f.id))
+                                .map(friend => (
+                                    <button
+                                        key={friend.id}
+                                        type="button"
+                                        className="px-2 py-1 rounded-lg border bg-[var(--tg-secondary-bg)]"
+                                        disabled={saving}
+                                        onClick={() => handleAdd(friend)}
+                                    >
+                                        {friendDisplayName(friend)}
+                                    </button>
+                                ))}
+                            {!friends.length && <div className="text-[var(--tg-hint-color)]">{t("no_friends")}</div>}
+                        </div>
+                    )}
+                </div>
                 {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
-                <div className="flex gap-2 mt-4">
-                    <button className="btn-secondary flex-1" onClick={onClose} disabled={saving}>
-                        {t("cancel")}
-                    </button>
-                    <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>
-                        {saving ? t("saving") : t("create_group")}
+                <div className="flex gap-2">
+                    <button className="btn-secondary flex-1" onClick={onClose} disabled={saving}>{t("cancel")}</button>
+                    <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>
+                        {saving ? t("saving") : t("save")}
                     </button>
                 </div>
             </div>
-        </div>
+        </Dialog>
     )
 }
 
