@@ -41,7 +41,7 @@ const GroupCard = ({
 
   // Если участников больше maxAvatars — показываем "+N" кружок
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
-  const hiddenCount = group.members_count - displayedMembers.length
+  const hiddenCount = (group.members_count ?? displayedMembers.length) - displayedMembers.length
 
   return (
     <button
