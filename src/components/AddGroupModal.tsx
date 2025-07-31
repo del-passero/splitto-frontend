@@ -1,3 +1,5 @@
+// src/components/AddGroupModal.tsx
+
 import { useState, useEffect } from "react"
 import { Dialog } from "@headlessui/react"
 import { useTranslation } from "react-i18next"
@@ -11,9 +13,13 @@ type Props = {
 }
 
 function getFriendDisplay(friend: Friend): string {
-    if (friend.name) return friend.name
-    if (friend.username) return "@" + friend.username
-    return String(friend.telegram_id)
+    const f = friend.friend
+    // Показываем: Имя Фамилия (@username)
+    let name = f.first_name || ""
+    if (f.last_name) name += " " + f.last_name
+    if (!name && f.username) name = "@" + f.username
+    if (!name && f.name) name = f.name
+    return name || "ID " + f.telegram_id
 }
 
 const AddGroupModal = ({ open, onClose, onSave }: Props) => {
@@ -24,7 +30,7 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const friends = useFriendsStore(state => state.friends)
+    const friends = useFriendsStore(state => state.friends) as Friend[]
     const fetchFriends = useFriendsStore(state => state.fetchFriends)
     const loadingFriends = useFriendsStore(state => state.loading)
 
@@ -36,17 +42,16 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
             setMembers([])
             setError(null)
         }
-        // eslint-disable-next-line
-    }, [open])
+    }, [open, fetchFriends])
 
     const handleAdd = (friend: Friend) => {
-        if (!members.find(m => m.id === friend.id)) {
+        if (!members.find(m => m.friend.id === friend.friend.id)) {
             setMembers([...members, friend])
         }
     }
 
-    const handleRemove = (id: number) => {
-        setMembers(members.filter(m => m.id !== id))
+    const handleRemove = (friendId: number) => {
+        setMembers(members.filter(m => m.friend.id !== friendId))
     }
 
     const handleSave = async () => {
@@ -94,9 +99,9 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
                     <div className="font-semibold mb-1">{t("participants")}</div>
                     <div className="flex flex-wrap gap-2 mb-2">
                         {members.map(friend => (
-                            <span key={friend.id} className="px-2 py-1 bg-[var(--tg-secondary-bg)] rounded-lg flex items-center gap-2">
+                            <span key={friend.friend.id} className="px-2 py-1 bg-[var(--tg-secondary-bg)] rounded-lg flex items-center gap-2">
                                 {getFriendDisplay(friend)}
-                                <button type="button" className="ml-1 text-red-400" onClick={() => handleRemove(friend.id)}>✕</button>
+                                <button type="button" className="ml-1 text-red-400" onClick={() => handleRemove(friend.friend.id)}>✕</button>
                             </span>
                         ))}
                         {!members.length && <span className="text-[var(--tg-hint-color)]">{t("no_participants")}</span>}
@@ -110,10 +115,10 @@ const AddGroupModal = ({ open, onClose, onSave }: Props) => {
                     ) : (
                         <div className="flex flex-wrap gap-2">
                             {friends
-                                .filter(f => !members.find(m => m.id === f.id))
+                                .filter(f => !members.find(m => m.friend.id === f.friend.id))
                                 .map(friend => (
                                     <button
-                                        key={friend.id}
+                                        key={friend.friend.id}
                                         type="button"
                                         className="px-2 py-1 rounded-lg border bg-[var(--tg-secondary-bg)]"
                                         disabled={saving}
