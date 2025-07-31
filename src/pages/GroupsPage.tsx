@@ -4,28 +4,30 @@ import { useGroupsStore } from "../store/useGroupsStore"
 import AddGroupModal from "../components/AddGroupModal"
 import GroupCard from "../components/GroupCard"
 import type { Friend } from "../types/friend"
-// Импортируй useTelegramUser, если у тебя есть такой хук! (или иначе получи свой telegram_id)
+import type { Group } from "../types/group" // если у тебя нет - создай!
 import { useTelegramUser } from "../hooks/useTelegramUser"
 
 const GroupsPage = () => {
     const { t } = useTranslation()
-    const groups = useGroupsStore(state => state.groups)
+    const groups = useGroupsStore(state => state.groups) as Group[]
     const fetchGroups = useGroupsStore(state => state.fetchGroups)
     const createGroup = useGroupsStore(state => state.createGroup)
     const [addOpen, setAddOpen] = useState(false)
 
     const telegramUser = useTelegramUser()
-    const owner_id = telegramUser?.id // замените на telegram_id если нужно
+    const owner_id = telegramUser?.id
 
-    useEffect(() => { fetchGroups() }, [])
+    useEffect(() => {
+        fetchGroups() // Не передаем аргументы, если не нужны!
+    }, [fetchGroups])
 
     const handleCreateGroup = async (data: { name: string; description: string; members: Friend[] }) => {
-        if (!owner_id) return // нельзя создавать без владельца!
+        if (!owner_id) return
         await createGroup({
             name: data.name,
             description: data.description,
-            owner_id: owner_id,
-            user_ids: data.members.map(m => m.id),
+            owner_id,
+            user_ids: data.members.map(m => m.friend.telegram_id),
         })
         await fetchGroups()
     }
@@ -40,7 +42,13 @@ const GroupsPage = () => {
             <div>
                 {groups.length === 0
                     ? <div className="text-[var(--tg-hint-color)]">{t("no_groups")}</div>
-                    : groups.map(group => <GroupCard key={group.id} group={group} />)
+                    : groups.map(group => (
+                        <GroupCard
+                            key={group.id}
+                            group={group}
+                            members={group.members ?? []} // <-- если members обязательный, иначе убери это!
+                        />
+                    ))
                 }
             </div>
         </>
