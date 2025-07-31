@@ -28,17 +28,20 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Участники: владелец всегда первый, далее остальные (чтобы аватарка владельца была первой и крупнее)
-  const members: GroupMember[] = group.members ?? []
+  // Используем preview_members (см. backend)!
+  // Если его нет — подстрахуемся пустым массивом.
+  const members: GroupMember[] = group.preview_members ?? []
+
   const ownerId = group.owner_id
+  // Владелец всегда первый, выделен крупнее. Далее — остальные участники.
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId),
   ]
 
-  // Для экономии места — если участников больше maxAvatars, последние заменяем "+N"
+  // Если участников больше maxAvatars — показываем "+N" кружок
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
-  const hiddenCount = sortedMembers.length - displayedMembers.length
+  const hiddenCount = group.members_count - displayedMembers.length
 
   return (
     <button

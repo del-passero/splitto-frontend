@@ -36,4 +36,5 @@ export interface Group {
   owner_id: number
   members_count?: number      // для списка групп
   members?: GroupMember[]     // для страницы группы
+  preview_members?: GroupMember[]  // <--- добавь!
 }
