@@ -1,10 +1,5 @@
 // src/components/GroupsList.tsx
 
-/**
- * Список карточек групп. При клике — переход на страницу группы.
- * Использует GroupCard и передаёт group + обработчик.
- */
-
 import GroupCard from "./GroupCard"
 import type { Group } from "../types/group"
 import { useNavigate } from "react-router-dom"
@@ -16,7 +11,7 @@ type Props = {
 const GroupsList = ({ groups }: Props) => {
   const navigate = useNavigate()
   return (
-    <div className="flex flex-col gap-2 px-1 pb-4">
+    <div className="flex flex-col bg-[var(--tg-bg-color)]">
       {groups.map(group => (
         <GroupCard
           key={group.id}
