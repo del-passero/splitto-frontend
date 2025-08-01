@@ -1,13 +1,9 @@
-// src/components/GroupCard.tsx
-
 /**
  * Карточка группы для списка на странице "Группы".
- * Слева — аватар группы (скруглённый квадрат).
- * Далее — название, горизонтальный ряд аватаров участников (владелец первый, чуть крупнее).
- * Если участников больше maxAvatars — кружок "+N".
- * Справа — зарезервированная зона под долги.
- * Вся карточка кликабельна (button), стилизована под стиль Telegram Wallet.
- * Все подписи — через i18n, поддержка темы.
+ * Слева аватар группы, далее название и ряд аватаров участников (владелец первый и больше).
+ * Если участников больше maxAvatars — "+N".
+ * Правая часть — заглушка под долги.
+ * Всё стилизовано строго в стиле Wallet и webapp Telegram.
  */
 
 import GroupAvatar from "./GroupAvatar"
@@ -26,11 +22,11 @@ const GroupCard = ({
   group,
   onClick,
   maxAvatars = 5,
-  className = "",
+  className = ""
 }: Props) => {
   const { t } = useTranslation()
 
-  // Участники: владелец всегда первый, далее остальные
+  // Участники (владелец первый, остальные после)
   const members: GroupMember[] = group.members ?? []
   const ownerId = group.owner_id
   const sortedMembers = [
@@ -38,7 +34,7 @@ const GroupCard = ({
     ...members.filter(m => m.user.id !== ownerId),
   ]
 
-  // Для экономии места: если участников больше maxAvatars — последние заменяем на "+N"
+  // Ограничение на количество аватаров
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
 
@@ -57,18 +53,19 @@ const GroupCard = ({
       {/* Левая часть — аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Центральная часть — название и аватары участников */}
+      {/* Центральная часть — название и аватарки участников */}
       <div className="flex-1 min-w-0">
+        {/* Название группы */}
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">{group.name}</div>
         {/* Ряд аватаров участников */}
-        <div className="flex items-center mt-1">
+        <div className="flex items-center mt-1 space-x-[-12px]">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.user.id}
               className={`
                 z-[${maxAvatars - idx}]
                 ${idx === 0 ? "border-2 border-[var(--tg-link-color)]" : "border-2 border-[var(--tg-card-bg)]"}
-                rounded-full bg-[var(--tg-bg-color)] transition
+                rounded-full bg-[var(--tg-bg-color)]
               `}
               style={{
                 width: idx === 0 ? 38 : 32,
