@@ -1,8 +1,10 @@
 // src/components/GroupCard.tsx
 
+import { useEffect, useState } from "react"
 import GroupAvatar from "./GroupAvatar"
 import Avatar from "./Avatar"
 import { useTranslation } from "react-i18next"
+import { getGroupDetails } from "../api/groupsApi"
 import type { Group, GroupMember } from "../types/group"
 
 type Props = {
@@ -20,9 +22,25 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  const members: GroupMember[] = group.members || []
+  // Локальный state для участников, если их нет в group.members
+  const [members, setMembers] = useState<GroupMember[]>(group.members || [])
+
+  useEffect(() => {
+    // Если участников нет — подгружаем детали группы
+    if (!group.members) {
+      getGroupDetails(group.id)
+        .then(data => {
+          if (data.members) setMembers(data.members)
+        })
+        .catch(err => {
+          console.error("Ошибка загрузки участников для карточки:", err)
+        })
+    }
+  }, [group.id, group.members])
+
   const ownerId = group.owner_id
 
+  // Сортируем участников: владелец первый
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
     ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
@@ -43,8 +61,10 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
+      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
+      {/* Название и аватары участников */}
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">
           {group.name}
@@ -102,6 +122,7 @@ const GroupCard = ({
         )}
       </div>
 
+      {/* Справа заглушка под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
