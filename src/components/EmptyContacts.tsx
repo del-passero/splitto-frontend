@@ -3,7 +3,11 @@
 import { useTranslation } from "react-i18next"
 import { BookUser } from "lucide-react"
 
-const EmptyContacts = () => {
+type Props = {
+  notFound?: boolean
+}
+
+const EmptyContacts = ({ notFound = false }: Props) => {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center py-12">
@@ -11,7 +15,7 @@ const EmptyContacts = () => {
         <BookUser size={56} className="text-[var(--tg-link-color)]" />
       </div>
       <div className="text-lg font-semibold mb-2 text-[var(--tg-text-color)]">
-        {t("empty_contacts")}
+        {notFound ? t("contacts_not_found") : t("empty_contacts")}
       </div>
     </div>
   )

@@ -12,6 +12,9 @@ export default {
   profile: "Profile",
   participants: "Participants",
   no_participants: "No participants",
+  contacts_not_found: "No contacts found",
+  groups_not_found: "No groups found",
+
 
   // --- Groups & Members ---
   group_name_placeholder: "Group name",

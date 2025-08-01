@@ -12,6 +12,8 @@ export default {
   profile: "Профиль",
   participants: "Участники",
   no_participants: "Нет участников",
+  contacts_not_found: "Не найдено ни одного контакта",
+  groups_not_found: "Не найдено ни одной группы",
 
   // --- Группы и участники ---
   group_name_placeholder: "Название группы",
@@ -48,7 +50,7 @@ export default {
   // --- Контакты ---
   empty_contacts: "У вас ещё нет ни одного контакта...",
   contacts_count: "{{count}} контактов",
-  search_placeholder: "Поиск...",
+  search_placeholder: "Поиск контакта...",
   filter: "Фильтр",
   sort: "Сортировка",
   no_friends: "Нет друзей для добавления",

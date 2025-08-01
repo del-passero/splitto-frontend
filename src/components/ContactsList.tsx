@@ -9,9 +9,10 @@ type Props = {
   friends: Friend[]
   loading?: boolean
   error?: string | null
+  isSearching?: boolean
 }
 
-const ContactsList = ({ friends, loading, error }: Props) => {
+const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
   if (loading) {
     return (
       <CardSection>
@@ -29,7 +30,7 @@ const ContactsList = ({ friends, loading, error }: Props) => {
   if (!friends.length) {
     return (
       <div className="w-full flex flex-col flex-1">
-        <EmptyContacts />
+        <EmptyContacts notFound={isSearching} />
       </div>
     )
   }

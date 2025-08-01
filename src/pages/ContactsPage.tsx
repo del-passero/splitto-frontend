@@ -21,25 +21,33 @@ const ContactsPage = () => {
     fetchFriends()
   }, [fetchFriends])
 
-  // Фильтр по имени/фамилии/username
   const filteredFriends = friends.filter(friend =>
     friend.user.first_name?.toLowerCase().includes(search.toLowerCase()) ||
     friend.user.last_name?.toLowerCase().includes(search.toLowerCase()) ||
     friend.user.username?.toLowerCase().includes(search.toLowerCase())
   )
 
+  const isSearching = search.length > 0
+  const noContacts = !filteredFriends.length && !isSearching
+  const notFound = !filteredFriends.length && isSearching
+
   return (
     <div className="relative w-full max-w-md mx-auto min-h-screen flex flex-col">
-      {/* Фильтры, поиск, сортировка */}
-      <FiltersRow search={search} setSearch={setSearch} />
+      <FiltersRow
+        search={search}
+        setSearch={setSearch}
+        placeholderKey="search_placeholder"
+      />
 
-      {filteredFriends.length > 0 ? (
+      {filteredFriends.length > 0 && (
         <CardSection noPadding>
           <TopInfoRow count={filteredFriends.length} labelKey="contacts_count" />
           <ContactsList friends={filteredFriends} loading={loading} error={error} />
         </CardSection>
-      ) : (
-        <EmptyContacts />
+      )}
+
+      {!filteredFriends.length && (
+        <EmptyContacts notFound={notFound} />
       )}
 
       {/* Кнопка “Добавить” */}

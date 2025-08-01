@@ -1,11 +1,5 @@
 // src/components/FiltersRow.tsx
 
-/**
- * Фильтр, поиск и сортировка для страницы "Группы".
- * Обёрнут в CardSection, все элементы визуально разделены в стиле Wallet.
- * Нет кнопки "создать группу".
- */
-
 import CardSection from "./CardSection"
 import FilterButton from "./FilterButton"
 import SearchBar from "./SearchBar"
@@ -17,6 +11,7 @@ type Props = {
   setSearch: (value: string) => void
   onFilterClick?: () => void
   onSortClick?: () => void
+  placeholderKey?: string
 }
 
 const FiltersRow = ({
@@ -24,6 +19,7 @@ const FiltersRow = ({
   setSearch,
   onFilterClick,
   onSortClick,
+  placeholderKey = "search_group_placeholder",
 }: Props) => {
   const { t } = useTranslation()
   return (
@@ -34,7 +30,7 @@ const FiltersRow = ({
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder={t("search_group_placeholder") || ""}
+          placeholder={t(placeholderKey) || ""}
         />
         <div className="w-px h-8 bg-[var(--tg-secondary-bg-color)] mx-1" />
         <SortButton onClick={onSortClick || (() => {})} />

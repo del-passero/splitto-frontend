@@ -1,13 +1,5 @@
 // src/pages/GroupsPage.tsx
 
-/**
- * Страница "Группы":
- * - FiltersRow (поиск/фильтр) — только если есть группы
- * - CardSection: TopInfoRow (информер о количестве групп) + GroupsList (карточки групп) — только если есть группы
- * - EmptyGroups — если групп нет (всё остальное скрыто)
- * Все надписи через i18n, стили строго Wallet-style.
- */
-
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useUserStore } from "../store/userStore"
@@ -35,34 +27,36 @@ const GroupsPage = () => {
     group.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  // Если нет групп — только заглушка
-  if (!groupsLoading && !groupsError && groups.length === 0) {
+  const isSearching = search.length > 0
+  const noGroups = !filteredGroups.length && !isSearching
+  const notFound = !filteredGroups.length && isSearching
+
+  if (!groupsLoading && !groupsError && (noGroups || notFound)) {
     return (
       <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
-        <EmptyGroups />
+        <FiltersRow
+          search={search}
+          setSearch={setSearch}
+          placeholderKey="search_group_placeholder"
+        />
+        <EmptyGroups notFound={notFound} />
       </div>
     )
   }
 
   return (
     <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
-      {/* FILTERS ROW — только если группы есть */}
-      {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
-        <FiltersRow
-          search={search}
-          setSearch={setSearch}
-        />
-      )}
+      <FiltersRow
+        search={search}
+        setSearch={setSearch}
+        placeholderKey="search_group_placeholder"
+      />
 
-      {/* CardSection с заголовком Wallet-style и списком групп */}
-      {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
-        <CardSection noPadding>
-          <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
-          <GroupsList groups={filteredGroups} />
-        </CardSection>
-      )}
+      <CardSection noPadding>
+        <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
+        <GroupsList groups={filteredGroups} />
+      </CardSection>
 
-      {/* Лоадер/ошибка — если надо */}
       {groupsLoading && (
         <CardSection>
           <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
