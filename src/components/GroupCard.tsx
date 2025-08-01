@@ -1,8 +1,13 @@
 // src/components/GroupCard.tsx
 
 /**
- * Карточка группы для списка: аватар, название, аватарки участников (владелец первый и крупнее), зарезервированная зона под долги.
- * Кликабельна (button), стилизована строго под Telegram Wallet. Имя участника не выводится.
+ * Карточка группы для списка на странице "Группы".
+ * Слева — аватар группы (скруглённый квадрат).
+ * Далее — название, горизонтальный ряд аватаров участников (владелец первый, чуть крупнее).
+ * Если участников больше maxAvatars — кружок "+N".
+ * Справа — зарезервированная зона под долги.
+ * Вся карточка кликабельна (button), стилизована под стиль Telegram Wallet.
+ * Все подписи — через i18n, поддержка темы.
  */
 
 import GroupAvatar from "./GroupAvatar"
@@ -21,19 +26,19 @@ const GroupCard = ({
   group,
   onClick,
   maxAvatars = 5,
-  className = ""
+  className = "",
 }: Props) => {
   const { t } = useTranslation()
+
+  // Участники: владелец всегда первый, далее остальные
   const members: GroupMember[] = group.members ?? []
   const ownerId = group.owner_id
-
-  // Владелец — всегда первый
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId),
   ]
 
-  // Если участников больше maxAvatars — показываем "+N"
+  // Для экономии места: если участников больше maxAvatars — последние заменяем на "+N"
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
 
@@ -49,35 +54,45 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
-      {/* Аватар группы */}
+      {/* Левая часть — аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Центр — название и аватарки участников */}
+      {/* Центральная часть — название и аватары участников */}
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">{group.name}</div>
-        <div className="flex items-center mt-1 space-x-[-12px]">
+        {/* Ряд аватаров участников */}
+        <div className="flex items-center mt-1">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.user.id}
               className={`
                 z-[${maxAvatars - idx}]
                 ${idx === 0 ? "border-2 border-[var(--tg-link-color)]" : "border-2 border-[var(--tg-card-bg)]"}
-                rounded-full bg-[var(--tg-bg-color)]
+                rounded-full bg-[var(--tg-bg-color)] transition
               `}
               style={{
                 width: idx === 0 ? 38 : 32,
                 height: idx === 0 ? 38 : 32,
                 marginLeft: idx > 0 ? -10 : 0,
               }}
-              title={""}
+              title={
+                member.user.first_name
+                  ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                  : member.user.username || ""
+              }
             >
               <Avatar
-                name=""
+                name={
+                  member.user.first_name
+                    ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                    : member.user.username || ""
+                }
                 src={member.user.photo_url}
                 size={idx === 0 ? 38 : 32}
               />
             </div>
           ))}
+          {/* Если участников больше, чем показываем — "+N" кружок */}
           {hiddenCount > 0 && (
             <div
               className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
@@ -89,7 +104,7 @@ const GroupCard = ({
         </div>
       </div>
 
-      {/* Правая часть — зона под долги */}
+      {/* Правая часть — зарезервированная зона под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
