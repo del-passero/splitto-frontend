@@ -14,8 +14,8 @@ type Props = {
   className?: string
 }
 
-const AVATAR_SIZE = 56
-const PARTICIPANT_SIZE = 24
+const AVATAR_SIZE = 44
+const PARTICIPANT_SIZE = 20
 
 const GroupCard = ({
   group,
@@ -49,23 +49,20 @@ const GroupCard = ({
       type="button"
       onClick={onClick}
       className={`
-        w-full flex items-center px-4 py-0 bg-transparent
-        min-h-[${AVATAR_SIZE}px]
-        transition
+        w-full flex items-center px-4
+        min-h-[52px] bg-transparent transition
         ${className}
       `}
       aria-label={group.name}
-      style={{ minHeight: AVATAR_SIZE }}
+      style={{ minHeight: 52 }}
     >
-      {/* Аватар группы — по центру строки, на всю высоту карточки */}
-      <div className="flex items-center" style={{ height: AVATAR_SIZE }}>
-        <GroupAvatar name={group.name} size={AVATAR_SIZE} className="flex-shrink-0" />
-      </div>
+      {/* Аватар группы — ровно по высоте карточки */}
+      <GroupAvatar name={group.name} size={AVATAR_SIZE} className="flex-shrink-0" />
 
       {/* Правая часть (название + участники) */}
       <div className="flex-1 min-w-0 ml-4 flex flex-col justify-center">
-        {/* Название группы */}
-        <div className="text-base font-semibold text-[var(--tg-text-color)] truncate">
+        {/* Название группы крупным шрифтом */}
+        <div className="text-lg font-bold text-[var(--tg-text-color)] truncate">
           {group.name}
         </div>
 
@@ -83,9 +80,9 @@ const GroupCard = ({
                       : "border-[var(--tg-card-bg)]"
                   } bg-[var(--tg-bg-color)]`}
                   style={{
-                    width: idx === 0 ? PARTICIPANT_SIZE + 6 : PARTICIPANT_SIZE,
-                    height: idx === 0 ? PARTICIPANT_SIZE + 6 : PARTICIPANT_SIZE,
-                    marginLeft: idx > 0 ? -8 : 0,
+                    width: idx === 0 ? 24 : PARTICIPANT_SIZE,
+                    height: idx === 0 ? 24 : PARTICIPANT_SIZE,
+                    marginLeft: idx > 0 ? -7 : 0,
                     zIndex: maxAvatars - idx
                   }}
                   title={
@@ -101,7 +98,7 @@ const GroupCard = ({
                         : user.username || ""
                     }
                     src={user.photo_url}
-                    size={idx === 0 ? PARTICIPANT_SIZE + 6 : PARTICIPANT_SIZE}
+                    size={idx === 0 ? 24 : PARTICIPANT_SIZE}
                   />
                 </div>
               )
@@ -122,8 +119,6 @@ const GroupCard = ({
           </div>
         )}
       </div>
-
-      {/* Правая колонка — долги */}
       <div className="text-xs text-[var(--tg-hint-color)] ml-4 shrink-0">
         {t("debts_reserved")}
       </div>
