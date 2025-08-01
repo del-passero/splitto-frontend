@@ -50,7 +50,7 @@ const GroupCard = ({
       onClick={onClick}
       className={`
         w-full flex items-center px-4
-        min-h-[52px] bg-transparent transition
+        min-h-[64px] bg-transparent transition
         ${className}
       `}
       aria-label={group.name}
@@ -62,13 +62,13 @@ const GroupCard = ({
       {/* Правая часть (название + участники) */}
       <div className="flex-1 min-w-0 ml-4 flex flex-col justify-center">
         {/* Название группы крупным шрифтом */}
-        <div className="text-lg font-bold text-[var(--tg-text-color)] truncate">
+        <div className="text-[17px] font-bold text-[var(--tg-theme-text-color)] truncate">
           {group.name}
         </div>
 
         {/* Участники */}
         {members.length > 0 ? (
-          <div className="flex items-center mt-1">
+          <div className="flex items-center mt-0">
             {displayedMembers.map((member, idx) => {
               const user = member.user || member
               return (

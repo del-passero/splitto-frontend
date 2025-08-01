@@ -9,8 +9,7 @@ const TopInfoRow = ({ count }: Props) => {
   return (
     <div
       className="
-        text-base font-bold
-        text-[var(--tg-link-color)]
+        text-[15px] font-medium text-[#3390ec]
         px-4 pt-3 pb-1
         text-left
         select-none
