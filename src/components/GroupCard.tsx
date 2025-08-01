@@ -21,8 +21,6 @@ const GroupCard = ({
   className = ""
 }: Props) => {
   const { t } = useTranslation()
-
-  // Локальное состояние участников
   const [members, setMembers] = useState<GroupMember[]>(group.members || [])
 
   useEffect(() => {
@@ -31,18 +29,15 @@ const GroupCard = ({
         .then(data => {
           if (data.members) setMembers(data.members)
         })
-        .catch(err => console.error("Ошибка загрузки участников:", err))
+        .catch(() => {})
     }
   }, [group.id, group.members])
 
   const ownerId = group.owner_id
-
-  // Сортировка: владелец первым
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
     ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
   ]
-
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
 
@@ -50,20 +45,20 @@ const GroupCard = ({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center px-4 py-3 ${className}`}
+      className={`
+        w-full flex items-center px-1 py-3 bg-transparent
+        transition
+        ${className}
+      `}
       aria-label={group.name}
+      style={{ minHeight: 56 }}
     >
-      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={40} className="flex-shrink-0" />
 
-      {/* Правая часть (название + участники) */}
       <div className="flex-1 min-w-0 ml-3">
-        {/* Название группы */}
         <div className="text-base font-semibold text-[var(--tg-text-color)] truncate">
           {group.name}
         </div>
-
-        {/* Участники */}
         {members.length > 0 ? (
           <div className="flex items-center mt-1">
             {displayedMembers.map((member, idx) => {
@@ -116,8 +111,6 @@ const GroupCard = ({
           </div>
         )}
       </div>
-
-      {/* Правая колонка — долги */}
       <div className="text-xs text-[var(--tg-hint-color)] ml-3 shrink-0">
         {t("debts_reserved")}
       </div>
