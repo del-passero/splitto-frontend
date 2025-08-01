@@ -15,7 +15,7 @@ type Props = {
 }
 
 const AVATAR_SIZE = 44
-const PARTICIPANT_SIZE = 20
+const PARTICIPANT_SIZE = 24
 
 const GroupCard = ({
   group,
@@ -54,21 +54,21 @@ const GroupCard = ({
         ${className}
       `}
       aria-label={group.name}
-      style={{ minHeight: 52 }}
+      style={{ minHeight: 76 }}
     >
-      {/* Аватар группы — ровно по высоте карточки */}
+      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={AVATAR_SIZE} className="flex-shrink-0" />
 
-      {/* Правая часть (название + участники) */}
-      <div className="flex-1 min-w-0 ml-4 flex flex-col justify-center h-full">
-        {/* Название группы крупным шрифтом */}
+      {/* Правая часть: flex-col, название сверху, аватарки ниже */}
+      <div className="flex flex-col justify-center flex-1 min-w-0 ml-4">
+        {/* Название группы */}
         <div className="text-[17px] font-bold text-[var(--tg-text-color)] truncate">
           {group.name}
         </div>
 
-        {/* Участники */}
+        {/* Участники (аватарки ниже названия) */}
         {members.length > 0 ? (
-          <div className="flex items-center h-full">
+          <div className="flex items-center pt-1">
             {displayedMembers.map((member, idx) => {
               const user = member.user || member
               return (
@@ -80,8 +80,8 @@ const GroupCard = ({
                       : "border-[var(--tg-card-bg)]"
                   } bg-[var(--tg-bg-color)]`}
                   style={{
-                    width: idx === 0 ? 24 : PARTICIPANT_SIZE,
-                    height: idx === 0 ? 24 : PARTICIPANT_SIZE,
+                    width: idx === 0 ? 28 : PARTICIPANT_SIZE,
+                    height: idx === 0 ? 28 : PARTICIPANT_SIZE,
                     marginLeft: idx > 0 ? -7 : 0,
                     zIndex: maxAvatars - idx
                   }}
@@ -98,7 +98,7 @@ const GroupCard = ({
                         : user.username || ""
                     }
                     src={user.photo_url}
-                    size={idx === 0 ? 24 : PARTICIPANT_SIZE}
+                    size={idx === 0 ? 28 : PARTICIPANT_SIZE}
                   />
                 </div>
               )
@@ -113,13 +113,14 @@ const GroupCard = ({
             )}
           </div>
         ) : (
-          <div className="text-xs text-[var(--tg-hint-color)] mt-1">
+          <div className="text-xs text-[var(--tg-hint-color)] pt-1">
             {t("members_count", { count: group.members_count }) ||
               `${group.members_count} участников`}
           </div>
         )}
       </div>
-      <div className="text-xs text-[var(--tg-hint-color)] ml-4 shrink-0">
+      {/* Долги по центру по вертикали */}
+      <div className="text-xs text-[var(--tg-hint-color)] ml-4 shrink-0 flex items-center">
         {t("debts_reserved")}
       </div>
     </button>
