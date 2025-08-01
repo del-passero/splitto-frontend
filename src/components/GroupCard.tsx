@@ -22,7 +22,7 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Локальное состояние для участников, если они не пришли в списке
+  // Локальное состояние участников
   const [members, setMembers] = useState<GroupMember[]>(group.members || [])
 
   useEffect(() => {
@@ -37,7 +37,7 @@ const GroupCard = ({
 
   const ownerId = group.owner_id
 
-  // Сортировка: владелец первый
+  // Сортировка: владелец первым
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
     ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
@@ -50,77 +50,74 @@ const GroupCard = ({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-3 py-3 border-b border-[var(--tg-secondary-bg-color)] ${className}`}
+      className={`w-full flex items-center px-4 py-3 ${className}`}
       aria-label={group.name}
     >
-      {/* Левая часть: аватар группы + название + участники */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        {/* Аватар группы */}
-        <GroupAvatar name={group.name} size={40} />
+      {/* Аватар группы */}
+      <GroupAvatar name={group.name} size={40} className="flex-shrink-0" />
 
-        {/* Название и аватары участников */}
-        <div className="flex flex-col flex-1 min-w-0">
-          <div className="text-base font-semibold text-[var(--tg-text-color)] truncate">
-            {group.name}
-          </div>
+      {/* Правая часть (название + участники) */}
+      <div className="flex-1 min-w-0 ml-3">
+        {/* Название группы */}
+        <div className="text-base font-semibold text-[var(--tg-text-color)] truncate">
+          {group.name}
+        </div>
 
-          {/* Аватары участников */}
-          {members.length > 0 ? (
-            <div className="flex items-center mt-1">
-              {displayedMembers.map((member, idx) => {
-                const user = member.user || member
-                return (
-                  <div
-                    key={user.id}
-                    className={`rounded-full border-2 ${
-                      idx === 0
-                        ? "border-[var(--tg-link-color)]"
-                        : "border-[var(--tg-card-bg)]"
-                    } bg-[var(--tg-bg-color)]`}
-                    style={{
-                      width: idx === 0 ? 38 : 32,
-                      height: idx === 0 ? 38 : 32,
-                      marginLeft: idx > 0 ? -10 : 0,
-                      zIndex: maxAvatars - idx
-                    }}
-                    title={
+        {/* Участники */}
+        {members.length > 0 ? (
+          <div className="flex items-center mt-1">
+            {displayedMembers.map((member, idx) => {
+              const user = member.user || member
+              return (
+                <div
+                  key={user.id}
+                  className={`rounded-full border-2 ${
+                    idx === 0
+                      ? "border-[var(--tg-link-color)]"
+                      : "border-[var(--tg-card-bg)]"
+                  } bg-[var(--tg-bg-color)]`}
+                  style={{
+                    width: idx === 0 ? 38 : 32,
+                    height: idx === 0 ? 38 : 32,
+                    marginLeft: idx > 0 ? -10 : 0,
+                    zIndex: maxAvatars - idx
+                  }}
+                  title={
+                    user.first_name
+                      ? `${user.first_name} ${user.last_name || ""}`.trim()
+                      : user.username || ""
+                  }
+                >
+                  <Avatar
+                    name={
                       user.first_name
                         ? `${user.first_name} ${user.last_name || ""}`.trim()
                         : user.username || ""
                     }
-                  >
-                    <Avatar
-                      name={
-                        user.first_name
-                          ? `${user.first_name} ${user.last_name || ""}`.trim()
-                          : user.username || ""
-                      }
-                      src={user.photo_url}
-                      size={idx === 0 ? 38 : 32}
-                    />
-                  </div>
-                )
-              })}
-              {/* +N, если участников больше, чем maxAvatars */}
-              {hiddenCount > 0 && (
-                <div
-                  className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
-                  style={{ width: 32, height: 32 }}
-                >
-                  +{hiddenCount}
+                    src={user.photo_url}
+                    size={idx === 0 ? 38 : 32}
+                  />
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--tg-hint-color)] mt-1">
-              {t("members_count", { count: group.members_count }) ||
-                `${group.members_count} участников`}
-            </div>
-          )}
-        </div>
+              )
+            })}
+            {hiddenCount > 0 && (
+              <div
+                className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
+                style={{ width: 32, height: 32 }}
+              >
+                +{hiddenCount}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-[var(--tg-hint-color)] mt-1">
+            {t("members_count", { count: group.members_count }) ||
+              `${group.members_count} участников`}
+          </div>
+        )}
       </div>
 
-      {/* Правая часть: placeholder для долгов */}
+      {/* Правая колонка — долги */}
       <div className="text-xs text-[var(--tg-hint-color)] ml-3 shrink-0">
         {t("debts_reserved")}
       </div>
