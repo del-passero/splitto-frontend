@@ -1,14 +1,11 @@
 // src/pages/GroupsPage.tsx
 
 /**
- * Страница "Группы": 
- * - TopInfoRow (информер о количестве групп) — только если есть группы
- * - FiltersRow (фильтр, поиск, сортировка) — только если есть группы
- * - CardSection с GroupsList (карточки групп) — только если есть группы
+ * Страница "Группы":
+ * - FiltersRow (поиск/фильтр) — только если есть группы
+ * - CardSection: TopInfoRow (информер о количестве групп) + GroupsList (карточки групп) — только если есть группы
  * - EmptyGroups — если групп нет (всё остальное скрыто)
- * 
- * Все надписи через i18n, стили строго в твоём стиле. 
- * Используется Zustand (store) для загрузки групп пользователя.
+ * Все надписи через i18n, стили строго Wallet-style.
  */
 
 import { useEffect, useState } from "react"
@@ -30,12 +27,10 @@ const GroupsPage = () => {
   } = useGroupsStore()
   const [search, setSearch] = useState("")
 
-  // Загружаем группы при появлении user
   useEffect(() => {
     if (user?.id) fetchGroups(user.id)
   }, [user?.id, fetchGroups])
 
-  // Поиск по названию группы
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(search.toLowerCase())
   )
@@ -51,34 +46,33 @@ const GroupsPage = () => {
 
   return (
     <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
-      {/* TOP INFO ROW — только если группы есть */}
-      {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
-        <TopInfoRow count={filteredGroups.length} />
-      )}
-
       {/* FILTERS ROW — только если группы есть */}
       {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
         <FiltersRow
           search={search}
           setSearch={setSearch}
-          // Можно добавить фильтрацию/сортировку
         />
       )}
 
-      {/* Основная секция карточек групп */}
-      <CardSection>
-        {groupsLoading && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
-        )}
-        {groupsError && (
-          <div className="text-center py-6 text-red-500">{groupsError}</div>
-        )}
-
-        {/* Список карточек */}
-        {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
+      {/* CardSection с заголовком Wallet-style и списком групп */}
+      {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
+        <CardSection noPadding>
+          <TopInfoRow count={filteredGroups.length} />
           <GroupsList groups={filteredGroups} />
-        )}
-      </CardSection>
+        </CardSection>
+      )}
+
+      {/* Лоадер/ошибка — если надо */}
+      {groupsLoading && (
+        <CardSection>
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+        </CardSection>
+      )}
+      {groupsError && (
+        <CardSection>
+          <div className="text-center py-6 text-red-500">{groupsError}</div>
+        </CardSection>
+      )}
     </div>
   )
 }
