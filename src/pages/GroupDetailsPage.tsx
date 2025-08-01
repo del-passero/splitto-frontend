@@ -1,31 +1,41 @@
 // src/pages/GroupDetailsPage.tsx
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
-import { useGroupsStore } from "../store/groupsStore"
 import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
 import Avatar from "../components/Avatar"
+import { groupsApi } from "../api/groupsApi"
+import type { Group } from "../types/group"
 
 const GroupDetailsPage = () => {
   const { t } = useTranslation()
   const { groupId } = useParams()
   const id = Number(groupId)
 
-  const {
-    groupDetails,
-    groupDetailsLoading,
-    groupDetailsError,
-    fetchGroupDetails
-  } = useGroupsStore()
+  const [group, setGroup] = useState<Group | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Загружаем детали группы при маунте
   useEffect(() => {
-    if (id) fetchGroupDetails(id)
-  }, [id, fetchGroupDetails])
+    const fetchDetails = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await groupsApi.getGroupDetails(id)
+        setGroup(data)
+      } catch (err: any) {
+        setError(err.message || "Ошибка загрузки группы")
+      } finally {
+        setLoading(false)
+      }
+    }
 
-  // Состояния загрузки и ошибки
-  if (groupDetailsLoading) {
+    if (id) fetchDetails()
+  }, [id])
+
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
         {t("loading") || "Загрузка..."}
@@ -33,15 +43,15 @@ const GroupDetailsPage = () => {
     )
   }
 
-  if (groupDetailsError) {
+  if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-red-500">
-        {groupDetailsError}
+        {error}
       </div>
     )
   }
 
-  if (!groupDetails) {
+  if (!group) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
         {t("group_not_found") || "Группа не найдена"}
@@ -49,7 +59,6 @@ const GroupDetailsPage = () => {
     )
   }
 
-  const group = groupDetails
   const ownerId = group.owner_id
   const members = group.members ?? []
   const sortedMembers = [
