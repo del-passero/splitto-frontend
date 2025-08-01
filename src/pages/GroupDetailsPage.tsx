@@ -1,5 +1,6 @@
 // src/pages/GroupDetailsPage.tsx
 
+import { useEffect } from "react"
 import { useParams } from "react-router-dom"
 import { useGroupsStore } from "../store/groupsStore"
 import { useTranslation } from "react-i18next"
@@ -11,14 +12,36 @@ const GroupDetailsPage = () => {
   const { groupId } = useParams()
   const id = Number(groupId)
 
-  const group = useGroupsStore(state =>
-    state.groups.find(g => g.id === id)
-  )
+  const {
+    groupDetails,
+    groupDetailsLoading,
+    groupDetailsError,
+    fetchGroupDetails
+  } = useGroupsStore()
 
-  console.log("[GroupDetailsPage] ID из URL:", id)
-  console.log("[GroupDetailsPage] Найденная группа:", group)
+  // Загружаем детали группы при маунте
+  useEffect(() => {
+    if (id) fetchGroupDetails(id)
+  }, [id, fetchGroupDetails])
 
-  if (!group) {
+  // Состояния загрузки и ошибки
+  if (groupDetailsLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
+        {t("loading") || "Загрузка..."}
+      </div>
+    )
+  }
+
+  if (groupDetailsError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-red-500">
+        {groupDetailsError}
+      </div>
+    )
+  }
+
+  if (!groupDetails) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
         {t("group_not_found") || "Группа не найдена"}
@@ -26,20 +49,17 @@ const GroupDetailsPage = () => {
     )
   }
 
+  const group = groupDetails
   const ownerId = group.owner_id
   const members = group.members ?? []
-
-  console.log("[GroupDetailsPage] Участники группы (group.members):", members)
-
   const sortedMembers = [
-    ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
-    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
+    ...members.filter(m => m.user.id === ownerId),
+    ...members.filter(m => m.user.id !== ownerId)
   ]
-
-  console.log("[GroupDetailsPage] Отсортированные участники:", sortedMembers)
 
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] py-6">
+      {/* Шапка */}
       <div className="flex flex-col items-center mb-6">
         <GroupAvatar name={group.name} size={72} className="mb-2" />
         <div className="font-semibold text-2xl text-[var(--tg-text-color)] mb-1">
@@ -51,43 +71,40 @@ const GroupDetailsPage = () => {
           </div>
         )}
 
+        {/* Аватары участников */}
         <div className="flex items-center mt-2">
-          {sortedMembers.map((member, idx) => {
-            const user = member.user || member
-            console.log(`[GroupDetailsPage] Участник #${idx}:`, user)
-
-            return (
-              <div
-                key={user.id}
-                className={`rounded-full border-2 ${
-                  idx === 0 ? "border-[var(--tg-link-color)]" : "border-[var(--tg-card-bg)]"
-                } bg-[var(--tg-bg-color)]`}
-                style={{
-                  width: idx === 0 ? 42 : 36,
-                  height: idx === 0 ? 42 : 36,
-                  marginLeft: idx > 0 ? -10 : 0
-                }}
-                title={
-                  user.first_name
-                    ? `${user.first_name} ${user.last_name || ""}`.trim()
-                    : user.username || ""
+          {sortedMembers.map((member, idx) => (
+            <div
+              key={member.user.id}
+              className={`rounded-full border-2 ${
+                idx === 0 ? "border-[var(--tg-link-color)]" : "border-[var(--tg-card-bg)]"
+              } bg-[var(--tg-bg-color)]`}
+              style={{
+                width: idx === 0 ? 42 : 36,
+                height: idx === 0 ? 42 : 36,
+                marginLeft: idx > 0 ? -10 : 0
+              }}
+              title={
+                member.user.first_name
+                  ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                  : member.user.username || ""
+              }
+            >
+              <Avatar
+                name={
+                  member.user.first_name
+                    ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                    : member.user.username || ""
                 }
-              >
-                <Avatar
-                  name={
-                    user.first_name
-                      ? `${user.first_name} ${user.last_name || ""}`.trim()
-                      : user.username || ""
-                  }
-                  src={user.photo_url}
-                  size={idx === 0 ? 42 : 36}
-                />
-              </div>
-            )
-          })}
+                src={member.user.photo_url}
+                size={idx === 0 ? 42 : 36}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
+      {/* Остальной контент */}
       <div className="px-4">
         <div className="text-[var(--tg-hint-color)] text-center py-8">
           {t("group_details_coming_soon") || "Функционал группы скоро будет добавлен"}

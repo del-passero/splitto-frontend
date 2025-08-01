@@ -20,19 +20,14 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // ЛОГИ
-  console.log("[GroupCard] Рендер группы:", group)
-  console.log("[GroupCard] Участники группы (group.members):", group.members)
-
   const members: GroupMember[] = group.members || []
   const ownerId = group.owner_id
 
+  // Владелец первый
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
-    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId)),
+    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
   ]
-
-  console.log("[GroupCard] Отсортированные участники:", sortedMembers)
 
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
@@ -49,21 +44,17 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
-      {/* Левая часть — аватар группы */}
+      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Центральная часть */}
+      {/* Название и аватары участников */}
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">
-          {group.name}
-        </div>
+        <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">{group.name}</div>
 
-        {/* Аватары участников */}
+        {/* Ряд аватаров участников */}
         <div className="flex items-center mt-1">
           {displayedMembers.map((member, idx) => {
             const user = member.user || member // поддержка обеих структур
-            console.log(`[GroupCard] Участник #${idx}:`, user)
-
             return (
               <div
                 key={user.id}
@@ -94,7 +85,6 @@ const GroupCard = ({
               </div>
             )
           })}
-
           {hiddenCount > 0 && (
             <div
               className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
@@ -106,7 +96,7 @@ const GroupCard = ({
         </div>
       </div>
 
-      {/* Правая часть */}
+      {/* Справа текст */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
