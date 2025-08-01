@@ -1,22 +1,26 @@
 // src/components/CardSection.tsx
-import { ReactNode, CSSProperties } from "react"
+
+/**
+ * Универсальный контейнер для секций (например, FiltersRow, GroupsList).
+ * Стили — Wallet/Telegram: скругления, шадоу, аккуратные отступы, поддержка темы.
+ * Используется для обёртки фильтров, списка групп и т.д.
+ */
+
 type Props = {
-  title?: string
-  children: ReactNode
+  children: React.ReactNode
   className?: string
-  style?: CSSProperties
 }
-const CardSection = ({ title, children, className = "", style }: Props) => (
+
+const CardSection = ({ children, className = "" }: Props) => (
   <section
-    className={`rounded-2xl shadow-tg-card bg-[var(--tg-card-bg)] w-full max-w-md mx-auto px-5 py-4 ${className}`}
-    style={style}
+    className={`
+      w-full rounded-2xl bg-[var(--tg-card-bg)] shadow-tg-card
+      px-2 py-2 mb-3
+      ${className}
+    `}
   >
-    {title && (
-      <div className="px-1 pb-1 pt-2 font-semibold text-[var(--tg-link-color)] text-[17px]">
-        {title}
-      </div>
-    )}
-    <div className="flex flex-col">{children}</div>
+    {children}
   </section>
 )
+
 export default CardSection

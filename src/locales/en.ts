@@ -14,9 +14,6 @@ export default {
   no_participants: "No participants",
 
   // --- Groups & Members ---
-  groups_count: "{{count}} groups",
-  search_group_placeholder: "Search group...",
-  empty_groups: "You don't have any groups yet",
   group_name_placeholder: "Group name",
   group_description_placeholder: "Group description",
   group_name_required: "Enter group name",
@@ -26,8 +23,13 @@ export default {
   add_participants: "Add participants",
   members: "Members",
   empty_members: "No members",
-  debts_reserved: "Debts reserved",
   owner: "Owner",
+  groups_count: "{{count}} group(s)",
+  groups_count_full: "You have {{count}} active groups",
+  empty_groups: "You don't have any groups yet",
+  empty_groups_hint: "Create your first group to manage expenses together!",
+  search_group_placeholder: "Search group...",
+  debts_reserved: "Debts — coming soon!",
 
   // --- Invitations (Invites) ---
   create_invite_link: "Create invite link",

@@ -1,94 +1,86 @@
 // src/pages/GroupsPage.tsx
 
 /**
- * Страница "Группы" — отображает список всех групп, где состоит пользователь.
- * Вверху: заголовок, поиск, фильтр, сортировка.
- * Внутри CardSection — список GroupCard.
- * При клике на карточку — переход на страницу отдельной группы.
- * Все подписи через i18n, цвета и стили — строго в твоём стиле.
- * Используются только твои готовые компоненты: SearchBar, SortButton, FilterButton, CardSection.
+ * Страница "Группы" — выводит список всех групп, где состоит пользователь.
+ * Использует Zustand (useGroupsStore) для загрузки/хранения групп, а не прямой вызов API.
+ * Шапка: секция-количество групп (только если есть группы).
+ * Два блока через CardSection: FiltersRow (поиск/фильтр/сортировка) и GroupsList (карточки групп).
+ * Если групп нет — EmptyGroups.
+ * Всё только через i18n, цвета, отступы и стили строго Wallet/Telegram.
  */
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import CardSection from "../components/CardSection"
-import SearchBar from "../components/SearchBar"
-import SortButton from "../components/SortButton"
-import FilterButton from "../components/FilterButton"
-import GroupCard from "../components/GroupCard"
-import { useGroupsStore } from "../store/groupsStore"
 import { useUserStore } from "../store/userStore"
+import { useGroupsStore } from "../store/groupsStore"
+import CardSection from "../components/CardSection"
+import GroupsList from "../components/GroupsList"
+import FiltersRow from "../components/FiltersRow"
+import EmptyGroups from "../components/EmptyGroups"
+import SectionTitle from "../components/SectionTitle"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [search, setSearch] = useState("")
-  const { user } = useUserStore()              // Текущий пользователь
+  const user = useUserStore(state => state.user)
   const {
-    groups, groupsLoading, groupsError,
-    fetchGroups
+    groups,
+    groupsLoading,
+    groupsError,
+    fetchGroups,
   } = useGroupsStore()
 
-  // Загружаем группы пользователя при первом рендере/смене пользователя
+  // Локальный стейт поиска (можно вынести в store если надо)
+  const [search, setSearch] = useState("")
+
+  // Загрузка групп при инициализации/смене пользователя
   useEffect(() => {
     if (user?.id) fetchGroups(user.id)
   }, [user?.id, fetchGroups])
 
-  // Поиск по названию группы
+  // Фильтрация по поиску (если нужно ещё фильтровать/сортировать — сюда)
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  return (
-    <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
-      {/* Шапка страницы */}
-      <header className="flex items-center justify-between px-4 pt-6 pb-2">
-        <h1 className="text-xl font-bold text-[var(--tg-text-color)]">
-          {t("groups")}
-        </h1>
-        {/* Можно добавить подсчёт групп: */}
-        <span className="ml-2 text-sm text-[var(--tg-hint-color)] font-medium">
-          {filteredGroups.length > 0 && t("groups_count", { count: filteredGroups.length })}
-        </span>
-      </header>
-
-      {/* Панель поиска и фильтров */}
-      <div className="flex items-center gap-2 mb-4 px-4">
-        <FilterButton onClick={() => { /* Заглушка для фильтра */ }} />
-        <div className="flex-1">
-          <SearchBar
-            value={search}
-            onChange={setSearch}
-            placeholder={t("search_group_placeholder") || ""}
-          />
-        </div>
-        <SortButton onClick={() => { /* Заглушка для сортировки */ }} />
+  // Если идёт загрузка — отображаем лоадер
+  if (groupsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh] text-[var(--tg-hint-color)]">
+        {t("loading")}
       </div>
+    )
+  }
 
-      {/* Основная секция со списком групп */}
+  // Если нет групп — показываем EmptyGroups
+  if (!groupsLoading && filteredGroups.length === 0) {
+    return <EmptyGroups />
+  }
+
+  // Основной контент страницы — группы есть
+  return (
+    <div className="flex flex-col gap-3 w-full min-h-screen bg-[var(--tg-bg-color)] pb-6">
+      {/* Заголовок-счётчик */}
+      <SectionTitle>
+        {t("groups_count_full", { count: filteredGroups.length })}
+      </SectionTitle>
+
+      {/* FiltersRow внутри CardSection */}
       <CardSection>
-        {/* Лоадер/ошибка/пусто */}
-        {groupsLoading && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
-        )}
-        {groupsError && (
-          <div className="text-center py-6 text-red-500">{groupsError}</div>
-        )}
-        {!groupsLoading && !groupsError && filteredGroups.length === 0 && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("empty_groups")}</div>
-        )}
+        <FiltersRow
+          search={search}
+          setSearch={setSearch}
+          // если нужно — сюда можно добавить сортировку/фильтрацию
+        />
+      </CardSection>
 
-        {/* Список карточек групп */}
-        <div className="flex flex-col gap-2">
-          {filteredGroups.map(group => (
-            <GroupCard
-              key={group.id}
-              group={group}
-              onClick={() => navigate(`/groups/${group.id}`)}
-            />
-          ))}
-        </div>
+      {/* Список карточек групп внутри CardSection */}
+      <CardSection>
+        <GroupsList
+          groups={filteredGroups}
+          onGroupClick={groupId => navigate(`/groups/${groupId}`)}
+        />
       </CardSection>
     </div>
   )

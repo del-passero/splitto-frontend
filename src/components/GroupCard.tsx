@@ -2,10 +2,13 @@
 
 /**
  * Карточка группы для списка на странице "Группы".
- * Отображает аватар группы (скруглённый квадрат), название, аватарки участников (владелец первый и выделен размером),
- * а также резервирует место под зону "Вы должны / Вам должны" (пока просто заглушка).
- * Вся карточка кликабельна — при клике вызывает onClick.
- * Все подписи только через i18n, цвета и отступы — строго в стиле Telegram.
+ * — Аватар группы (скруглённый квадрат, слева)
+ * — Название группы
+ * — Ряд аватарок участников (владелец — первым и чуть больше)
+ * — Кружок "+N", если участников больше maxAvatars
+ * — Справа — placeholder под долги (t("debts_reserved"))
+ * — Вся карточка кликабельна
+ * — Всё в стиле Telegram/Wallet, поддержка темы, только i18n
  */
 
 import GroupAvatar from "./GroupAvatar"
@@ -14,10 +17,10 @@ import { useTranslation } from "react-i18next"
 import type { Group, GroupMember } from "../types/group"
 
 type Props = {
-  group: Group                          // Группа для отображения
-  onClick: () => void                   // Обработчик клика по карточке
-  maxAvatars?: number                   // Сколько максимум аватаров участников показывать (по умолчанию 5)
-  className?: string                    // Дополнительные классы
+  group: Group
+  onClick: () => void
+  maxAvatars?: number
+  className?: string
 }
 
 const GroupCard = ({
@@ -28,20 +31,17 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Используем preview_members (см. backend)!
-  // Если его нет — подстрахуемся пустым массивом.
-  const members: GroupMember[] = group.preview_members ?? []
-
+  // Сортировка: владелец всегда первый
+  const members: GroupMember[] = group.members ?? []
   const ownerId = group.owner_id
-  // Владелец всегда первый, выделен крупнее. Далее — остальные участники.
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId),
   ]
 
-  // Если участников больше maxAvatars — показываем "+N" кружок
+  // maxAvatars, +N если не все помещаются
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
-  const hiddenCount = (group.members_count ?? displayedMembers.length) - displayedMembers.length
+  const hiddenCount = sortedMembers.length - displayedMembers.length
 
   return (
     <button
@@ -55,14 +55,12 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
-      {/* Левая часть — аватар группы */}
+      {/* Аватар группы (слева) */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Центральная часть — название и аватарки участников */}
+      {/* Центральная часть — название и аватары участников */}
       <div className="flex-1 min-w-0">
-        {/* Название группы */}
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">{group.name}</div>
-        {/* Ряд аватаров участников */}
         <div className="flex items-center mt-1 space-x-[-12px]">
           {displayedMembers.map((member, idx) => (
             <div
@@ -94,7 +92,6 @@ const GroupCard = ({
               />
             </div>
           ))}
-          {/* Если участников больше, чем показываем — "+N" кружок */}
           {hiddenCount > 0 && (
             <div
               className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
@@ -106,9 +103,8 @@ const GroupCard = ({
         </div>
       </div>
 
-      {/* Правая часть — зарезервированная зона под долги */}
+      {/* Правая часть — placeholder под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
-        {/* Пока заглушка */}
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
         </span>

@@ -14,9 +14,6 @@ export default {
   no_participants: "Нет участников",
 
   // --- Группы и участники ---
-  groups_count: "{{count}} групп(а)",
-  search_group_placeholder: "Поиск группы...",
-  empty_groups: "У вас пока нет групп",
   group_name_placeholder: "Название группы",
   group_description_placeholder: "Описание группы",
   group_name_required: "Введите название группы",
@@ -26,8 +23,13 @@ export default {
   add_participants: "Добавить участников",
   members: "Участники",
   empty_members: "Нет участников",
-  debts_reserved: "Резерв долга",
   owner: "Создатель",
+  groups_count: "{{count}} групп(а)",
+  groups_count_full: "У вас {{count}} активных групп",
+  empty_groups: "У вас ещё нет ни одной группы",
+  empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
+  search_group_placeholder: "Поиск группы...",
+  debts_reserved: "Долги — скоро!",
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",
