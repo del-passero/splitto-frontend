@@ -1,14 +1,8 @@
 // src/components/GroupCard.tsx
 
 /**
- * Карточка группы для списка на странице "Группы".
- * — Аватар группы (скруглённый квадрат, слева)
- * — Название группы
- * — Ряд аватарок участников (владелец — первым и чуть больше)
- * — Кружок "+N", если участников больше maxAvatars
- * — Справа — placeholder под долги (t("debts_reserved"))
- * — Вся карточка кликабельна
- * — Всё в стиле Telegram/Wallet, поддержка темы, только i18n
+ * Карточка группы для списка: аватар, название, аватарки участников (владелец первый и крупнее), зарезервированная зона под долги.
+ * Кликабельна (button), стилизована строго под Telegram Wallet. Имя участника не выводится.
  */
 
 import GroupAvatar from "./GroupAvatar"
@@ -30,16 +24,16 @@ const GroupCard = ({
   className = ""
 }: Props) => {
   const { t } = useTranslation()
-
-  // Сортировка: владелец всегда первый
   const members: GroupMember[] = group.members ?? []
   const ownerId = group.owner_id
+
+  // Владелец — всегда первый
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId),
   ]
 
-  // maxAvatars, +N если не все помещаются
+  // Если участников больше maxAvatars — показываем "+N"
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
 
@@ -55,10 +49,10 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
-      {/* Аватар группы (слева) */}
+      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Центральная часть — название и аватары участников */}
+      {/* Центр — название и аватарки участников */}
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">{group.name}</div>
         <div className="flex items-center mt-1 space-x-[-12px]">
@@ -75,18 +69,10 @@ const GroupCard = ({
                 height: idx === 0 ? 38 : 32,
                 marginLeft: idx > 0 ? -10 : 0,
               }}
-              title={
-                member.user.first_name
-                  ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
-                  : member.user.username || ""
-              }
+              title={""}
             >
               <Avatar
-                name={
-                  member.user.first_name
-                    ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
-                    : member.user.username || ""
-                }
+                name=""
                 src={member.user.photo_url}
                 size={idx === 0 ? 38 : 32}
               />
@@ -103,7 +89,7 @@ const GroupCard = ({
         </div>
       </div>
 
-      {/* Правая часть — placeholder под долги */}
+      {/* Правая часть — зона под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
