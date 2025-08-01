@@ -1,9 +1,8 @@
+// src/components/GroupCard.tsx
+
 /**
  * Карточка группы для списка на странице "Группы".
- * Слева аватар группы, далее название и ряд аватаров участников (владелец первый и больше).
- * Если участников больше maxAvatars — "+N".
- * Правая часть — заглушка под долги.
- * Всё стилизовано строго в стиле Wallet и webapp Telegram.
+ * Строго рабочий вариант — как было!
  */
 
 import GroupAvatar from "./GroupAvatar"
@@ -26,15 +25,15 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Участники (владелец первый, остальные после)
-  const members: GroupMember[] = group.members ?? []
+  // Если group.members нет — подстраховка (чтобы не падало!)
+  const members: GroupMember[] = group.members || []
   const ownerId = group.owner_id
+  // Владелец первый, остальные после
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId),
   ]
-
-  // Ограничение на количество аватаров
+  // maxAvatars для аватаров
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
 
@@ -63,14 +62,15 @@ const GroupCard = ({
             <div
               key={member.user.id}
               className={`
-                z-[${maxAvatars - idx}]
+                rounded-full
                 ${idx === 0 ? "border-2 border-[var(--tg-link-color)]" : "border-2 border-[var(--tg-card-bg)]"}
-                rounded-full bg-[var(--tg-bg-color)]
+                bg-[var(--tg-bg-color)]
               `}
               style={{
                 width: idx === 0 ? 38 : 32,
                 height: idx === 0 ? 38 : 32,
                 marginLeft: idx > 0 ? -10 : 0,
+                zIndex: maxAvatars - idx
               }}
               title={
                 member.user.first_name
@@ -89,7 +89,7 @@ const GroupCard = ({
               />
             </div>
           ))}
-          {/* Если участников больше, чем показываем — "+N" кружок */}
+          {/* "+N" кружок если участников больше maxAvatars */}
           {hiddenCount > 0 && (
             <div
               className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
@@ -101,7 +101,7 @@ const GroupCard = ({
         </div>
       </div>
 
-      {/* Правая часть — зарезервированная зона под долги */}
+      {/* Правая часть — заглушка под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
