@@ -1,86 +1,89 @@
 // src/pages/GroupsPage.tsx
 
 /**
- * Страница "Группы" — выводит список всех групп, где состоит пользователь.
- * Использует Zustand (useGroupsStore) для загрузки/хранения групп, а не прямой вызов API.
- * Шапка: секция-количество групп (только если есть группы).
- * Два блока через CardSection: FiltersRow (поиск/фильтр/сортировка) и GroupsList (карточки групп).
- * Если групп нет — EmptyGroups.
- * Всё только через i18n, цвета, отступы и стили строго Wallet/Telegram.
+ * Страница "Группы" — отображает список всех групп, где состоит пользователь.
+ * Вверху: строка с количеством групп, FiltersRow (фильтр/поиск/сорт).
+ * Ниже — CardSection с карточками групп.
+ * Если нет групп — компонент EmptyGroups.
  */
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { useUserStore } from "../store/userStore"
-import { useGroupsStore } from "../store/groupsStore"
 import CardSection from "../components/CardSection"
-import GroupsList from "../components/GroupsList"
 import FiltersRow from "../components/FiltersRow"
+import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
-import SectionTitle from "../components/SectionTitle"
+import { useGroupsStore } from "../store/groupsStore"
+import { useUserStore } from "../store/userStore"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const user = useUserStore(state => state.user)
+  const [search, setSearch] = useState("")
+  const { user } = useUserStore()              // Текущий пользователь
   const {
-    groups,
-    groupsLoading,
-    groupsError,
-    fetchGroups,
+    groups, groupsLoading, groupsError,
+    fetchGroups
   } = useGroupsStore()
 
-  // Локальный стейт поиска (можно вынести в store если надо)
-  const [search, setSearch] = useState("")
-
-  // Загрузка групп при инициализации/смене пользователя
+  // Загружаем группы пользователя при первом рендере/смене пользователя
   useEffect(() => {
     if (user?.id) fetchGroups(user.id)
   }, [user?.id, fetchGroups])
 
-  // Фильтрация по поиску (если нужно ещё фильтровать/сортировать — сюда)
+  // Фильтрация групп по названию
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  // Если идёт загрузка — отображаем лоадер
-  if (groupsLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[40vh] text-[var(--tg-hint-color)]">
-        {t("loading")}
-      </div>
-    )
-  }
+  const hasGroups = filteredGroups.length > 0
 
-  // Если нет групп — показываем EmptyGroups
-  if (!groupsLoading && filteredGroups.length === 0) {
-    return <EmptyGroups />
-  }
-
-  // Основной контент страницы — группы есть
   return (
-    <div className="flex flex-col gap-3 w-full min-h-screen bg-[var(--tg-bg-color)] pb-6">
-      {/* Заголовок-счётчик */}
-      <SectionTitle>
-        {t("groups_count_full", { count: filteredGroups.length })}
-      </SectionTitle>
+    <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
+      {/* Строка с количеством групп — только если группы есть */}
+      {hasGroups && (
+        <div className="flex items-center px-4 pt-6 pb-2">
+          <span className="text-xl font-bold text-[var(--tg-text-color)]">
+            {t("groups")}
+          </span>
+          <span className="ml-2 text-sm text-[var(--tg-hint-color)] font-medium">
+            {t("groups_count", { count: filteredGroups.length })}
+          </span>
+        </div>
+      )}
 
-      {/* FiltersRow внутри CardSection */}
-      <CardSection>
-        <FiltersRow
-          search={search}
-          setSearch={setSearch}
-          // если нужно — сюда можно добавить сортировку/фильтрацию
-        />
-      </CardSection>
+      {/* FiltersRow — только если есть группы */}
+      {hasGroups && (
+        <CardSection className="mb-2">
+          <FiltersRow
+            value={search}
+            onChange={setSearch}
+            onFilterClick={() => { /* Заглушка фильтра */ }}
+            onSortClick={() => { /* Заглушка сортировки */ }}
+            placeholder={t("search_group_placeholder")}
+          />
+        </CardSection>
+      )}
 
-      {/* Список карточек групп внутри CardSection */}
+      {/* Основная секция со списком групп или заглушкой */}
       <CardSection>
-        <GroupsList
-          groups={filteredGroups}
-          onGroupClick={groupId => navigate(`/groups/${groupId}`)}
-        />
+        {groupsLoading && (
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+        )}
+        {groupsError && (
+          <div className="text-center py-6 text-red-500">{groupsError}</div>
+        )}
+        {!groupsLoading && !groupsError && !hasGroups && (
+          <EmptyGroups />
+        )}
+        {/* Список карточек групп */}
+        {hasGroups && (
+          <GroupsList
+            groups={filteredGroups}
+            onGroupClick={group => navigate(`/groups/${group.id}`)}
+          />
+        )}
       </CardSection>
     </div>
   )

@@ -2,20 +2,22 @@
 
 /**
  * Отображает список групп в виде карточек (GroupCard).
- * Получает массив групп и onGroupClick (функция перехода на details).
+ * Получает массив групп и функцию onGroupClick (переход на details).
  * Если список пуст — ничего не рендерит (EmptyGroups отображается на уровне страницы).
+ * Все стили строго по твоим правилам. Карточки — кликабельные.
  */
 
 import GroupCard from "./GroupCard"
 import type { Group } from "../types/group"
 
 type Props = {
-  groups: Group[]                      // Список групп для отображения
-  onGroupClick: (groupId: number) => void // Обработчик перехода на детали группы
-  className?: string
+  groups: Group[]                            // Список групп для отображения
+  onGroupClick: (groupId: number) => void    // Обработчик перехода на details
+  className?: string                         // Дополнительные стили
 }
 
 const GroupsList = ({ groups, onGroupClick, className = "" }: Props) => {
+  // Если групп нет — ничего не рендерим (заглушка выше по дереву)
   if (!groups.length) return null
 
   return (
