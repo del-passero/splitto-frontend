@@ -7,6 +7,8 @@ import InviteFriendModal from "../components/InviteFriendModal"
 import FiltersRow from "../components/FiltersRow"
 import TopInfoRow from "../components/TopInfoRow"
 import ContactsList from "../components/ContactsList"
+import EmptyContacts from "../components/EmptyContacts"
+import CardSection from "../components/CardSection"
 import { useFriendsStore } from "../store/friendsStore"
 
 const ContactsPage = () => {
@@ -31,11 +33,14 @@ const ContactsPage = () => {
       {/* Фильтры, поиск, сортировка */}
       <FiltersRow search={search} setSearch={setSearch} />
 
-      {/* Количество контактов */}
-      <TopInfoRow count={filteredFriends.length} labelKey="contacts_count" />
-
-      {/* Список контактов или заглушка */}
-      <ContactsList friends={filteredFriends} loading={loading} error={error} />
+      {filteredFriends.length > 0 ? (
+        <CardSection noPadding>
+          <TopInfoRow count={filteredFriends.length} labelKey="contacts_count" />
+          <ContactsList friends={filteredFriends} loading={loading} error={error} />
+        </CardSection>
+      ) : (
+        <EmptyContacts />
+      )}
 
       {/* Кнопка “Добавить” */}
       <div className="absolute right-6 bottom-[90px] flex flex-col items-center z-40">

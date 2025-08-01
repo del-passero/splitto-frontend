@@ -57,7 +57,7 @@ const GroupsPage = () => {
       {/* CardSection с заголовком Wallet-style и списком групп */}
       {!groupsLoading && !groupsError && filteredGroups.length > 0 && (
         <CardSection noPadding>
-          <TopInfoRow count={filteredGroups.length} />
+          <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
           <GroupsList groups={filteredGroups} />
         </CardSection>
       )}
