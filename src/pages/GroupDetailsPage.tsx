@@ -1,77 +1,76 @@
 // src/pages/GroupDetailsPage.tsx
 
-/**
- * Страница отдельной группы.
- * Вверху: название группы, под ним — описание (если есть).
- * Далее секция участников (CardSection) — вертикальный список аватаров и имён участников.
- * Владелец всегда первый и дополнительно выделен (бейдж или цвет).
- * Все подписи через i18n, оформление строго по твоему стилю и темам.
- */
-
-import { useEffect } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import CardSection from "../components/CardSection"
-import Avatar from "../components/Avatar"
 import { useGroupsStore } from "../store/groupsStore"
+import CardSection from "../components/CardSection"
+import GroupAvatar from "../components/GroupAvatar"
+import Avatar from "../components/Avatar"
+
+/**
+ * Страница отдельной группы.
+ * Показывает детальную инфу: название, описание, аватар, участников (с аватарками), владельца, и т.д.
+ * В дальнейшем здесь появятся вкладки, статистика, долги, настройки и т.д.
+ * Все подписи через i18n. Строгая поддержка темы и визуального стиля.
+ */
 
 const GroupDetailsPage = () => {
+  const { groupId } = useParams<{ groupId: string }>()
   const { t } = useTranslation()
-  const { groupId } = useParams()
-  const {
-    selectedGroup: group,
-    groupLoading,
-    groupError,
-    fetchGroupDetails,
-    clearSelectedGroup,
-  } = useGroupsStore()
+  const { groups } = useGroupsStore()
 
-  // Получаем данные о группе при монтировании/смене groupId
-  useEffect(() => {
-    if (groupId) fetchGroupDetails(Number(groupId))
-    return () => clearSelectedGroup()
-  }, [groupId, fetchGroupDetails, clearSelectedGroup])
+  // Группа по ID (в виде строки и числа для совместимости)
+  const group =
+    groups.find(g => String(g.id) === groupId) ||
+    groups.find(g => Number(g.id) === Number(groupId))
 
-  // Сортируем участников: владелец всегда первый
-  const members = group?.members || []
-  const ownerId = group?.owner_id
+  if (!group) {
+    return (
+      <div className="flex items-center justify-center min-h-screen w-full bg-[var(--tg-bg-color)]">
+        <div className="text-center text-[var(--tg-hint-color)] text-base py-8 px-4">
+          {t("group_not_found")}
+        </div>
+      </div>
+    )
+  }
+
+  // Владлец всегда первый, далее остальные участники (как и на карточке)
+  const members = group.members ?? []
+  const ownerId = group.owner_id
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
-    ...members.filter(m => m.user.id !== ownerId)
+    ...members.filter(m => m.user.id !== ownerId),
   ]
 
   return (
-    <div className="w-full min-h-screen flex flex-col items-center bg-[var(--tg-bg-color)] pb-8">
-      <div className="w-full max-w-md px-4 pt-7 pb-2">
-        {/* Название и описание группы */}
-        {group && (
-          <>
-            <div className="font-bold text-2xl mb-1 text-[var(--tg-text-color)] truncate">{group.name}</div>
-            {group.description && group.description.trim() !== "" && (
-              <div className="text-[var(--tg-hint-color)] text-base mb-4">{group.description}</div>
+    <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center pt-6 pb-8">
+      <CardSection className="mb-4">
+        {/* Верхний блок: Аватар и инфа о группе */}
+        <div className="flex items-center gap-4 mb-3">
+          <GroupAvatar name={group.name} size={60} />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-2xl truncate text-[var(--tg-text-color)]">
+              {group.name}
+            </div>
+            {group.description && (
+              <div className="text-sm text-[var(--tg-hint-color)] truncate">
+                {group.description}
+              </div>
             )}
-          </>
-        )}
-      </div>
-
-      {/* Секция участников */}
-      <CardSection title={t("members")}>
-        {groupLoading && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
-        )}
-        {groupError && (
-          <div className="text-center py-6 text-red-500">{groupError}</div>
-        )}
-        {!groupLoading && !groupError && sortedMembers.length === 0 && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("empty_members")}</div>
-        )}
-        <div className="flex flex-col gap-2">
+          </div>
+        </div>
+        {/* Участники */}
+        <div className="mb-1 mt-3 text-sm font-medium text-[var(--tg-hint-color)]">
+          {t("members")} ({members.length})
+        </div>
+        <div className="flex items-center flex-wrap gap-2">
           {sortedMembers.map((member, idx) => (
             <div
               key={member.user.id}
-              className={`flex items-center gap-4 px-3 py-2 rounded-xl
-                ${idx === 0 ? "bg-[var(--tg-link-color)]/10" : ""}
-              `}
+              className={`flex flex-col items-center`}
+              style={{
+                marginRight: 8,
+              }}
             >
               <Avatar
                 name={
@@ -80,25 +79,28 @@ const GroupDetailsPage = () => {
                     : member.user.username || ""
                 }
                 src={member.user.photo_url}
-                size={48}
+                size={idx === 0 ? 44 : 36}
+                className={
+                  idx === 0
+                    ? "border-2 border-[var(--tg-link-color)]"
+                    : "border-2 border-[var(--tg-card-bg)]"
+                }
               />
-              <div>
-                <div className="font-semibold text-base text-[var(--tg-text-color)]">
-                  {member.user.first_name
+              <span
+                className={`text-xs mt-1 ${idx === 0 ? "font-semibold text-[var(--tg-link-color)]" : "text-[var(--tg-hint-color)]"}`}
+                title={
+                  member.user.first_name
                     ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
-                    : member.user.username || t("not_specified")}
-                </div>
-                {/* Бейдж “Владелец” у первого участника (owner) */}
-                {idx === 0 && (
-                  <div className="inline-block mt-1 px-2 py-0.5 rounded-full bg-[var(--tg-link-color)] text-white text-xs font-semibold">
-                    {t("owner")}
-                  </div>
-                )}
-              </div>
+                    : member.user.username || ""
+                }
+              >
+                {idx === 0 ? t("owner") : ""}
+              </span>
             </div>
           ))}
         </div>
       </CardSection>
+      {/* Здесь далее появятся вкладки, статистика, операции, и т.д. */}
     </div>
   )
 }
