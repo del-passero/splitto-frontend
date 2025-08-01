@@ -5,7 +5,7 @@ import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
 import Avatar from "../components/Avatar"
-import { groupsApi } from "../api/groupsApi"
+import { getGroupDetails } from "../api/groupsApi"
 import type { Group } from "../types/group"
 
 const GroupDetailsPage = () => {
@@ -17,13 +17,13 @@ const GroupDetailsPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Загружаем детали группы при маунте
+  // Загружаем детали группы
   useEffect(() => {
     const fetchDetails = async () => {
       try {
         setLoading(true)
         setError(null)
-        const data = await groupsApi.getGroupDetails(id)
+        const data = await getGroupDetails(id) // <-- правильный вызов
         setGroup(data)
       } catch (err: any) {
         setError(err.message || "Ошибка загрузки группы")

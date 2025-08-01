@@ -23,7 +23,6 @@ const GroupCard = ({
   const members: GroupMember[] = group.members || []
   const ownerId = group.owner_id
 
-  // Сортируем участников: владелец первым
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
     ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
@@ -44,16 +43,13 @@ const GroupCard = ({
       `}
       aria-label={group.name}
     >
-      {/* Аватар группы */}
       <GroupAvatar name={group.name} size={54} className="mr-4 flex-shrink-0" />
 
-      {/* Название и участники */}
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-lg truncate text-[var(--tg-text-color)]">
           {group.name}
         </div>
 
-        {/* Если есть участники — показываем аватарки, иначе количество */}
         {members.length > 0 ? (
           <div className="flex items-center mt-1">
             {displayedMembers.map((member, idx) => {
@@ -89,7 +85,6 @@ const GroupCard = ({
               )
             })}
 
-            {/* "+N" если участников больше maxAvatars */}
             {hiddenCount > 0 && (
               <div
                 className="flex items-center justify-center rounded-full border-2 border-[var(--tg-card-bg)] bg-[var(--tg-link-color)] text-white font-semibold text-xs ml-1"
@@ -107,7 +102,6 @@ const GroupCard = ({
         )}
       </div>
 
-      {/* Справа заглушка под долги */}
       <div className="flex flex-col items-end min-w-[88px] ml-4">
         <span className="text-[var(--tg-hint-color)] text-xs font-medium">
           {t("debts_reserved")}
