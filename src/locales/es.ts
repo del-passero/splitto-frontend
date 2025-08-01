@@ -25,7 +25,7 @@ export default {
   empty_members: "Sin miembros",
   owner: "Propietario",
   groups_count: "{{count}} group(s)",
-  groups_count_full: "You have {{count}} active groups",
+  groups_top_info: "You have {{count}} active groups",
   empty_groups: "You don't have any groups yet",
   empty_groups_hint: "Create your first group to manage expenses together!",
   search_group_placeholder: "Search group...",

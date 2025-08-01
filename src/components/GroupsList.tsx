@@ -17,9 +17,9 @@ const GroupsList = ({ groups }: Props) => {
             group={group}
             onClick={() => navigate(`/groups/${group.id}`)}
           />
-          {/* Divider, как в SettingItem: отступы слева/справа */}
+          {/* Divider — с чуть меньшим отступом слева (например, после аватара + 8px) */}
           {idx !== groups.length - 1 && (
-            <div className="absolute left-5 right-5 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+            <div className="absolute left-20 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
           )}
         </div>
       ))}

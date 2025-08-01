@@ -25,11 +25,12 @@ export default {
   empty_members: "Нет участников",
   owner: "Создатель",
   groups_count: "{{count}} групп(а)",
-  groups_count_full: "У вас {{count}} активных групп",
+  groups_top_info: "У вас {{count}} активных групп",
   empty_groups: "У вас ещё нет ни одной группы",
   empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
   search_group_placeholder: "Поиск группы...",
   debts_reserved: "Долги — скоро!",
+  
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",

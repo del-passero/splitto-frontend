@@ -12,7 +12,7 @@ const CardSection = ({ children, className = "", noPadding = false }: Props) => 
       w-full rounded-2xl
       bg-[var(--tg-card-bg)]
       ${noPadding ? "" : "px-2 py-2"}
-      mb-3
+      mb-1
       ${className}
     `}
   >
