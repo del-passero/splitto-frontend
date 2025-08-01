@@ -1,87 +1,71 @@
 // src/pages/GroupsPage.tsx
 
-/**
- * Страница "Группы" — отображает список всех групп, где состоит пользователь.
- * Вверху: строка с количеством групп, FiltersRow (фильтр/поиск/сорт).
- * Ниже — CardSection с карточками групп.
- * Если нет групп — компонент EmptyGroups.
- */
-
-import { useEffect, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import CardSection from "../components/CardSection"
-import FiltersRow from "../components/FiltersRow"
-import GroupsList from "../components/GroupsList"
-import EmptyGroups from "../components/EmptyGroups"
+import { useTranslation } from "react-i18next"
 import { useGroupsStore } from "../store/groupsStore"
 import { useUserStore } from "../store/userStore"
+import CardSection from "../components/CardSection"
+import EmptyGroups from "../components/EmptyGroups"
+import GroupsList from "../components/GroupsList"
+import FiltersRow from "../components/FiltersRow"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const user = useUserStore((s) => s.user)
+  const { groups, groupsLoading, groupsError, fetchGroups } = useGroupsStore()
   const [search, setSearch] = useState("")
-  const { user } = useUserStore()              // Текущий пользователь
-  const {
-    groups, groupsLoading, groupsError,
-    fetchGroups
-  } = useGroupsStore()
 
-  // Загружаем группы пользователя при первом рендере/смене пользователя
-  useEffect(() => {
+  // Запрос групп при первом рендере/смене пользователя
+  useMemo(() => {
     if (user?.id) fetchGroups(user.id)
   }, [user?.id, fetchGroups])
 
-  // Фильтрация групп по названию
-  const filteredGroups = groups.filter(group =>
-    group.name.toLowerCase().includes(search.toLowerCase())
+  // Фильтрация по поиску
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((group) =>
+        group.name.toLowerCase().includes(search.toLowerCase())
+      ),
+    [groups, search]
   )
 
-  const hasGroups = filteredGroups.length > 0
-
   return (
-    <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
-      {/* Строка с количеством групп — только если группы есть */}
-      {hasGroups && (
-        <div className="flex items-center px-4 pt-6 pb-2">
-          <span className="text-xl font-bold text-[var(--tg-text-color)]">
-            {t("groups")}
-          </span>
-          <span className="ml-2 text-sm text-[var(--tg-hint-color)] font-medium">
-            {t("groups_count", { count: filteredGroups.length })}
+    <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center pt-4 pb-8">
+      {/* Строка статистики и количества групп */}
+      {groups.length > 0 && (
+        <div className="w-full max-w-md px-2 flex items-center justify-between mb-2">
+          <span className="text-base font-medium text-[var(--tg-hint-color)]">
+            {t("groups_activity", { count: filteredGroups.length })}
           </span>
         </div>
       )}
 
-      {/* FiltersRow — только если есть группы */}
-      {hasGroups && (
-        <CardSection className="mb-2">
-          <FiltersRow
-            value={search}
-            onChange={setSearch}
-            onFilterClick={() => { /* Заглушка фильтра */ }}
-            onSortClick={() => { /* Заглушка сортировки */ }}
-            placeholder={t("search_group_placeholder")}
-          />
+      {/* Блок фильтров и поиска */}
+      {groups.length > 0 && (
+        <CardSection className="mb-3">
+          <FiltersRow search={search} setSearch={setSearch} />
         </CardSection>
       )}
 
-      {/* Основная секция со списком групп или заглушкой */}
+      {/* Список групп или заглушка */}
       <CardSection>
         {groupsLoading && (
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">
+            {t("loading")}
+          </div>
         )}
         {groupsError && (
           <div className="text-center py-6 text-red-500">{groupsError}</div>
         )}
-        {!groupsLoading && !groupsError && !hasGroups && (
+        {!groupsLoading && !groupsError && groups.length === 0 && (
           <EmptyGroups />
         )}
-        {/* Список карточек групп */}
-        {hasGroups && (
+        {!groupsLoading && !groupsError && groups.length > 0 && (
           <GroupsList
             groups={filteredGroups}
-            onGroupClick={group => navigate(`/groups/${group.id}`)}
+            onGroupClick={(groupId) => navigate(`/groups/${groupId}`)}
           />
         )}
       </CardSection>

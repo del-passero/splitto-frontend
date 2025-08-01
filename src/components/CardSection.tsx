@@ -1,11 +1,5 @@
 // src/components/CardSection.tsx
 
-/**
- * Универсальный контейнер для секций (например, FiltersRow, GroupsList).
- * Стили — Wallet/Telegram: скругления, шадоу, аккуратные отступы, поддержка темы.
- * Используется для обёртки фильтров, списка групп и т.д.
- */
-
 type Props = {
   children: React.ReactNode
   className?: string
