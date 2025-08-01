@@ -15,7 +15,7 @@ type Props = {
 }
 
 const AVATAR_SIZE = 56
-const PARTICIPANT_SIZE = 36
+const PARTICIPANT_SIZE = 24
 
 const GroupCard = ({
   group,
