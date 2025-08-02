@@ -1,5 +1,3 @@
-// src/components/GroupsList.tsx
-
 import GroupCard from "./GroupCard"
 import CardSection from "./CardSection"
 import type { Group } from "../types/group"
@@ -11,19 +9,17 @@ const GroupsList = ({ groups }: Props) => {
   const navigate = useNavigate()
   return (
     <CardSection noPadding>
-      {groups.map((group, idx) => (
-        <div key={group.id} className="relative">
+      <div className="grid grid-cols-1 gap-4">
+        {groups.map(group => (
           <GroupCard
+            key={group.id}
             group={group}
             onClick={() => navigate(`/groups/${group.id}`)}
           />
-          {/* Divider — с чуть меньшим отступом слева (например, после аватара + 8px) */}
-          {idx !== groups.length - 1 && (
-            <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </CardSection>
   )
 }
+
 export default GroupsList

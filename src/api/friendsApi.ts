@@ -8,7 +8,7 @@ function getTelegramInitData(): string {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
-const BASE_URL = `${API_URL}/friends/`
+const BASE_URL = `${API_URL}/friends/` // < один слэш на конце!
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
@@ -48,7 +48,7 @@ export async function searchFriends(
   offset: number = 0,
   limit: number = 50
 ): Promise<FriendsResponse> {
-  let url = `${BASE_URL}/search?query=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`
+  let url = `${BASE_URL}search?query=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`
   if (showHidden) {
     url += `&show_hidden=true`
   }
@@ -57,7 +57,7 @@ export async function searchFriends(
 
 // Сгенерировать invite-ссылку (POST)
 export async function createInvite(): Promise<FriendInvite> {
-  return fetchJson<FriendInvite>(`${BASE_URL}/invite`, {
+  return fetchJson<FriendInvite>(`${BASE_URL}invite`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -67,7 +67,7 @@ export async function createInvite(): Promise<FriendInvite> {
 
 // Принять invite по токену (POST)
 export async function acceptInvite(token: string): Promise<{ success: boolean }> {
-  return fetchJson<{ success: boolean }>(`${BASE_URL}/accept`, {
+  return fetchJson<{ success: boolean }>(`${BASE_URL}accept`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -78,14 +78,14 @@ export async function acceptInvite(token: string): Promise<{ success: boolean }>
 
 // Скрыть друга (POST)
 export async function hideFriend(friendId: number): Promise<{ success: boolean }> {
-  return fetchJson<{ success: boolean }>(`${BASE_URL}/${friendId}/hide`, {
+  return fetchJson<{ success: boolean }>(`${BASE_URL}${friendId}/hide`, {
     method: "POST"
   })
 }
 
 // Восстановить (unhide) друга (POST)
 export async function unhideFriend(friendId: number): Promise<{ success: boolean }> {
-  return fetchJson<{ success: boolean }>(`${BASE_URL}/${friendId}/unhide`, {
+  return fetchJson<{ success: boolean }>(`${BASE_URL}${friendId}/unhide`, {
     method: "POST"
   })
 }
