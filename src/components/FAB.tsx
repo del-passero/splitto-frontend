@@ -9,7 +9,7 @@ type FabAction = {
   icon: React.ReactNode
   onClick: () => void
   ariaLabel: string
-  label?: string // Ключ для i18n или строка
+  label?: string
 }
 
 type Props = {
@@ -21,7 +21,6 @@ const FAB = ({ actions }: Props) => {
   const [open, setOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
 
-  // Закрытие FAB при клике вне
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -32,7 +31,6 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // Скрытие FAB при скролле вниз, появление при прокрутке вверх
   const [visible, setVisible] = useState(true)
   useEffect(() => {
     let lastScroll = window.scrollY
@@ -45,7 +43,6 @@ const FAB = ({ actions }: Props) => {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  // Цвет FAB — из переменной Telegram
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
 
   return (
@@ -59,7 +56,6 @@ const FAB = ({ actions }: Props) => {
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
       `}
     >
-      {/* Дочерние action-кнопки */}
       <div className="flex flex-col items-end gap-4 mb-2 pointer-events-none">
         {open && actions.map((action, idx) => (
           <div key={action.key} className="flex flex-row items-center justify-end w-full">
@@ -68,8 +64,8 @@ const FAB = ({ actions }: Props) => {
               <span
                 className={`
                   mr-3 px-3 py-[6px] rounded-lg text-sm font-medium fab-label-appear
-                  bg-[var(--tg-fab-label-bg)]
-                  text-[var(--tg-fab-label-color)]
+                  bg-transparent
+                  text-[var(--tg-hint-color)]
                   select-none pointer-events-none
                   transition
                 `}
@@ -107,7 +103,6 @@ const FAB = ({ actions }: Props) => {
           </div>
         ))}
       </div>
-      {/* Главная FAB */}
       <button
         type="button"
         aria-label="Open actions"
