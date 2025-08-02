@@ -26,7 +26,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver>()
 
-  // При монтировании/смене friends сбрасываем state
+  // Сброс стейта при монтировании
   useEffect(() => {
     if (typeof friends !== "undefined") return
     setInternalFriends([])
@@ -78,7 +78,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     }
   }, [page])
 
-  // Поведение для friends-пропа (например, поиск)
+  // Обработка friends-пропа (например, поиск)
   if (typeof friends !== "undefined") {
     if (loading) {
       return (
@@ -155,7 +155,6 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
           )}
         </div>
       ))}
-      {/* Инфинити-скролл: невидимый "якорь" */}
       {hasMore && (
         <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
       )}

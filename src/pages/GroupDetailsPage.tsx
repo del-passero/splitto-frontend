@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
 import UserCard from "../components/UserCard"
 import { getGroupDetails } from "../api/groupsApi"
-import { getGroupMembers } from "../api/groupMembersApi"  // Новый API для подгрузки участников
+import { getGroupMembers } from "../api/groupMembersApi"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
 
@@ -31,7 +31,7 @@ const GroupDetailsPage = () => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver>()
 
-  // Загружаем детали группы (как раньше)
+  // Загружаем детали группы
   useEffect(() => {
     const fetchDetails = async () => {
       try {
@@ -181,7 +181,7 @@ const GroupDetailsPage = () => {
         )}
       </div>
 
-      {/* Дополнительный контент группы (например, транзакции) */}
+      {/* Дополнительный контент группы */}
       <div className="px-4 mt-6">
         <div className="text-[var(--tg-hint-color)] text-center py-8">
           {t("group_details_coming_soon") || "Функционал группы скоро будет добавлен"}
