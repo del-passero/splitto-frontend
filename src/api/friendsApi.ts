@@ -8,15 +8,12 @@ function getTelegramInitData(): string {
   return window?.Telegram?.WebApp?.initData || ""
 }
 
-// Универсальный API URL (dev/prod fallback)
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const BASE_URL = `${API_URL}/friends`
 
-// Универсальный fetch с автоматическим добавлением авторизации
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    // Кладём initData строго как ждёт backend (x-telegram-initdata)
     "x-telegram-initdata": getTelegramInitData(),
   }
   const res = await fetch(input, { ...init, headers })
@@ -27,23 +24,30 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return await res.json()
 }
 
-// ----------- ОСНОВНОЙ ЕДИНЫЙ РАБОЧИЙ МЕТОД ДЛЯ ВСЕХ СЛУЧАЕВ -----------
-// Пагинация (используй ТОЛЬКО этот метод для скролла и списков)
-// GET /friends/?show_hidden=false&offset=0&limit=20
+/**
+ * Получить список друзей с поддержкой пагинации.
+ * Если offset/limit не заданы, возвращает все контакты (оборачивает в тот же объект {total, friends})
+ */
 export async function getFriends(
   showHidden: boolean = false,
-  offset: number = 0,
-  limit: number = 20
+  offset?: number,
+  limit?: number
 ): Promise<{ total: number, friends: Friend[] }> {
-  const url = `${BASE_URL}/?show_hidden=${showHidden}&offset=${offset}&limit=${limit}`
-  return fetchJson<{ total: number, friends: Friend[] }>(url)
-}
+  let url = `${BASE_URL}/?`
+  if (typeof offset === "number" && typeof limit === "number") {
+    url += `offset=${offset}&limit=${limit}`
+  }
+  if (showHidden) {
+    url += (url.endsWith("?") ? "" : "&") + "show_hidden=true"
+  }
 
-// --- Для поиска и совместимости (возвращает полный список как массив) ---
-// Использовать только для спец. случаев, когда реально нужно весь массив!
-export async function getAllFriends(showHidden: boolean = false): Promise<Friend[]> {
-  const url = showHidden ? `${BASE_URL}/?show_hidden=true` : `${BASE_URL}/`
-  return fetchJson<Friend[]>(url)
+  // API может вернуть или массив, или объект — нужно обработать оба случая!
+  const result = await fetchJson<any>(url)
+  if (Array.isArray(result)) {
+    return { total: result.length, friends: result }
+  }
+  // В идеале backend всегда возвращает {total, friends}
+  return result
 }
 
 // Сгенерировать invite-ссылку (POST)
