@@ -66,10 +66,10 @@ const GroupDetailsPage = () => {
       setMembersError(null)
       const pageNum = typeof _page === "number" ? _page : page
       const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
-      // Важно: API возвращает { total, items }
-      setMembers(prev => [...prev, ...(res.members || [])])
+      // Важно! res.items
+      setMembers(prev => [...prev, ...(res.items || [])])
       setMembersTotal(res.total)
-      setHasMore((res.members?.length || 0) === PAGE_SIZE)
+      setHasMore((res.items?.length || 0) === PAGE_SIZE)
       setPage(pageNum + 1)
     } catch (err: any) {
       setMembersError(err.message || "Ошибка загрузки участников")
@@ -99,7 +99,6 @@ const GroupDetailsPage = () => {
     // eslint-disable-next-line
   }, [id])
 
-  // Состояния загрузки/ошибки группы
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">

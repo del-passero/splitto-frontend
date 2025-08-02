@@ -1,12 +1,5 @@
 // src/store/groupsStore.ts
 
-/**
- * Zustand-store для загрузки, хранения и фильтрации групп пользователя и деталей группы.
- * Поддерживает: получение списка групп, детальную инфу о группе (с поддержкой пагинации участников),
- * универсальную обработку ошибок и загрузку.
- * Тексты для ошибок/лоадеров — через i18n в компонентах.
- */
-
 import { create } from "zustand"
 import type { Group, GroupPreview } from "../types/group"
 import type { GroupMember } from "../types/group_member"
@@ -17,16 +10,16 @@ import {
 } from "../api/groupsApi"
 
 interface GroupsStoreState {
-  groups: GroupPreview[]            // Список всех групп пользователя с превью (экономит память)
+  groups: GroupPreview[]
   groupsLoading: boolean
   groupsError: string | null
 
-  selectedGroup: Group | null       // Детальная информация о выбранной группе (полная структура)
+  selectedGroup: Group | null
   groupLoading: boolean
   groupError: string | null
 
-  groupMembers: GroupMember[]       // Все подгруженные участники выбранной группы (инкрементально)
-  groupMembersTotal: number         // Сколько всего участников в группе (для пагинации)
+  groupMembers: GroupMember[]
+  groupMembersTotal: number
   groupMembersLoading: boolean
   groupMembersError: string | null
 
@@ -54,7 +47,6 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
   groupMembersLoading: false,
   groupMembersError: null,
 
-  // Загрузка всех групп пользователя (превью)
   async fetchGroups(userId) {
     set({ groupsLoading: true, groupsError: null })
     try {
@@ -69,7 +61,6 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
     }
   },
 
-  // Загрузка деталей выбранной группы (можно с пагинацией участников)
   async fetchGroupDetails(groupId, offset = 0, limit = DEFAULT_LIMIT) {
     set({ groupLoading: true, groupError: null, selectedGroup: null })
     try {
@@ -84,7 +75,7 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
     }
   },
 
-  // Пагинированная загрузка участников выбранной группы (инкрементально)
+  // Используй res.items!
   async fetchGroupMembers(groupId, offset = 0, limit = DEFAULT_LIMIT) {
     if (offset === 0) {
       set({ groupMembers: [], groupMembersTotal: 0, groupMembersError: null })
@@ -94,8 +85,8 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
       const res = await getGroupMembersPaginated(groupId, offset, limit)
       set((state) => ({
         groupMembers: offset === 0
-          ? res.members
-          : [...state.groupMembers, ...res.members],
+          ? res.items
+          : [...state.groupMembers, ...res.items],
         groupMembersTotal: res.total,
         groupMembersLoading: false,
         groupMembersError: null,
@@ -110,12 +101,10 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
     }
   },
 
-  // Сброс выбранной группы
   clearSelectedGroup() {
     set({ selectedGroup: null, groupLoading: false, groupError: null })
   },
 
-  // Сброс участников группы
   clearGroupMembers() {
     set({ groupMembers: [], groupMembersTotal: 0, groupMembersLoading: false, groupMembersError: null })
   },
