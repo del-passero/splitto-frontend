@@ -15,7 +15,7 @@ export const useFriendsStore = create<FriendsStore>((set) => ({
   total: 0,
   loading: false,
   error: null,
-  async fetchFriends(offset, limit) {
+  async fetchFriends(offset = 0, limit = 20) {
     set({ loading: true, error: null })
     try {
       const data = await getFriends(false, offset, limit)

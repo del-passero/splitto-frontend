@@ -1,5 +1,3 @@
-// src/components/ContactsList.tsx
-
 import { useState, useEffect, useRef, useCallback } from "react"
 import UserCard from "./UserCard"
 import EmptyContacts from "./EmptyContacts"

@@ -39,13 +39,10 @@ export async function getFriends(
   if (showHidden) {
     url += (url.endsWith("?") ? "" : "&") + "show_hidden=true"
   }
-
-  // API может вернуть или массив, или объект — нужно обработать оба случая!
   const result = await fetchJson<any>(url)
   if (Array.isArray(result)) {
     return { total: result.length, friends: result }
   }
-  // В идеале backend всегда возвращает {total, friends}
   return result
 }
 
