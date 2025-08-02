@@ -26,12 +26,42 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver>()
 
-  // Обновлённая функция загрузки — getFriends теперь возвращает { total, friends }
-  const loadMore = useCallback(async (pageNum: number = 0, reset?: boolean) => {
+  // Сброс стейта при монтировании
+  useEffect(() => {
+    if (typeof friends !== "undefined") return
+    setInternalFriends([])
+    setInternalError(null)
+    setPage(0)
+    setHasMore(true)
+    setTotal(null)
+    // Первичная загрузка
+    loadMore(0, true)
+    // eslint-disable-next-line
+  }, [])
+
+  // Infinity scroll
+  useEffect(() => {
+    if (typeof friends !== "undefined") return
+    if (internalLoading || !hasMore || !loaderRef.current) return
+
+    observer.current?.disconnect()
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !internalLoading && hasMore) {
+        loadMore()
+      }
+    })
+    observer.current.observe(loaderRef.current)
+
+    return () => observer.current?.disconnect()
+    // eslint-disable-next-line
+  }, [internalLoading, hasMore, loaderRef.current])
+
+  const loadMore = useCallback(async (_page?: number, reset?: boolean) => {
     try {
       setInternalLoading(true)
       setInternalError(null)
-      const res = await getFriends(false, pageNum * PAGE_SIZE, PAGE_SIZE) // обязательно 3 аргумента!
+      const pageNum = typeof _page === "number" ? _page : page
+      const res = await getFriends(false, pageNum * PAGE_SIZE, PAGE_SIZE)
       setTotal(res.total)
       if (reset) {
         setInternalFriends(res.friends)
@@ -45,40 +75,9 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     } finally {
       setInternalLoading(false)
     }
-  }, [])
+  }, [page])
 
-  // Сброс стейта при монтировании/переключении режима
-  useEffect(() => {
-    if (typeof friends !== "undefined") return
-    setInternalFriends([])
-    setInternalError(null)
-    setPage(0)
-    setHasMore(true)
-    setTotal(null)
-    loadMore(0, true)
-    // eslint-disable-next-line
-  }, [friends])
-
-  // Инфинити-скролл
-  useEffect(() => {
-    if (typeof friends !== "undefined") return
-    if (internalLoading) return
-    if (!hasMore) return
-    if (!loaderRef.current) return
-
-    observer.current?.disconnect()
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !internalLoading && hasMore) {
-        loadMore(page)
-      }
-    })
-    observer.current.observe(loaderRef.current)
-
-    return () => observer.current?.disconnect()
-    // eslint-disable-next-line
-  }, [internalLoading, hasMore, loaderRef.current, page, friends, loadMore])
-
-  // Отображение списка по friends-пропу (например, для поиска)
+  // Для режима поиска (search)
   if (typeof friends !== "undefined") {
     if (loading) {
       return (
@@ -119,7 +118,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     )
   }
 
-  // Для внутреннего списка с инфинити-скроллом
+  // Для бесконечного скролла
   if (internalLoading && internalFriends.length === 0) {
     return (
       <CardSection>
@@ -155,6 +154,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
           )}
         </div>
       ))}
+      {/* Инфинити-скролл: невидимый якорь */}
       {hasMore && (
         <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
       )}
