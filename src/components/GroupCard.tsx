@@ -21,7 +21,7 @@ const GroupCard = ({
   group,
   onClick,
   maxAvatars = 5,
-  className = ""
+  className = "",
 }: Props) => {
   const { t } = useTranslation()
   const [members, setMembers] = useState<GroupMember[]>(group.members || [])
@@ -39,7 +39,7 @@ const GroupCard = ({
   const ownerId = group.owner_id
   const sortedMembers = [
     ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
-    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId))
+    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId)),
   ]
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
   const hiddenCount = sortedMembers.length - displayedMembers.length
@@ -65,7 +65,6 @@ const GroupCard = ({
         <div className="text-[17px] font-bold text-[var(--tg-text-color)] truncate">
           {group.name}
         </div>
-
         {/* Участники (аватарки ниже названия) */}
         {members.length > 0 ? (
           <div className="flex items-center pt-1">
@@ -83,7 +82,7 @@ const GroupCard = ({
                     width: idx === 0 ? 28 : PARTICIPANT_SIZE,
                     height: idx === 0 ? 28 : PARTICIPANT_SIZE,
                     marginLeft: idx > 0 ? -7 : 0,
-                    zIndex: maxAvatars - idx
+                    zIndex: maxAvatars - idx,
                   }}
                   title={
                     user.first_name
