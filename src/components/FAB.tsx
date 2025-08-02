@@ -2,12 +2,14 @@
 
 import { useRef, useState, useEffect } from "react"
 import { Plus } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 type FabAction = {
   key: string
   icon: React.ReactNode
   onClick: () => void
   ariaLabel: string
+  label?: string // Ключ для i18n или строка
 }
 
 type Props = {
@@ -15,6 +17,7 @@ type Props = {
 }
 
 const FAB = ({ actions }: Props) => {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
 
@@ -42,7 +45,7 @@ const FAB = ({ actions }: Props) => {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  // Цвет и размер берём из переменных Telegram (поддержка тем)
+  // Цвет FAB — из переменной Telegram
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
 
   return (
@@ -50,40 +53,58 @@ const FAB = ({ actions }: Props) => {
       ref={fabRef}
       className={`
         fixed z-50
-        + right-6 bottom-[90px]
-        flex flex-col items-center
+        right-6 bottom-[90px]
+        flex flex-col items-end
         transition-opacity
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
       `}
     >
-      {/* Дочерние action-кнопки (раскладываются вверх) */}
-      <div className="flex flex-col gap-4 mb-2 pointer-events-none">
+      {/* Дочерние action-кнопки */}
+      <div className="flex flex-col items-end gap-4 mb-2 pointer-events-none">
         {open && actions.map((action, idx) => (
-          <button
-            key={action.key}
-            type="button"
-            aria-label={action.ariaLabel}
-            onClick={() => {
-              setOpen(false)
-              action.onClick()
-            }}
-            className={`
-              w-12 h-12 rounded-full
-              ${FAB_COLOR} text-white
-              flex items-center justify-center
-              border border-white/80 shadow-xl
-              shadow-[0_4px_16px_0_rgba(34,105,255,0.14)]
-              transition-all duration-200
-              pointer-events-auto
-              scale-0 opacity-0
-              animate-fab-in
-            `}
-            style={{
-              animationDelay: `${idx * 60}ms`,
-            }}
-          >
-            {action.icon}
-          </button>
+          <div key={action.key} className="flex flex-row items-center justify-end w-full">
+            {/* Лейбл слева, кнопка справа */}
+            {action.label && (
+              <span
+                className={`
+                  mr-3 px-3 py-[6px] rounded-lg text-sm font-medium fab-label-appear
+                  bg-[var(--tg-fab-label-bg)]
+                  text-[var(--tg-fab-label-color)]
+                  select-none pointer-events-none
+                  transition
+                `}
+                style={{
+                  animationDelay: `${idx * 60}ms`
+                }}
+              >
+                {t(action.label)}
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label={action.ariaLabel}
+              onClick={() => {
+                setOpen(false)
+                action.onClick()
+              }}
+              className={`
+                w-12 h-12 rounded-full
+                ${FAB_COLOR} text-white
+                flex items-center justify-center
+                border border-white/80 shadow-xl
+                shadow-[0_4px_16px_0_rgba(34,105,255,0.14)]
+                transition-all duration-200
+                pointer-events-auto
+                scale-0 opacity-0
+                animate-fab-in
+              `}
+              style={{
+                animationDelay: `${idx * 60}ms`,
+              }}
+            >
+              {action.icon}
+            </button>
+          </div>
         ))}
       </div>
       {/* Главная FAB */}
@@ -105,7 +126,7 @@ const FAB = ({ actions }: Props) => {
           transition: "box-shadow 0.2s, transform 0.1s",
         }}
       >
-        <Plus size={32} strokeWidth={3} />
+        <Plus size={32} strokeWidth={1.5} />
       </button>
     </div>
   )

@@ -31,22 +31,23 @@ const ContactsPage = () => {
   const isSearching = search.length > 0
   const notFound = !filteredFriends.length && isSearching
 
-  // Можно добавить другие actions (например, транзакция)
   const fabActions = [
-  {
-    key: "add-contact",
-    icon: <UserPlus size={28} strokeWidth={2.5} />,
-    onClick: () => setInviteOpen(true),
-    ariaLabel: "Пригласить друга",
-  },
-  {
-    key: "add-transaction",
-    icon: <HandCoins size={28} strokeWidth={2.5} />,
-    onClick: () => {}, // пока ничего не делает
-    ariaLabel: "Добавить расход",
-  },
-]
-  
+    {
+      key: "add-contact",
+      icon: <UserPlus size={28} strokeWidth={1.5} />,
+      onClick: () => setInviteOpen(true),
+      ariaLabel: t("invite_friend"),
+      label: t("invite_friend"),
+    },
+    {
+      key: "add-transaction",
+      icon: <HandCoins size={28} strokeWidth={1.5} />,
+      onClick: () => {}, // пока ничего не делает
+      ariaLabel: t("add_transaction"),
+      label: t("add_transaction"),
+    },
+  ]
+
   return (
     <MainLayout fabActions={fabActions}>
       {/* Фильтр, поиск */}

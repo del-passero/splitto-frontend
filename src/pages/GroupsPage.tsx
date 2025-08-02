@@ -36,15 +36,17 @@ const GroupsPage = () => {
   const fabActions = [
     {
       key: "add-group",
-      icon: <Users size={28} strokeWidth={2.5} />,
-      onClick: () => {}, // Вставишь сюда свою модалку создания группы!
-      ariaLabel: "Создать группу",
+      icon: <Users size={28} strokeWidth={1.5} />,
+      onClick: () => {}, // handle add group modal
+      ariaLabel: t("create_group"),
+      label: t("create_group"),
     },
     {
       key: "add-transaction",
-      icon: <HandCoins size={28} strokeWidth={2.5} />,
-      onClick: () => {}, // Добавь тут открытие модалки расхода!
-      ariaLabel: "Добавить расход",
+      icon: <HandCoins size={28} strokeWidth={1.5} />,
+      onClick: () => {}, // handle add transaction modal
+      ariaLabel: t("add_transaction"),
+      label: t("add_transaction"),
     },
   ]
 

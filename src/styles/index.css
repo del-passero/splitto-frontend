@@ -1,8 +1,8 @@
-/* src/styles/index.css */
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 @keyframes fab-in {
   0% { opacity: 0; transform: scale(0); }
   60% { opacity: 1; transform: scale(1.15); }
@@ -12,7 +12,29 @@
   animation: fab-in 0.25s cubic-bezier(.77,0,.18,1) forwards;
 }
 
+@keyframes fab-label-in {
+  0% { opacity: 0; transform: translateX(-16px);}
+  100% { opacity: 1; transform: translateX(0);}
+}
+.fab-label-appear {
+  animation: fab-label-in 0.25s cubic-bezier(.77,0,.18,1) both;
+}
 
+/* Цвета лейблов FAB и поддержка темы */
+:root {
+  --tg-fab-label-bg: rgba(0,0,0,0.82);
+  --tg-fab-label-color: #fff;
+}
+body.light {
+  --tg-fab-label-bg: rgba(255,255,255,0.96);
+  --tg-fab-label-color: #222;
+}
+body.dark {
+  --tg-fab-label-bg: rgba(0,0,0,0.82);
+  --tg-fab-label-color: #fff;
+}
+
+/* Основные переменные Telegram темы */
 :root {
   --tg-bg-color: #f8faff;
   --tg-card-bg: #fff;

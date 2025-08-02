@@ -13,21 +13,24 @@ const DashboardPage = () => {
   const fabActions = [
     {
       key: "add-group",
-      icon: <Users size={28} strokeWidth={2.5} />,
+      icon: <Users size={28} strokeWidth={1.5} />,
       onClick: () => {}, // handleAddGroup
-      ariaLabel: "Создать группу",
+      ariaLabel: t("create_group"),
+      label: t("create_group"),
     },
     {
       key: "add-contact",
-      icon: <UserPlus size={28} strokeWidth={2.5} />,
+      icon: <UserPlus size={28} strokeWidth={1.5} />,
       onClick: () => setInviteOpen(true),
-      ariaLabel: "Добавить контакт",
+      ariaLabel: t("invite_friend"),
+      label: t("invite_friend"),
     },
     {
       key: "add-transaction",
-      icon: <HandCoins size={28} strokeWidth={2.5} />,
+      icon: <HandCoins size={28} strokeWidth={1.5} />,
       onClick: () => {}, // handleAddTransaction
-      ariaLabel: "Добавить расход",
+      ariaLabel: t("add_transaction"),
+      label: t("add_transaction"),
     },
   ]
 
