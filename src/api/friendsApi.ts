@@ -8,7 +8,7 @@ function getTelegramInitData(): string {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
-const BASE_URL = `${API_URL}/friends`
+const BASE_URL = `${API_URL}/friends/`
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
