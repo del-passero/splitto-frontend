@@ -94,8 +94,8 @@ export const useGroupsStore = create<GroupsStoreState>((set) => ({
       const res = await getGroupMembersPaginated(groupId, offset, limit)
       set((state) => ({
         groupMembers: offset === 0
-          ? res.items
-          : [...state.groupMembers, ...res.items],
+          ? res.members
+          : [...state.groupMembers, ...res.members],
         groupMembersTotal: res.total,
         groupMembersLoading: false,
         groupMembersError: null,
