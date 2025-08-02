@@ -64,6 +64,7 @@ const GroupDetailsPage = () => {
       setMembersLoading(true)
       setMembersError(null)
       const pageNum = typeof _page === "number" ? _page : page
+      // ↓↓↓ ВАЖНО: передаём ВСЕ аргументы!
       const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
       setMembers(prev => [...prev, ...res.members])
       setMembersTotal(res.total)

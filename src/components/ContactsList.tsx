@@ -1,9 +1,11 @@
+// src/components/ContactsList.tsx
+
 import { useState, useEffect, useRef, useCallback } from "react"
 import UserCard from "./UserCard"
 import EmptyContacts from "./EmptyContacts"
 import CardSection from "./CardSection"
 import type { Friend } from "../types/friend"
-import { getFriends } from "../api/friendsApi"
+import { getFriends, getFriendsPaginated } from "../api/friendsApi"
 
 type Props = {
   friends?: Friend[]
@@ -24,7 +26,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver>()
 
-  // Сброс стейта при монтировании
+  // Сброс стейта при монтировании/смене поиска
   useEffect(() => {
     if (typeof friends !== "undefined") return
     setInternalFriends([])
@@ -54,12 +56,16 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     // eslint-disable-next-line
   }, [internalLoading, hasMore, loaderRef.current])
 
+  // Правильный loadMore с использованием getFriendsPaginated
   const loadMore = useCallback(async (_page?: number, reset?: boolean) => {
     try {
       setInternalLoading(true)
       setInternalError(null)
       const pageNum = typeof _page === "number" ? _page : page
-      const res = await getFriends(false, pageNum * PAGE_SIZE, PAGE_SIZE)
+      const res = await getFriendsPaginated({
+        offset: pageNum * PAGE_SIZE,
+        limit: PAGE_SIZE
+      })
       setTotal(res.total)
       if (reset) {
         setInternalFriends(res.friends)
