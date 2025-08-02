@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import AddContactButton from "../components/AddContactButton"
+import MainLayout from "../layouts/MainLayout"
+import { UserPlus, HandCoins } from "lucide-react"
 import InviteFriendModal from "../components/InviteFriendModal"
 import FiltersRow from "../components/FiltersRow"
 import TopInfoRow from "../components/TopInfoRow"
@@ -28,17 +29,34 @@ const ContactsPage = () => {
   )
 
   const isSearching = search.length > 0
-  const noContacts = !filteredFriends.length && !isSearching
   const notFound = !filteredFriends.length && isSearching
 
+  // Можно добавить другие actions (например, транзакция)
+  const fabActions = [
+  {
+    key: "add-contact",
+    icon: <UserPlus size={28} strokeWidth={2.5} />,
+    onClick: () => setInviteOpen(true),
+    ariaLabel: "Пригласить друга",
+  },
+  {
+    key: "add-transaction",
+    icon: <HandCoins size={28} strokeWidth={2.5} />,
+    onClick: () => {}, // пока ничего не делает
+    ariaLabel: "Добавить расход",
+  },
+]
+  
   return (
-    <div className="relative w-full max-w-md mx-auto min-h-screen flex flex-col">
+    <MainLayout fabActions={fabActions}>
+      {/* Фильтр, поиск */}
       <FiltersRow
         search={search}
         setSearch={setSearch}
         placeholderKey="search_placeholder"
       />
 
+      {/* Если есть друзья — список и информер */}
       {filteredFriends.length > 0 && (
         <CardSection noPadding>
           <TopInfoRow count={filteredFriends.length} labelKey="contacts_count" />
@@ -46,25 +64,18 @@ const ContactsPage = () => {
         </CardSection>
       )}
 
+      {/* Если друзей нет — заглушка */}
       {!filteredFriends.length && (
         <EmptyContacts notFound={notFound} />
       )}
 
-      {/* Кнопка “Добавить” */}
-      <div className="absolute right-6 bottom-[90px] flex flex-col items-center z-40">
-        <AddContactButton onClick={() => setInviteOpen(true)} />
-        <span className="mt-1 text-xs font-medium text-[var(--tg-hint-color)] select-none">
-          {t("invite_friend")}
-        </span>
-      </div>
-
-      {/* Модалка инвайта */}
+      {/* Модалка приглашения */}
       <InviteFriendModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         inviteLink={null}
       />
-    </div>
+    </MainLayout>
   )
 }
 

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+import MainLayout from "../layouts/MainLayout"
+import { Users, HandCoins } from "lucide-react"
 import { useUserStore } from "../store/userStore"
 import { useGroupsStore } from "../store/groupsStore"
 import TopInfoRow from "../components/TopInfoRow"
@@ -31,21 +33,36 @@ const GroupsPage = () => {
   const noGroups = !filteredGroups.length && !isSearching
   const notFound = !filteredGroups.length && isSearching
 
+  const fabActions = [
+    {
+      key: "add-group",
+      icon: <Users size={28} strokeWidth={2.5} />,
+      onClick: () => {}, // Вставишь сюда свою модалку создания группы!
+      ariaLabel: "Создать группу",
+    },
+    {
+      key: "add-transaction",
+      icon: <HandCoins size={28} strokeWidth={2.5} />,
+      onClick: () => {}, // Добавь тут открытие модалки расхода!
+      ariaLabel: "Добавить расход",
+    },
+  ]
+
   if (!groupsLoading && !groupsError && (noGroups || notFound)) {
     return (
-      <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
+      <MainLayout fabActions={fabActions}>
         <FiltersRow
           search={search}
           setSearch={setSearch}
           placeholderKey="search_group_placeholder"
         />
         <EmptyGroups notFound={notFound} />
-      </div>
+      </MainLayout>
     )
   }
 
   return (
-    <div className="w-full min-h-screen flex flex-col bg-[var(--tg-bg-color)] pb-6">
+    <MainLayout fabActions={fabActions}>
       <FiltersRow
         search={search}
         setSearch={setSearch}
@@ -67,7 +84,7 @@ const GroupsPage = () => {
           <div className="text-center py-6 text-red-500">{groupsError}</div>
         </CardSection>
       )}
-    </div>
+    </MainLayout>
   )
 }
 
