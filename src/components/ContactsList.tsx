@@ -22,7 +22,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const loaderRef = useRef<HTMLDivElement>(null)
-  const observer = useRef<IntersectionObserver>()
+  const observer = useRef<IntersectionObserver | null>(null)
 
   // Сброс стейта при монтировании/смене поиска
   useEffect(() => {

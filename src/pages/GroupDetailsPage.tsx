@@ -29,7 +29,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const loaderRef = useRef<HTMLDivElement>(null)
-  const observer = useRef<IntersectionObserver>()
+  const observer = useRef<IntersectionObserver | null>(null)
 
   // Загружаем детали группы
   useEffect(() => {
