@@ -1,4 +1,4 @@
-// src/api/groupMembersApi.ts
+// src/api/groupMembersApi.ts 
 
 import type { GroupMember } from "../types/group_member"
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
