@@ -27,18 +27,23 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return await res.json()
 }
 
-// Получить список друзей или скрытых друзей (без пагинации)
-export async function getFriends(showHidden: boolean = false): Promise<Friend[]> {
-  const url = showHidden ? `${BASE_URL}/?show_hidden=true` : `${BASE_URL}/`
-  return fetchJson<Friend[]>(url)
+// ----------- ОСНОВНОЙ ЕДИНЫЙ РАБОЧИЙ МЕТОД ДЛЯ ВСЕХ СЛУЧАЕВ -----------
+// Пагинация (используй ТОЛЬКО этот метод для скролла и списков)
+// GET /friends/?show_hidden=false&offset=0&limit=20
+export async function getFriends(
+  showHidden: boolean = false,
+  offset: number = 0,
+  limit: number = 20
+): Promise<{ total: number, friends: Friend[] }> {
+  const url = `${BASE_URL}/?show_hidden=${showHidden}&offset=${offset}&limit=${limit}`
+  return fetchJson<{ total: number, friends: Friend[] }>(url)
 }
 
-// Получить список друзей с пагинацией
-// GET /friends/?offset=0&limit=20
-export async function getFriendsPaginated({ showHidden = false, offset = 0, limit = 20 }: { showHidden?: boolean, offset?: number, limit?: number } = {}): Promise<{ total: number, friends: Friend[] }> {
-  let url = `${BASE_URL}/?offset=${offset}&limit=${limit}`
-  if (showHidden) url += "&show_hidden=true"
-  return fetchJson<{ total: number, friends: Friend[] }>(url)
+// --- Для поиска и совместимости (возвращает полный список как массив) ---
+// Использовать только для спец. случаев, когда реально нужно весь массив!
+export async function getAllFriends(showHidden: boolean = false): Promise<Friend[]> {
+  const url = showHidden ? `${BASE_URL}/?show_hidden=true` : `${BASE_URL}/`
+  return fetchJson<Friend[]>(url)
 }
 
 // Сгенерировать invite-ссылку (POST)
