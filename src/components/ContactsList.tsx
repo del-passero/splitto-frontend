@@ -38,7 +38,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     // eslint-disable-next-line
   }, [])
 
-  // Автозагрузка при появлении loaderRef (инфинити-скролл)
+  // Автозагрузка при появлении loaderRef (инфинити-скролл на мобилках)
   useEffect(() => {
     if (typeof friends !== "undefined") return
     if (internalLoading) return
