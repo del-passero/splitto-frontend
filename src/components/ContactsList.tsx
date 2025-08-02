@@ -5,7 +5,7 @@ import UserCard from "./UserCard"
 import EmptyContacts from "./EmptyContacts"
 import CardSection from "./CardSection"
 import type { Friend } from "../types/friend"
-import { getFriends, getFriendsPaginated } from "../api/friendsApi"
+import { getFriends } from "../api/friendsApi"
 
 type Props = {
   friends?: Friend[]
@@ -34,7 +34,6 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     setPage(0)
     setHasMore(true)
     setTotal(null)
-    // Первичная загрузка
     loadMore(0, true)
     // eslint-disable-next-line
   }, [])
@@ -56,16 +55,13 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     // eslint-disable-next-line
   }, [internalLoading, hasMore, loaderRef.current])
 
-  // Правильный loadMore с использованием getFriendsPaginated
+  // Лоадер для бесконечного скролла
   const loadMore = useCallback(async (_page?: number, reset?: boolean) => {
     try {
       setInternalLoading(true)
       setInternalError(null)
       const pageNum = typeof _page === "number" ? _page : page
-      const res = await getFriendsPaginated({
-        offset: pageNum * PAGE_SIZE,
-        limit: PAGE_SIZE
-      })
+      const res = await getFriends(false, pageNum * PAGE_SIZE, PAGE_SIZE)
       setTotal(res.total)
       if (reset) {
         setInternalFriends(res.friends)
@@ -158,7 +154,6 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
           )}
         </div>
       ))}
-      {/* Инфинити-скролл: невидимый якорь */}
       {hasMore && (
         <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
       )}

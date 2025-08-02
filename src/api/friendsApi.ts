@@ -1,5 +1,4 @@
 // src/api/friendsApi.ts
-
 import { Friend, FriendInvite } from "../types/friend"
 
 // Получение initData из Telegram WebApp
