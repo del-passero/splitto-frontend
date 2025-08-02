@@ -3,6 +3,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@keyframes fab-in {
+  0% { opacity: 0; transform: scale(0); }
+  60% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-fab-in {
+  animation: fab-in 0.25s cubic-bezier(.77,0,.18,1) forwards;
+}
+
 
 :root {
   --tg-bg-color: #f8faff;

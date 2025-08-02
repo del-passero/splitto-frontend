@@ -1,7 +1,7 @@
 // src/components/FAB.tsx
 
 import { useRef, useState, useEffect } from "react"
-import { Plus, UserPlus, HandCoins, Users } from "lucide-react"
+import { Plus } from "lucide-react"
 
 type FabAction = {
   key: string
@@ -42,9 +42,7 @@ const FAB = ({ actions }: Props) => {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  // Размер FAB (чуть меньше обычного)
-  const FAB_SIZE = 56
-  const CHILD_SIZE = 48
+  // Цвет и размер берём из переменных Telegram (поддержка тем)
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
 
   return (
@@ -78,7 +76,7 @@ const FAB = ({ actions }: Props) => {
               transition-all duration-200
               pointer-events-auto
               scale-0 opacity-0
-              ${open ? "animate-fab-in" : ""}
+              animate-fab-in
             `}
             style={{
               animationDelay: `${idx * 60}ms`,
@@ -109,17 +107,6 @@ const FAB = ({ actions }: Props) => {
       >
         <Plus size={32} strokeWidth={3} />
       </button>
-      {/* Анимация появления дочерних FAB-кнопок */}
-      <style jsx>{`
-        @keyframes fab-in {
-          0% { opacity: 0; transform: scale(0); }
-          60% { opacity: 1; transform: scale(1.15); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-        .animate-fab-in {
-          animation: fab-in 0.25s cubic-bezier(.77,0,.18,1) forwards;
-        }
-      `}</style>
     </div>
   )
 }
