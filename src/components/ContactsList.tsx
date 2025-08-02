@@ -107,11 +107,6 @@ const ContactsList = ({ isSearching = false, searchQuery }: Props) => {
       {loading && friends.length > 0 && (
         <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
       )}
-      {typeof total === "number" && (
-        <div className="text-xs text-center text-[var(--tg-hint-color)] pb-2">
-          Показано: {friends.length} из {total}
-        </div>
-      )}
     </CardSection>
   )
 }

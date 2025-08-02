@@ -26,7 +26,7 @@ export default {
   members: "Участники",
   empty_members: "Нет участников",
   owner: "Создатель",
-  groups_count: "{{count}} групп(а)",
+  groups_count: "Всего групп: {{count}}",
   groups_top_info: "У вас {{count}} активных групп",
   empty_groups: "У вас ещё нет ни одной группы",
   empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
@@ -49,7 +49,7 @@ export default {
 
   // --- Контакты ---
   empty_contacts: "У вас ещё нет ни одного контакта...",
-  contacts_count: "{{count}} контактов",
+  contacts_count: "Всего контактов: {{count}}",
   search_placeholder: "Поиск контакта...",
   filter: "Фильтр",
   sort: "Сортировка",
