@@ -1,5 +1,5 @@
 // src/api/friendsApi.ts
-import { Friend, FriendInvite } from "../types/friend"
+import { Friend, FriendInvite, FriendsResponse } from "../types/friend"
 
 // Получение initData из Telegram WebApp
 function getTelegramInitData(): string {
@@ -25,30 +25,34 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
 /**
  * Получить список друзей с поддержкой пагинации.
- * Если offset/limit не заданы, возвращает все контакты (оборачивает в тот же объект {total, friends})
+ * Теперь сервер всегда возвращает объект { total, friends }
  */
 export async function getFriends(
   showHidden: boolean = false,
-  offset?: number,
-  limit?: number
-): Promise<{ total: number, friends: Friend[] }> {
-  let url = `${BASE_URL}`
-  const params: string[] = []
-  if (typeof offset === "number" && typeof limit === "number") {
-    params.push(`offset=${offset}`)
-    params.push(`limit=${limit}`)
-  }
+  offset: number = 0,
+  limit: number = 50
+): Promise<FriendsResponse> {
+  let url = `${BASE_URL}?offset=${offset}&limit=${limit}`
   if (showHidden) {
-    params.push("show_hidden=true")
+    url += `&show_hidden=true`
   }
-  if (params.length > 0) {
-    url += "?" + params.join("&")
+  return fetchJson<FriendsResponse>(url)
+}
+
+/**
+ * Серверный поиск друзей по query
+ */
+export async function searchFriends(
+  query: string,
+  showHidden: boolean = false,
+  offset: number = 0,
+  limit: number = 50
+): Promise<FriendsResponse> {
+  let url = `${BASE_URL}/search?query=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`
+  if (showHidden) {
+    url += `&show_hidden=true`
   }
-  const result = await fetchJson<any>(url)
-  if (Array.isArray(result)) {
-    return { total: result.length, friends: result }
-  }
-  return result
+  return fetchJson<FriendsResponse>(url)
 }
 
 // Сгенерировать invite-ссылку (POST)

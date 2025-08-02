@@ -8,28 +8,24 @@ import InviteFriendModal from "../components/InviteFriendModal"
 import FiltersRow from "../components/FiltersRow"
 import TopInfoRow from "../components/TopInfoRow"
 import ContactsList from "../components/ContactsList"
-import EmptyContacts from "../components/EmptyContacts"
-import CardSection from "../components/CardSection"
 import { useFriendsStore } from "../store/friendsStore"
 
 const ContactsPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState("")
-  const { friends, loading, error, fetchFriends } = useFriendsStore()
+  const { friends, total, loading, fetchFriends, searchFriends, clearFriends } = useFriendsStore()
 
+  // Загружаем обычный список или поиск
   useEffect(() => {
-    fetchFriends()
-  }, [fetchFriends])
-
-  const filteredFriends = friends.filter(friend =>
-    friend.user.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-    friend.user.last_name?.toLowerCase().includes(search.toLowerCase()) ||
-    friend.user.username?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const isSearching = search.length > 0
-  const notFound = !filteredFriends.length && isSearching
+    clearFriends()         // всегда сбрасываем стор при заходе/смене поиска
+    if (search.trim().length > 0) {
+      searchFriends(search)
+    } else {
+      fetchFriends()
+    }
+    // eslint-disable-next-line
+  }, [search])
 
   const fabActions = [
     {
@@ -57,18 +53,16 @@ const ContactsPage = () => {
         placeholderKey="search_placeholder"
       />
 
-      {/* Если есть друзья — список и информер */}
-      {filteredFriends.length > 0 && (
-        <CardSection noPadding>
-          <TopInfoRow count={filteredFriends.length} labelKey="contacts_count" />
-          <ContactsList friends={filteredFriends} loading={loading} error={error} />
-        </CardSection>
+      {/* Информер */}
+      {friends.length > 0 && (
+        <TopInfoRow count={total} labelKey="contacts_count" />
       )}
 
-      {/* Если друзей нет — заглушка */}
-      {!filteredFriends.length && (
-        <EmptyContacts notFound={notFound} />
-      )}
+      {/* Список контактов (универсально — и поиск, и обычный режим) */}
+      <ContactsList
+        isSearching={search.length > 0}
+        searchQuery={search.length > 0 ? search : undefined}
+      />
 
       {/* Модалка приглашения */}
       <InviteFriendModal

@@ -1,156 +1,102 @@
-// src/components/ContactsList.tsx
-
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef } from "react"
 import UserCard from "./UserCard"
 import EmptyContacts from "./EmptyContacts"
 import CardSection from "./CardSection"
-import type { Friend } from "../types/friend"
-import { getFriends } from "../api/friendsApi"
+import { useFriendsStore } from "../store/friendsStore"
 
 type Props = {
-  friends?: Friend[]
-  loading?: boolean
-  error?: string | null
   isSearching?: boolean
+  searchQuery?: string | null
 }
 
 const PAGE_SIZE = 20
 
-const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
-  const [internalFriends, setInternalFriends] = useState<Friend[]>([])
-  const [internalError, setInternalError] = useState<string | null>(null)
-  const [internalLoading, setInternalLoading] = useState(false)
-  const [total, setTotal] = useState<number | null>(null)
-  const [page, setPage] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const loaderRef = useRef<HTMLDivElement>(null)
-  const observer = useRef<IntersectionObserver | null>(null)
+const ContactsList = ({ isSearching = false, searchQuery }: Props) => {
+  const {
+    friends,
+    total,
+    loading,
+    error,
+    fetchFriends,
+    searchFriends,
+    clearFriends,
+    hasMore,
+    page,
+    setPage
+  } = useFriendsStore()
 
-  // Сброс стейта при монтировании/смене поиска
+  const loaderRef = useRef<HTMLDivElement>(null)
+
+  // Сброс и загрузка первой страницы при смене режима или поискового запроса
   useEffect(() => {
-    if (typeof friends !== "undefined") return
-    setInternalFriends([])
-    setInternalError(null)
+    clearFriends()
     setPage(0)
-    setHasMore(true)
-    setTotal(null)
-    setInternalLoading(true)
-    loadMore(0, true)
+    if (isSearching && searchQuery) {
+      searchFriends(searchQuery, 0, PAGE_SIZE)
+    } else {
+      fetchFriends(0, PAGE_SIZE)
+    }
     // eslint-disable-next-line
-  }, [])
+  }, [isSearching, searchQuery])
 
   // Infinity scroll
   useEffect(() => {
-    if (typeof friends !== "undefined") return
-    if (internalLoading || !hasMore || !loaderRef.current) return
+    if (loading || !hasMore || !loaderRef.current) return
 
-    observer.current?.disconnect()
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !internalLoading && hasMore) {
-        loadMore()
+    const observer = new window.IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !loading && hasMore) {
+        const nextPage = page + 1
+        setPage(nextPage)
+        if (isSearching && searchQuery) {
+          searchFriends(searchQuery, nextPage * PAGE_SIZE, PAGE_SIZE)
+        } else {
+          fetchFriends(nextPage * PAGE_SIZE, PAGE_SIZE)
+        }
       }
     })
-    observer.current.observe(loaderRef.current)
+    observer.observe(loaderRef.current)
 
-    return () => observer.current?.disconnect()
-    // eslint-disable-next-line
-  }, [internalLoading, hasMore, loaderRef.current])
+    return () => observer.disconnect()
+  }, [loading, hasMore, isSearching, searchQuery, fetchFriends, searchFriends, page, setPage])
 
-  // Лоадер для бесконечного скролла
-  const loadMore = useCallback(async (_page?: number, reset?: boolean) => {
-    try {
-      setInternalLoading(true)
-      setInternalError(null)
-      const pageNum = typeof _page === "number" ? _page : page
-      const res = await getFriends(false, pageNum * PAGE_SIZE, PAGE_SIZE)
-      setTotal(res.total)
-      if (reset) {
-        setInternalFriends(res.friends)
-      } else {
-        setInternalFriends(prev => [...prev, ...res.friends])
-      }
-      setHasMore((pageNum * PAGE_SIZE + res.friends.length) < res.total)
-      setPage(pageNum + 1)
-    } catch (err: any) {
-      setInternalError(err.message || "Ошибка загрузки")
-    } finally {
-      setInternalLoading(false)
-    }
-  }, [page])
-
-  // Для режима поиска (search)
-  if (typeof friends !== "undefined") {
-    if (loading) {
-      return (
-        <CardSection>
-          <div className="py-12 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-        </CardSection>
-      )
-    }
-    if (error) {
-      return (
-        <CardSection>
-          <div className="py-12 text-center text-red-500">{error}</div>
-        </CardSection>
-      )
-    }
-    if (!friends.length) {
-      return (
-        <div className="w-full flex flex-col flex-1">
-          <EmptyContacts notFound={isSearching} />
-        </div>
-      )
-    }
-    return (
-      <CardSection noPadding>
-        {friends.map((friend, idx) => (
-          <div key={friend.id} className="relative">
-            <UserCard
-              name={`${friend.user.first_name ?? ""} ${friend.user.last_name ?? ""}`.trim()}
-              username={friend.user.username}
-              photo_url={friend.user.photo_url}
-            />
-            {idx !== friends.length - 1 && (
-              <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-            )}
-          </div>
-        ))}
-      </CardSection>
-    )
-  }
-
-  // Для бесконечного скролла
-  if (internalLoading && internalFriends.length === 0) {
-    return (
-      <CardSection>
-        <div className="py-12 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-      </CardSection>
-    )
-  }
-  if (internalError) {
-    return (
-      <CardSection>
-        <div className="py-12 text-center text-red-500">{internalError}</div>
-      </CardSection>
-    )
-  }
-  if (!internalFriends.length) {
+  // Пустой список (нет друзей и загрузка завершена)
+  if (!friends.length && !loading) {
     return (
       <div className="w-full flex flex-col flex-1">
         <EmptyContacts notFound={isSearching} />
       </div>
     )
   }
+
+  // Ошибка
+  if (error) {
+    return (
+      <CardSection>
+        <div className="py-12 text-center text-red-500">{error}</div>
+      </CardSection>
+    )
+  }
+
+  // Лоадер при первой загрузке
+  if (loading && friends.length === 0) {
+    return (
+      <CardSection>
+        <div className="py-12 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
+      </CardSection>
+    )
+  }
+
+  // Основной список
   return (
     <CardSection noPadding>
-      {internalFriends.map((friend, idx) => (
+      {friends.map((friend, idx) => (
         <div key={friend.id} className="relative">
           <UserCard
             name={`${friend.user.first_name ?? ""} ${friend.user.last_name ?? ""}`.trim()}
             username={friend.user.username}
             photo_url={friend.user.photo_url}
           />
-          {idx !== internalFriends.length - 1 && (
+          {idx !== friends.length - 1 && (
             <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
           )}
         </div>
@@ -158,12 +104,12 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
       {hasMore && (
         <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
       )}
-      {internalLoading && (
+      {loading && friends.length > 0 && (
         <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
       )}
       {typeof total === "number" && (
         <div className="text-xs text-center text-[var(--tg-hint-color)] pb-2">
-          Показано: {internalFriends.length} из {total}
+          Показано: {friends.length} из {total}
         </div>
       )}
     </CardSection>

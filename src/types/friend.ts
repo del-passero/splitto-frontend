@@ -32,3 +32,9 @@ export interface FriendInvite {
   from_user_id: number
   token: string
 }
+
+// НОВОЕ: Тип ответа для списка друзей с пагинацией и для поиска
+export interface FriendsResponse {
+  total: number
+  friends: Friend[]
+}
