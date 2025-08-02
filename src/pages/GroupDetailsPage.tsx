@@ -1,12 +1,16 @@
 // src/pages/GroupDetailsPage.tsx
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
 import UserCard from "../components/UserCard"
 import { getGroupDetails } from "../api/groupsApi"
+import { getGroupMembers } from "../api/groupMembersApi"  // Новый API для подгрузки участников
 import type { Group } from "../types/group"
+import type { GroupMember } from "../types/group_member"
+
+const PAGE_SIZE = 20
 
 const GroupDetailsPage = () => {
   const { t } = useTranslation()
@@ -17,7 +21,17 @@ const GroupDetailsPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Загружаем детали группы
+  // Состояния участников
+  const [members, setMembers] = useState<GroupMember[]>([])
+  const [membersTotal, setMembersTotal] = useState<number | null>(null)
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [membersError, setMembersError] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const loaderRef = useRef<HTMLDivElement>(null)
+  const observer = useRef<IntersectionObserver>()
+
+  // Загружаем детали группы (как раньше)
   useEffect(() => {
     const fetchDetails = async () => {
       try {
@@ -31,11 +45,59 @@ const GroupDetailsPage = () => {
         setLoading(false)
       }
     }
-
     if (id) fetchDetails()
   }, [id])
 
-  // Состояния загрузки/ошибки
+  // Сброс участников при смене группы
+  useEffect(() => {
+    setMembers([])
+    setMembersTotal(null)
+    setPage(0)
+    setHasMore(true)
+    setMembersError(null)
+  }, [id])
+
+  // Подгрузка участников
+  const loadMembers = useCallback(async (_page?: number) => {
+    if (!id || membersLoading || !hasMore) return
+    try {
+      setMembersLoading(true)
+      setMembersError(null)
+      const pageNum = typeof _page === "number" ? _page : page
+      const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
+      setMembers(prev => [...prev, ...res.members])
+      setMembersTotal(res.total)
+      setHasMore(res.members.length === PAGE_SIZE)
+      setPage(pageNum + 1)
+    } catch (err: any) {
+      setMembersError(err.message || "Ошибка загрузки участников")
+    } finally {
+      setMembersLoading(false)
+    }
+  }, [id, membersLoading, page, hasMore])
+
+  // Инфинити-скролл
+  useEffect(() => {
+    if (membersLoading || !hasMore) return
+    if (!loaderRef.current) return
+
+    observer.current?.disconnect()
+    observer.current = new window.IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !membersLoading && hasMore) {
+        loadMembers()
+      }
+    })
+    observer.current.observe(loaderRef.current)
+    return () => observer.current?.disconnect()
+  }, [membersLoading, hasMore, loadMembers])
+
+  // Первая загрузка участников
+  useEffect(() => {
+    if (id) loadMembers(0)
+    // eslint-disable-next-line
+  }, [id])
+
+  // Состояния загрузки/ошибки группы
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
@@ -61,9 +123,7 @@ const GroupDetailsPage = () => {
   }
 
   const ownerId = group.owner_id
-  const members = group.members ?? []
-
-  // Сортируем: владелец первый
+  // Отсортируем: владелец первый
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId)
@@ -86,19 +146,34 @@ const GroupDetailsPage = () => {
 
       {/* Список участников */}
       <div className="w-full max-w-md flex flex-col gap-2 px-4">
-        {sortedMembers.length > 0 ? (
-          sortedMembers.map((member) => (
-            <UserCard
-              key={member.user.id}
-              name={
-                member.user.first_name || member.user.last_name
-                  ? `${member.user.first_name || ""} ${member.user.last_name || ""}`.trim()
-                  : member.user.username || t("not_specified")
-              }
-              username={member.user.username || t("not_specified")}
-              photo_url={member.user.photo_url}
-            />
-          ))
+        {membersError ? (
+          <div className="text-[var(--tg-hint-color)] text-center py-6">{membersError}</div>
+        ) : sortedMembers.length > 0 ? (
+          <>
+            {sortedMembers.map((member) => (
+              <UserCard
+                key={member.user.id}
+                name={
+                  member.user.first_name || member.user.last_name
+                    ? `${member.user.first_name || ""} ${member.user.last_name || ""}`.trim()
+                    : member.user.username || t("not_specified")
+                }
+                username={member.user.username || t("not_specified")}
+                photo_url={member.user.photo_url}
+              />
+            ))}
+            {hasMore && (
+              <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+            )}
+            {membersLoading && (
+              <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
+            )}
+            {typeof membersTotal === "number" && (
+              <div className="text-xs text-center text-[var(--tg-hint-color)] pb-2">
+                Показано: {members.length} из {membersTotal}
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-[var(--tg-hint-color)] text-center py-6">
             {t("no_members") || "Нет участников"}

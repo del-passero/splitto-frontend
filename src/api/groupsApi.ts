@@ -29,3 +29,15 @@ export async function getGroupDetails(groupId: number): Promise<Group> {
   if (!response.ok) throw new Error(await response.text())
   return await response.json()
 }
+
+/**
+ * Получить участников группы с пагинацией.
+ * GET /group_members/group/{group_id}?offset=0&limit=20
+ * Возвращает { total, members: [...] }
+ */
+export async function getGroupMembersPaginated(groupId: number, offset: number = 0, limit: number = 20): Promise<{ total: number, members: any[] }> {
+  const url = `${API_URL}/group_members/group/${groupId}?offset=${offset}&limit=${limit}`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(await response.text())
+  return await response.json()
+}

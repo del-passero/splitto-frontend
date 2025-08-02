@@ -27,10 +27,18 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return await res.json()
 }
 
-// ѕолучить список друзей или скрытых друзей
+// ѕолучить список друзей или скрытых друзей (без пагинации)
 export async function getFriends(showHidden: boolean = false): Promise<Friend[]> {
   const url = showHidden ? `${BASE_URL}/?show_hidden=true` : `${BASE_URL}/`
   return fetchJson<Friend[]>(url)
+}
+
+// ѕолучить список друзей с пагинацией
+// GET /friends/?offset=0&limit=20
+export async function getFriendsPaginated({ showHidden = false, offset = 0, limit = 20 }: { showHidden?: boolean, offset?: number, limit?: number } = {}): Promise<{ total: number, friends: Friend[] }> {
+  let url = `${BASE_URL}/?offset=${offset}&limit=${limit}`
+  if (showHidden) url += "&show_hidden=true"
+  return fetchJson<{ total: number, friends: Friend[] }>(url)
 }
 
 // —генерировать invite-ссылку (POST)
