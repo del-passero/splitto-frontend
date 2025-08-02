@@ -19,7 +19,11 @@ export const useFriendsStore = create<FriendsStore>((set) => ({
     set({ loading: true, error: null })
     try {
       const data = await getFriends(false, offset, limit)
-      set({ friends: data.friends, loading: false, total: data.total })
+      set(state => ({
+        friends: offset === 0 ? data.friends : [...state.friends, ...data.friends],
+        total: data.total,
+        loading: false
+      }))
     } catch (e: any) {
       set({ error: e.message || "Ошибка загрузки друзей", loading: false })
     }

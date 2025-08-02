@@ -32,12 +32,17 @@ export async function getFriends(
   offset?: number,
   limit?: number
 ): Promise<{ total: number, friends: Friend[] }> {
-  let url = `${BASE_URL}/?`
+  let url = `${BASE_URL}`
+  const params: string[] = []
   if (typeof offset === "number" && typeof limit === "number") {
-    url += `offset=${offset}&limit=${limit}`
+    params.push(`offset=${offset}`)
+    params.push(`limit=${limit}`)
   }
   if (showHidden) {
-    url += (url.endsWith("?") ? "" : "&") + "show_hidden=true"
+    params.push("show_hidden=true")
+  }
+  if (params.length > 0) {
+    url += "?" + params.join("&")
   }
   const result = await fetchJson<any>(url)
   if (Array.isArray(result)) {

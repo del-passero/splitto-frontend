@@ -1,3 +1,5 @@
+// src/components/ContactsList.tsx
+
 import { useState, useEffect, useRef, useCallback } from "react"
 import UserCard from "./UserCard"
 import EmptyContacts from "./EmptyContacts"
@@ -32,6 +34,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
     setPage(0)
     setHasMore(true)
     setTotal(null)
+    setInternalLoading(true)
     loadMore(0, true)
     // eslint-disable-next-line
   }, [])
@@ -66,7 +69,7 @@ const ContactsList = ({ friends, loading, error, isSearching }: Props) => {
       } else {
         setInternalFriends(prev => [...prev, ...res.friends])
       }
-      setHasMore(res.friends.length === PAGE_SIZE)
+      setHasMore((pageNum * PAGE_SIZE + res.friends.length) < res.total)
       setPage(pageNum + 1)
     } catch (err: any) {
       setInternalError(err.message || "Ошибка загрузки")
