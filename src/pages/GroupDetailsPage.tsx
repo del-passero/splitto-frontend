@@ -1,5 +1,3 @@
-// src/pages/GroupDetailsPage.tsx
-
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -64,11 +62,10 @@ const GroupDetailsPage = () => {
       setMembersLoading(true)
       setMembersError(null)
       const pageNum = typeof _page === "number" ? _page : page
-      // ↓↓↓ ВАЖНО: передаём ВСЕ аргументы!
       const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
-      setMembers(prev => [...prev, ...res.members])
+      setMembers(prev => [...prev, ...(res.members || [])])
       setMembersTotal(res.total)
-      setHasMore(res.members.length === PAGE_SIZE)
+      setHasMore((res.members?.length || 0) === PAGE_SIZE)
       setPage(pageNum + 1)
     } catch (err: any) {
       setMembersError(err.message || "Ошибка загрузки участников")
@@ -124,7 +121,6 @@ const GroupDetailsPage = () => {
   }
 
   const ownerId = group.owner_id
-  // Отсортируем: владелец первый
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
     ...members.filter(m => m.user.id !== ownerId)
