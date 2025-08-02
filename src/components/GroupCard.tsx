@@ -1,3 +1,5 @@
+// src/components/GroupCard.tsx
+
 import { useEffect, useState } from "react"
 import GroupAvatar from "./GroupAvatar"
 import Avatar from "./Avatar"
@@ -48,13 +50,26 @@ const GroupCard = ({
       type="button"
       onClick={onClick}
       className={`
-        w-full flex items-center bg-[var(--tg-card-bg)] border border-[var(--tg-hint-color)]
-        rounded-2xl shadow-md px-4 py-3 min-h-[88px] max-h-[104px] transition
-        hover:shadow-xl hover:border-[var(--tg-link-color)] cursor-pointer
+        w-full flex items-center
+        bg-[var(--tg-card-bg)]
+        border border-[var(--tg-hint-color)]
+        rounded-2xl
+        px-4 py-3
+        min-h-[88px] max-h-[104px]
+        transition
+        hover:shadow-[0_4px_18px_0_rgba(80,120,180,0.10)]
+        hover:border-[var(--tg-link-color)]
+        cursor-pointer
+        shadow-[0_8px_32px_-20px_rgba(50,60,90,0.15)]
         ${className}
       `}
       aria-label={group.name}
-      style={{ minHeight: 88, maxHeight: 104 }}
+      style={{
+        minHeight: 88,
+        maxHeight: 104,
+        boxShadow:
+          "0 2px 10px 0 rgba(83,147,231,0.05), 0 8px 32px -20px rgba(50,60,90,0.13), 0 10px 12px -2px rgba(50,60,90,0.05)",
+      }}
     >
       {/* Аватар группы */}
       <GroupAvatar
@@ -75,14 +90,15 @@ const GroupCard = ({
           </div>
         </div>
         {/* Участники (аватарки в строку, оверлап, "и ещё N") */}
-        <div className="flex items-center mt-2">
+        <div className="flex items-center mt-2 min-h-[28px]">
           {displayedMembers.map((member, idx) => {
             const user = member.user || member
             return (
               <div
                 key={user.id}
-                className="rounded-full border-2 border-white bg-[var(--tg-bg-color)]"
+                className="rounded-full border-2 flex items-center justify-center bg-[var(--tg-bg-color)]"
                 style={{
+                  borderColor: "var(--tg-card-bg)",
                   width: PARTICIPANT_SIZE,
                   height: PARTICIPANT_SIZE,
                   marginLeft: idx > 0 ? -10 : 0,
