@@ -50,8 +50,8 @@ const FAB = ({ actions }: Props) => {
       ref={fabRef}
       className={`
         fixed z-50
-        right-6 bottom-6
-        flex flex-col items-end
+        + right-6 bottom-[90px]
+        flex flex-col items-center
         transition-opacity
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
       `}
