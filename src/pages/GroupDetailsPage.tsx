@@ -1,8 +1,11 @@
+// src/pages/GroupDetailsPage.tsx
+
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
 import UserCard from "../components/UserCard"
+import CardSection from "../components/CardSection"
 import { getGroupDetails } from "../api/groupsApi"
 import { getGroupMembers } from "../api/groupMembersApi"
 import type { Group } from "../types/group"
@@ -121,6 +124,7 @@ const GroupDetailsPage = () => {
     )
   }
 
+  // Владелец первым
   const ownerId = group.owner_id
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
@@ -143,27 +147,31 @@ const GroupDetailsPage = () => {
       </div>
 
       {/* Список участников */}
-      <div className="w-full max-w-md flex flex-col gap-2 px-4">
+      <CardSection noPadding>
         {membersError ? (
-          <div className="text-[var(--tg-hint-color)] text-center py-6">{membersError}</div>
+          <div className="py-12 text-center text-red-500">{membersError}</div>
         ) : sortedMembers.length > 0 ? (
           <>
-            {sortedMembers.map((member) => (
-              <UserCard
-                key={member.user.id}
-                name={
-                  member.user.first_name || member.user.last_name
-                    ? `${member.user.first_name || ""} ${member.user.last_name || ""}`.trim()
-                    : member.user.username || t("not_specified")
-                }
-                username={member.user.username || t("not_specified")}
-                photo_url={member.user.photo_url}
-              />
+            {sortedMembers.map((member, idx) => (
+              <div key={member.user.id} className="relative">
+                <UserCard
+                  name={
+                    member.user.first_name || member.user.last_name
+                      ? `${member.user.first_name || ""} ${member.user.last_name || ""}`.trim()
+                      : member.user.username || t("not_specified")
+                  }
+                  username={member.user.username || t("not_specified")}
+                  photo_url={member.user.photo_url}
+                />
+                {idx !== sortedMembers.length - 1 && (
+                  <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                )}
+              </div>
             ))}
             {hasMore && (
               <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
             )}
-            {membersLoading && (
+            {membersLoading && sortedMembers.length > 0 && (
               <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
             )}
             {typeof membersTotal === "number" && (
@@ -177,7 +185,7 @@ const GroupDetailsPage = () => {
             {t("no_members") || "Нет участников"}
           </div>
         )}
-      </div>
+      </CardSection>
 
       {/* Дополнительный контент группы */}
       <div className="px-4 mt-6">
