@@ -1,14 +1,14 @@
 // src/components/GroupCard.tsx
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import GroupAvatar from "./GroupAvatar"
 import Avatar from "./Avatar"
 import { useTranslation } from "react-i18next"
-import { getGroupDetails } from "../api/groupsApi"
-import type { Group, GroupMember } from "../types/group"
+import type { Group, GroupPreview } from "../types/group"
+import type { GroupMember } from "../types/group_member"
 
 type Props = {
-  group: Group
+  group: GroupPreview | Group
   onClick: () => void
   maxAvatars?: number
   className?: string
@@ -25,25 +25,36 @@ const GroupCard = ({
   className = "",
 }: Props) => {
   const { t } = useTranslation()
-  const [members, setMembers] = useState<GroupMember[]>(group.members || [])
 
-  useEffect(() => {
-    if (!group.members) {
-      getGroupDetails(group.id)
-        .then(data => {
-          if (data.members) setMembers(data.members)
-        })
-        .catch(() => {})
+  // Универсально достаем участников (детали группы или превью)
+  const members: GroupMember[] = useMemo(() => {
+    if (
+      "members" in group &&
+      Array.isArray(group.members) &&
+      group.members.length > 0
+    ) {
+      return group.members
     }
-  }, [group.id, group.members])
+    if (
+      "preview_members" in group &&
+      Array.isArray(group.preview_members)
+    ) {
+      return group.preview_members
+    }
+    return []
+  }, [group])
 
-  const ownerId = group.owner_id
-  const sortedMembers = [
-    ...members.filter(m => (m.user ? m.user.id === ownerId : m.id === ownerId)),
-    ...members.filter(m => (m.user ? m.user.id !== ownerId : m.id !== ownerId)),
-  ]
+  // Владелец всегда первым
+  const sortedMembers = useMemo(() => {
+    if (!members.length) return []
+    return [
+      ...members.filter((m) => m.user.id === group.owner_id),
+      ...members.filter((m) => m.user.id !== group.owner_id),
+    ]
+  }, [members, group.owner_id])
+
   const displayedMembers = sortedMembers.slice(0, maxAvatars)
-  const hiddenCount = sortedMembers.length - maxAvatars
+  const hiddenCount = Math.max(0, sortedMembers.length - maxAvatars)
 
   return (
     <button
@@ -91,37 +102,34 @@ const GroupCard = ({
         </div>
         {/* Участники (аватарки в строку, оверлап, "и ещё N") */}
         <div className="flex items-center mt-2 min-h-[28px]">
-          {displayedMembers.map((member, idx) => {
-            const user = member.user || member
-            return (
-              <div
-                key={user.id}
-                className="rounded-full border-2 flex items-center justify-center bg-[var(--tg-bg-color)]"
-                style={{
-                  borderColor: "var(--tg-card-bg)",
-                  width: PARTICIPANT_SIZE,
-                  height: PARTICIPANT_SIZE,
-                  marginLeft: idx > 0 ? -10 : 0,
-                  zIndex: maxAvatars - idx,
-                }}
-                title={
-                  user.first_name
-                    ? `${user.first_name} ${user.last_name || ""}`.trim()
-                    : user.username || ""
+          {displayedMembers.map((member, idx) => (
+            <div
+              key={member.id}
+              className="rounded-full border-2 flex items-center justify-center bg-[var(--tg-bg-color)]"
+              style={{
+                borderColor: "var(--tg-card-bg)",
+                width: PARTICIPANT_SIZE,
+                height: PARTICIPANT_SIZE,
+                marginLeft: idx > 0 ? -10 : 0,
+                zIndex: maxAvatars - idx,
+              }}
+              title={
+                member.user.first_name
+                  ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                  : member.user.username || ""
+              }
+            >
+              <Avatar
+                name={
+                  member.user.first_name
+                    ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
+                    : member.user.username || ""
                 }
-              >
-                <Avatar
-                  name={
-                    user.first_name
-                      ? `${user.first_name} ${user.last_name || ""}`.trim()
-                      : user.username || ""
-                  }
-                  src={user.photo_url}
-                  size={PARTICIPANT_SIZE}
-                />
-              </div>
-            )
-          })}
+                src={member.user.photo_url}
+                size={PARTICIPANT_SIZE}
+              />
+            </div>
+          ))}
           {hiddenCount > 0 && (
             <span className="ml-2 text-xs text-[var(--tg-hint-color)]">
               {t("and_more_members", { count: hiddenCount }) || `и ещё ${hiddenCount}`}

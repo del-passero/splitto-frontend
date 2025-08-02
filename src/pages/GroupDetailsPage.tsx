@@ -63,9 +63,10 @@ const GroupDetailsPage = () => {
       setMembersError(null)
       const pageNum = typeof _page === "number" ? _page : page
       const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
-      setMembers(prev => [...prev, ...(res.members || [])])
+      // Важно: API возвращает { total, items }
+      setMembers(prev => [...prev, ...(res.items || [])])
       setMembersTotal(res.total)
-      setHasMore((res.members?.length || 0) === PAGE_SIZE)
+      setHasMore((res.items?.length || 0) === PAGE_SIZE)
       setPage(pageNum + 1)
     } catch (err: any) {
       setMembersError(err.message || "Ошибка загрузки участников")
