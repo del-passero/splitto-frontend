@@ -14,7 +14,7 @@ type Props = {
   className?: string
 }
 
-const AVATAR_SIZE = 56
+const AVATAR_SIZE = 72
 const PARTICIPANT_SIZE = 28
 const MAX_DISPLAYED = 4
 
@@ -61,47 +61,74 @@ const GroupCard = ({
       type="button"
       onClick={onClick}
       className={`
-        w-full flex items-center
+        w-full flex items-center relative
         bg-[var(--tg-card-bg)]
         border border-[var(--tg-hint-color)]
-        rounded-2xl
-        px-4 py-3
-        min-h-[88px] max-h-[104px]
-        transition
-        hover:shadow-[0_4px_18px_0_rgba(80,120,180,0.10)]
-        hover:border-[var(--tg-link-color)]
-        cursor-pointer
-        shadow-[0_8px_32px_-20px_rgba(50,60,90,0.15)]
+        rounded-3xl
+        px-7 py-6
+        min-h-[130px]
+        shadow-[0_12px_40px_-10px_rgba(83,147,231,0.15)]
+        overflow-hidden
         ${className}
       `}
       aria-label={group.name}
       style={{
-        minHeight: 88,
-        maxHeight: 104,
+        minHeight: 130,
         boxShadow:
-          "0 2px 10px 0 rgba(83,147,231,0.05), 0 8px 32px -20px rgba(50,60,90,0.13), 0 10px 12px -2px rgba(50,60,90,0.05)",
+          "0 8px 28px 0 rgba(83,147,231,0.10), 0 16px 40px -16px rgba(50,60,90,0.10)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      {/* Аватар группы */}
-      <GroupAvatar
-        name={group.name}
-        size={AVATAR_SIZE}
-        className="flex-shrink-0"
+      {/* Внутренний matte-иннер-шадоу */}
+      <div
+        className="
+          pointer-events-none
+          absolute inset-0 rounded-3xl z-0
+        "
+        style={{
+          boxShadow: "inset 0 2px 24px 0 rgba(83,147,231,0.05)",
+        }}
       />
-
+      {/* Аватар группы с glow подложкой */}
+      <div className="flex-shrink-0 mr-7 relative z-10">
+        {/* Glow-подсветка под аватаром */}
+        <div
+          className="absolute inset-0 flex items-center justify-center z-0"
+          style={{
+            filter: "blur(20px)",
+            opacity: 0.17,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+              borderRadius: 32,
+              background: "var(--tg-link-color)",
+            }}
+          />
+        </div>
+        <GroupAvatar
+          name={group.name}
+          size={AVATAR_SIZE}
+          className="relative z-10"
+        />
+      </div>
       {/* Правая часть */}
-      <div className="flex flex-col justify-center flex-1 min-w-0 ml-4">
+      <div className="flex flex-col justify-center flex-1 min-w-0 z-10">
         {/* Верх: название группы и баланс/статус */}
-        <div className="flex items-center justify-between w-full">
-          <div className="text-lg font-bold text-[var(--tg-text-color)] truncate">
+        <div className="flex items-center justify-between w-full mb-3">
+          <div className="text-2xl font-extrabold text-[var(--tg-text-color)] truncate">
             {group.name}
           </div>
-          <div className="text-xs text-[var(--tg-hint-color)] ml-3 shrink-0">
+          <div className="text-xs text-[var(--tg-hint-color)] ml-4 shrink-0">
             {t("debts_reserved")}
           </div>
         </div>
-        {/* Участники (аватарки в строку, оверлап, "и ещё N") */}
-        <div className="flex items-center mt-2 min-h-[28px]">
+        {/* Участники */}
+        <div className="flex items-center min-h-[28px] gap-3">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.id}
