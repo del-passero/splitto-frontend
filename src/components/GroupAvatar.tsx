@@ -23,9 +23,8 @@ const GroupAvatar = ({
           relative flex items-center justify-center
           rounded-[18px]
           shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
-          ring-2 ring-white/60 dark:ring-[#232b3b]/60
-          bg-white/50 dark:bg-[#232b3b]/30
-          backdrop-blur-sm
+          ring-2 ring-[var(--tg-card-bg)]
+          bg-[var(--tg-link-color)]
           ${className}
         `}
         style={{
@@ -56,9 +55,8 @@ const GroupAvatar = ({
         font-bold text-white select-none
         rounded-[18px]
         shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
-        ring-2 ring-white/60 dark:ring-[#232b3b]/60
-        bg-[var(--tg-link-color)]/95
-        backdrop-blur-sm
+        ring-2 ring-[var(--tg-card-bg)]
+        bg-[var(--tg-link-color)]
         ${className}
       `}
       style={{

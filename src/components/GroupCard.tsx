@@ -67,33 +67,23 @@ const GroupCard = ({
         min-h-[88px] max-h-[120px]
         shadow-[0_8px_32px_-10px_rgba(83,147,231,0.14)]
         border border-[var(--tg-hint-color)]
+        bg-[var(--tg-card-bg)]
+        transition
+        cursor-pointer
         overflow-hidden
-        bg-white/80 dark:bg-[#232b3bcc]/60
-        backdrop-blur-md
         ${className}
       `}
       aria-label={group.name}
       style={{
         minHeight: 88,
         maxHeight: 120,
-        // Glass/blur + две разные тени для ещё большего премиума:
-        boxShadow: "0 8px 32px -10px rgba(83,147,231,0.16), 0 1.5px 7px 0 rgba(49,130,206,0.06)",
+        boxShadow: "0 8px 32px -10px rgba(83,147,231,0.14), 0 2px 8px 0 rgba(50,60,90,0.07)",
         border: "1.5px solid var(--tg-hint-color)",
-        background: "rgba(255,255,255,0.80)",
-        backdropFilter: "blur(11px)",
-        WebkitBackdropFilter: "blur(11px)",
+        background: "var(--tg-card-bg)",
       }}
     >
-      {/* Аватар группы с легкой полупрозрачной подложкой */}
+      {/* Аватар группы, строго слева, только тень и рамка */}
       <div className="flex-shrink-0 relative mr-5">
-        <div
-          className="absolute inset-0 rounded-[18px] z-0"
-          style={{
-            background: "rgba(83,147,231,0.10)",
-            filter: "blur(8px)",
-            opacity: 0.6,
-          }}
-        />
         <GroupAvatar
           name={group.name}
           size={AVATAR_SIZE}
