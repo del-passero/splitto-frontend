@@ -31,6 +31,12 @@ export default {
   empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
   search_group_placeholder: "Поиск группы...",
   debts_reserved: "Долги — скоро!",
+  and_more_members: "и ещё {{count}}",
+  group_members_count: "{{count}} участников",
+  group_status_archived: "Архив",
+  leave_group: "Выйти из группы",
+  delete_group: "Удалить группу",
+
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",

@@ -3,13 +3,13 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import GroupAvatar from "../components/GroupAvatar"
 import { getGroupDetails } from "../api/groupsApi"
 import { getGroupMembers } from "../api/groupMembersApi"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
 import GroupTabs from "../components/group/GroupTabs"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
+import GroupHeader from "../components/group/GroupHeader"
 
 const PAGE_SIZE = 20
 
@@ -28,11 +28,9 @@ const GroupDetailsPage = () => {
   const id = Number(groupId)
 
   const [selectedTab, setSelectedTab] = useState("overview")
-
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   // Участники
   const [members, setMembers] = useState<GroupMember[]>([])
   const [membersTotal, setMembersTotal] = useState<number | null>(null)
@@ -133,6 +131,10 @@ const GroupDetailsPage = () => {
     )
   }
 
+  // Определяем владелец ли текущий пользователь (заглушка, замени под свою auth-логику)
+  const currentUserId = 0 // <-- сюда передавай id текущего пользователя (auth)
+  const isOwner = currentUserId === group.owner_id
+
   // Владелец первым
   const ownerId = group.owner_id
   const sortedMembers = [
@@ -140,20 +142,24 @@ const GroupDetailsPage = () => {
     ...members.filter(m => m.user.id !== ownerId)
   ]
 
+  // Действия для шапки (заглушки, замени под реальные модалки/навигацию)
+  const handleSettings = () => alert("Открыть настройки")
+  const handleEdit = () => alert("Открыть редактирование")
+  const handleLeave = () => alert("Выйти из группы")
+  const handleDelete = () => alert("Удалить группу")
+
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] py-6 flex flex-col items-center">
       {/* Шапка группы */}
-      <div className="flex flex-col items-center mb-6">
-        <GroupAvatar name={group.name} size={72} className="mb-2" />
-        <div className="font-semibold text-2xl text-[var(--tg-text-color)] mb-1">
-          {group.name}
-        </div>
-        {group.description && (
-          <div className="text-[var(--tg-hint-color)] text-sm mb-1 text-center px-4">
-            {group.description}
-          </div>
-        )}
-      </div>
+      <GroupHeader
+        group={group}
+        members={members}
+        isOwner={isOwner}
+        onSettings={handleSettings}
+        onEdit={handleEdit}
+        onLeave={handleLeave}
+        onDelete={handleDelete}
+      />
       {/* Вкладки */}
       <GroupTabs
         tabs={tabs.map(tab => ({
@@ -177,7 +183,6 @@ const GroupDetailsPage = () => {
             membersTotal={membersTotal}
           />
         )}
-        {/* Остальные вкладки (заглушки) */}
         {selectedTab !== "balance" && (
           <div className="text-center text-[var(--tg-hint-color)] py-10">
             {t(`group_tab_${selectedTab}`)}

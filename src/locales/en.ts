@@ -31,6 +31,12 @@ export default {
   empty_groups_hint: "Create your first group to manage shared expenses!",
   search_group_placeholder: "Search group...",
   debts_reserved: "Debts — coming soon!",
+  and_more_members: "and {{count}} more",
+  group_members_count: "{{count}} members",
+  group_status_archived: "Archived",
+  leave_group: "Leave group",
+  delete_group: "Delete group",
+
 
   // --- Invites ---
   create_invite_link: "Create invite link",

@@ -31,6 +31,12 @@ export default {
   empty_groups_hint: "¡Crea tu primer grupo para administrar gastos compartidos!",
   search_group_placeholder: "Buscar grupo...",
   debts_reserved: "Deudas — ¡próximamente!",
+  and_more_members: "y {{count}} más",
+  group_members_count: "{{count}} participantes",
+  group_status_archived: "Archivado",
+  leave_group: "Salir del grupo",
+  delete_group: "Eliminar grupo",
+
 
   // --- Invitaciones ---
   create_invite_link: "Crear enlace de invitación",
