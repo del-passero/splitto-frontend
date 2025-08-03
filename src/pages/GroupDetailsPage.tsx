@@ -4,25 +4,36 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import GroupAvatar from "../components/GroupAvatar"
-import UserCard from "../components/UserCard"
-import CardSection from "../components/CardSection"
 import { getGroupDetails } from "../api/groupsApi"
 import { getGroupMembers } from "../api/groupMembersApi"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
+import GroupTabs from "../components/group/GroupTabs"
+import GroupBalanceTab from "../components/group/GroupBalanceTab"
 
 const PAGE_SIZE = 20
+
+const tabs = [
+  { key: "overview", label: "Обзор" },
+  { key: "transactions", label: "Траты" },
+  { key: "balance", label: "Баланс" },
+  { key: "history", label: "История" },
+  { key: "notes", label: "Заметки" },
+  { key: "settings", label: "Настройки" },
+]
 
 const GroupDetailsPage = () => {
   const { t } = useTranslation()
   const { groupId } = useParams()
   const id = Number(groupId)
 
+  const [selectedTab, setSelectedTab] = useState("overview")
+
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Состояния участников
+  // Участники
   const [members, setMembers] = useState<GroupMember[]>([])
   const [membersTotal, setMembersTotal] = useState<number | null>(null)
   const [membersLoading, setMembersLoading] = useState(false)
@@ -32,7 +43,7 @@ const GroupDetailsPage = () => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver | null>(null)
 
-  // Загружаем детали группы
+  // Детали группы
   useEffect(() => {
     const fetchDetails = async () => {
       try {
@@ -66,7 +77,6 @@ const GroupDetailsPage = () => {
       setMembersError(null)
       const pageNum = typeof _page === "number" ? _page : page
       const res = await getGroupMembers(id, pageNum * PAGE_SIZE, PAGE_SIZE)
-      // Важно! res.items
       setMembers(prev => [...prev, ...(res.items || [])])
       setMembersTotal(res.total)
       setHasMore((res.items?.length || 0) === PAGE_SIZE)
@@ -102,7 +112,7 @@ const GroupDetailsPage = () => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
-        {t("loading") || "Загрузка..."}
+        {t("group_loading")}
       </div>
     )
   }
@@ -118,7 +128,7 @@ const GroupDetailsPage = () => {
   if (!group) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
-        {t("group_not_found") || "Группа не найдена"}
+        {t("group_not_found")}
       </div>
     )
   }
@@ -144,48 +154,35 @@ const GroupDetailsPage = () => {
           </div>
         )}
       </div>
-
-      {/* Список участников */}
-      <CardSection noPadding>
-        {membersError ? (
-          <div className="py-12 text-center text-red-500">{membersError}</div>
-        ) : sortedMembers.length > 0 ? (
-          <>
-            {sortedMembers.map((member, idx) => (
-              <div key={member.user.id} className="relative">
-                <UserCard
-                  name={
-                    member.user.first_name || member.user.last_name
-                      ? `${member.user.first_name || ""} ${member.user.last_name || ""}`.trim()
-                      : member.user.username || t("not_specified")
-                  }
-                  username={member.user.username || t("not_specified")}
-                  photo_url={member.user.photo_url}
-                />
-                {idx !== sortedMembers.length - 1 && (
-                  <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-                )}
-              </div>
-            ))}
-            {hasMore && (
-              <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
-            )}
-            {membersLoading && sortedMembers.length > 0 && (
-              <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-            )}
-          </>
-        ) : (
-          <div className="text-[var(--tg-hint-color)] text-center py-6">
-            {t("no_members") || "Нет участников"}
+      {/* Вкладки */}
+      <GroupTabs
+        tabs={tabs.map(tab => ({
+          key: tab.key,
+          label: t(`group_tab_${tab.key}`)
+        }))}
+        selected={selectedTab}
+        onSelect={setSelectedTab}
+        className="mb-2"
+      />
+      <div className="w-full max-w-xl mx-auto px-2">
+        {selectedTab === "balance" && (
+          <GroupBalanceTab
+            group={group}
+            members={members}
+            membersError={membersError}
+            membersLoading={membersLoading}
+            hasMore={hasMore}
+            loaderRef={loaderRef}
+            sortedMembers={sortedMembers}
+            membersTotal={membersTotal}
+          />
+        )}
+        {/* Остальные вкладки (заглушки) */}
+        {selectedTab !== "balance" && (
+          <div className="text-center text-[var(--tg-hint-color)] py-10">
+            {t(`group_tab_${selectedTab}`)}
           </div>
         )}
-      </CardSection>
-
-      {/* Дополнительный контент группы */}
-      <div className="px-4 mt-6">
-        <div className="text-[var(--tg-hint-color)] text-center py-8">
-          {t("group_details_coming_soon") || "Функционал группы скоро будет добавлен"}
-        </div>
       </div>
     </div>
   )

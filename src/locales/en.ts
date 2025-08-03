@@ -82,4 +82,19 @@ export default {
 
   // --- Errors & System Status ---
   error: "Error"
+  
+  // --- Tabs ---
+	group_tab_overview: "Overview",
+	group_tab_transactions: "Transactions",
+	group_tab_balance: "Balance",
+	group_tab_history: "History",
+	group_tab_notes: "Notes",
+	group_tab_settings: "Settings",
+
+	// --- Balance ---
+	group_balance_title: "Members' Balance",
+	group_no_members: "No members",
+	group_loading: "Loading...",
+group_error_loading_members: "Failed to load members",
+
 }

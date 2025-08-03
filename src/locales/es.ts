@@ -82,4 +82,19 @@ export default {
 
   // --- Errores y estados del sistema ---
   error: "Error"
+  
+  // --- Pestañas ---
+group_tab_overview: "Resumen",
+group_tab_transactions: "Gastos",
+group_tab_balance: "Balance",
+group_tab_history: "Historial",
+group_tab_notes: "Notas",
+group_tab_settings: "Configuración",
+
+// --- Balance ---
+group_balance_title: "Balance de participantes",
+group_no_members: "Sin participantes",
+group_loading: "Cargando...",
+group_error_loading_members: "Error al cargar los participantes",
+
 }

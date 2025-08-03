@@ -82,4 +82,19 @@ export default {
 
   // --- Ошибки и системные статусы ---
   error: "Ошибка"
+  
+  // --- Вкладки ---
+group_tab_overview: "Обзор",
+group_tab_transactions: "Траты",
+group_tab_balance: "Баланс",
+group_tab_history: "История",
+group_tab_notes: "Заметки",
+group_tab_settings: "Настройки",
+
+// --- Баланс ---
+group_balance_title: "Баланс участников",
+group_no_members: "Нет участников",
+group_loading: "Загрузка...",
+group_error_loading_members: "Ошибка загрузки участников",
+
 }
