@@ -61,14 +61,6 @@ const GroupHeader = ({
           <div className="font-bold text-xl break-words text-[var(--tg-text-color)]">
             {group.name}
           </div>
-          {/* 
-          // Если появится поле is_archived — раскомментируй!
-          {group.is_archived && (
-            <span className="flex items-center text-xs text-[var(--tg-hint-color)] ml-2">
-              <Lock className="w-4 h-4 mr-1" /> {t("group_status_archived", "Архив")}
-            </span>
-          )}
-          */}
         </div>
         {group.description && (
           <div className="mt-1 text-sm text-[var(--tg-hint-color)] whitespace-pre-line break-words">

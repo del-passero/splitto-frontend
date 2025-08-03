@@ -10,6 +10,7 @@ import type { GroupMember } from "../types/group_member"
 import GroupTabs from "../components/group/GroupTabs"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupHeader from "../components/group/GroupHeader"
+import { useUserStore } from "../store/userStore"
 
 const PAGE_SIZE = 20
 
@@ -40,6 +41,12 @@ const GroupDetailsPage = () => {
   const [hasMore, setHasMore] = useState(true)
   const loaderRef = useRef<HTMLDivElement>(null)
   const observer = useRef<IntersectionObserver | null>(null)
+
+  // Получаем пользователя из store
+  const user = useUserStore(state => state.user)
+  const currentUserId = user?.id
+  // console.log("user?.id", currentUserId, "group.owner_id", group?.owner_id)
+  const isOwner = !!(currentUserId && group && String(currentUserId) === String(group.owner_id))
 
   // Детали группы
   useEffect(() => {
@@ -131,11 +138,7 @@ const GroupDetailsPage = () => {
     )
   }
 
-  // Определяем владелец ли текущий пользователь (заглушка, замени под свою auth-логику)
-  const currentUserId = 0 // <-- сюда передавай id текущего пользователя (auth)
-  const isOwner = currentUserId === group.owner_id
-
-  // Владелец первым
+  // Владелец всегда первым
   const ownerId = group.owner_id
   const sortedMembers = [
     ...members.filter(m => m.user.id === ownerId),
