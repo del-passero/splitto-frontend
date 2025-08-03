@@ -61,74 +61,64 @@ const GroupCard = ({
       type="button"
       onClick={onClick}
       className={`
-        w-full flex items-center relative
+        w-full flex flex-col items-center relative
         bg-[var(--tg-card-bg)]
         border border-[var(--tg-hint-color)]
         rounded-3xl
-        px-7 py-6
-        min-h-[130px]
+        pt-12 pb-6 px-5
         shadow-[0_12px_40px_-10px_rgba(83,147,231,0.15)]
-        overflow-hidden
+        overflow-visible
+        transition
+        cursor-pointer
         ${className}
       `}
       aria-label={group.name}
       style={{
-        minHeight: 130,
+        minHeight: 220,
         boxShadow:
           "0 8px 28px 0 rgba(83,147,231,0.10), 0 16px 40px -16px rgba(50,60,90,0.10)",
         position: "relative",
-        overflow: "hidden",
       }}
     >
-      {/* Внутренний matte-иннер-шадоу */}
+      {/* Фоновый блик сверху (glass) */}
       <div
-        className="
-          pointer-events-none
-          absolute inset-0 rounded-3xl z-0
-        "
+        className="absolute left-0 right-0 top-0 h-14 rounded-t-3xl pointer-events-none z-0"
         style={{
-          boxShadow: "inset 0 2px 24px 0 rgba(83,147,231,0.05)",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, transparent 100%)",
         }}
       />
-      {/* Аватар группы с glow подложкой */}
-      <div className="flex-shrink-0 mr-7 relative z-10">
-        {/* Glow-подсветка под аватаром */}
-        <div
-          className="absolute inset-0 flex items-center justify-center z-0"
-          style={{
-            filter: "blur(20px)",
-            opacity: 0.17,
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              width: AVATAR_SIZE,
-              height: AVATAR_SIZE,
-              borderRadius: 32,
-              background: "var(--tg-link-color)",
-            }}
-          />
-        </div>
+      {/* Аватар "парит" сверху */}
+      <div
+        className="
+          absolute -top-9 left-1/2 -translate-x-1/2 z-10
+          drop-shadow-[0_6px_20px_rgba(83,147,231,0.17)]
+        "
+      >
         <GroupAvatar
           name={group.name}
           size={AVATAR_SIZE}
-          className="relative z-10"
         />
       </div>
-      {/* Правая часть */}
-      <div className="flex flex-col justify-center flex-1 min-w-0 z-10">
-        {/* Верх: название группы и баланс/статус */}
-        <div className="flex items-center justify-between w-full mb-3">
-          <div className="text-2xl font-extrabold text-[var(--tg-text-color)] truncate">
-            {group.name}
-          </div>
-          <div className="text-xs text-[var(--tg-hint-color)] ml-4 shrink-0">
-            {t("debts_reserved")}
-          </div>
+      {/* Контент по центру */}
+      <div className="flex flex-col items-center w-full mt-4 z-10">
+        {/* Имя группы */}
+        <div
+          className="
+            font-extrabold text-xl text-[var(--tg-text-color)]
+            text-center max-w-full truncate
+          "
+          style={{
+            lineHeight: 1.25,
+            width: "100%",
+            wordBreak: "break-word",
+            maxWidth: "100%",
+          }}
+          title={group.name}
+        >
+          {group.name}
         </div>
         {/* Участники */}
-        <div className="flex items-center min-h-[28px] gap-3">
+        <div className="flex items-center mt-4 mb-2 min-h-[28px]">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.id}
@@ -162,6 +152,10 @@ const GroupCard = ({
               {t("and_more_members", { count: hiddenCount }) || `и ещё ${hiddenCount}`}
             </span>
           )}
+        </div>
+        {/* Баланс/статус */}
+        <div className="text-xs text-[var(--tg-hint-color)] text-center mt-3">
+          {t("debts_reserved")}
         </div>
       </div>
     </button>

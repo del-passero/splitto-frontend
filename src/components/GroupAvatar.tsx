@@ -21,7 +21,7 @@ const GroupAvatar = ({
         className={`
           relative flex items-center justify-center
           rounded-[22px]
-          shadow-[0_4px_18px_0_rgba(83,147,231,0.13)]
+          shadow-[0_6px_24px_0_rgba(83,147,231,0.20)]
           ring-2 ring-[var(--tg-card-bg)]
           ${className}
         `}
@@ -52,7 +52,7 @@ const GroupAvatar = ({
         relative flex items-center justify-center
         font-bold text-white select-none
         rounded-[22px]
-        shadow-[0_4px_18px_0_rgba(83,147,231,0.13)]
+        shadow-[0_6px_24px_0_rgba(83,147,231,0.20)]
         ring-2 ring-[var(--tg-card-bg)]
         ${className}
       `}
