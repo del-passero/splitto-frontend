@@ -173,11 +173,6 @@ const GroupDetailsPage = () => {
             {membersLoading && sortedMembers.length > 0 && (
               <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
             )}
-            {typeof membersTotal === "number" && (
-              <div className="text-xs text-center text-[var(--tg-hint-color)] pb-2">
-                Показано: {members.length} из {membersTotal}
-              </div>
-            )}
           </>
         ) : (
           <div className="text-[var(--tg-hint-color)] text-center py-6">
