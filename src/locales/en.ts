@@ -1,7 +1,6 @@
-// src/locales/en.ts
 export default {
-  // --- Navigation & Main Sections ---
-  main: "Main",
+  // --- Navigation and main sections ---
+  main: "Home",
   groups: "Groups",
   group: "Group",
   create_group: "Create group",
@@ -10,52 +9,51 @@ export default {
   no_groups: "No groups",
   contacts: "Contacts",
   profile: "Profile",
-  participants: "Participants",
-  no_participants: "No participants",
+  participants: "Members",
+  no_participants: "No members",
   contacts_not_found: "No contacts found",
   groups_not_found: "No groups found",
 
-
-  // --- Groups & Members ---
+  // --- Groups and members ---
   group_name_placeholder: "Group name",
   group_description_placeholder: "Group description",
-  group_name_required: "Enter group name",
+  group_name_required: "Please enter the group name",
   error_create_group: "Error creating group",
   error_edit_group: "Error editing group",
   saving: "Saving...",
-  add_participants: "Add participants",
+  add_participants: "Add members",
   members: "Members",
   empty_members: "No members",
   owner: "Owner",
-  groups_count: "{{count}} group(s)",
+  groups_count: "Total groups: {{count}}",
   groups_top_info: "You have {{count}} active groups",
-  empty_groups: "You don't have any groups yet",
-  empty_groups_hint: "Create your first group to manage expenses together!",
+  empty_groups: "You have no groups yet",
+  empty_groups_hint: "Create your first group to manage shared expenses!",
   search_group_placeholder: "Search group...",
   debts_reserved: "Debts — coming soon!",
 
-  // --- Invitations (Invites) ---
+  // --- Invites ---
   create_invite_link: "Create invite link",
   invite_by_link: "Invite by link",
   copy_link: "Copy link",
   copied: "Copied!",
   share_link: "Share (in Telegram)",
   share: "Share",
-  shared: "Link ready to paste!",
-  invite_friend: "Invite friend",
-  invite_error: "Could not create link. Try again later.",
-  invite_message: "Join me on Splitto — a convenient way to manage shared expenses right in Telegram.\nHere's your invite link:\n{{link}}",
-  error_invite_link: "Failed to get link",
+  shared: "Link is ready to paste!",
+  invite_friend: "Invite a friend",
+  invite_error: "Failed to create link. Please try again.",
+  invite_message: "Join me in Splitto — the convenient way to manage shared expenses right in Telegram.\nHere's the link:\n{{link}}",
+  error_invite_link: "Failed to get the link",
 
   // --- Contacts ---
-  empty_contacts: "You don't have any contacts yet...",
-  contacts_count: "{{count}} contacts",
-  search_placeholder: "Search...",
+  empty_contacts: "You have no contacts yet...",
+  contacts_count: "Total contacts: {{count}}",
+  search_placeholder: "Search contact...",
   filter: "Filter",
   sort: "Sort",
   no_friends: "No friends to add",
 
-  // --- Profile & Settings ---
+  // --- Profile and settings ---
   account: "Account",
   settings: "Settings",
   about: "About",
@@ -73,28 +71,27 @@ export default {
   language_es: "Spanish",
   version: "Version",
 
-  // --- Buttons & Statuses ---
+  // --- Buttons and statuses ---
   edit: "Edit",
   cancel: "Cancel",
   save: "Save",
   close: "Close",
   loading: "Loading...",
 
-  // --- Errors & System Status ---
-  error: "Error"
-  
+  // --- Errors and system statuses ---
+  error: "Error",
+
   // --- Tabs ---
-	group_tab_overview: "Overview",
-	group_tab_transactions: "Transactions",
-	group_tab_balance: "Balance",
-	group_tab_history: "History",
-	group_tab_notes: "Notes",
-	group_tab_settings: "Settings",
+  group_tab_overview: "Overview",
+  group_tab_transactions: "Transactions",
+  group_tab_balance: "Balance",
+  group_tab_history: "History",
+  group_tab_notes: "Notes",
+  group_tab_settings: "Settings",
 
-	// --- Balance ---
-	group_balance_title: "Members' Balance",
-	group_no_members: "No members",
-	group_loading: "Loading...",
-group_error_loading_members: "Failed to load members",
-
+  // --- Balance ---
+  group_balance_title: "Members' Balance",
+  group_no_members: "No members",
+  group_loading: "Loading...",
+  group_error_loading_members: "Failed to load members",
 }

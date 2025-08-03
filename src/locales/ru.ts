@@ -1,4 +1,3 @@
-// src/locales/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -32,7 +31,6 @@ export default {
   empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
   search_group_placeholder: "Поиск группы...",
   debts_reserved: "Долги — скоро!",
-  
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",
@@ -81,20 +79,19 @@ export default {
   loading: "Загрузка...",
 
   // --- Ошибки и системные статусы ---
-  error: "Ошибка"
-  
+  error: "Ошибка",
+
   // --- Вкладки ---
-group_tab_overview: "Обзор",
-group_tab_transactions: "Траты",
-group_tab_balance: "Баланс",
-group_tab_history: "История",
-group_tab_notes: "Заметки",
-group_tab_settings: "Настройки",
+  group_tab_overview: "Обзор",
+  group_tab_transactions: "Траты",
+  group_tab_balance: "Баланс",
+  group_tab_history: "История",
+  group_tab_notes: "Заметки",
+  group_tab_settings: "Настройки",
 
-// --- Баланс ---
-group_balance_title: "Баланс участников",
-group_no_members: "Нет участников",
-group_loading: "Загрузка...",
-group_error_loading_members: "Ошибка загрузки участников",
-
+  // --- Баланс ---
+  group_balance_title: "Баланс участников",
+  group_no_members: "Нет участников",
+  group_loading: "Загрузка...",
+  group_error_loading_members: "Ошибка загрузки участников",
 }

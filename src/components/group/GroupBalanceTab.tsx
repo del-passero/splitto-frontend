@@ -3,7 +3,8 @@
 import CardSection from "../../components/CardSection"
 import UserCard from "../../components/UserCard"
 import { useTranslation } from "react-i18next"
-import type { Group, GroupMember } from "../../types/group"
+import type { Group } from "../../types/group"
+import type { GroupMember } from "../../types/group_member" // Исправлено!
 
 // Пропсы: участники, ошибки, загрузка, сортировка
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
   membersError: string | null
   membersLoading: boolean
   hasMore: boolean
-  loaderRef: React.RefObject<HTMLDivElement>
+  loaderRef: React.RefObject<HTMLDivElement | null> // Исправлено!
   sortedMembers: GroupMember[]
   membersTotal: number | null
 }

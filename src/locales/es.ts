@@ -1,40 +1,38 @@
-// src/locales/es.ts
 export default {
   // --- Navegación y secciones principales ---
-  main: "Principal",
+  main: "Inicio",
   groups: "Grupos",
   group: "Grupo",
   create_group: "Crear grupo",
-  add_transaction: "Crear transaccion",
+  add_transaction: "Agregar gasto",
   edit_group: "Editar grupo",
   no_groups: "Sin grupos",
   contacts: "Contactos",
   profile: "Perfil",
-  participants: "Miembros",
-  no_participants: "Sin miembros",
-  contacts_not_found: "No se encontró ningún contacto",
-  groups_not_found: "No se encontró ningún grupo",
+  participants: "Participantes",
+  no_participants: "Sin participantes",
+  contacts_not_found: "No se encontraron contactos",
+  groups_not_found: "No se encontraron grupos",
 
-
-  // --- Grupos y miembros ---
+  // --- Grupos y participantes ---
   group_name_placeholder: "Nombre del grupo",
   group_description_placeholder: "Descripción del grupo",
-  group_name_required: "Introduce el nombre del grupo",
-  error_create_group: "Error al crear grupo",
-  error_edit_group: "Error al editar grupo",
+  group_name_required: "Por favor ingrese el nombre del grupo",
+  error_create_group: "Error al crear el grupo",
+  error_edit_group: "Error al editar el grupo",
   saving: "Guardando...",
-  add_participants: "Añadir miembros",
-  members: "Miembros",
-  empty_members: "Sin miembros",
-  owner: "Propietario",
-  groups_count: "{{count}} group(s)",
-  groups_top_info: "You have {{count}} active groups",
-  empty_groups: "You don't have any groups yet",
-  empty_groups_hint: "Create your first group to manage expenses together!",
-  search_group_placeholder: "Search group...",
-  debts_reserved: "Debts — coming soon!",
+  add_participants: "Agregar participantes",
+  members: "Participantes",
+  empty_members: "Sin participantes",
+  owner: "Creador",
+  groups_count: "Total de grupos: {{count}}",
+  groups_top_info: "Tienes {{count}} grupos activos",
+  empty_groups: "Aún no tienes ningún grupo",
+  empty_groups_hint: "¡Crea tu primer grupo para administrar gastos compartidos!",
+  search_group_placeholder: "Buscar grupo...",
+  debts_reserved: "Deudas — ¡próximamente!",
 
-  // --- Invitaciones (invites) ---
+  // --- Invitaciones ---
   create_invite_link: "Crear enlace de invitación",
   invite_by_link: "Invitar por enlace",
   copy_link: "Copiar enlace",
@@ -42,27 +40,27 @@ export default {
   share_link: "Compartir (en Telegram)",
   share: "Compartir",
   shared: "¡Enlace listo para pegar!",
-  invite_friend: "Invitar amigo",
-  invite_error: "No se pudo crear el enlace. Inténtalo de nuevo más tarde.",
-  invite_message: "Únete a mí en Splitto, una forma fácil de gestionar gastos compartidos directamente en Telegram.\nAquí tienes tu enlace de invitación:\n{{link}}",
+  invite_friend: "Invitar a un amigo",
+  invite_error: "No se pudo crear el enlace. Intente más tarde.",
+  invite_message: "Únete a mí en Splitto: la forma más cómoda de gestionar gastos compartidos en Telegram.\nAquí tienes el enlace:\n{{link}}",
   error_invite_link: "No se pudo obtener el enlace",
 
   // --- Contactos ---
   empty_contacts: "Aún no tienes contactos...",
-  contacts_count: "{{count}} contactos",
-  search_placeholder: "Buscar...",
-  filter: "Filtrar",
+  contacts_count: "Total de contactos: {{count}}",
+  search_placeholder: "Buscar contacto...",
+  filter: "Filtro",
   sort: "Ordenar",
-  no_friends: "Sin amigos para añadir",
+  no_friends: "No hay amigos para agregar",
 
-  // --- Perfil y ajustes ---
+  // --- Perfil y configuración ---
   account: "Cuenta",
-  settings: "Ajustes",
-  about: "Acerca de la app",
+  settings: "Configuración",
+  about: "Sobre la app",
   theme: "Tema",
-  choose_theme: "Elige un tema",
+  choose_theme: "Elegir tema",
   language: "Idioma",
-  choose_language: "Elige un idioma",
+  choose_language: "Elegir idioma",
   not_specified: "No especificado",
   theme_auto: "Sistema",
   theme_light: "Claro",
@@ -81,20 +79,19 @@ export default {
   loading: "Cargando...",
 
   // --- Errores y estados del sistema ---
-  error: "Error"
-  
+  error: "Error",
+
   // --- Pestañas ---
-group_tab_overview: "Resumen",
-group_tab_transactions: "Gastos",
-group_tab_balance: "Balance",
-group_tab_history: "Historial",
-group_tab_notes: "Notas",
-group_tab_settings: "Configuración",
+  group_tab_overview: "Resumen",
+  group_tab_transactions: "Gastos",
+  group_tab_balance: "Balance",
+  group_tab_history: "Historial",
+  group_tab_notes: "Notas",
+  group_tab_settings: "Configuración",
 
-// --- Balance ---
-group_balance_title: "Balance de participantes",
-group_no_members: "Sin participantes",
-group_loading: "Cargando...",
-group_error_loading_members: "Error al cargar los participantes",
-
+  // --- Balance ---
+  group_balance_title: "Balance de participantes",
+  group_no_members: "Sin participantes",
+  group_loading: "Cargando...",
+  group_error_loading_members: "Error al cargar los participantes",
 }
