@@ -1,7 +1,7 @@
 // src/components/group/GroupHeader.tsx
 
 import { useMemo } from "react"
-import { Settings, Pencil, LogOut, Trash2, Lock } from "lucide-react"
+import { Settings, Pencil, LogOut, Trash2 } from "lucide-react"
 import GroupAvatar from "../GroupAvatar"
 import Avatar from "../Avatar"
 import { useTranslation } from "react-i18next"
@@ -61,13 +61,14 @@ const GroupHeader = ({
           <div className="font-bold text-xl break-words text-[var(--tg-text-color)]">
             {group.name}
           </div>
-		  {/* Если появится поле is_archived — раскомментирую!
+          {/* 
+          // Если появится поле is_archived — раскомментируй!
           {group.is_archived && (
             <span className="flex items-center text-xs text-[var(--tg-hint-color)] ml-2">
               <Lock className="w-4 h-4 mr-1" /> {t("group_status_archived", "Архив")}
             </span>
           )}
-		  */}
+          */}
         </div>
         {group.description && (
           <div className="mt-1 text-sm text-[var(--tg-hint-color)] whitespace-pre-line break-words">
