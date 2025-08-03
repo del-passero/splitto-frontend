@@ -1,65 +1,58 @@
+// src/components/GroupAvatar.tsx
+
+/**
+ * Компонент для отображения аватара группы.
+ * Не круглый, стильный, адаптируется под светлую/тёмную тему.
+ * Если нет картинки — показывает первую букву названия группы на фоне.
+ * Размер и доп. стили задаются через пропсы.
+ * Все подписи через i18n НЕ нужны, так как внутри только визуал.
+ */
+
 type Props = {
-  name?: string
-  src?: string
-  size?: number
-  className?: string
+  name?: string            // Название группы (для буквы)
+  src?: string             // URL картинки группы (на будущее)
+  size?: number            // Размер стороны аватара (px)
+  className?: string       // Дополнительные tailwind-классы
 }
 
-const DEFAULT_BG = "var(--tg-link-color)"
+const DEFAULT_BG = "var(--tg-link-color)" // основной акцентный цвет
 
 const GroupAvatar = ({
   name = "",
   src,
-  size = 72,
+  size = 56,
   className = "",
 }: Props) => {
-  // Если есть картинка
+  // Если передан src (URL картинки) — показываем изображение (будет использоваться в будущем)
   if (src) {
     return (
-      <div
-        className={`
-          relative flex items-center justify-center
-          rounded-[22px]
-          shadow-[0_4px_18px_0_rgba(83,147,231,0.13)]
-          ring-2 ring-[var(--tg-card-bg)]
-          ${className}
-        `}
-        style={{
-          width: size,
-          height: size,
-        }}
-      >
-        <img
-          src={src}
-          alt={name || "group-avatar"}
-          width={size}
-          height={size}
-          style={{
-            borderRadius: 22,
-            background: DEFAULT_BG,
-          }}
-          className="object-cover w-full h-full"
-        />
-      </div>
+      <img
+        src={src}
+        alt={name || "group-avatar"}
+        width={size}
+        height={size}
+        style={{ borderRadius: 18, background: DEFAULT_BG }} // скругление углов
+        className={`object-cover border border-[var(--tg-hint-color)] ${className}`}
+      />
     )
   }
 
-  // Без картинки — буква группы на цветном фоне
+  // Заглушка: первая буква названия группы, если нет картинки
   return (
     <div
       className={`
-        relative flex items-center justify-center
+        flex items-center justify-center
         font-bold text-white select-none
-        rounded-[22px]
-        shadow-[0_4px_18px_0_rgba(83,147,231,0.13)]
-        ring-2 ring-[var(--tg-card-bg)]
+        border border-[var(--tg-hint-color)]
         ${className}
       `}
       style={{
         width: size,
         height: size,
         background: DEFAULT_BG,
-        fontSize: size ? size / 2 : 36,
+        borderRadius: 18,       // скруглённый квадрат
+        fontSize: size ? size / 2 : 28,
+        boxShadow: "0 2px 10px 0 rgba(83,147,231,0.11)", // лёгкая тень как в Card
       }}
     >
       {name?.[0]?.toUpperCase() || "G"}

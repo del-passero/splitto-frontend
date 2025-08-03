@@ -1,3 +1,5 @@
+// src/components/GroupCard.tsx
+
 import { useMemo } from "react"
 import GroupAvatar from "./GroupAvatar"
 import Avatar from "./Avatar"
@@ -12,7 +14,7 @@ type Props = {
   className?: string
 }
 
-const AVATAR_SIZE = 72      // крупнее аватар
+const AVATAR_SIZE = 56
 const PARTICIPANT_SIZE = 28
 const MAX_DISPLAYED = 4
 
@@ -62,42 +64,44 @@ const GroupCard = ({
         w-full flex items-center
         bg-[var(--tg-card-bg)]
         border border-[var(--tg-hint-color)]
-        rounded-3xl
-        px-6 py-5
-        min-h-[120px] max-h-[148px]
+        rounded-2xl
+        px-4 py-3
+        min-h-[88px] max-h-[104px]
         transition
+        hover:shadow-[0_4px_18px_0_rgba(80,120,180,0.10)]
+        hover:border-[var(--tg-link-color)]
         cursor-pointer
-        shadow-[0_8px_32px_-12px_rgba(50,60,90,0.14)]
+        shadow-[0_8px_32px_-20px_rgba(50,60,90,0.15)]
         ${className}
       `}
       aria-label={group.name}
       style={{
-        minHeight: 120,
-        maxHeight: 148,
+        minHeight: 88,
+        maxHeight: 104,
         boxShadow:
-          "0 8px 24px 0 rgba(83,147,231,0.09), 0 12px 40px -16px rgba(50,60,90,0.12)",
+          "0 2px 10px 0 rgba(83,147,231,0.05), 0 8px 32px -20px rgba(50,60,90,0.13), 0 10px 12px -2px rgba(50,60,90,0.05)",
       }}
     >
       {/* Аватар группы */}
-      <div className="flex-shrink-0 mr-6">
-        <GroupAvatar
-          name={group.name}
-          size={AVATAR_SIZE}
-        />
-      </div>
+      <GroupAvatar
+        name={group.name}
+        size={AVATAR_SIZE}
+        className="flex-shrink-0"
+      />
+
       {/* Правая часть */}
-      <div className="flex flex-col justify-center flex-1 min-w-0">
+      <div className="flex flex-col justify-center flex-1 min-w-0 ml-4">
         {/* Верх: название группы и баланс/статус */}
         <div className="flex items-center justify-between w-full">
-          <div className="text-xl font-bold text-[var(--tg-text-color)] truncate">
+          <div className="text-lg font-bold text-[var(--tg-text-color)] truncate">
             {group.name}
           </div>
           <div className="text-xs text-[var(--tg-hint-color)] ml-3 shrink-0">
             {t("debts_reserved")}
           </div>
         </div>
-        {/* Участники */}
-        <div className="flex items-center mt-4 min-h-[28px]">
+        {/* Участники (аватарки в строку, оверлап, "и ещё N") */}
+        <div className="flex items-center mt-2 min-h-[28px]">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.id}
