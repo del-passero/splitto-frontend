@@ -1,4 +1,5 @@
 // src/components/GroupAvatar.tsx
+
 type Props = {
   name?: string
   src?: string
@@ -11,7 +12,7 @@ const DEFAULT_BG = "var(--tg-link-color)"
 const GroupAvatar = ({
   name = "",
   src,
-  size = 72,
+  size = 56,
   className = "",
 }: Props) => {
   // Если есть картинка
@@ -20,9 +21,11 @@ const GroupAvatar = ({
       <div
         className={`
           relative flex items-center justify-center
-          rounded-[22px]
-          shadow-[0_6px_24px_0_rgba(83,147,231,0.20)]
-          ring-2 ring-[var(--tg-card-bg)]
+          rounded-[18px]
+          shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
+          ring-2 ring-white/60 dark:ring-[#232b3b]/60
+          bg-white/50 dark:bg-[#232b3b]/30
+          backdrop-blur-sm
           ${className}
         `}
         style={{
@@ -36,7 +39,7 @@ const GroupAvatar = ({
           width={size}
           height={size}
           style={{
-            borderRadius: 22,
+            borderRadius: 18,
             background: DEFAULT_BG,
           }}
           className="object-cover w-full h-full"
@@ -51,16 +54,17 @@ const GroupAvatar = ({
       className={`
         relative flex items-center justify-center
         font-bold text-white select-none
-        rounded-[22px]
-        shadow-[0_6px_24px_0_rgba(83,147,231,0.20)]
-        ring-2 ring-[var(--tg-card-bg)]
+        rounded-[18px]
+        shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
+        ring-2 ring-white/60 dark:ring-[#232b3b]/60
+        bg-[var(--tg-link-color)]/95
+        backdrop-blur-sm
         ${className}
       `}
       style={{
         width: size,
         height: size,
-        background: DEFAULT_BG,
-        fontSize: size ? size / 2 : 36,
+        fontSize: size ? size / 2 : 28,
       }}
     >
       {name?.[0]?.toUpperCase() || "G"}

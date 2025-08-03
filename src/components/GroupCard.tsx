@@ -14,7 +14,7 @@ type Props = {
   className?: string
 }
 
-const AVATAR_SIZE = 72
+const AVATAR_SIZE = 56
 const PARTICIPANT_SIZE = 28
 const MAX_DISPLAYED = 4
 
@@ -61,64 +61,58 @@ const GroupCard = ({
       type="button"
       onClick={onClick}
       className={`
-        w-full flex flex-col items-center relative
-        bg-[var(--tg-card-bg)]
-        border border-[var(--tg-hint-color)]
+        w-full flex items-center relative
         rounded-3xl
-        pt-12 pb-6 px-5
-        shadow-[0_12px_40px_-10px_rgba(83,147,231,0.15)]
-        overflow-visible
-        transition
-        cursor-pointer
+        px-6 py-4
+        min-h-[88px] max-h-[120px]
+        shadow-[0_8px_32px_-10px_rgba(83,147,231,0.14)]
+        border border-[var(--tg-hint-color)]
+        overflow-hidden
+        bg-white/80 dark:bg-[#232b3bcc]/60
+        backdrop-blur-md
         ${className}
       `}
       aria-label={group.name}
       style={{
-        minHeight: 220,
-        boxShadow:
-          "0 8px 28px 0 rgba(83,147,231,0.10), 0 16px 40px -16px rgba(50,60,90,0.10)",
-        position: "relative",
+        minHeight: 88,
+        maxHeight: 120,
+        // Glass/blur + две разные тени для ещё большего премиума:
+        boxShadow: "0 8px 32px -10px rgba(83,147,231,0.16), 0 1.5px 7px 0 rgba(49,130,206,0.06)",
+        border: "1.5px solid var(--tg-hint-color)",
+        background: "rgba(255,255,255,0.80)",
+        backdropFilter: "blur(11px)",
+        WebkitBackdropFilter: "blur(11px)",
       }}
     >
-      {/* Фоновый блик сверху (glass) */}
-      <div
-        className="absolute left-0 right-0 top-0 h-14 rounded-t-3xl pointer-events-none z-0"
-        style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, transparent 100%)",
-        }}
-      />
-      {/* Аватар "парит" сверху */}
-      <div
-        className="
-          absolute -top-9 left-1/2 -translate-x-1/2 z-10
-          drop-shadow-[0_6px_20px_rgba(83,147,231,0.17)]
-        "
-      >
+      {/* Аватар группы с легкой полупрозрачной подложкой */}
+      <div className="flex-shrink-0 relative mr-5">
+        <div
+          className="absolute inset-0 rounded-[18px] z-0"
+          style={{
+            background: "rgba(83,147,231,0.10)",
+            filter: "blur(8px)",
+            opacity: 0.6,
+          }}
+        />
         <GroupAvatar
           name={group.name}
           size={AVATAR_SIZE}
+          className="relative z-10"
         />
       </div>
-      {/* Контент по центру */}
-      <div className="flex flex-col items-center w-full mt-4 z-10">
-        {/* Имя группы */}
-        <div
-          className="
-            font-extrabold text-xl text-[var(--tg-text-color)]
-            text-center max-w-full truncate
-          "
-          style={{
-            lineHeight: 1.25,
-            width: "100%",
-            wordBreak: "break-word",
-            maxWidth: "100%",
-          }}
-          title={group.name}
-        >
-          {group.name}
+      {/* Правая часть */}
+      <div className="flex flex-col justify-center flex-1 min-w-0 z-10">
+        {/* Верх: название группы и баланс/статус */}
+        <div className="flex items-center justify-between w-full">
+          <div className="text-lg font-bold text-[var(--tg-text-color)] truncate">
+            {group.name}
+          </div>
+          <div className="text-xs text-[var(--tg-hint-color)] ml-3 shrink-0">
+            {t("debts_reserved")}
+          </div>
         </div>
         {/* Участники */}
-        <div className="flex items-center mt-4 mb-2 min-h-[28px]">
+        <div className="flex items-center mt-3 min-h-[28px]">
           {displayedMembers.map((member, idx) => (
             <div
               key={member.id}
@@ -152,10 +146,6 @@ const GroupCard = ({
               {t("and_more_members", { count: hiddenCount }) || `и ещё ${hiddenCount}`}
             </span>
           )}
-        </div>
-        {/* Баланс/статус */}
-        <div className="text-xs text-[var(--tg-hint-color)] text-center mt-3">
-          {t("debts_reserved")}
         </div>
       </div>
     </button>
