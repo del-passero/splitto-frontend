@@ -1,142 +1,78 @@
 // src/components/group/GroupHeader.tsx
 
-import { useMemo } from "react"
-import { Settings, Pencil, LogOut, Trash2 } from "lucide-react"
+import { Settings, ArrowDownCircle, ArrowUpCircle, CheckCircle } from "lucide-react"
 import GroupAvatar from "../GroupAvatar"
-import Avatar from "../Avatar"
 import { useTranslation } from "react-i18next"
 import type { Group } from "../../types/group"
-import type { GroupMember } from "../../types/group_member"
 
 type Props = {
   group: Group
-  members: GroupMember[]
-  isOwner: boolean
-  onSettings: () => void
-  onEdit: () => void
-  onLeave: () => void
-  onDelete: () => void
+  userBalance: number
+  onSettingsClick: () => void
+  onBalanceClick: () => void
 }
-
-const AVATAR_SIZE = 64
-const PARTICIPANT_SIZE = 28
-const MAX_DISPLAYED = 6
 
 const GroupHeader = ({
   group,
-  members,
-  isOwner,
-  onSettings,
-  onEdit,
-  onLeave,
-  onDelete,
+  userBalance,
+  onSettingsClick,
+  onBalanceClick,
 }: Props) => {
   const { t } = useTranslation()
 
-  // Владелец всегда первым
-  const sortedMembers = useMemo(() => {
-    if (!members.length) return []
-    return [
-      ...members.filter((m) => m.user.id === group.owner_id),
-      ...members.filter((m) => m.user.id !== group.owner_id),
-    ]
-  }, [members, group.owner_id])
+  // Определяем тип баланса пользователя для цветовой карточки
+  let balanceColor = "bg-gray-300 text-gray-700"
+  let BalanceIcon = CheckCircle
+  let balanceText = t("group_balance_zero")
 
-  const displayedMembers = sortedMembers.slice(0, MAX_DISPLAYED)
-  const hiddenCount = Math.max(0, sortedMembers.length - MAX_DISPLAYED)
+  if (userBalance > 0) {
+    balanceColor = "bg-green-500 text-white"
+    BalanceIcon = ArrowDownCircle
+    balanceText = t("group_balance_you_get", { sum: userBalance })
+  } else if (userBalance < 0) {
+    balanceColor = "bg-red-500 text-white"
+    BalanceIcon = ArrowUpCircle
+    balanceText = t("group_balance_you_owe", { sum: Math.abs(userBalance) })
+  }
 
   return (
-    <div className="flex flex-row w-full items-start px-4 py-4 bg-[var(--tg-bg-color)]">
-      {/* Аватар группы */}
-      <div className="flex-shrink-0 mr-4">
-        <GroupAvatar
-          name={group.name}
-          size={AVATAR_SIZE}
-          className="shadow"
-        />
-      </div>
-      {/* Центр: инфо о группе */}
-      <div className="flex-grow min-w-0">
-        <div className="flex items-center flex-wrap gap-2">
-          <div className="font-bold text-xl break-words text-[var(--tg-text-color)]">
-            {group.name}
-          </div>
+    <div className="w-full flex items-center px-4 py-4 bg-[var(--tg-bg-color)] border-b border-[var(--tg-hint-color)]">
+      <GroupAvatar
+        name={group.name}
+        size={56}
+        className="mr-4"
+      />
+      <div className="flex flex-col flex-grow min-w-0">
+        <div className="font-bold text-xl break-words text-[var(--tg-text-color)] leading-tight">
+          {group.name}
         </div>
         {group.description && (
-          <div className="mt-1 text-sm text-[var(--tg-hint-color)] whitespace-pre-line break-words">
+          <div className="text-[var(--tg-hint-color)] text-sm mt-1 line-clamp-2">
             {group.description}
           </div>
         )}
-        {/* Участники */}
-        <div className="mt-3 flex flex-col">
-          <div className="flex items-center min-h-[28px]">
-            {displayedMembers.map((member, idx) => (
-              <div
-                key={member.id}
-                className="rounded-full border-2 flex items-center justify-center bg-[var(--tg-bg-color)]"
-                style={{
-                  borderColor: "var(--tg-card-bg)",
-                  width: PARTICIPANT_SIZE,
-                  height: PARTICIPANT_SIZE,
-                  marginLeft: idx > 0 ? -10 : 0,
-                  zIndex: MAX_DISPLAYED - idx,
-                }}
-                title={
-                  member.user.first_name
-                    ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
-                    : member.user.username || ""
-                }
-              >
-                <Avatar
-                  name={
-                    member.user.first_name
-                      ? `${member.user.first_name} ${member.user.last_name || ""}`.trim()
-                      : member.user.username || ""
-                  }
-                  src={member.user.photo_url}
-                  size={PARTICIPANT_SIZE}
-                />
-              </div>
-            ))}
-            {hiddenCount > 0 && (
-              <span className="ml-2 text-xs text-[var(--tg-hint-color)]">
-                {t("and_more_members", { count: hiddenCount })}
-              </span>
-            )}
-          </div>
-          <span className="mt-1 text-xs text-[var(--tg-hint-color)]">
-            {t("group_members_count", {
-              count: members.length,
-              defaultValue: "{{count}} участников",
-            })}
-          </span>
-        </div>
-      </div>
-      {/* Правая колонка: кнопки действий */}
-      <div className="flex flex-col items-end space-y-2 ml-4">
-        <button aria-label={t("settings")} onClick={onSettings}>
-          <Settings className="w-6 h-6 text-[var(--tg-accent-color)]" />
-        </button>
-        {isOwner && (
-          <button aria-label={t("edit_group", "Редактировать группу")} onClick={onEdit}>
-            <Pencil className="w-6 h-6 text-[var(--tg-accent-color)]" />
-          </button>
-        )}
         <button
-          aria-label={t("leave_group", "Выйти из группы")}
-          onClick={onLeave}
+          className={`
+            mt-3 flex items-center gap-2 px-4 py-2 rounded-xl shadow
+            font-semibold cursor-pointer transition active:scale-95
+            ${balanceColor}
+          `}
+          onClick={onBalanceClick}
+          type="button"
+          aria-label={t("group_header_my_balance")}
         >
-          <LogOut className="w-6 h-6 text-red-500" />
+          <BalanceIcon className="w-5 h-5" />
+          <span className="truncate">{balanceText}</span>
         </button>
-        {isOwner && (
-          <button
-            aria-label={t("delete_group", "Удалить группу")}
-            onClick={onDelete}
-          >
-            <Trash2 className="w-6 h-6 text-red-500" />
-          </button>
-        )}
       </div>
+      <button
+        className="ml-4 p-2 rounded-full hover:bg-[var(--tg-accent-color)]/10 transition"
+        onClick={onSettingsClick}
+        aria-label={t("group_header_settings")}
+        type="button"
+      >
+        <Settings className="w-6 h-6 text-[var(--tg-accent-color)]" />
+      </button>
     </div>
   )
 }

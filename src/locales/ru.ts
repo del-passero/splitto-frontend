@@ -9,12 +9,14 @@ export default {
   no_groups: "Нет групп",
   contacts: "Контакты",
   profile: "Профиль",
+
+  // --- Группы и участники ---
   participants: "Участники",
+  members: "Участники",
+  owner: "Создатель",
   no_participants: "Нет участников",
   contacts_not_found: "Не найдено ни одного контакта",
   groups_not_found: "Не найдено ни одной группы",
-
-  // --- Группы и участники ---
   group_name_placeholder: "Название группы",
   group_description_placeholder: "Описание группы",
   group_name_required: "Введите название группы",
@@ -22,9 +24,7 @@ export default {
   error_edit_group: "Ошибка при редактировании группы",
   saving: "Сохранение...",
   add_participants: "Добавить участников",
-  members: "Участники",
   empty_members: "Нет участников",
-  owner: "Создатель",
   groups_count: "Всего групп: {{count}}",
   groups_top_info: "У вас {{count}} активных групп",
   empty_groups: "У вас ещё нет ни одной группы",
@@ -37,6 +37,55 @@ export default {
   leave_group: "Выйти из группы",
   delete_group: "Удалить группу",
 
+  // --- Балансы и долги ---
+  group_balance_you_get: "Тебе должны {{sum}} ₽",
+  group_balance_you_owe: "Ты должен {{sum}} ₽",
+  group_balance_zero: "Всё по нулям",
+  group_header_settings: "Настройки",
+  group_header_my_balance: "Мой баланс",
+  group_participant_no_debt: "Нет долга",
+  group_participant_you_owe: "Вы должны: {{sum}} ₽",
+  group_participant_owes_you: "Вам должны: {{sum}} ₽",
+
+  // --- Список участников (скролл) ---
+  group_invite: "Пригласить",
+  group_add_member: "Добавить",
+
+  // --- Вкладки группы ---
+  group_tab_transactions: "Транзакции",
+  group_tab_balance: "Баланс",
+  group_tab_analytics: "Аналитика",
+
+  // --- FAB ---
+  group_fab_add_transaction: "Добавить транзакцию",
+
+  // --- Транзакции ---
+  group_transactions_empty: "В группе пока нет трат — добавьте первую!",
+  group_transactions_not_found: "Траты не найдены",
+  group_transactions_placeholder: "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
+
+  // --- Вкладка Баланс ---
+  group_balance_microtab_mine: "Мой баланс",
+  group_balance_microtab_all: "Все балансы",
+  group_balance_no_debts: "Нет долгов",
+  group_balance_get_from: "Вам должны: {{sum}} ₽",
+  group_balance_owe_to: "Вы должны: {{sum}} ₽",
+  group_balance_no_debt_with: "Нет долга",
+  group_balance_no_debts_all: "В группе никто никому не должен",
+
+  // --- Вкладка Аналитика ---
+  group_analytics_coming_soon: "Аналитика скоро появится",
+
+  // --- Страница настроек группы ---
+  group_settings_tab_settings: "Настройки",
+  group_settings_tab_members: "Участники",
+  group_settings_leave_group: "Выйти из группы",
+  group_settings_delete_group: "Удалить группу",
+  group_members_invite: "Пригласить",
+  group_members_add: "Добавить",
+  group_members_empty: "В группе пока нет участников",
+  group_settings_close: "Закрыть",
+  group_settings_save_and_exit: "Сохранить и выйти",
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",
@@ -86,18 +135,4 @@ export default {
 
   // --- Ошибки и системные статусы ---
   error: "Ошибка",
-
-  // --- Вкладки ---
-  group_tab_overview: "Обзор",
-  group_tab_transactions: "Траты",
-  group_tab_balance: "Баланс",
-  group_tab_history: "История",
-  group_tab_notes: "Заметки",
-  group_tab_settings: "Настройки",
-
-  // --- Баланс ---
-  group_balance_title: "Баланс участников",
-  group_no_members: "Нет участников",
-  group_loading: "Загрузка...",
-  group_error_loading_members: "Ошибка загрузки участников",
 }

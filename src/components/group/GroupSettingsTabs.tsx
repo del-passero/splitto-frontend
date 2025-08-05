@@ -1,13 +1,12 @@
-// src/components/group/GroupTabs.tsx
+// src/components/group/GroupSettingsTabs.tsx
 
 import { useTranslation } from "react-i18next"
 
-type TabKey = "transactions" | "balance" | "analytics"
+type TabKey = "settings" | "members"
 
 type Tab = {
   key: TabKey
   label: string
-  icon?: React.ReactNode
 }
 
 type Props = {
@@ -17,12 +16,11 @@ type Props = {
 }
 
 const TABS: Tab[] = [
-  { key: "transactions", label: "group_tab_transactions" },
-  { key: "balance", label: "group_tab_balance" },
-  { key: "analytics", label: "group_tab_analytics" },
+  { key: "settings", label: "group_settings_tab_settings" },
+  { key: "members", label: "group_settings_tab_members" },
 ]
 
-const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
+const GroupSettingsTabs = ({ selected, onSelect, className = "" }: Props) => {
   const { t } = useTranslation()
   return (
     <div
@@ -43,7 +41,6 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
           role="tab"
           aria-selected={selected === tab.key}
         >
-          {tab.icon && <span className="mr-1">{tab.icon}</span>}
           {t(tab.label)}
         </button>
       ))}
@@ -51,4 +48,4 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
   )
 }
 
-export default GroupTabs
+export default GroupSettingsTabs
