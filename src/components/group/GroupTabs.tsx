@@ -26,6 +26,7 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
           <button
             key={tab.key}
             type="button"
+            onClick={() => onSelect(tab.key)}
             className={`
               flex-1 min-w-0 px-2 pb-2 pt-0 text-[15px] font-medium relative
               bg-transparent border-none outline-none
@@ -34,19 +35,11 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
                 ? "text-[var(--tg-accent-color)]"
                 : "text-[var(--tg-theme-link-color),var(--tg-hint-color)]"}
             `}
-            onClick={() => onSelect(tab.key)}
-            style={{
-              background: "none",
-            }}
           >
             {tab.label}
             {selected === tab.key && (
               <span
-                className="
-                  absolute left-1/2 -translate-x-1/2 bottom-0
-                  w-3/5 h-[3px] rounded bg-[var(--tg-accent-color)]
-                  transition-all duration-200 pointer-events-none
-                "
+                className="absolute bottom-0 left-0 w-full h-[3px] bg-[var(--tg-accent-color)] rounded transition-all duration-200 pointer-events-none"
               />
             )}
           </button>

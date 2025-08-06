@@ -1,8 +1,8 @@
 // src/components/group/GroupFAB.tsx
 
-import { useRef, useState, useEffect } from "react"
 import { HandCoins } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { useRef, useState, useEffect } from "react"
 
 type Props = {
   onClick: () => void
@@ -30,7 +30,7 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
       ref={fabRef}
       className={`
         fixed z-50
-        right-6 bottom-[calc(90px+env(safe-area-inset-bottom,24px))]
+        right-6 bottom-[90px]
         transition-opacity
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
         ${className}
@@ -41,7 +41,7 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
         aria-label={t("group_fab_add_transaction")}
         onClick={onClick}
         className={`
-          w-16 h-16 rounded-full
+          w-14 h-14 rounded-full
           bg-[var(--tg-link-color)] text-white
           flex items-center justify-center
           border border-white/80 shadow-xl
