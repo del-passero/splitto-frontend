@@ -21,7 +21,7 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
 
   return (
     <div className={`w-full flex justify-center mt-2 mb-3 px-2 ${className}`}>
-      <div className="flex w-full max-w-sm border-b border-[var(--tg-hint-color)]/40">
+      <div className="flex w-full max-w-sm relative">
         {TABS.map(tab => (
           <button
             key={tab.key}

@@ -14,18 +14,21 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
     <button
       type="button"
       className={`
-        fixed bottom-[max(1.5rem,env(safe-area-inset-bottom,24px))]
-        right-[max(1.5rem,env(safe-area-inset-right,24px))]
-        z-40 w-16 h-16 rounded-full bg-[var(--tg-accent-color)]
-        flex items-center justify-center shadow-lg text-white
-        transition active:scale-95 focus:outline-none
+        fixed z-50
+        right-6 bottom-[calc(90px+env(safe-area-inset-bottom,24px))]
+        w-16 h-16 rounded-full
+        bg-[var(--tg-link-color)] text-white
+        flex items-center justify-center
+        border border-white/80 shadow-xl
+        shadow-[0_4px_16px_0_rgba(34,105,255,0.14)]
+        transition hover:scale-105 active:scale-95
+        focus:outline-none focus:ring-2 focus:ring-white/40
         ${className}
       `}
       onClick={onClick}
       aria-label={t("group_fab_add_transaction")}
       style={{
-        boxShadow:
-          "0 6px 22px -6px rgba(83,147,231,0.18), 0 2px 8px 0 rgba(50,60,90,0.10)",
+        transition: "box-shadow 0.2s, transform 0.1s",
       }}
     >
       <HandCoins className="w-8 h-8" />
