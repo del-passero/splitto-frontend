@@ -33,7 +33,7 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
   }, [selected, TABS])
 
   return (
-    <div className={`flex w-full justify-center px-2 mt-2 mb-3 ${className}`} role="tablist">
+    <div className={`flex w-full justify-center px-2 mt-2 mb-3 ${className}`}>
       <div className="relative flex w-full max-w-full sm:max-w-md">
         {TABS.map((tab, i) => (
           <button
@@ -43,17 +43,14 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
             className={`
               flex-1 min-w-0 px-2 pb-2 pt-0 mx-1
               text-[15px] font-medium bg-transparent border-none outline-none
-              transition-colors
+              transition-colors cursor-pointer
               ${selected === tab.key
                 ? "text-[var(--tg-accent-color)]"
                 : "text-[var(--tg-theme-link-color), var(--tg-hint-color)]"}
             `}
             onClick={() => onSelect(tab.key)}
-            role="tab"
-            aria-selected={selected === tab.key}
-            tabIndex={selected === tab.key ? 0 : -1}
+            tabIndex={0}
             style={{
-              cursor: selected === tab.key ? "default" : "pointer",
               background: "none",
               boxShadow: "none"
             }}
@@ -62,7 +59,7 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
           </button>
         ))}
         <span
-          className="absolute bottom-0 h-[3px] rounded-lg transition-all duration-200"
+          className="absolute bottom-0 h-[3px] rounded-lg transition-all duration-200 pointer-events-none"
           style={{
             left: underline.left,
             width: underline.width,
