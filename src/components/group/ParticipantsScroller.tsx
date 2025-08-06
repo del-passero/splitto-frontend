@@ -1,5 +1,7 @@
+// src/components/group/ParticipantsScroller.tsx
+
 import { UserPlus, Share2 } from "lucide-react"
-import { useRef } from "react"
+import { useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import type { GroupMember } from "../../types/group_member"
 import CardSection from "../CardSection"
@@ -27,25 +29,20 @@ const ParticipantsScroller = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Telegram blue из темы
-  const tgBlue =
-    getComputedStyle(document.documentElement).getPropertyValue("--tg-theme-button-color") ||
-    "#40A7E3"
-
   // ActionCard идентичная ParticipantMiniCard по стилю!
   const ActionCard = ({
     icon,
     label,
     onClick,
-    key,
+    uniqKey,
   }: {
     icon: React.ReactNode
     label: string
     onClick: () => void
-    key: string | number
+    uniqKey: string | number
   }) => (
     <button
-      key={key}
+      key={uniqKey}
       type="button"
       className={`
         flex flex-col items-center w-22 min-w-[88px] mx-1 py-2 bg-[var(--tg-card-bg)]
@@ -73,41 +70,60 @@ const ParticipantsScroller = ({
 
   // Один проход (все участники + invite + add)
   const cycle = [
-    ...members.map((member) => (
+    ...members.map((member, idx) => (
       <ParticipantMiniCard
-        key={member.user.id + Math.random()}
+        key={`member-${member.user.id}-${idx}`}
         member={member}
         onClick={onParticipantClick}
         currentUserId={currentUserId}
       />
     )),
     <ActionCard
-      key={"invite" + Math.random()}
+      uniqKey="invite"
       icon={<Share2 className="w-5 h-5 text-white" strokeWidth={2.2} />}
       label={t("group_invite")}
       onClick={onInviteClick}
     />,
     <ActionCard
-      key={"add" + Math.random()}
+      uniqKey="add"
       icon={<UserPlus className="w-5 h-5 text-white" strokeWidth={2.2} />}
       label={t("group_add_member")}
       onClick={onAddClick}
     />,
   ]
 
-  // Делаем "бесконечную" ленту
-  const infiniteCards = Array.from({ length: REPEAT_TIMES }).flatMap(
-    (_, idx) =>
-      cycle.map((el, i) =>
-        el.type === ParticipantMiniCard
-          ? React.cloneElement(el, { key: `c${idx}_${i}` })
-          : React.cloneElement(el, { key: `c${idx}_${i}` })
-      )
-  )
+  // Бесконечная лента — повторяем cycle N раз и ключи делаем уникальными
+  const infiniteCards: React.ReactNode[] = []
+  for (let i = 0; i < REPEAT_TIMES; i++) {
+    cycle.forEach((el, j) => {
+      // el — это либо ParticipantMiniCard, либо ActionCard, оба с key/uniqKey
+      if (el.type === ParticipantMiniCard) {
+        infiniteCards.push(
+          <ParticipantMiniCard
+            key={`cycle-${i}-member-${(el.props as any).member.user.id}-${j}`}
+            member={(el.props as any).member}
+            onClick={onParticipantClick}
+            currentUserId={currentUserId}
+          />
+        )
+      } else {
+        // Это ActionCard, берём все пропсы кроме key
+        const { icon, label, onClick } = (el.props as any)
+        infiniteCards.push(
+          <ActionCard
+            uniqKey={`cycle-${i}-${label}`}
+            icon={icon}
+            label={label}
+            onClick={onClick}
+          />
+        )
+      }
+    })
+  }
 
-  // Опционально: скроллим в середину при маунте (чтобы можно было и влево, и вправо)
+  // Скроллим в середину при маунте (можно и в начало, если не надо)
   const scrollRef = useRef<HTMLDivElement>(null)
-  React.useEffect(() => {
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollLeft =
         ((CARD_WIDTH + 8) * cycle.length * REPEAT_TIMES) / 2 // 8px gap

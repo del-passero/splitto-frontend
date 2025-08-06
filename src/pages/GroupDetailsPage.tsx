@@ -145,9 +145,6 @@ const GroupDetailsPage = () => {
         onParticipantClick={handleBalanceClick}
         onInviteClick={() => {/* откроешь модалку */}}
         onAddClick={() => {/* откроешь модалку */}}
-        loadMore={loadMembers}
-        hasMore={hasMore}
-        loading={membersLoading}
       />
       {/* Панель вкладок */}
       <GroupTabs

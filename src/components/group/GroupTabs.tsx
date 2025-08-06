@@ -1,5 +1,3 @@
-// src/components/group/GroupTabs.tsx
-
 import { useTranslation } from "react-i18next"
 import { useRef, useEffect, useState } from "react"
 
@@ -20,7 +18,6 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
     { key: "analytics", label: t("group_tab_analytics") },
   ]
 
-  // Для подчёркивания активного таба
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [underline, setUnderline] = useState({ left: 0, width: 0 })
 
@@ -40,7 +37,7 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
       <div className="relative flex w-full max-w-full sm:max-w-md">
         {TABS.map((tab, i) => (
           <button
-            ref={el => (tabRefs.current[i] = el)}
+            ref={el => { tabRefs.current[i] = el }}
             key={tab.key}
             type="button"
             className={`
