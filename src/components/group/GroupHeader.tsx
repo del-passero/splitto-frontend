@@ -1,7 +1,8 @@
 // src/components/group/GroupHeader.tsx
 
-import { Settings, Pencil } from "lucide-react"
+import { Settings } from "lucide-react"
 import GroupAvatar from "../GroupAvatar"
+import CardSection from "../CardSection"   
 import { useTranslation } from "react-i18next"
 import type { Group } from "../../types/group"
 
@@ -20,7 +21,7 @@ const GroupHeader = ({
   const { t } = useTranslation()
 
   return (
-    <div className="w-full flex items-center px-4 py-4 bg-[var(--tg-bg-color)] border-b border-[var(--tg-hint-color)]">
+    <CardSection className="flex items-center px-0 py-0">  {/* убрал лишние паддинги */}
       <GroupAvatar
         name={group.name}
         size={56}
@@ -44,7 +45,7 @@ const GroupHeader = ({
       >
         <Settings className="w-6 h-6 text-[var(--tg-accent-color)]" />
       </button>
-    </div>
+    </CardSection>
   )
 }
 
