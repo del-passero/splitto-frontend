@@ -1,5 +1,3 @@
-// src/components/group/GroupTabs.tsx
-
 import { useTranslation } from "react-i18next"
 
 type TabKey = "transactions" | "balance" | "analytics"
@@ -20,26 +18,36 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
   ]
 
   return (
-    <div
-      className={`flex w-full justify-center px-4 mt-2 mb-3 ${className}`}
-      role="tablist"
-    >
-      <div className="flex w-full max-w-sm bg-[var(--tg-card-bg)] rounded-2xl p-1 shadow-sm border border-[var(--tg-hint-color)]/20">
+    <div className={`w-full flex justify-center mt-2 mb-3 px-2 ${className}`}>
+      <div className="relative flex w-full max-w-sm">
         {TABS.map(tab => (
           <button
             key={tab.key}
             type="button"
             className={`
-              flex-1 py-2 rounded-xl text-sm font-medium transition
-              ${selected === tab.key
-                ? "bg-[var(--tg-accent-color)] text-white shadow"
-                : "text-[var(--tg-accent-color)] bg-transparent"}
+              flex-1 min-w-0 mx-1 pb-2 pt-0 text-[15px] font-medium
+              bg-transparent border-none outline-none
+              transition-colors cursor-pointer
+              ${
+                selected === tab.key
+                  ? "text-[var(--tg-accent-color)]"
+                  : "text-[var(--tg-theme-link-color),var(--tg-hint-color)]"
+              }
+              relative
             `}
             onClick={() => onSelect(tab.key)}
-            role="tab"
-            aria-selected={selected === tab.key}
           >
             {tab.label}
+            {selected === tab.key && (
+              <span
+                className="
+                  absolute left-1/2 -translate-x-1/2 bottom-0
+                  w-3/4 h-[3px] rounded bg-[var(--tg-accent-color)]
+                  transition-all duration-200
+                  pointer-events-none
+                "
+              />
+            )}
           </button>
         ))}
       </div>
