@@ -1,5 +1,6 @@
+// src/components/group/GroupTabs.tsx
+
 import { useTranslation } from "react-i18next"
-import { useRef, useEffect, useState } from "react"
 
 type TabKey = "transactions" | "balance" | "analytics"
 
@@ -18,54 +19,29 @@ const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
     { key: "analytics", label: t("group_tab_analytics") },
   ]
 
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const [underline, setUnderline] = useState({ left: 0, width: 0 })
-
-  useEffect(() => {
-    const idx = TABS.findIndex(tab => tab.key === selected)
-    const el = tabRefs.current[idx]
-    if (el) {
-      setUnderline({
-        left: el.offsetLeft,
-        width: el.offsetWidth,
-      })
-    }
-  }, [selected, TABS])
-
   return (
-    <div className={`flex w-full justify-center px-2 mt-2 mb-3 ${className}`}>
-      <div className="relative flex w-full max-w-full sm:max-w-md">
-        {TABS.map((tab, i) => (
+    <div
+      className={`flex w-full justify-center px-4 mt-2 mb-3 ${className}`}
+      role="tablist"
+    >
+      <div className="flex w-full max-w-sm bg-[var(--tg-card-bg)] rounded-2xl p-1 shadow-sm border border-[var(--tg-hint-color)]/20">
+        {TABS.map(tab => (
           <button
-            ref={el => { tabRefs.current[i] = el }}
             key={tab.key}
             type="button"
             className={`
-              flex-1 min-w-0 px-2 pb-2 pt-0 mx-1
-              text-[15px] font-medium bg-transparent border-none outline-none
-              transition-colors cursor-pointer
+              flex-1 py-2 rounded-xl text-sm font-medium transition
               ${selected === tab.key
-                ? "text-[var(--tg-accent-color)]"
-                : "text-[var(--tg-theme-link-color), var(--tg-hint-color)]"}
+                ? "bg-[var(--tg-accent-color)] text-white shadow"
+                : "text-[var(--tg-accent-color)] bg-transparent"}
             `}
             onClick={() => onSelect(tab.key)}
-            tabIndex={0}
-            style={{
-              background: "none",
-              boxShadow: "none"
-            }}
+            role="tab"
+            aria-selected={selected === tab.key}
           >
             {tab.label}
           </button>
         ))}
-        <span
-          className="absolute bottom-0 h-[3px] rounded-lg transition-all duration-200 pointer-events-none"
-          style={{
-            left: underline.left,
-            width: underline.width,
-            background: "var(--tg-accent-color)"
-          }}
-        />
       </div>
     </div>
   )
