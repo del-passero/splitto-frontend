@@ -7,6 +7,12 @@ import type { GroupMember } from "../../types/group_member"
 import CardSection from "../CardSection"
 import ParticipantMiniCard from "./ParticipantMiniCard"
 
+// ВНИМАНИЕ: значения для ширины карточек и отступов должны совпадать с ParticipantMiniCard
+const CARD_WIDTH = 88 // px, соответствует w-22/min-w-[88px]
+const CARD_GAP = 8    // px, соответствует mx-1
+const BORDER_TOP = 48 // px, линия начинается ниже аватарки/имени
+const BORDER_WIDTH = 2
+
 type Props = {
   members: GroupMember[]
   currentUserId: number
@@ -43,7 +49,7 @@ const ParticipantsScroller = ({
     return () => observer.disconnect()
   }, [hasMore, loading, loadMore])
 
-  // Карточка-экшен (для "Пригласить" и "Добавить")
+  // ActionCard стилизуем абсолютно так же, как и участника!
   const ActionCard = ({
     icon,
     label,
@@ -56,7 +62,7 @@ const ParticipantsScroller = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-16 min-w-[60px] mx-0.5 py-2 bg-[var(--tg-card-bg)]
+        flex flex-col items-center w-22 min-w-[88px] mx-1 py-2 bg-[var(--tg-card-bg)]
         rounded-2xl border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
@@ -64,28 +70,23 @@ const ParticipantsScroller = ({
       onClick={onClick}
       tabIndex={0}
       aria-label={label}
+      style={{ zIndex: 2 }}
     >
       <span
-        className="rounded-full w-9 h-9 flex items-center justify-center mb-1 shadow"
+        className="rounded-full w-12 h-12 flex items-center justify-center mb-1 shadow"
         style={{
           background: "var(--tg-accent-color, #229ED9)",
         }}
       >
-        {/* Иконки всегда белые */}
         {icon}
       </span>
-      <span
-        className="text-xs font-bold text-center truncate max-w-[54px]"
-        style={{
-          color: "#191919", // Чёрный текст для invite/add, всегда
-        }}
-      >
+      <span className="text-xs font-semibold text-[var(--tg-text-color)] truncate w-full text-center">
         {label}
       </span>
     </button>
   )
 
-  // Собираем все карточки (участники + экшены)
+  // Собираем массив всех карточек
   const allCards = [
     ...members.map((member) => (
       <ParticipantMiniCard
@@ -95,7 +96,6 @@ const ParticipantsScroller = ({
         currentUserId={currentUserId}
       />
     )),
-    // Action-cards: "Пригласить" и "Добавить"
     <ActionCard
       key="invite"
       icon={<Share2 className="w-5 h-5 text-white" strokeWidth={2.2} />}
@@ -110,69 +110,37 @@ const ParticipantsScroller = ({
     />,
   ]
 
-  // Рендерим бордеры между карточками (между первой и второй, второй и третьей и т.д.)
-  const borderLines = []
-  for (let i = 1; i < allCards.length; i++) {
-    borderLines.push(
-      <div
-        key={`border-${i}`}
-        className="absolute top-0 bottom-0"
-        style={{
-          left: `calc(${i * 100}% / ${allCards.length} + ${(i - 0.5) * 8}px)`, // ~ между карточками
-          width: "1.5px",
-          background: "var(--tg-hint-color, #b0b6be)",
-          opacity: 0.2,
-          zIndex: 1,
-          // линия начинается чуть ниже верха секции и доходит до низа карточек
-          top: "12px", // top отступ от CardSection, чтобы не доходило до верха
-          bottom: "8px", // bottom равен нижней границе карточки
-        }}
-      />
-    )
-  }
-
   return (
     <CardSection noPadding className="overflow-x-auto">
       <div className="relative w-full">
-        {/* Вертикальные разделители между карточками */}
-        <div
-          className="absolute left-0 right-0 top-0 bottom-0 pointer-events-none"
-          aria-hidden
-        >
-          {/* Бордеры между карточками */}
-          {allCards.length > 1 &&
-            allCards.slice(1).map((_, i) => (
-              <div
-                key={i}
-                className="absolute"
-                style={{
-                  left: `calc(${(i + 1) * 80}px - 4px)`, // между карточками (80 = w-16 min-w-[60px] + mx-0.5)
-                  width: "2px",
-                  top: "12px", // top-отступ от CardSection
-                  bottom: "8px", // bottom-отступ, чтобы не доходило до конца
-                  background: "var(--tg-hint-color, #b0b6be)",
-                  opacity: 0.16,
-                  borderRadius: "2px",
-                }}
-              />
-            ))}
-        </div>
-        <div className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar">
+        <div className="flex items-end gap-x-2 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar">
           {allCards.map((card, i) => (
             <div
               key={i}
-              className={`relative flex flex-col items-center ${i === 0 ? "ml-0" : ""}`}
-              style={{
-                zIndex: 2, // поверх линий
-              }}
+              className="relative flex flex-col items-center"
+              style={{ width: CARD_WIDTH, minWidth: CARD_WIDTH }}
             >
+              {/* BORDER LINE между карточками (кроме первой) */}
+              {i !== 0 && (
+                <div
+                  className="absolute"
+                  style={{
+                    left: -CARD_GAP / 2 - BORDER_WIDTH / 2,
+                    top: BORDER_TOP,
+                    bottom: 0,
+                    width: BORDER_WIDTH,
+                    background: "var(--tg-hint-color, #b0b6be)",
+                    opacity: 0.18,
+                    borderRadius: 2,
+                    zIndex: 1,
+                  }}
+                />
+              )}
               {card}
             </div>
           ))}
           {/* Infinity scroll placeholder */}
-          {hasMore && !loading && (
-            <div ref={loaderRef} className="w-2" />
-          )}
+          {hasMore && !loading && <div ref={loaderRef} className="w-2" />}
           {loading && (
             <div className="w-16 flex items-center justify-center text-[var(--tg-hint-color)] text-xs">
               {t("loading")}
