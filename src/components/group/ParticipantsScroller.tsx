@@ -1,5 +1,3 @@
-// src/components/group/ParticipantsScroller.tsx
-
 import { UserPlus, Share2 } from "lucide-react"
 import { useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
@@ -7,10 +5,10 @@ import type { GroupMember } from "../../types/group_member"
 import CardSection from "../CardSection"
 import ParticipantMiniCard from "./ParticipantMiniCard"
 
-// ВНИМАНИЕ: значения для ширины карточек и отступов должны совпадать с ParticipantMiniCard
-const CARD_WIDTH = 88 // px, соответствует w-22/min-w-[88px]
-const CARD_GAP = 8    // px, соответствует mx-1
-const BORDER_TOP = 48 // px, линия начинается ниже аватарки/имени
+// Ширина карточки — Tailwind w-22 = 88px, mx-1 = 4px слева/справа
+const CARD_WIDTH = 88
+const CARD_GAP = 8    // px, gap-x-2
+const CARD_HEIGHT = 90 // px, примерная высота карточки (аватар + имя + паддинг)
 const BORDER_WIDTH = 2
 
 type Props = {
@@ -44,12 +42,17 @@ const ParticipantsScroller = ({
       if (entries[0].isIntersecting && hasMore && !loading) {
         loadMore()
       }
-    })
+    }, { root: loaderRef.current.parentElement, threshold: 0.8 }) // для горизонтальной прокрутки
     observer.observe(loaderRef.current)
     return () => observer.disconnect()
   }, [hasMore, loading, loadMore])
 
-  // ActionCard стилизуем абсолютно так же, как и участника!
+  // Telegram blue из темы (цвет совпадает с navbar)
+  const tgBlue =
+    getComputedStyle(document.documentElement).getPropertyValue("--tg-theme-button-color") ||
+    "#40A7E3"
+
+  // ActionCard как ParticipantMiniCard, но с иконкой
   const ActionCard = ({
     icon,
     label,
@@ -66,6 +69,7 @@ const ParticipantsScroller = ({
         rounded-2xl border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
+        flex-shrink-0
       `}
       onClick={onClick}
       tabIndex={0}
@@ -75,7 +79,7 @@ const ParticipantsScroller = ({
       <span
         className="rounded-full w-12 h-12 flex items-center justify-center mb-1 shadow"
         style={{
-          background: "var(--tg-accent-color, #229ED9)",
+          background: "var(--tg-theme-button-color, #40A7E3)",
         }}
       >
         {icon}
@@ -86,7 +90,7 @@ const ParticipantsScroller = ({
     </button>
   )
 
-  // Собираем массив всех карточек
+  // Список карточек
   const allCards = [
     ...members.map((member) => (
       <ParticipantMiniCard
@@ -111,22 +115,29 @@ const ParticipantsScroller = ({
   ]
 
   return (
-    <CardSection noPadding className="overflow-x-auto">
+    <CardSection noPadding className="overflow-x-visible">
       <div className="relative w-full">
-        <div className="flex items-end gap-x-2 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar">
+        <div
+          className="flex items-end gap-x-2 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {allCards.map((card, i) => (
             <div
               key={i}
-              className="relative flex flex-col items-center"
-              style={{ width: CARD_WIDTH, minWidth: CARD_WIDTH }}
+              className="relative flex flex-col items-center flex-shrink-0"
+              style={{
+                width: CARD_WIDTH,
+                minWidth: CARD_WIDTH,
+                height: CARD_HEIGHT,
+              }}
             >
-              {/* BORDER LINE между карточками (кроме первой) */}
+              {/* BORDER LINE — теперь строго от bottom карточки до bottom CardSection */}
               {i !== 0 && (
                 <div
                   className="absolute"
                   style={{
                     left: -CARD_GAP / 2 - BORDER_WIDTH / 2,
-                    top: BORDER_TOP,
+                    top: CARD_HEIGHT - 8, // нижняя граница карточки (на 8px выше bottom)
                     bottom: 0,
                     width: BORDER_WIDTH,
                     background: "var(--tg-hint-color, #b0b6be)",
@@ -139,8 +150,10 @@ const ParticipantsScroller = ({
               {card}
             </div>
           ))}
-          {/* Infinity scroll placeholder */}
-          {hasMore && !loading && <div ref={loaderRef} className="w-2" />}
+          {/* Loader для бесконечной горизонтальной прокрутки */}
+          {hasMore && !loading && (
+            <div ref={loaderRef} className="w-4" />
+          )}
           {loading && (
             <div className="w-16 flex items-center justify-center text-[var(--tg-hint-color)] text-xs">
               {t("loading")}
