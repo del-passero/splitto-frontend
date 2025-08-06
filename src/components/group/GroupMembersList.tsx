@@ -45,6 +45,7 @@ const GroupMembersList = ({
               ✕
             </button>
           )}
+          {/* Wallet-style горизонтальный разделитель */}
           {idx !== members.length - 1 && (
             <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
           )}

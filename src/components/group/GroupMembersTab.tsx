@@ -46,13 +46,16 @@ const GroupMembersTab = ({
           {t("group_members_add")}
         </button>
       </div>
+
       <GroupMembersList
         members={members}
         loading={loading}
         isOwner={isOwner}
         onRemove={onRemove}
       />
+
       <div className="flex-1" />
+
       <button
         onClick={onSaveAndExit}
         className="mt-8 w-full py-3 rounded-lg font-semibold bg-[var(--tg-accent-color)] text-white shadow transition active:scale-95"

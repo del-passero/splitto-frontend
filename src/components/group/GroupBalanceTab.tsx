@@ -36,6 +36,7 @@ const GroupBalanceTab = ({
 
   return (
     <div className="relative w-full max-w-xl mx-auto py-4 px-2 min-h-[320px]">
+      {/* Микро-табы */}
       <div className="flex gap-2 mb-4">
         <button
           type="button"

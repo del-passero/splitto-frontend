@@ -8,6 +8,7 @@ import { getGroupMembers } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
+
 import GroupHeader from "../components/group/GroupHeader"
 import ParticipantsScroller from "../components/group/ParticipantsScroller"
 import GroupTabs from "../components/group/GroupTabs"
@@ -35,17 +36,20 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы
-  const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
+  // Табы — по умолчанию открыт "Баланс"
+  const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("balance")
 
   // User
   const user = useUserStore(state => state.user)
   const currentUserId = user?.id ?? 0
   const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
 
-  // Балансы между пользователем и каждым участником (заглушка, реальный расчёт — позже)
-  const balances: Record<number, number> = {} // userId: сумма
-  // TODO: Реализуй свой расчёт долгов для своей схемы. Сейчас все нули.
+  // Заглушки (долги/балансы/транзакции — сделаешь позже)
+  const balances: Record<number, number> = {}
+  const transactions: any[] = []
+  const myBalance = 0
+  const myDebts: any[] = []
+  const allDebts: any[] = []
 
   // Загрузка деталей группы
   useEffect(() => {
@@ -110,12 +114,6 @@ const GroupDetailsPage = () => {
   }
   const handleBalanceClick = () => setSelectedTab("balance")
 
-  // Заглушки для транзакций и баланса
-  const transactions: any[] = [] // Подключишь свою логику позже
-  const myBalance = 0
-  const myDebts: any[] = []
-  const allDebts: any[] = []
-
   // Ошибки/загрузка
   if (loading) {
     return (
@@ -134,15 +132,15 @@ const GroupDetailsPage = () => {
 
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
+      {/* Шапка группы */}
       <GroupHeader
         group={group}
-        userBalance={myBalance}
         onSettingsClick={handleSettingsClick}
         onBalanceClick={handleBalanceClick}
       />
+      {/* Лента участников */}
       <ParticipantsScroller
         members={members}
-        balances={balances}
         currentUserId={currentUserId}
         onParticipantClick={handleBalanceClick}
         onInviteClick={() => {/* откроешь модалку */}}
@@ -151,6 +149,7 @@ const GroupDetailsPage = () => {
         hasMore={hasMore}
         loading={membersLoading}
       />
+      {/* Панель вкладок */}
       <GroupTabs
         selected={selectedTab}
         onSelect={setSelectedTab}

@@ -8,7 +8,7 @@ import { getGroupMembers } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
-import GroupSettingsHeader from "../components/group/GroupSettingsHeader"
+import GroupHeader from "../components/group/GroupHeader"
 import GroupSettingsTabs from "../components/group/GroupSettingsTabs"
 import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
@@ -82,7 +82,6 @@ const GroupDetailsPageSettings = () => {
 
   // Хэндлеры для экшенов (заглушки)
   const goToGroup = () => navigate(`/groups/${groupId}`)
-
   const handleEdit = () => { /* откроешь модалку */ }
   const handleLeave = () => { /* откроешь модалку */ }
   const handleDelete = () => { /* откроешь модалку */ }
@@ -109,10 +108,10 @@ const GroupDetailsPageSettings = () => {
 
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
-      <GroupSettingsHeader
+      <GroupHeader
         group={group}
-        onEdit={handleEdit}
-        onBack={goToGroup}
+        onSettingsClick={handleEdit}
+        onBalanceClick={goToGroup}
       />
       <GroupSettingsTabs
         selected={selectedTab}
