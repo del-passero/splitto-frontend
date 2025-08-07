@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next"
 type Props = {
   open: boolean
   onClose: () => void
-  onCreated?: (group: { id: number, name: string, description: string }) => void
+  onCreated?: (group: { id: number, name: string, description: string, owner_id: number }) => void
   ownerId: number
 }
 
@@ -50,7 +50,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     }
   }
 
-  // — ESC key close
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
@@ -73,12 +72,10 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
         >
           <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
         </button>
-
         <form onSubmit={handleSubmit} className="p-6 pt-4 flex flex-col gap-4">
           <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
             {t("create_group")}
           </div>
-          {/* Имя */}
           <input
             type="text"
             className={`
@@ -98,7 +95,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             onChange={e => setName(e.target.value)}
             disabled={loading}
           />
-          {/* Описание */}
           <textarea
             className={`
               w-full px-4 py-3 rounded-xl border
@@ -117,11 +113,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             onChange={e => setDesc(e.target.value)}
             disabled={loading}
           />
-          {/* Ошибка */}
           {error && (
             <div className="text-red-500 text-sm font-medium mt-0">{error}</div>
           )}
-          {/* Кнопка */}
           <button
             type="submit"
             className={`

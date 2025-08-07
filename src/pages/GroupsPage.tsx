@@ -52,6 +52,12 @@ const GroupsPage = () => {
     },
   ]
 
+  // === Обработка создания группы ===
+  const handleGroupCreated = () => {
+    if (user?.id) fetchGroups(user.id)
+    setModalOpen(false)
+  }
+
   if (!groupsLoading && !groupsError && (noGroups || notFound)) {
     return (
       <MainLayout fabActions={fabActions}>
@@ -65,7 +71,7 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={() => user?.id && fetchGroups(user.id)}
+          onCreated={handleGroupCreated}
         />
       </MainLayout>
     )
@@ -98,7 +104,7 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={() => user?.id && fetchGroups(user.id)}
+        onCreated={handleGroupCreated}
       />
     </MainLayout>
   )

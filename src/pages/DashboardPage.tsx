@@ -5,27 +5,27 @@ import { useTranslation } from "react-i18next"
 import MainLayout from "../layouts/MainLayout"
 import { Users, UserPlus, HandCoins } from "lucide-react"
 import InviteFriendModal from "../components/InviteFriendModal"
-import CreateGroupModal from "../components/CreateGroupModal"      // <-- Импорт модалки создания группы
+import CreateGroupModal from "../components/CreateGroupModal"
 import { useUserStore } from "../store/userStore"
+import { useGroupsStore } from "../store/groupsStore"
 
 const DashboardPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const user = useUserStore(state => state.user)
+  const { fetchGroups } = useGroupsStore()
 
-  // Например, если нужен рефреш групп после создания (можно прокинуть fetchGroups)
   const handleGroupCreated = () => {
-    // Можно добавить логику, например: fetchGroups(user.id)
+    if (user?.id) fetchGroups(user.id)
     setCreateGroupOpen(false)
-    // ...доп. действия
   }
 
   const fabActions = [
     {
       key: "add-group",
       icon: <Users size={28} strokeWidth={1.5} />,
-      onClick: () => setCreateGroupOpen(true), // Открываем модалку создания группы
+      onClick: () => setCreateGroupOpen(true),
       ariaLabel: t("create_group"),
       label: t("create_group"),
     },
@@ -39,7 +39,7 @@ const DashboardPage = () => {
     {
       key: "add-transaction",
       icon: <HandCoins size={28} strokeWidth={1.5} />,
-      onClick: () => {}, // handleAddTransaction
+      onClick: () => {},
       ariaLabel: t("add_transaction"),
       label: t("add_transaction"),
     },
@@ -51,13 +51,11 @@ const DashboardPage = () => {
         <h1 className="text-xl font-bold mb-4">{t("main")}</h1>
         {/* Контент дашборда */}
       </div>
-
       <InviteFriendModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         inviteLink={null}
       />
-
       <CreateGroupModal
         open={createGroupOpen}
         onClose={() => setCreateGroupOpen(false)}
