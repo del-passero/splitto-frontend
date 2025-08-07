@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { X, Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import ParticipantsScroller from "./group/ParticipantsScroller"
 
 type Props = {
   open: boolean
@@ -11,6 +12,7 @@ type Props = {
   ownerId: number
 }
 
+// Telegram-стили
 const MODAL_BG = "bg-[var(--tg-bg-color,#fff)]"
 const MODAL_CARD = "bg-[var(--tg-card-bg,#fff)]"
 
@@ -21,7 +23,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // --- ВСЕ useEffect/useState/хуки ВНЕ return! ---
+  // Пока участников нет — только создатель (опционально можно показывать)
+  const groupMembers: any[] = [] // позже тут будет массив GroupMember
 
   // — ESC key close
   useEffect(() => {
@@ -52,11 +55,14 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     }
     setLoading(true)
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"}/groups/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: desc.trim(), owner_id: ownerId }),
-      })
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"}/groups/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), description: desc.trim(), owner_id: ownerId }),
+        }
+      )
       if (!res.ok) throw new Error(await res.text())
       const group = await res.json()
       onCreated?.(group)
@@ -72,6 +78,42 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   // --- только теперь проверяем open ---
   if (!open) return null
+
+  // --- Кнопки нижние (Create + Cancel) ---
+  const Buttons = (
+    <div className="flex flex-row gap-2 mt-3 w-full">
+      <button
+        type="button"
+        className={`
+          w-1/2 py-3 rounded-xl font-bold text-base
+          bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[var(--tg-text-color)]
+          border border-[var(--tg-hint-color)]/30
+          hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10
+          active:scale-95
+          transition
+        `}
+        onClick={onClose}
+        disabled={loading}
+      >
+        {t("cancel") || "Отмена"}
+      </button>
+      <button
+        type="submit"
+        className={`
+          w-1/2 py-3 rounded-xl font-bold text-base
+          bg-[var(--tg-accent-color,#40A7E3)] text-white
+          flex items-center justify-center gap-2
+          active:scale-95
+          disabled:opacity-60 disabled:pointer-events-none
+          transition
+        `}
+        disabled={loading}
+      >
+        {loading && <Loader2 className="animate-spin w-5 h-5" />}
+        {t("create_group")}
+      </button>
+    </div>
+  )
 
   return (
     <div className={`fixed inset-0 z-[1000] flex items-center justify-center ${MODAL_BG} bg-opacity-70 transition-all`}>
@@ -130,25 +172,32 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             onChange={e => setDesc(e.target.value)}
             disabled={loading}
           />
+
+          {/* ParticipantsScroller */}
+          <ParticipantsScroller
+            members={groupMembers}
+            currentUserId={ownerId}
+            onParticipantClick={() => {}}
+            onInviteClick={() => {
+              console.log("Invite member clicked")
+              // TODO: Открыть модалку/селектор для приглашения участников
+            }}
+            onAddClick={() => {
+              console.log("Add member clicked")
+              // TODO: Открыть модалку/селектор для выбора участников
+            }}
+            loadMore={() => {}}
+            hasMore={false}
+            loading={false}
+          />
+
           {/* Ошибка */}
           {error && (
             <div className="text-red-500 text-sm font-medium mt-0">{error}</div>
           )}
-          {/* Кнопка */}
-          <button
-            type="submit"
-            className={`
-              w-full mt-2 py-3 rounded-xl font-bold text-base transition
-              bg-[var(--tg-accent-color)] text-white
-              flex items-center justify-center gap-2
-              active:scale-95
-              disabled:opacity-60 disabled:pointer-events-none
-            `}
-            disabled={loading}
-          >
-            {loading && <Loader2 className="animate-spin w-5 h-5" />}
-            {t("create_group")}
-          </button>
+
+          {/* Кнопки */}
+          {Buttons}
         </form>
       </div>
     </div>
