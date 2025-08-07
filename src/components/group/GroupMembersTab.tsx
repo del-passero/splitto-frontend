@@ -27,33 +27,39 @@ const GroupMembersTab = ({
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-col gap-3 p-4 min-h-[280px]">
-      {/* Invite/Add кнопки - стиль Wallet */}
-      <div className="flex justify-center mt-6 mb-6">
-        <div className="flex w-full max-w-[320px] h-11 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)] p-1">
-          <button
-            type="button"
-            className={`
-              flex-1 h-9 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
-              bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow
-            `}
-            onClick={onInvite}
-          >
-            <Share2 className="w-5 h-5" />
-            {t("group_members_invite")}
-          </button>
-          <button
-            type="button"
-            className={`
-              flex-1 h-9 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
-              bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]
-            `}
-            onClick={onAdd}
-          >
-            <UserPlus className="w-5 h-5" />
-            {t("group_members_add")}
-          </button>
-        </div>
+    <div className="flex flex-col gap-3 px-4 pt-4 min-h-[280px]">
+      {/* Invite/Add — отдельные кнопки (как Wallet, с границей, подняты наверх) */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          className={`
+            flex-1 h-11 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
+            bg-white dark:bg-[var(--tg-card-bg)]
+            text-[color:var(--tg-accent-color,#40A7E3)]
+            border border-[color:var(--tg-accent-color,#40A7E3)]
+            shadow-sm
+            active:bg-[color:var(--tg-accent-color,#40A7E3)]/10
+          `}
+          onClick={onInvite}
+        >
+          <Share2 className="w-5 h-5" />
+          {t("group_members_invite")}
+        </button>
+        <button
+          type="button"
+          className={`
+            flex-1 h-11 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
+            bg-white dark:bg-[var(--tg-card-bg)]
+            text-[color:var(--tg-accent-color,#40A7E3)]
+            border border-[color:var(--tg-accent-color,#40A7E3)]
+            shadow-sm
+            active:bg-[color:var(--tg-accent-color,#40A7E3)]/10
+          `}
+          onClick={onAdd}
+        >
+          <UserPlus className="w-5 h-5" />
+          {t("group_members_add")}
+        </button>
       </div>
 
       <GroupMembersList
