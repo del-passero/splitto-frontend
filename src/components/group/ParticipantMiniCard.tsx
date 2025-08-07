@@ -27,8 +27,9 @@ const ParticipantMiniCard = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-22 min-w-[88px] mx-1 py-2 bg-[var(--tg-card-bg)]
-        rounded-2xl border border-[var(--tg-hint-color)]/30 shadow-sm
+        flex flex-col items-center w-20 min-w-[72px] mx-0.5 py-2
+        bg-[var(--tg-card-bg)]
+        rounded-lg border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
       `}
@@ -40,7 +41,7 @@ const ParticipantMiniCard = ({
       <Avatar
         src={member.user.photo_url}
         name={displayName}
-        size={48}
+        size={44}
         className="mb-1"
       />
       <span className="text-xs font-semibold text-[var(--tg-text-color)] truncate w-full text-center">

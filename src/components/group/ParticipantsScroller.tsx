@@ -56,8 +56,8 @@ const ParticipantsScroller = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-22 min-w-[88px] mx-1 py-2 bg-[var(--tg-card-bg)]
-        rounded-2xl border border-[var(--tg-hint-color)]/30 shadow-sm
+        flex flex-col items-center w-20 min-w-[72px] mx-0.5 py-2 bg-[var(--tg-card-bg)]
+        rounded-lg border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
         flex-shrink-0
@@ -68,7 +68,7 @@ const ParticipantsScroller = ({
       style={{ zIndex: 2 }}
     >
       <span
-        className="rounded-full w-12 h-12 flex items-center justify-center mb-1 shadow"
+        className="rounded-full w-11 h-11 flex items-center justify-center mb-1 shadow"
         style={{ background: "var(--tg-theme-button-color, #40A7E3)" }}
       >
         {icon}
@@ -82,7 +82,7 @@ const ParticipantsScroller = ({
   return (
     <CardSection noPadding className="overflow-x-visible">
       <div
-        className="flex items-end gap-x-2 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
+        className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch", width: "100%" }}
       >
         {members.map((member) => (
@@ -106,10 +106,10 @@ const ParticipantsScroller = ({
           onClick={onAddClick}
         />
         {hasMore && !loading && (
-          <div ref={loaderRef} className="w-4" />
+          <div ref={loaderRef} className="w-2" />
         )}
         {loading && (
-          <div className="w-16 flex items-center justify-center text-[var(--tg-hint-color)] text-xs">
+          <div className="w-10 flex items-center justify-center text-[var(--tg-hint-color)] text-xs">
             {t("loading")}
           </div>
         )}
