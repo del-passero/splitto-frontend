@@ -157,7 +157,7 @@ const GroupDetailsPage = () => {
           onSelect={setSelectedTab}
           className="mb-0"
         />
-        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-6">
+        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
           {selectedTab === "transactions" && (
             <GroupTransactionsTab
               loading={false}

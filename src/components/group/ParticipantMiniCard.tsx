@@ -27,7 +27,7 @@ const ParticipantMiniCard = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-20 min-w-[72px] py-2
+        flex flex-col items-center w-20 min-w-[65px] py-2
         bg-[var(--tg-card-bg)]
         rounded border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
