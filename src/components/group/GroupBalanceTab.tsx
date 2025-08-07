@@ -35,14 +35,14 @@ const GroupBalanceTab = ({
   const [microTab, setMicroTab] = useState<"mine" | "all">("mine")
 
   return (
-    <div className="relative w-full max-w-xl mx-auto py-4 px-2 min-h-[320px]">
-      {/* Wallet-style переключатель */}
-      <div className="flex justify-center mb-6">
-        <div className="flex w-full max-w-[320px] rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)] p-1">
+    <div className="relative w-full max-w-xl mx-auto min-h-[320px]">
+      {/* Переключатель Wallet-style */}
+      <div className="flex justify-center mt-6 mb-6">
+        <div className="flex w-full max-w-[320px] h-11 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)] p-1">
           <button
             type="button"
             className={`
-              flex-1 py-2 rounded-full font-bold text-sm transition
+              flex-1 h-9 rounded-full font-bold text-sm transition
               ${
                 microTab === "mine"
                   ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
@@ -56,7 +56,7 @@ const GroupBalanceTab = ({
           <button
             type="button"
             className={`
-              flex-1 py-2 rounded-full font-bold text-sm transition
+              flex-1 h-9 rounded-full font-bold text-sm transition
               ${
                 microTab === "all"
                   ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"

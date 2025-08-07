@@ -12,6 +12,7 @@ type Props = {
   onFilterClick?: () => void
   onSortClick?: () => void
   placeholderKey?: string
+  className?: string    
 }
 
 const FiltersRow = ({
@@ -20,6 +21,7 @@ const FiltersRow = ({
   onFilterClick,
   onSortClick,
   placeholderKey = "search_group_placeholder",
+  className = "",
 }: Props) => {
   const { t } = useTranslation()
   return (

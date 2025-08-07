@@ -22,7 +22,7 @@ const GroupTransactionsTab = ({
 
   return (
     <div className="relative w-full h-full min-h-[320px]">
-      <FiltersRow search={search} setSearch={setSearch} />
+      <FiltersRow search={search} setSearch={setSearch} className="mt-6" />
       {loading ? (
         <div className="flex justify-center py-12 text-[var(--tg-hint-color)]">
           {t("loading")}
