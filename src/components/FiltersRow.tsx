@@ -25,8 +25,8 @@ const FiltersRow = ({
 }: Props) => {
   const { t } = useTranslation()
   return (
-    <CardSection className="p-0 mb-3">
-      <div className="flex items-center w-full gap-2 py-2">
+    <CardSection className="mb-3 px-0 py-0" noPadding>
+      <div className="flex items-center h-12 w-full gap-2 px-2">
         <FilterButton onClick={onFilterClick || (() => {})} />
         <div className="w-px h-7 bg-[var(--tg-secondary-bg-color)] mx-1" />
         <SearchBar

@@ -38,7 +38,7 @@ const GroupBalanceTab = ({
     <div className="relative w-full max-w-xl mx-auto min-h-[320px]">
       {/* Wallet-style Переключатель (на самом верху, без внешнего и внутреннего отступа) */}
       <div className="flex justify-center mb-6">
-        <div className="flex w-full max-w-[320px] h-11 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)]">
+        <div className="flex w-full max-w-[320px] h-8 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)]">
           <button
             type="button"
             className={`
