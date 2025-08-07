@@ -10,13 +10,14 @@ type Props = {
   group: Group
   onSettingsClick: () => void
   onBalanceClick: () => void
-  // Если нужно, можно добавить флаг для выбора иконки (напр. isEdit вместо isSettings)
+  isEdit?: boolean        
 }
 
 const GroupHeader = ({
   group,
   onSettingsClick,
   onBalanceClick,
+  isEdit = false, 
 }: Props) => {
   const { t } = useTranslation()
 

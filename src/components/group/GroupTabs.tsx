@@ -3,19 +3,28 @@
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
 
-type TabKey = "transactions" | "balance" | "analytics"
-type Props = {
-  selected: TabKey
-  onSelect: (key: TabKey) => void
+type Tab<T extends string> = {
+  key: T
+  label: string
+}
+type Props<T extends string> = {
+  selected: T
+  onSelect: (key: T) => void
+  tabs?: Tab<T>[]
   className?: string
 }
 
-const GroupTabs = ({ selected, onSelect, className = "" }: Props) => {
+function GroupTabs<T extends string>({
+  selected,
+  onSelect,
+  tabs,
+  className = "",
+}: Props<T>) {
   const { t } = useTranslation()
-  const TABS: { key: TabKey; label: string }[] = [
-    { key: "transactions", label: t("group_tab_transactions") },
-    { key: "balance", label: t("group_tab_balance") },
-    { key: "analytics", label: t("group_tab_analytics") },
+  const TABS: Tab<T>[] = tabs || [
+    { key: "transactions" as T, label: t("group_tab_transactions") },
+    { key: "balance" as T, label: t("group_tab_balance") },
+    { key: "analytics" as T, label: t("group_tab_analytics") },
   ]
   return (
     <CardSection className={`pt-0 pb-0 px-0 mb-2 ${className}`}>

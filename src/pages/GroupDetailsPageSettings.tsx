@@ -12,6 +12,7 @@ import GroupHeader from "../components/group/GroupHeader"
 import GroupSettingsTabs from "../components/group/GroupSettingsTabs"
 import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
+import CardSection from "../components/CardSection"
 
 const PAGE_SIZE = 24
 
@@ -112,32 +113,37 @@ const GroupDetailsPageSettings = () => {
         group={group}
         onSettingsClick={handleEdit}
         onBalanceClick={goToGroup}
+        isEdit
       />
-      <GroupSettingsTabs
-        selected={selectedTab}
-        onSelect={setSelectedTab}
-      />
-      <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12">
-        {selectedTab === "settings" && (
-          <GroupSettingsTab
-            isOwner={isOwner}
-            onLeave={handleLeave}
-            onDelete={handleDelete}
-            onSaveAndExit={handleSaveAndExit}
-          />
-        )}
-        {selectedTab === "members" && (
-          <GroupMembersTab
-            members={members}
-            isOwner={isOwner}
-            onRemove={handleRemove}
-            onInvite={handleInvite}
-            onAdd={handleAdd}
-            onSaveAndExit={handleSaveAndExit}
-            loading={membersLoading}
-          />
-        )}
-      </div>
+      {/* Единая панель табов */}
+      <CardSection className="px-0 py-0 mb-2">
+        <GroupSettingsTabs
+          selected={selectedTab}
+          onSelect={setSelectedTab}
+          className="mb-0"
+        />
+        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
+          {selectedTab === "settings" && (
+            <GroupSettingsTab
+              isOwner={isOwner}
+              onLeave={handleLeave}
+              onDelete={handleDelete}
+              onSaveAndExit={handleSaveAndExit}
+            />
+          )}
+          {selectedTab === "members" && (
+            <GroupMembersTab
+              members={members}
+              isOwner={isOwner}
+              onRemove={handleRemove}
+              onInvite={handleInvite}
+              onAdd={handleAdd}
+              onSaveAndExit={handleSaveAndExit}
+              loading={membersLoading}
+            />
+          )}
+        </div>
+      </CardSection>
     </div>
   )
 }
