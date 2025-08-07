@@ -18,8 +18,6 @@ type Props = {
   loading: boolean
 }
 
-const CARD_GAP = "gap-x-1" // одинаковое расстояние между всеми
-
 const ParticipantsScroller = ({
   members,
   currentUserId,
@@ -44,6 +42,7 @@ const ParticipantsScroller = ({
     return () => observer.disconnect()
   }, [hasMore, loading, loadMore])
 
+  // ActionCard ТЕПЕРЬ 1:1 с ParticipantMiniCard
   const ActionCard = ({
     icon,
     label,
@@ -56,10 +55,11 @@ const ParticipantsScroller = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-20 min-w-[72px] rounded border border-[var(--tg-hint-color)]/30 shadow-sm
-        hover:shadow-md transition cursor-pointer focus:outline-none flex-shrink-0
-        bg-[var(--tg-card-bg)] mx-0
-        py-2
+        flex flex-col items-center w-20 min-w-[72px] py-2
+        bg-[var(--tg-card-bg)]
+        rounded border border-[var(--tg-hint-color)]/30 shadow-sm
+        hover:shadow-md transition cursor-pointer
+        focus:outline-none flex-shrink-0
       `}
       onClick={onClick}
       tabIndex={0}
@@ -81,30 +81,29 @@ const ParticipantsScroller = ({
   return (
     <CardSection noPadding className="overflow-x-visible">
       <div
-        className={`flex items-end ${CARD_GAP} px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar`}
+        className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch", width: "100%" }}
       >
-        {[...members.map((member) => (
+        {members.map((member) => (
           <ParticipantMiniCard
             key={member.user.id}
             member={member}
             onClick={onParticipantClick}
             currentUserId={currentUserId}
           />
-        )),
-          <ActionCard
-            key="invite"
-            icon={<Share2 className="w-5 h-5 text-white" strokeWidth={2.2} />}
-            label={t("group_invite")}
-            onClick={onInviteClick}
-          />,
-          <ActionCard
-            key="add"
-            icon={<UserPlus className="w-5 h-5 text-white" strokeWidth={2.2} />}
-            label={t("group_add_member")}
-            onClick={onAddClick}
-          />
-        ]}
+        ))}
+        <ActionCard
+          key="invite"
+          icon={<Share2 className="w-5 h-5 text-white" strokeWidth={2.2} />}
+          label={t("group_invite")}
+          onClick={onInviteClick}
+        />
+        <ActionCard
+          key="add"
+          icon={<UserPlus className="w-5 h-5 text-white" strokeWidth={2.2} />}
+          label={t("group_add_member")}
+          onClick={onAddClick}
+        />
         {hasMore && !loading && (
           <div ref={loaderRef} className="w-2" />
         )}

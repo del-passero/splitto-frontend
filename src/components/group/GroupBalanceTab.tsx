@@ -36,17 +36,16 @@ const GroupBalanceTab = ({
 
   return (
     <div className="relative w-full max-w-xl mx-auto min-h-[320px]">
-      {/* Переключатель Wallet-style */}
-      <div className="flex justify-center mt-6 mb-6">
-        <div className="flex w-full max-w-[320px] h-11 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)] p-1">
+      {/* Wallet-style Переключатель (на самом верху, без внешнего и внутреннего отступа) */}
+      <div className="flex justify-center mb-6">
+        <div className="flex w-full max-w-[320px] h-11 rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)]">
           <button
             type="button"
             className={`
-              flex-1 h-9 rounded-full font-bold text-sm transition
-              ${
-                microTab === "mine"
-                  ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
-                  : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
+              flex-1 h-full rounded-full font-bold text-sm transition
+              ${microTab === "mine"
+                ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
+                : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
               }
             `}
             onClick={() => setMicroTab("mine")}
@@ -56,11 +55,10 @@ const GroupBalanceTab = ({
           <button
             type="button"
             className={`
-              flex-1 h-9 rounded-full font-bold text-sm transition
-              ${
-                microTab === "all"
-                  ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
-                  : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
+              flex-1 h-full rounded-full font-bold text-sm transition
+              ${microTab === "all"
+                ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
+                : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
               }
             `}
             onClick={() => setMicroTab("all")}
