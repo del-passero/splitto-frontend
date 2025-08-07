@@ -21,7 +21,27 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  if (!open) return null
+  // --- ВСЕ useEffect/useState/хуки ВНЕ return! ---
+
+  // — ESC key close
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [open, onClose])
+
+  // Сброс полей при открытии
+  useEffect(() => {
+    if (open) {
+      setName("")
+      setDesc("")
+      setError(null)
+      setLoading(false)
+    }
+  }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,15 +70,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     }
   }
 
-  // — ESC key close
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
+  // --- только теперь проверяем open ---
+  if (!open) return null
 
   return (
     <div className={`fixed inset-0 z-[1000] flex items-center justify-center ${MODAL_BG} bg-opacity-70 transition-all`}>
@@ -73,6 +86,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
         >
           <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
         </button>
+
         <form onSubmit={handleSubmit} className="p-6 pt-4 flex flex-col gap-4">
           <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
             {t("create_group")}
