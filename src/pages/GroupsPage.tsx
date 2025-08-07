@@ -46,17 +46,11 @@ const GroupsPage = () => {
     {
       key: "add-transaction",
       icon: <HandCoins size={28} strokeWidth={1.5} />,
-      onClick: () => {}, // handle add transaction modal
+      onClick: () => {},
       ariaLabel: t("add_transaction"),
       label: t("add_transaction"),
     },
   ]
-
-  // === Обработка создания группы ===
-  const handleGroupCreated = () => {
-    if (user?.id) fetchGroups(user.id)
-    setModalOpen(false)
-  }
 
   if (!groupsLoading && !groupsError && (noGroups || notFound)) {
     return (
@@ -71,7 +65,7 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={handleGroupCreated}
+          onCreated={() => user?.id && fetchGroups(user.id)}
         />
       </MainLayout>
     )
@@ -104,10 +98,11 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={handleGroupCreated}
+        onCreated={() => user?.id && fetchGroups(user.id)}
       />
     </MainLayout>
   )
 }
 
 export default GroupsPage
+

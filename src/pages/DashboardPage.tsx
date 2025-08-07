@@ -17,8 +17,8 @@ const DashboardPage = () => {
   const { fetchGroups } = useGroupsStore()
 
   const handleGroupCreated = () => {
-    if (user?.id) fetchGroups(user.id)
     setCreateGroupOpen(false)
+    if (user?.id) fetchGroups(user.id)
   }
 
   const fabActions = [
@@ -49,7 +49,6 @@ const DashboardPage = () => {
     <MainLayout fabActions={fabActions}>
       <div className="w-full max-w-md mx-auto py-6">
         <h1 className="text-xl font-bold mb-4">{t("main")}</h1>
-        {/* Контент дашборда */}
       </div>
       <InviteFriendModal
         open={inviteOpen}
