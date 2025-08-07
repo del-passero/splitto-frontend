@@ -29,7 +29,7 @@ const ParticipantMiniCard = ({
       className={`
         flex flex-col items-center w-20 min-w-[72px] mx-0.5 py-2
         bg-[var(--tg-card-bg)]
-        rounded-lg border border-[var(--tg-hint-color)]/30 shadow-sm
+        rounded border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
       `}

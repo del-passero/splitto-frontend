@@ -56,8 +56,8 @@ const ParticipantsScroller = ({
     <button
       type="button"
       className={`
-        flex flex-col items-center w-20 min-w-[72px] mx-0.5 py-2 bg-[var(--tg-card-bg)]
-        rounded-lg border border-[var(--tg-hint-color)]/30 shadow-sm
+        flex flex-col items-center w-20 min-w-[72px] mx-0.25 py-2 bg-[var(--tg-card-bg)]
+        rounded border border-[var(--tg-hint-color)]/30 shadow-sm
         hover:shadow-md transition cursor-pointer
         focus:outline-none
         flex-shrink-0
@@ -82,7 +82,7 @@ const ParticipantsScroller = ({
   return (
     <CardSection noPadding className="overflow-x-visible">
       <div
-        className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
+        className="flex items-end gap-x-0.5 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch", width: "100%" }}
       >
         {members.map((member) => (

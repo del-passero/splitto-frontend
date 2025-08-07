@@ -15,6 +15,7 @@ import GroupTabs from "../components/group/GroupTabs"
 import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
+import CardSection from "../components/CardSection"
 
 const PAGE_SIZE = 24
 
@@ -149,31 +150,33 @@ const GroupDetailsPage = () => {
         hasMore={hasMore}
         loading={membersLoading}
       />
-      {/* Панель вкладок */}
-      <GroupTabs
-        selected={selectedTab}
-        onSelect={setSelectedTab}
-        className="mb-1"
-      />
-      <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12">
-        {selectedTab === "transactions" && (
-          <GroupTransactionsTab
-            loading={false}
-            transactions={transactions}
-            onAddTransaction={() => {/* откроешь форму добавления */}}
-          />
-        )}
-        {selectedTab === "balance" && (
-          <GroupBalanceTab
-            myBalance={myBalance}
-            myDebts={myDebts}
-            allDebts={allDebts}
-            loading={false}
-            onFabClick={() => {/* откроешь форму добавления платежа */}}
-          />
-        )}
-        {selectedTab === "analytics" && <GroupAnalyticsTab />}
-      </div>
+      {/* Вкладки и содержимое — внутри одного CardSection */}
+      <CardSection className="px-0 py-0 mb-2">
+        <GroupTabs
+          selected={selectedTab}
+          onSelect={setSelectedTab}
+          className="mb-0"
+        />
+        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-6">
+          {selectedTab === "transactions" && (
+            <GroupTransactionsTab
+              loading={false}
+              transactions={transactions}
+              onAddTransaction={() => {/* откроешь форму добавления */}}
+            />
+          )}
+          {selectedTab === "balance" && (
+            <GroupBalanceTab
+              myBalance={myBalance}
+              myDebts={myDebts}
+              allDebts={allDebts}
+              loading={false}
+              onFabClick={() => {/* откроешь форму добавления платежа */}}
+            />
+          )}
+          {selectedTab === "analytics" && <GroupAnalyticsTab />}
+        </div>
+      </CardSection>
       {/* Loader для инфинити-скролла */}
       {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
     </div>
