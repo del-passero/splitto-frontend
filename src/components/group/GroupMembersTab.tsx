@@ -1,5 +1,3 @@
-// src/components/group/GroupMembersTab.tsx
-
 import { useTranslation } from "react-i18next"
 import GroupMembersList from "./GroupMembersList"
 import { UserPlus, Share2 } from "lucide-react"
@@ -13,6 +11,8 @@ type Props = {
   onAdd: () => void
   onSaveAndExit: () => void
   loading?: boolean
+  fetchMore?: () => void
+  hasMore?: boolean
 }
 
 const GroupMembersTab = ({
@@ -23,39 +23,27 @@ const GroupMembersTab = ({
   onAdd,
   onSaveAndExit,
   loading = false,
+  fetchMore,
+  hasMore,
 }: Props) => {
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-col gap-3 px-4 pt-4 min-h-[280px]">
-      {/* Invite/Add — отдельные кнопки (как Wallet, с границей, подняты наверх) */}
-      <div className="flex gap-2 mb-4">
+    <div className="flex flex-col gap-3 p-4 min-h-[280px]">
+      {/* Invite/Add кнопки */}
+      <div className="flex gap-2 mb-3 mt-0">
         <button
-          type="button"
-          className={`
-            flex-1 h-11 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
-            bg-white dark:bg-[var(--tg-card-bg)]
-            text-[color:var(--tg-accent-color,#40A7E3)]
-            border border-[color:var(--tg-accent-color,#40A7E3)]
-            shadow-sm
-            active:bg-[color:var(--tg-accent-color,#40A7E3)]/10
-          `}
+          className="flex-1 py-2 rounded-lg bg-[var(--tg-accent-color)] text-white font-medium flex items-center justify-center gap-2 active:scale-95"
           onClick={onInvite}
+          type="button"
         >
           <Share2 className="w-5 h-5" />
           {t("group_members_invite")}
         </button>
         <button
-          type="button"
-          className={`
-            flex-1 h-11 rounded-full font-bold text-sm transition flex items-center justify-center gap-2
-            bg-white dark:bg-[var(--tg-card-bg)]
-            text-[color:var(--tg-accent-color,#40A7E3)]
-            border border-[color:var(--tg-accent-color,#40A7E3)]
-            shadow-sm
-            active:bg-[color:var(--tg-accent-color,#40A7E3)]/10
-          `}
+          className="flex-1 py-2 rounded-lg bg-[var(--tg-card-bg)] text-[var(--tg-accent-color)] font-medium flex items-center justify-center gap-2 active:scale-95"
           onClick={onAdd}
+          type="button"
         >
           <UserPlus className="w-5 h-5" />
           {t("group_members_add")}
@@ -67,6 +55,8 @@ const GroupMembersTab = ({
         loading={loading}
         isOwner={isOwner}
         onRemove={onRemove}
+        fetchMore={fetchMore}
+        hasMore={hasMore}
       />
 
       <div className="flex-1" />

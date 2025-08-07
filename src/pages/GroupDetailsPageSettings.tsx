@@ -1,6 +1,4 @@
-// src/pages/GroupDetailsPageSettings.tsx
-
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { getGroupDetails } from "../api/groupsApi"
@@ -30,14 +28,13 @@ const GroupDetailsPageSettings = () => {
   const [members, setMembers] = useState<GroupMember[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
-  const [page, setPage] = useState(0)
 
   // User
   const user = useUserStore(state => state.user)
   const currentUserId = user?.id ?? 0
   const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
 
-  // Загрузка данных
+  // Загрузка группы
   useEffect(() => {
     const fetchGroup = async () => {
       try {
@@ -54,28 +51,28 @@ const GroupDetailsPageSettings = () => {
     if (id) fetchGroup()
   }, [id])
 
-  // Загрузка участников
-  const loadMembers = async () => {
+  // Загрузка участников с offset
+  const loadMembers = useCallback(async () => {
     if (!id || membersLoading || !hasMore) return
     try {
       setMembersLoading(true)
-      const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
+      const res = await getGroupMembers(id, members.length, PAGE_SIZE)
       setMembers(prev => [...prev, ...(res.items || [])])
-      setHasMore((res.items?.length || 0) === PAGE_SIZE)
-      setPage(p => p + 1)
+      setHasMore((members.length + (res.items?.length || 0)) < (res.total || 0))
     } catch {
       // ignore
     } finally {
       setMembersLoading(false)
     }
-  }
+  }, [id, members.length, membersLoading, hasMore])
 
+  // Сброс при смене id
   useEffect(() => {
     setMembers([])
-    setPage(0)
     setHasMore(true)
   }, [id])
 
+  // Первичная загрузка
   useEffect(() => {
     loadMembers()
     // eslint-disable-next-line
@@ -91,7 +88,6 @@ const GroupDetailsPageSettings = () => {
   const handleRemove = (userId: number) => { /* откроешь модалку */ }
   const handleSaveAndExit = goToGroup
 
-  // Ошибки/загрузка
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
@@ -119,7 +115,7 @@ const GroupDetailsPageSettings = () => {
       <CardSection className="px-0 py-0 mb-2">
         <GroupSettingsTabs
           selected={selectedTab}
-          onSelect={setSelectedTab}
+          onSelect={setSelectedTab as (key: "settings" | "members") => void}
           className="mb-0"
         />
         <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
@@ -140,6 +136,8 @@ const GroupDetailsPageSettings = () => {
               onAdd={handleAdd}
               onSaveAndExit={handleSaveAndExit}
               loading={membersLoading}
+              fetchMore={loadMembers}
+              hasMore={hasMore}
             />
           )}
         </div>
