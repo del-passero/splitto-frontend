@@ -36,30 +36,38 @@ const GroupBalanceTab = ({
 
   return (
     <div className="relative w-full max-w-xl mx-auto py-4 px-2 min-h-[320px]">
-      {/* Микро-табы */}
-      <div className="flex gap-2 mb-4">
-        <button
-          type="button"
-          className={`flex-1 py-2 rounded-lg font-medium transition
-            ${microTab === "mine"
-              ? "bg-[var(--tg-accent-color)] text-white"
-              : "bg-[var(--tg-card-bg)] text-[var(--tg-accent-color)] border border-[var(--tg-accent-color)]/40"}
-          `}
-          onClick={() => setMicroTab("mine")}
-        >
-          {t("group_balance_microtab_mine")}
-        </button>
-        <button
-          type="button"
-          className={`flex-1 py-2 rounded-lg font-medium transition
-            ${microTab === "all"
-              ? "bg-[var(--tg-accent-color)] text-white"
-              : "bg-[var(--tg-card-bg)] text-[var(--tg-accent-color)] border border-[var(--tg-accent-color)]/40"}
-          `}
-          onClick={() => setMicroTab("all")}
-        >
-          {t("group_balance_microtab_all")}
-        </button>
+      {/* Wallet-style переключатель */}
+      <div className="flex justify-center mb-6">
+        <div className="flex w-full max-w-[320px] rounded-full border border-[color:var(--tg-accent-color,#40A7E3)] bg-[var(--tg-card-bg)] p-1">
+          <button
+            type="button"
+            className={`
+              flex-1 py-2 rounded-full font-bold text-sm transition
+              ${
+                microTab === "mine"
+                  ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
+                  : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
+              }
+            `}
+            onClick={() => setMicroTab("mine")}
+          >
+            {t("group_balance_microtab_mine")}
+          </button>
+          <button
+            type="button"
+            className={`
+              flex-1 py-2 rounded-full font-bold text-sm transition
+              ${
+                microTab === "all"
+                  ? "bg-[color:var(--tg-accent-color,#40A7E3)] text-white shadow"
+                  : "bg-transparent text-[color:var(--tg-accent-color,#40A7E3)]"
+              }
+            `}
+            onClick={() => setMicroTab("all")}
+          >
+            {t("group_balance_microtab_all")}
+          </button>
+        </div>
       </div>
 
       {loading ? (

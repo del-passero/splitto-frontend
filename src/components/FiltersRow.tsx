@@ -23,16 +23,16 @@ const FiltersRow = ({
 }: Props) => {
   const { t } = useTranslation()
   return (
-    <CardSection className="py-3 px-2 mb-3">
-      <div className="flex items-center w-full gap-2">
+    <CardSection className="p-0 mb-3">
+      <div className="flex items-center w-full gap-2 py-2">
         <FilterButton onClick={onFilterClick || (() => {})} />
-        <div className="w-px h-8 bg-[var(--tg-secondary-bg-color)] mx-1" />
+        <div className="w-px h-7 bg-[var(--tg-secondary-bg-color)] mx-1" />
         <SearchBar
           value={search}
           onChange={setSearch}
           placeholder={t(placeholderKey) || ""}
         />
-        <div className="w-px h-8 bg-[var(--tg-secondary-bg-color)] mx-1" />
+        <div className="w-px h-7 bg-[var(--tg-secondary-bg-color)] mx-1" />
         <SortButton onClick={onSortClick || (() => {})} />
       </div>
     </CardSection>
