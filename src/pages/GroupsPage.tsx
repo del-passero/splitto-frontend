@@ -11,6 +11,7 @@ import FiltersRow from "../components/FiltersRow"
 import CardSection from "../components/CardSection"
 import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
+import CreateGroupModal from "../components/CreateGroupModal"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
@@ -20,6 +21,7 @@ const GroupsPage = () => {
     fetchGroups
   } = useGroupsStore()
   const [search, setSearch] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
 
   useEffect(() => {
     if (user?.id) fetchGroups(user.id)
@@ -37,7 +39,7 @@ const GroupsPage = () => {
     {
       key: "add-group",
       icon: <Users size={28} strokeWidth={1.5} />,
-      onClick: () => {}, // handle add group modal
+      onClick: () => setModalOpen(true),
       ariaLabel: t("create_group"),
       label: t("create_group"),
     },
@@ -59,6 +61,12 @@ const GroupsPage = () => {
           placeholderKey="search_group_placeholder"
         />
         <EmptyGroups notFound={notFound} />
+        <CreateGroupModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          ownerId={user?.id || 0}
+          onCreated={() => user?.id && fetchGroups(user.id)}
+        />
       </MainLayout>
     )
   }
@@ -86,6 +94,12 @@ const GroupsPage = () => {
           <div className="text-center py-6 text-red-500">{groupsError}</div>
         </CardSection>
       )}
+      <CreateGroupModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        ownerId={user?.id || 0}
+        onCreated={() => user?.id && fetchGroups(user.id)}
+      />
     </MainLayout>
   )
 }

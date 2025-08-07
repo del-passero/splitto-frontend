@@ -5,16 +5,27 @@ import { useTranslation } from "react-i18next"
 import MainLayout from "../layouts/MainLayout"
 import { Users, UserPlus, HandCoins } from "lucide-react"
 import InviteFriendModal from "../components/InviteFriendModal"
+import CreateGroupModal from "../components/CreateGroupModal"      // <-- Импорт модалки создания группы
+import { useUserStore } from "../store/userStore"
 
 const DashboardPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [createGroupOpen, setCreateGroupOpen] = useState(false)
+  const user = useUserStore(state => state.user)
+
+  // Например, если нужен рефреш групп после создания (можно прокинуть fetchGroups)
+  const handleGroupCreated = () => {
+    // Можно добавить логику, например: fetchGroups(user.id)
+    setCreateGroupOpen(false)
+    // ...доп. действия
+  }
 
   const fabActions = [
     {
       key: "add-group",
       icon: <Users size={28} strokeWidth={1.5} />,
-      onClick: () => {}, // handleAddGroup
+      onClick: () => setCreateGroupOpen(true), // Открываем модалку создания группы
       ariaLabel: t("create_group"),
       label: t("create_group"),
     },
@@ -40,10 +51,18 @@ const DashboardPage = () => {
         <h1 className="text-xl font-bold mb-4">{t("main")}</h1>
         {/* Контент дашборда */}
       </div>
+
       <InviteFriendModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         inviteLink={null}
+      />
+
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        ownerId={user?.id ?? 0}
+        onCreated={handleGroupCreated}
       />
     </MainLayout>
   )

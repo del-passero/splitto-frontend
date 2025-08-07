@@ -67,3 +67,33 @@ export async function getGroupSettleUp(groupId: number): Promise<any[]> {
   if (!response.ok) throw new Error(await response.text())
   return await response.json()
 }
+
+/**
+ * Создать новую группу (POST /groups/)
+ * @param name - Название группы
+ * @param description - Описание группы
+ * @param owner_id - ID создателя (текущий пользователь)
+ */
+export async function createGroup({
+  name,
+  description,
+  owner_id,
+}: {
+  name: string
+  description?: string
+  owner_id: number
+}): Promise<Group> {
+  const response = await fetch(`${API_URL}/groups/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      description,
+      owner_id,
+    }),
+  })
+  if (!response.ok) throw new Error(await response.text())
+  return await response.json()
+}
