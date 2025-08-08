@@ -2,14 +2,17 @@
 
 import { useEffect, useRef } from "react"
 import GroupCard from "./GroupCard"
+import CardSection from "./CardSection"
+import type { GroupPreview } from "../types/group"
+import { useNavigate } from "react-router-dom"
 import { useGroupsStore } from "../store/groupsStore"
 import { useUserStore } from "../store/userStore"
 
-type Props = {
-  groups: any[]
-}
+// Важно: используем GroupPreview!
+type Props = { groups: GroupPreview[] }
 
 const GroupsList = ({ groups }: Props) => {
+  const navigate = useNavigate()
   const { groupsHasMore, groupsLoading, loadMoreGroups } = useGroupsStore()
   const { user } = useUserStore()
   const loaderRef = useRef<HTMLDivElement>(null)
@@ -26,20 +29,20 @@ const GroupsList = ({ groups }: Props) => {
   }, [groupsLoading, groupsHasMore, user?.id])
 
   return (
-    <div>
-      {groups.map((group, idx) => (
-        <div key={group.id} className="relative">
+    <CardSection noPadding>
+      <div className="grid grid-cols-1 gap-4">
+        {groups.map(group => (
           <GroupCard
+            key={group.id}
             group={group}
-            onClick={() => {}} // обязательно, даже если пустая функция
+            onClick={() => navigate(`/groups/${group.id}`)}
           />
-          {idx !== groups.length - 1 && (
-            <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-          )}
-        </div>
-      ))}
-      {groupsHasMore && <div ref={loaderRef} style={{ height: 1, width: "100%" }} />}
-    </div>
+        ))}
+      </div>
+      {groupsHasMore && (
+        <div ref={loaderRef} style={{ height: 8, width: "100%" }} />
+      )}
+    </CardSection>
   )
 }
 
