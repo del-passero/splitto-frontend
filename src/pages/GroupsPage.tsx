@@ -83,7 +83,6 @@ const GroupsPage = () => {
       <CardSection noPadding>
         <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
         <GroupsList
-          groups={filteredGroups}
         />
       </CardSection>
 

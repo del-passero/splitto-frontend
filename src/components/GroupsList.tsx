@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react"
 import GroupCard from "./GroupCard"
 import CardSection from "./CardSection"
 import { useGroupsStore } from "../store/groupsStore"
+import { useUserStore } from "../store/userStore"
 import { useNavigate } from "react-router-dom"
 
 const PAGE_SIZE = 20
@@ -12,38 +13,36 @@ const GroupsList = () => {
   const {
     groups,
     groupsTotal,
+    groupsOffset,
+    groupsHasMore,
     groupsLoading,
     groupsError,
     fetchGroups,
-    groupsHasMore,
-    groupsOffset,
-    setGroupsOffset,
+    loadMoreGroups,
   } = useGroupsStore()
+  const { user } = useUserStore()
   const navigate = useNavigate()
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Сброс и загрузка первой страницы при монтировании (или по фильтрам)
+  // При маунте — загрузить первую страницу
   useEffect(() => {
-    fetchGroups(0, PAGE_SIZE, { reset: true })
-    setGroupsOffset(0)
+    if (user?.id) fetchGroups(user.id, { reset: true })
     // eslint-disable-next-line
-  }, [])
+  }, [user?.id])
 
   // Infinity scroll
   useEffect(() => {
     if (groupsLoading || !groupsHasMore || !loaderRef.current) return
 
     const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !groupsLoading && groupsHasMore) {
-        const nextOffset = groupsOffset + PAGE_SIZE
-        setGroupsOffset(nextOffset)
-        fetchGroups(nextOffset, PAGE_SIZE)
+      if (entries[0].isIntersecting && !groupsLoading && groupsHasMore && user?.id) {
+        loadMoreGroups(user.id)
       }
     })
     observer.observe(loaderRef.current)
 
     return () => observer.disconnect()
-  }, [groupsLoading, groupsHasMore, groupsOffset, fetchGroups, setGroupsOffset])
+  }, [groupsLoading, groupsHasMore, user?.id, loadMoreGroups])
 
   // Ошибка
   if (groupsError) {
@@ -67,7 +66,7 @@ const GroupsList = () => {
   return (
     <CardSection noPadding>
       <div className="grid grid-cols-1 gap-4">
-        {groups.map((group, idx) => (
+        {groups.map(group => (
           <GroupCard
             key={group.id}
             group={group}
