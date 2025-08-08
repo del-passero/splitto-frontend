@@ -1,9 +1,12 @@
 import GroupCard from "./GroupCard"
 import CardSection from "./CardSection"
-import type { Group } from "../types/group"
 import { useNavigate } from "react-router-dom"
+import type { Group, GroupPreview } from "../types/group"
 
-type Props = { groups: Group[] }
+
+type Props = {
+  groups: (Group | GroupPreview)[]
+}
 
 const GroupsList = ({ groups }: Props) => {
   const navigate = useNavigate()
