@@ -8,7 +8,6 @@
 import { create } from "zustand"
 import type { Group, GroupPreview } from "../types/group"
 import type { GroupMember } from "../types/group_member"
-
 import { getUserGroups, getGroupDetails } from "../api/groupsApi"
 import { getGroupMembers as getGroupMembersApi } from "../api/groupMembersApi"
 
