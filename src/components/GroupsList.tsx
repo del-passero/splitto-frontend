@@ -1,27 +1,26 @@
 // src/components/GroupsList.tsx
 
-import { useRef, useEffect } from "react"
+import { useEffect, useRef } from "react"
 import GroupCard from "./GroupCard"
 import CardSection from "./CardSection"
-import { useUserStore } from "../store/userStore"
-import { useGroupsStore } from "../store/groupsStore"
 import type { GroupPreview } from "../types/group"
+import { useGroupsStore } from "../store/groupsStore"
+import { useUserStore } from "../store/userStore"
+import { useNavigate } from "react-router-dom"
 
 type Props = {
   groups: GroupPreview[]
 }
 
 const GroupsList = ({ groups }: Props) => {
+  const navigate = useNavigate()
+  // !!! ДОБАВЬ user !!!
   const { user } = useUserStore()
-  const {
-    loadMoreGroups,
-    groupsHasMore,
-    groupsLoading,
-    groupsError,
-  } = useGroupsStore()
+  // !!! ДОБАВЬ все нужные из стора !!!
+  const { groupsHasMore, groupsLoading, loadMoreGroups } = useGroupsStore()
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Infinity scroll через IntersectionObserver
+  // --- ЭТОТ useEffect ОТВЕЧАЕТ ЗА ДОГРУЗКУ ---
   useEffect(() => {
     if (!groupsHasMore || groupsLoading || !loaderRef.current) return
 
@@ -32,9 +31,11 @@ const GroupsList = ({ groups }: Props) => {
     })
 
     observer.observe(loaderRef.current)
+    // Clean up observer on unmount
     return () => observer.disconnect()
   }, [groupsHasMore, groupsLoading, user?.id, loadMoreGroups])
 
+  // --- Рендер ---
   return (
     <CardSection noPadding>
       <div className="grid grid-cols-1 gap-4">
@@ -42,28 +43,21 @@ const GroupsList = ({ groups }: Props) => {
           <GroupCard
             key={group.id}
             group={group}
-            onClick={() => {
-              // Навигация на страницу группы
-              window.location.href = `/groups/${group.id}`
-            }}
+            onClick={() => navigate(`/groups/${group.id}`)}
           />
         ))}
       </div>
-
-      {/* Infinity scroll trigger */}
+      {/* Infinity scroll loader */}
       {groupsHasMore && <div ref={loaderRef} style={{ height: 1, width: "100%" }} />}
-
-      {/* Лоадер при дозагрузке */}
+      {/* Показать текст если подгружается новая страница */}
       {groupsLoading && groups.length > 0 && (
         <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-      )}
-
-      {/* Ошибка при загрузке */}
-      {groupsError && (
-        <div className="py-3 text-center text-red-500">{groupsError}</div>
       )}
     </CardSection>
   )
 }
 
 export default GroupsList
+
+// ------------- ПУТЬ К ФАЙЛУ -----------
+// src/components/GroupsList.tsx
