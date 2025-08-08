@@ -1,34 +1,35 @@
-// src/pages/GroupsPage.tsx
-
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import MainLayout from "../layouts/MainLayout"
-import { Users, HandCoins } from "lucide-react"
 import { useUserStore } from "../store/userStore"
 import { useGroupsStore } from "../store/groupsStore"
-import TopInfoRow from "../components/TopInfoRow"
-import FiltersRow from "../components/FiltersRow"
-import CardSection from "../components/CardSection"
 import GroupsList from "../components/GroupsList"
+import FiltersRow from "../components/FiltersRow"
+import MainLayout from "../layouts/MainLayout"
 import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
+import TopInfoRow from "../components/TopInfoRow"
+import CardSection from "../components/CardSection"
+import { Users, HandCoins } from "lucide-react"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const {
     groups, groupsLoading, groupsError,
-    fetchGroups
+    fetchGroups, loadMoreGroups, groupsHasMore
   } = useGroupsStore()
+
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
 
+  // Как в ContactsPage: первая загрузка при изменении user
   useEffect(() => {
-    if (user?.id) fetchGroups(user.id)
+    if (user?.id) fetchGroups(user.id, { reset: true })
   }, [user?.id, fetchGroups])
 
+  // Фильтрация по поиску
   const filteredGroups = groups.filter(group =>
-    group.name.toLowerCase().includes(search.toLowerCase())
+    group.name?.toLowerCase().includes(search.toLowerCase())
   )
 
   const isSearching = search.length > 0
@@ -65,7 +66,7 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={() => user?.id && fetchGroups(user.id)}
+          onCreated={() => user?.id && fetchGroups(user.id, { reset: true })}
         />
       </MainLayout>
     )
@@ -81,7 +82,9 @@ const GroupsPage = () => {
 
       <CardSection noPadding>
         <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
-        <GroupsList groups={filteredGroups} />
+        <GroupsList
+          groups={filteredGroups}
+        />
       </CardSection>
 
       {groupsLoading && (
@@ -98,11 +101,10 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={() => user?.id && fetchGroups(user.id)}
+        onCreated={() => user?.id && fetchGroups(user.id, { reset: true })}
       />
     </MainLayout>
   )
 }
 
 export default GroupsPage
-
