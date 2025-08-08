@@ -1,3 +1,5 @@
+// src/pages/GroupsPage.tsx
+
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useUserStore } from "../store/userStore"
@@ -15,19 +17,17 @@ const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const {
-    groups, groupsLoading, groupsError,
-    fetchGroups, loadMoreGroups, groupsHasMore
+    groups, groupsLoading, groupsError, groupsHasMore,
+    fetchGroups, loadMoreGroups
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Как в ContactsPage: первая загрузка при изменении user
   useEffect(() => {
     if (user?.id) fetchGroups(user.id, { reset: true })
   }, [user?.id, fetchGroups])
 
-  // Фильтрация по поиску
   const filteredGroups = groups.filter(group =>
     group.name?.toLowerCase().includes(search.toLowerCase())
   )
@@ -83,6 +83,7 @@ const GroupsPage = () => {
       <CardSection noPadding>
         <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
         <GroupsList
+          groups={filteredGroups}
         />
       </CardSection>
 
