@@ -20,9 +20,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   useEffect(() => {
     if (!loadMore || loading || !loaderRef.current) return
     const obs = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !loading) {
-        loadMore()
-      }
+      if (entries[0].isIntersecting && !loading) loadMore()
     })
     obs.observe(loaderRef.current)
     return () => obs.disconnect()
@@ -30,7 +28,8 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
 
   return (
     <CardSection noPadding>
-      <div className="grid grid-cols-1 gap-4">
+      {/* Плотнее сетка: gap-2 на мобилках, чуть свободнее на больших */}
+      <div className="grid grid-cols-1 gap-2 sm:gap-3">
         {groups.map(group => (
           <GroupCard
             key={group.id}

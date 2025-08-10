@@ -7,62 +7,56 @@ type Props = {
   className?: string
 }
 
+const RADIUS = 12
 const DEFAULT_BG = "var(--tg-link-color)"
 
 const GroupAvatar = ({
   name = "",
   src,
-  size = 56,
+  size = 52,
   className = "",
 }: Props) => {
-  // Если есть картинка
+  // Картинка
   if (src) {
     return (
       <div
         className={`
           relative flex items-center justify-center
-          rounded-[18px]
-          shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
-          ring-2 ring-[var(--tg-card-bg)]
-          bg-[var(--tg-link-color)]
+          rounded-xl
+          shadow-[0_3px_10px_-4px_rgba(83,147,231,0.20)]
+          bg-[var(--tg-card-bg)]
           ${className}
         `}
-        style={{
-          width: size,
-          height: size,
-        }}
+        style={{ width: size, height: size }}
       >
         <img
           src={src}
           alt={name || "group-avatar"}
           width={size}
           height={size}
-          style={{
-            borderRadius: 18,
-            background: DEFAULT_BG,
-          }}
+          style={{ borderRadius: RADIUS, background: DEFAULT_BG }}
           className="object-cover w-full h-full"
         />
       </div>
     )
   }
 
-  // Без картинки — буква группы на цветном фоне
+  // Буква на фоне
   return (
     <div
       className={`
         relative flex items-center justify-center
         font-bold text-white select-none
-        rounded-[18px]
-        shadow-[0_4px_14px_0_rgba(83,147,231,0.17)]
-        ring-2 ring-[var(--tg-card-bg)]
+        rounded-xl
+        shadow-[0_3px_10px_-4px_rgba(83,147,231,0.20)]
         bg-[var(--tg-link-color)]
         ${className}
       `}
       style={{
         width: size,
         height: size,
-        fontSize: size ? size / 2 : 28,
+        fontSize: size ? size / 2 : 26,
+        borderRadius: RADIUS,
       }}
     >
       {name?.[0]?.toUpperCase() || "G"}
