@@ -1,8 +1,10 @@
+// src/components/group/AddGroupMembersModal.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X } from "lucide-react"
 import { useFriendsStore } from "../../store/friendsStore"
 import { addGroupMember } from "../../api/groupMembersApi"
+import FiltersRow from "../FiltersRow"
 
 type Props = {
   open: boolean
@@ -17,7 +19,7 @@ type Props = {
 const PAGE_SIZE = 20
 
 type FriendItem = {
-  id: number // id записи дружбы (используем как key)
+  id: number
   user: {
     id: number
     first_name?: string
@@ -70,20 +72,17 @@ export default function AddGroupMembersModal({
     [friends, existingSet]
   )
 
-  // блокировка скролла body, когда модалка открыта
+  // блокировка скролла body
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = prev
-    }
+    return () => { document.body.style.overflow = prev }
   }, [open])
 
   // первичная загрузка / смена поиска
   useEffect(() => {
     if (!open) return
-    // сбросы
     clearFriends()
     setRowErrors({})
     setSelected(new Set())
@@ -117,23 +116,19 @@ export default function AddGroupMembersModal({
     return () => io.disconnect()
   }, [open, loading, hasMore, page, setPage, isSearching, q, fetchFriends, searchFriends])
 
-  const toggle = useCallback(
-    (userId: number) => {
-      setSelected((prev) => {
-        const next = new Set(prev)
-        if (next.has(userId)) next.delete(userId)
-        else next.add(userId)
-        return next
-      })
-      // сбрасываем возможную предыдущую ошибку для строки
-      setRowErrors((prev) => {
-        if (!prev[userId]) return prev
-        const { [userId]: _, ...rest } = prev
-        return rest
-      })
-    },
-    [setSelected, setRowErrors]
-  )
+  const toggle = useCallback((userId: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+    setRowErrors((prev) => {
+      if (!prev[userId]) return prev
+      const { [userId]: _, ...rest } = prev
+      return rest
+    })
+  }, [])
 
   const allCount = selected.size
   const canSubmit = allCount > 0 && !adding
@@ -145,9 +140,9 @@ export default function AddGroupMembersModal({
     const added: number[] = []
     const errors: Record<number, string> = {}
 
+    // последовательные POST
     for (const uid of ids) {
       try {
-        // ВАЖНО: у тебя в API одна сигнатура — один объект payload
         await addGroupMember({ group_id: groupId, user_id: uid })
         added.push(uid)
       } catch (e: any) {
@@ -155,14 +150,11 @@ export default function AddGroupMembersModal({
       }
     }
 
-    // отмечаем ошибки у строк
     setRowErrors(errors)
 
-    // убираем успешно добавленных из выбора и из видимого списка (через existingSet)
+    // убираем успешно добавленных из выбора и «исключаем» их из списка
     if (added.length > 0) {
-      // обновим existingSet «логически» — для фильтра
       added.forEach((uid) => existingSet.add(uid))
-      // снимем выделение с успешно добавленных
       setSelected((prev) => {
         const next = new Set(prev)
         added.forEach((uid) => next.delete(uid))
@@ -172,13 +164,11 @@ export default function AddGroupMembersModal({
 
     setAdding(false)
 
-    // если нет ошибок — закрываем и обновляем страницу
+    // если все успешны — закрываем и жёстко обновляем
     if (added.length > 0 && Object.keys(errors).length === 0) {
       onAdded?.(added)
-      // жёсткое обновление, как просил
       window.location.reload()
     }
-    // если были ошибки — модалку НЕ закрываем
   }
 
   if (!open) return null
@@ -187,6 +177,7 @@ export default function AddGroupMembersModal({
     <div className="fixed inset-0 z-[1100] flex items-end justify-center" role="dialog" aria-modal="true">
       {/* overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+
       {/* sheet */}
       <div
         className="relative w-full sm:max-w-md bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]
@@ -200,18 +191,16 @@ export default function AddGroupMembersModal({
           </button>
         </div>
 
-        {/* search */}
-        <div className="px-4">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("add_members_modal.search_placeholder")}
-            className="w-full bg-transparent outline-none border-b border-[var(--tg-hint-color)] focus:border-[var(--tg-link-color)] py-3 text-[15px] placeholder:opacity-60"
-            autoFocus
+        {/* FiltersRow — единообразный поиск */}
+        <div className="border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
+          <FiltersRow
+            search={q}
+            setSearch={setQ}
+            placeholderKey="add_members_modal.search_placeholder"
           />
         </div>
 
-        {/* list */}
+        {/* список друзей (только не в группе) */}
         <div className="flex-1 overflow-y-auto">
           {!!error && (
             <div className="px-4 py-6 text-center text-red-500">{String(error)}</div>
@@ -265,7 +254,7 @@ export default function AddGroupMembersModal({
                   </div>
                 </button>
 
-                {/* разделитель — как в ContactsList: не под аватаром (левый отступ 64px) */}
+                {/* разделитель — как в ContactsList: не под аватаром */}
                 {idx !== visibleFriends.length - 1 && (
                   <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                 )}
@@ -290,7 +279,7 @@ export default function AddGroupMembersModal({
           <button
             type="button"
             onClick={onClose}
-            style={{ color: "#000" }} // читаемость в тёмной теме
+            style={{ color: "#000" }}
             className="flex-1 py-3 rounded-xl font-semibold bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                        border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
           >

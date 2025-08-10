@@ -1,3 +1,4 @@
+// src/pages/GroupDetailsPageSettings.tsx
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -11,6 +12,7 @@ import GroupSettingsTabs from "../components/group/GroupSettingsTabs"
 import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
 import CardSection from "../components/CardSection"
+import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 
 const PAGE_SIZE = 24
 
@@ -20,21 +22,28 @@ const GroupDetailsPageSettings = () => {
   const { groupId } = useParams()
   const id = Number(groupId)
 
-  // Стейты
+  // группа
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTab, setSelectedTab] = useState<"settings" | "members">("settings")
+
+  // вкладка
+  const [selectedTab, setSelectedTab] = useState<"settings" | "members">("members")
+
+  // участники
   const [members, setMembers] = useState<GroupMember[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
 
-  // User
-  const user = useUserStore(state => state.user)
+  // модалка Add
+  const [addOpen, setAddOpen] = useState(false)
+
+  // user/owner
+  const user = useUserStore(s => s.user)
   const currentUserId = user?.id ?? 0
   const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
 
-  // Загрузка группы
+  // загрузка группы
   useEffect(() => {
     const fetchGroup = async () => {
       try {
@@ -51,7 +60,7 @@ const GroupDetailsPageSettings = () => {
     if (id) fetchGroup()
   }, [id])
 
-  // Загрузка участников с offset
+  // загрузка участников
   const loadMembers = useCallback(async () => {
     if (!id || membersLoading || !hasMore) return
     try {
@@ -67,26 +76,25 @@ const GroupDetailsPageSettings = () => {
     }
   }, [id, members.length, membersLoading, hasMore])
 
-  // Сброс при смене id
+  // сброс при смене id
   useEffect(() => {
     setMembers([])
     setHasMore(true)
   }, [id])
 
-  // Первичная загрузка
+  // первичная загрузка
   useEffect(() => {
     loadMembers()
     // eslint-disable-next-line
   }, [id])
 
-  // Хэндлеры для экшенов (заглушки)
+  // экшены
   const goToGroup = () => navigate(`/groups/${groupId}`)
-  const handleEdit = () => { /* откроешь модалку */ }
-  const handleLeave = () => { /* откроешь модалку */ }
-  const handleDelete = () => { /* откроешь модалку */ }
-  const handleInvite = () => { /* откроешь модалку */ }
-  const handleAdd = () => { /* откроешь модалку */ }
-  const handleRemove = (userId: number) => { /* откроешь модалку */ }
+  const handleLeave = () => {}
+  const handleDelete = () => {}
+  const handleInvite = () => {}
+  const handleAdd = () => setAddOpen(true)
+  const handleRemove = (_userId: number) => {}
   const handleSaveAndExit = goToGroup
 
   if (loading) {
@@ -104,21 +112,24 @@ const GroupDetailsPageSettings = () => {
     )
   }
 
+  const existingMemberIds = members.map(m => m.user.id)
+
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
       <GroupHeader
         group={group}
-        onSettingsClick={handleEdit}
+        onSettingsClick={() => setSelectedTab("settings")}
         onBalanceClick={goToGroup}
         isEdit
       />
-      {/* Единая панель табов */}
+
       <CardSection className="px-0 py-0 mb-2">
         <GroupSettingsTabs
           selected={selectedTab}
-          onSelect={setSelectedTab as (key: "settings" | "members") => void}
+          onSelect={setSelectedTab as (k: "settings" | "members") => void}
           className="mb-0"
         />
+
         <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
           {selectedTab === "settings" && (
             <GroupSettingsTab
@@ -128,6 +139,7 @@ const GroupDetailsPageSettings = () => {
               onSaveAndExit={handleSaveAndExit}
             />
           )}
+
           {selectedTab === "members" && (
             <GroupMembersTab
               members={members}
@@ -143,6 +155,15 @@ const GroupDetailsPageSettings = () => {
           )}
         </div>
       </CardSection>
+
+      {/* модалка добавления участников */}
+      <AddGroupMembersModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        groupId={id}
+        existingMemberIds={existingMemberIds}
+        onAdded={() => { /* window.location.reload() вызывается внутри модалки после успеха */ }}
+      />
     </div>
   )
 }
