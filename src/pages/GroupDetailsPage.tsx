@@ -16,6 +16,7 @@ import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import CardSection from "../components/CardSection"
+import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 
 const PAGE_SIZE = 24
 
@@ -43,10 +44,11 @@ const GroupDetailsPage = () => {
   // User
   const user = useUserStore(state => state.user)
   const currentUserId = user?.id ?? 0
-  const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
 
-  // Заглушки (долги/балансы/транзакции — сделаешь позже)
-  const balances: Record<number, number> = {}
+  // Модалка добавления участников
+  const [addOpen, setAddOpen] = useState(false)
+
+  // Заглушки (долги/балансы/транзакции — подставишь реальные позже)
   const transactions: any[] = []
   const myBalance = 0
   const myDebts: any[] = []
@@ -75,8 +77,11 @@ const GroupDetailsPage = () => {
     try {
       setMembersLoading(true)
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
-      setMembers(prev => [...prev, ...(res.items || [])])
-      setHasMore((res.items?.length || 0) === PAGE_SIZE)
+      const newItems = res.items || []
+      setMembers(prev => [...prev, ...newItems])
+      // есть ли ещё страницы: считаем по total
+      const currentCount = (page * PAGE_SIZE) + newItems.length
+      setHasMore(currentCount < (res.total || 0))
       setPage(p => p + 1)
     } catch {
       // ignore
@@ -85,12 +90,14 @@ const GroupDetailsPage = () => {
     }
   }, [id, membersLoading, hasMore, page])
 
+  // Сброс пэйджера при смене id
   useEffect(() => {
     setMembers([])
     setPage(0)
     setHasMore(true)
   }, [id])
 
+  // Первичная загрузка
   useEffect(() => {
     loadMembers()
     // eslint-disable-next-line
@@ -131,6 +138,8 @@ const GroupDetailsPage = () => {
     )
   }
 
+  const existingMemberIds = members.map(m => m.user.id)
+
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
       {/* Шапка группы */}
@@ -139,17 +148,19 @@ const GroupDetailsPage = () => {
         onSettingsClick={handleSettingsClick}
         onBalanceClick={handleBalanceClick}
       />
+
       {/* Лента участников */}
       <ParticipantsScroller
         members={members}
         currentUserId={currentUserId}
         onParticipantClick={handleBalanceClick}
-        onInviteClick={() => {/* откроешь модалку */}}
-        onAddClick={() => {/* откроешь модалку */}}
+        onInviteClick={() => {/* откроешь инвайт */}}
+        onAddClick={() => setAddOpen(true)}
         loadMore={loadMembers}
         hasMore={hasMore}
         loading={membersLoading}
       />
+
       {/* Вкладки и содержимое — внутри одного CardSection */}
       <CardSection className="px-0 py-0 mb-2">
         <GroupTabs
@@ -162,7 +173,7 @@ const GroupDetailsPage = () => {
             <GroupTransactionsTab
               loading={false}
               transactions={transactions}
-              onAddTransaction={() => {/* откроешь форму добавления */}}
+              onAddTransaction={() => {/* форма добавления */}}
             />
           )}
           {selectedTab === "balance" && (
@@ -171,14 +182,24 @@ const GroupDetailsPage = () => {
               myDebts={myDebts}
               allDebts={allDebts}
               loading={false}
-              onFabClick={() => {/* откроешь форму добавления платежа */}}
+              onFabClick={() => {/* форма добавления платежа */}}
             />
           )}
           {selectedTab === "analytics" && <GroupAnalyticsTab />}
         </div>
       </CardSection>
+
       {/* Loader для инфинити-скролла */}
       {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
+
+      {/* Модалка добавления участников */}
+      <AddGroupMembersModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        groupId={id}
+        existingMemberIds={existingMemberIds}
+        onAdded={() => {/* reload внутри модалки */}}
+      />
     </div>
   )
 }

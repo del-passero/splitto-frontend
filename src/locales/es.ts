@@ -147,28 +147,39 @@ export default {
     not_found: "No se encontró nada",
     main_currency: "Divisa principal",
     select_short: "Elige una divisa",
-    currency_popular: "Populares",
+    currency_popular: "Popular",
   },
 
-  // --- AÑADIDO: comunes + namespace del formulario de grupo ---
+  // --- Añadido: comunes y formulario de grupo ---
   common: {
     yes: "Sí",
     no: "No",
   },
   errors: {
     group_name_required: "Introduce el nombre del grupo",
-    group_trip_date_required: "Selecciona la fecha del viaje",
+    group_trip_date_required: "Indica la fecha del viaje",
     create_group_failed: "No se pudo crear el grupo",
   },
   group_form: {
     name_placeholder: "Nombre del grupo",
     description_placeholder: "Descripción del grupo",
-    is_trip: "¿Grupo para viaje?",
-    trip_date: "Fecha del viaje",
+    is_trip: "¿Grupo para un viaje?",
+    trip_date:
+      "Introduce la fecha tras la cual el grupo (si no hay deudas) se archivará automáticamente",
     name_hint_initial: "Introduce el nombre del grupo (hasta {{max}} caracteres)",
     name_hint_remaining: "Quedan {{n}} caracteres",
     desc_hint_initial: "Introduce la descripción del grupo (hasta {{max}} caracteres)",
     desc_hint_remaining: "Quedan {{n}} caracteres",
     trip_date_placeholder: "DD.MM.AAAA",
+  },
+
+  // --- NUEVO: modal para añadir miembros ---
+  add_members_modal: {
+    title: "Añadir miembros",
+    search_placeholder: "Buscar contacto...",
+    empty: "No hay amigos para añadir",
+    add_btn: "Añadir ({{count}})",
+    adding: "Añadiendo...",
+    error_some_failed: "Añadidos: {{added}}, fallidos: {{failed}}",
   },
 }

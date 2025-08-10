@@ -57,8 +57,9 @@ const GroupDetailsPageSettings = () => {
     try {
       setMembersLoading(true)
       const res = await getGroupMembers(id, members.length, PAGE_SIZE)
-      setMembers(prev => [...prev, ...(res.items || [])])
-      setHasMore((members.length + (res.items?.length || 0)) < (res.total || 0))
+      const newItems = res.items || []
+      setMembers(prev => [...prev, ...newItems])
+      setHasMore((members.length + newItems.length) < (res.total || 0))
     } catch {
       // ignore
     } finally {

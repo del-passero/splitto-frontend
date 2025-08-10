@@ -150,25 +150,36 @@ export default {
     currency_popular: "Popular",
   },
 
-  // --- ADDED: common + group form namespace ---
+  // --- Added: common & group form ---
   common: {
     yes: "Yes",
     no: "No",
   },
   errors: {
-    group_name_required: "Please enter a group name",
-    group_trip_date_required: "Please select a trip date",
+    group_name_required: "Enter a group name",
+    group_trip_date_required: "Select trip date",
     create_group_failed: "Failed to create group",
   },
   group_form: {
     name_placeholder: "Group name",
     description_placeholder: "Group description",
     is_trip: "Group for a trip?",
-    trip_date: "End Trip date",
+    trip_date:
+      "Enter the date after which the group (if there are no debts) will be moved to archive automatically",
     name_hint_initial: "Enter a group name (up to {{max}} chars)",
-    name_hint_remaining: "Remaining: {{n}}",
+    name_hint_remaining: "{{n}} chars left",
     desc_hint_initial: "Enter a group description (up to {{max}} chars)",
-    desc_hint_remaining: "Remaining: {{n}}",
+    desc_hint_remaining: "{{n}} chars left",
     trip_date_placeholder: "DD.MM.YYYY",
+  },
+
+  // --- NEW: add-members modal ---
+  add_members_modal: {
+    title: "Add members",
+    search_placeholder: "Search contact...",
+    empty: "No friends to add",
+    add_btn: "Add ({{count}})",
+    adding: "Adding...",
+    error_some_failed: "Added: {{added}}, failed: {{failed}}",
   },
 }
