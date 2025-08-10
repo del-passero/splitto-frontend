@@ -37,7 +37,7 @@ function Switch({
   )
 }
 
-/** Ряд секции — edge-to-edge, divider как в CurrencyPickerModal */
+/** Строка секции (только для этой модалки) — edge-to-edge, divider как в CurrencyPickerModal */
 function Row({
   icon,
   label,
@@ -61,14 +61,14 @@ function Row({
         className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        {/* слева выравниваем по инпутам */}
+        {/* слева выравниваем по инпутам (контейнер формы даёт p-4) */}
         <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
           {icon}
         </span>
 
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
 
-        {/* правая часть — по правому краю формы (p-4) */}
+        {/* правая часть — к правому краю формы (p-4) */}
         {right ? (
           <span className="mr-4">{right}</span>
         ) : (
@@ -79,9 +79,9 @@ function Row({
         )}
       </button>
 
-      {/* Divider как в окне валют: НЕ под иконкой */}
+      {/* Divider как в модалке валют: НЕ под иконкой */}
       {!isLast && (
-        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
+        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/20 pointer-events-none" />
       )}
     </div>
   )
@@ -173,13 +173,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контейнер формы: уменьшил общий gap, подсказки вплотную */}
-          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-2">
+          {/* Контейнер формы: уменьшил общий gap, хинты вплотную */}
+          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-1">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
 
-            {/* Имя + подсказка вплотную */}
+            {/* Имя + хинт вплотную */}
             <div className="space-y-1">
               <input
                 type="text"
@@ -201,7 +201,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + подсказка вплотную (точно такое же расстояние) */}
+            {/* Описание + хинт вплотную (то же расстояние, что и у Name) */}
             <div className="space-y-1">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -222,9 +222,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Секция валюты/переключателя — edge-to-edge, минимальные внешние отступы */}
-            <div className="-mx-4 mt-1">
-              <CardSection className="py-0">
+            {/* Секция валюты/переключателя — edge-to-edge и без лишней вертикали */}
+            <div className="-mx-4 -my-1">
+              <CardSection>
                 <Row
                   icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
                   label={t("currency.main_currency")}
@@ -241,9 +241,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </CardSection>
             </div>
 
-            {/* Дата — «максимально высоко», лейбл СНИЗУ инпута, стиль как у подсказок, без лишних отступов */}
+            {/* Дата — максимально высоко, подпись снизу как у хинтов */}
             {isTrip && (
-              <div className="flex flex-col gap-1 mt-1">
+              <div className="flex flex-col gap-1 mt-0">
                 {/* псевдо-инпут */}
                 <button
                   type="button"
@@ -267,7 +267,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   tabIndex={-1}
                   aria-hidden="true"
                 />
-                {/* подпись снизу, как у хинтов */}
                 <div className="text-[12px] text-[var(--tg-hint-color)]">
                   {t("group_form.trip_date")}
                 </div>
@@ -281,14 +280,15 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <div className="flex flex-row gap-2 mt-1 w-full">
               <button
                 type="button"
+                onClick={onClose}
+                // ЖЁСТКО чёрный, чтобы не было белого нигде
+                style={{ color: "#000" }}
                 className="w-1/2 py-3 rounded-xl font-bold text-base
                            bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                            border border-[var(--tg-hint-color)]/30
                            hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
-                onClick={onClose}
               >
-                {/* инлайн-стиль — чтобы НИКОГДА не был белым */}
-                <span style={{ color: "var(--tg-accent-color)" }}>{t("cancel")}</span>
+                {t("cancel")}
               </button>
               <button
                 type="submit"
