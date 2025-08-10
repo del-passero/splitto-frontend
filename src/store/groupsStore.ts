@@ -1,14 +1,9 @@
 // src/store/groupsStore.ts
-// Zustand-стор для групп: пагинация + серверный поиск (как friendsStore)
+// Zustand-стор для групп: пагинация + ПОИСК с сервера (как friendsStore)
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
 import { getUserGroups } from "../api/groupsApi"
-
-interface FetchOpts {
-  reset?: boolean
-  q?: string
-}
 
 interface GroupsStoreState {
   groups: GroupPreview[]
@@ -18,7 +13,7 @@ interface GroupsStoreState {
   groupsLoading: boolean
   groupsError: string | null
 
-  fetchGroups: (userId: number, opts?: FetchOpts) => Promise<void>
+  fetchGroups: (userId: number, opts?: { reset?: boolean; q?: string }) => Promise<void>
   loadMoreGroups: (userId: number, q?: string) => Promise<void>
   clearGroups: () => void
 }
@@ -42,32 +37,23 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const reset = !!opts?.reset
     const q = opts?.q?.trim() || undefined
 
-    // offset для запроса
     const offset = reset ? 0 : state.groupsOffset
     const limit = PAGE_SIZE
 
-    // лок загрузки
     set({ groupsLoading: true, groupsError: null })
 
     try {
-      // getUserGroups ДОЛЖЕН вернуть { items, total }.
-      // Внутри он может читать X-Total-Count из заголовка /user/{id}.
-      const { items, total }: { items: GroupPreview[]; total: number } =
-        await getUserGroups(userId, { limit, offset, q })
+      const { items, total } = await getUserGroups(userId, { limit, offset, q })
+      const merged = reset
+        ? items
+        : [...state.groups, ...items.filter(i => !state.groups.some(g => g.id === i.id))]
 
-      const next = reset ? items : [...state.groups, ...items.filter(i => !state.groups.some(g => g.id === i.id))]
-      const nextOffset = reset ? items.length : next.length
-
-      // hasMore: до тех пор, пока догружаем меньше total
-      // если total отсутствует (на всякий) — fallback по размеру страницы
-      const t = typeof total === "number" ? total : next.length
-      const hasMore = typeof total === "number"
-        ? next.length < total
-        : items.length === limit
+      const nextOffset = merged.length
+      const hasMore = typeof total === "number" ? nextOffset < total : items.length === limit
 
       set({
-        groups: next,
-        groupsTotal: t,
+        groups: merged,
+        groupsTotal: typeof total === "number" ? total : merged.length,
         groupsOffset: nextOffset,
         groupsHasMore: hasMore,
       })

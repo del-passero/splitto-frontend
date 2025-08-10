@@ -1,5 +1,5 @@
 // src/api/groupsApi.ts
-// API-групп: пагинация + поиск с сервера (как в контактах)
+// API-групп: пагинация + поиск
 // Берём X-Total-Count из заголовка и возвращаем { items, total }.
 
 import type { Group, GroupPreview } from "../types/group"
@@ -19,19 +19,12 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   }
   const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
-    let errText: string
-    try { errText = await res.text() } catch { errText = res.statusText }
-    throw new Error(errText || `HTTP ${res.status}`)
+    let msg = ""
+    try { msg = await res.text() } catch {}
+    throw new Error(msg || `HTTP ${res.status}`)
   }
-  return await res.json()
-}
-
-/** Получить список всех групп (админ/служебный) — с пагинацией */
-export async function getGroups(params?: { limit?: number; offset?: number }): Promise<Group[]> {
-  const limit = params?.limit ?? 100
-  const offset = params?.offset ?? 0
-  const url = `${API_URL}/groups?limit=${limit}&offset=${offset}`
-  return await fetchJson<Group[]>(url)
+  // @ts-ignore
+  return res.status === 204 ? undefined : await res.json()
 }
 
 /**
@@ -55,22 +48,32 @@ export async function getUserGroups(
   const includeArchived = params?.includeArchived ? "true" : "false"
   const q = (params?.q ?? "").trim()
 
-  let url = `${API_URL}/groups/user/${userId}?limit=${limit}&offset=${offset}&include_hidden=${includeHidden}&include_archived=${includeArchived}`
+  let url =
+    `${API_URL}/groups/user/${userId}` +
+    `?limit=${encodeURIComponent(String(limit))}` +
+    `&offset=${encodeURIComponent(String(offset))}` +
+    `&include_hidden=${includeHidden}` +
+    `&include_archived=${includeArchived}`
   if (q.length > 0) url += `&q=${encodeURIComponent(q)}`
 
   const headers: HeadersInit = { "x-telegram-initdata": getTelegramInitData() }
   const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) {
+    let msg = ""
+    try { msg = await res.text() } catch {}
+    throw new Error(msg || `HTTP ${res.status}`)
+  }
+
   const items: GroupPreview[] = await res.json()
   const totalHeader = res.headers.get("X-Total-Count") || res.headers.get("x-total-count")
-  const total = totalHeader ? parseInt(totalHeader, 10) || items.length : items.length
+  const total = totalHeader ? (parseInt(totalHeader, 10) || items.length) : items.length
   return { items, total }
 }
 
 /** Детали группы */
 export async function getGroupDetails(groupId: number, offset: number = 0, limit?: number): Promise<Group> {
-  let url = `${API_URL}/groups/${groupId}/detail/?offset=${offset}`
-  if (typeof limit === "number") url += `&limit=${limit}`
+  let url = `${API_URL}/groups/${groupId}/detail/?offset=${encodeURIComponent(String(offset))}`
+  if (typeof limit === "number") url += `&limit=${encodeURIComponent(String(limit))}`
   return await fetchJson<Group>(url)
 }
 
