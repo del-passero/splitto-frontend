@@ -15,7 +15,7 @@ type Props = {
   ownerId: number
 }
 
-// Тоггл в стиле iOS
+/** iOS-подобный свитч */
 function Switch({
   checked,
   onChange,
@@ -30,7 +30,10 @@ function Switch({
       type="button"
       aria-label={ariaLabel}
       aria-pressed={checked}
-      onClick={() => onChange(!checked)}
+      onClick={(e) => {
+        e.stopPropagation()
+        onChange(!checked)
+      }}
       className={`relative inline-flex items-center justify-start w-12 h-7 rounded-full transition-colors
         ${checked ? "bg-[var(--tg-theme-button-color,#40A7E3)]" : "bg-[var(--tg-secondary-bg-color,#e6e6e6)]"}`}
     >
@@ -42,7 +45,7 @@ function Switch({
   )
 }
 
-// Локальная строка секции (только для этой модалки)
+/** Локальная строка секции — стиль повторяет SettingItem (из профиля) */
 function Row({
   icon,
   label,
@@ -63,10 +66,10 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className="flex items-center w-full px-4 py-4 bg-transparent focus:outline-none active:opacity-90"
+        className="flex items-center w-full px-1 py-4 bg-transparent focus:outline-none hover:bg-[var(--tg-accent-bg-color)] transition"
         style={{ minHeight: 48 }}
       >
-        <span className="mr-3 w-6 flex items-center justify-center">{icon}</span>
+        <span className="mr-4 flex items-center">{icon}</span>
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
 
         {right ? (
@@ -80,7 +83,7 @@ function Row({
       </button>
 
       {!isLast && (
-        <div className="absolute left-12 right-4 bottom-0 h-px bg-[var(--tg-hint-color)]/20 pointer-events-none" />
+        <div className="absolute left-5 right-5 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
       )}
     </div>
   )
@@ -118,7 +121,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       setLoading(false)
       setIsTrip(false)
       setEndDate("")
-      // валюту не сбрасываем — показываем по умолчанию USD, пока юзер не сменит
     }
   }, [open])
 
@@ -144,8 +146,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       })
 
       const promises: Promise<any>[] = []
-      const uiCode = currency?.code || "USD"
-      if (uiCode !== "USD") promises.push(patchGroupCurrency(group.id, uiCode))
+      // дефолтная валюта — USD; патчим только если пользователь выбрал другую
+      const code = currency?.code || "USD"
+      if (code !== "USD") promises.push(patchGroupCurrency(group.id, code))
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
       Promise.allSettled(promises).catch(() => {})
 
@@ -165,9 +168,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
-      {/* FULL WIDTH, но НЕ на всю высоту */}
+      {/* на всю ширину, НЕ на всю высоту; сверху — отступ */}
       <div className="w-full max-w-none mx-0 my-0">
-        <div className="relative w-full max-h-[90vh] overflow-auto bg-[var(--tg-card-bg,#111)]">
+        <div className="relative w-full mt-4 mb-4 max-h-[88vh] overflow-auto bg-[var(--tg-card-bg,#111)]">
           {/* Close */}
           <button
             type="button"
@@ -179,7 +182,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          <form onSubmit={handleSubmit} className="p-6 pt-4 flex flex-col gap-4">
+          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-4">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
@@ -226,15 +229,15 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             />
 
             {/* Секция: валюта и переключатель "для путешествия" */}
-            <CardSection noPadding>
+            <CardSection>
               <Row
-                icon={<CircleDollarSign className="text-[var(--tg-hint-color)]" size={20} />}
+                icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
                 label={t("currency.main_currency")}
                 value={currency?.code || "USD"}
                 onClick={() => setCurrencyModal(true)}
               />
               <Row
-                icon={<CalendarDays className="text-[var(--tg-hint-color)]" size={20} />}
+                icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
                 label={t("group_form.is_trip")}
                 right={
                   <Switch
