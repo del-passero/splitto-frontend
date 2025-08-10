@@ -9,28 +9,49 @@ import type { GroupPreview } from "../types/group"
 
 type Props = {
   groups: GroupPreview[]
-  loadMore?: () => void
+  loadMore?: () => Promise<unknown> | void
   loading?: boolean
+  hasMore?: boolean
 }
 
-const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
+const GroupsList = ({ groups, loadMore, loading = false, hasMore = false }: Props) => {
   const navigate = useNavigate()
   const loaderRef = useRef<HTMLDivElement>(null)
+  const lockRef = useRef(false)
 
   useEffect(() => {
-    if (!loadMore || loading || !loaderRef.current) return
-    const obs = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !loading) loadMore()
-    })
-    obs.observe(loaderRef.current)
-    return () => obs.disconnect()
-  }, [loadMore, loading])
+    const el = loaderRef.current
+    const canObserve = !!loadMore && !!hasMore && !loading && !!el
+    if (!canObserve) return
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (!entry.isIntersecting) return
+        if (lockRef.current || loading) return
+        lockRef.current = true
+
+        const p = loadMore?.()
+        // Снимаем лок по завершению (и если loadMore не вернул промис — снимаем чуть позже)
+        if (p && typeof (p as any).finally === "function") {
+          ;(p as Promise<unknown>).finally(() => {
+            lockRef.current = false
+          })
+        } else {
+          setTimeout(() => (lockRef.current = false), 200)
+        }
+      },
+      { root: null, rootMargin: "300px 0px 0px 0px", threshold: 0 }
+    )
+
+    io.observe(el)
+    return () => io.disconnect()
+  }, [loadMore, hasMore, loading])
 
   return (
     <CardSection noPadding>
-      {/* Плотнее сетка: gap-2 на мобилках, чуть свободнее на больших */}
       <div className="grid grid-cols-1 gap-2 sm:gap-3">
-        {groups.map(group => (
+        {groups.map((group) => (
           <GroupCard
             key={group.id}
             group={group as any}
@@ -38,7 +59,9 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
           />
         ))}
       </div>
-      <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+
+      {/* Сентинел. Прячем, но оставляем для обсерверa */}
+      <div ref={loaderRef} aria-hidden style={{ height: 1, width: "100%", opacity: 0 }} />
     </CardSection>
   )
 }
