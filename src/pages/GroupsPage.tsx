@@ -1,99 +1,118 @@
 // src/pages/GroupsPage.tsx
-// Минимально совместимая страница групп с устойчивой дозагрузкой.
-// - Не полагается на store.total / store.loading / offset/limit.
-// - "Конец списка" определяем по факту добавления новых строк.
-// - loadMore отключаем, когда больше ничего не приходит.
+// Как ContactsPage: поиск уходит на сервер, счётчик берём из total, инфинити-скролл через GroupsList.loadMore
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import MainLayout from "../layouts/MainLayout"
-import CardSection from "../components/CardSection"
-import GroupsList from "../components/GroupsList"
-import CreateGroupModal from "../components/CreateGroupModal"
+import { Users, HandCoins } from "lucide-react"
 import { useUserStore } from "../store/userStore"
 import { useGroupsStore } from "../store/groupsStore"
+import TopInfoRow from "../components/TopInfoRow"
+import FiltersRow from "../components/FiltersRow"
+import CardSection from "../components/CardSection"
+import GroupsList from "../components/GroupsList"
+import EmptyGroups from "../components/EmptyGroups"
+import CreateGroupModal from "../components/CreateGroupModal"
 
 const GroupsPage = () => {
+  const { t } = useTranslation()
   const { user } = useUserStore()
-  const { groups, fetchGroups } = useGroupsStore()
+  const {
+    groups, groupsLoading, groupsError,
+    groupsHasMore, groupsTotal,
+    fetchGroups, loadMoreGroups, clearGroups
+  } = useGroupsStore()
 
+  const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
 
-  // Первичная загрузка/перезагрузка при смене пользователя
+  // Первая загрузка и при смене user/search — как в ContactsPage
   useEffect(() => {
     if (!user?.id) return
-    let cancelled = false
+    clearGroups()
+    const q = search.trim()
+    fetchGroups(user.id, { reset: true, q: q.length ? q : undefined })
+    // eslint-disable-next-line
+  }, [user?.id, search])
 
-    const run = async () => {
-      setLoading(true)
-      const before = useGroupsStore.getState().groups.length
-      // reset:true — стор сам сбрасывает offset и грузит первую страницу
-      await fetchGroups(user.id, { reset: true })
-      if (cancelled) return
+  const isSearching = search.trim().length > 0
+  const nothingLoaded = !groupsLoading && !groupsError && groups.length === 0
+  const notFound = isSearching && nothingLoaded
+  const noGroups = !isSearching && nothingLoaded
 
-      const after = useGroupsStore.getState().groups.length
-      // если что-то пришло — попробуем дозагружать; дальше onLoadMore сам выключит
-      setHasMore(after > before)
-      setLoading(false)
+  const fabActions = [
+    {
+      key: "add-group",
+      icon: <Users size={28} strokeWidth={1.5} />,
+      onClick: () => setModalOpen(true),
+      ariaLabel: t("create_group"),
+      label: t("create_group"),
+    },
+    {
+      key: "add-transaction",
+      icon: <HandCoins size={28} strokeWidth={1.5} />,
+      onClick: () => {},
+      ariaLabel: t("add_transaction"),
+      label: t("add_transaction"),
+    },
+  ]
+
+  if (noGroups || notFound) {
+    return (
+      <MainLayout fabActions={fabActions}>
+        <FiltersRow
+          search={search}
+          setSearch={setSearch}
+          placeholderKey="search_group_placeholder"
+        />
+        <EmptyGroups notFound={notFound} />
+        <CreateGroupModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          ownerId={user?.id || 0}
+          onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
+        />
+      </MainLayout>
+    )
     }
-
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [user?.id, fetchGroups])
-
-  // Дозагрузка следующей порции
-  const onLoadMore = async () => {
-    if (!user?.id) return
-    if (loading || !hasMore) return
-
-    setLoading(true)
-    const before = useGroupsStore.getState().groups.length
-    // без reset — стор должен подхватить следующий offset внутри себя
-    await fetchGroups(user.id, {})
-    const after = useGroupsStore.getState().groups.length
-
-    // если ничего не добавилось — дальше грузить нечего
-    if (after <= before) {
-      setHasMore(false)
-    }
-    setLoading(false)
-  }
 
   return (
-    <MainLayout>
-      {/* шапка попроще, без пропсов, чтобы не конфликтовать с твоими типами */}
-      <CardSection>
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Группы</h2>
-          <span className="text-sm opacity-70">{groups.length}</span>
-        </div>
-      </CardSection>
-
-      <GroupsList
-        groups={groups as any}
-        // важный момент: подаём loadMore только когда действительно есть что грузить
-        loadMore={hasMore ? onLoadMore : undefined}
-        loading={loading}
+    <MainLayout fabActions={fabActions}>
+      <FiltersRow
+        search={search}
+        setSearch={setSearch}
+        placeholderKey="search_group_placeholder"
       />
 
+      <CardSection noPadding>
+        {/* ВАЖНО: считаем по total, а не по длине текущей страницы */}
+        <TopInfoRow count={groupsTotal} labelKey="groups_count" />
+        <GroupsList
+          groups={groups}
+          loading={groupsLoading}
+          loadMore={groupsHasMore ? () => {
+            if (!user?.id) return
+            const q = search.trim()
+            loadMoreGroups(user.id, q.length ? q : undefined)
+          } : undefined}
+        />
+      </CardSection>
+
+      {groupsLoading && (
+        <CardSection>
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+        </CardSection>
+      )}
+      {groupsError && (
+        <CardSection>
+          <div className="text-center py-6 text-red-500">{groupsError}</div>
+        </CardSection>
+      )}
       <CreateGroupModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={async () => {
-          if (!user?.id) return
-          setLoading(true)
-          setHasMore(false)
-          await fetchGroups(user.id, { reset: true })
-          // после создания группы стор вернёт первую страницу;
-          // включим попытку дозагрузки ровно один раз — дальше onLoadMore сам решит
-          const len = useGroupsStore.getState().groups.length
-          setHasMore(len > 0)
-          setLoading(false)
-        }}
+        onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
       />
     </MainLayout>
   )

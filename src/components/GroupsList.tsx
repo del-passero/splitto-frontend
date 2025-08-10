@@ -1,5 +1,6 @@
 // src/components/GroupsList.tsx
-// Рендер и инфинити-скролл (вызывает loadMore из пропсов)
+// Рендер и инфинити-скролл. Фикс «моргания»: как только новая порция не приходит,
+// наблюдатель отключается сам. Никаких правок в странице не требуется.
 
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
@@ -11,42 +12,81 @@ type Props = {
   groups: GroupPreview[]
   loadMore?: () => Promise<unknown> | void
   loading?: boolean
-  hasMore?: boolean
 }
 
-const GroupsList = ({ groups, loadMore, loading = false, hasMore = false }: Props) => {
+const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const navigate = useNavigate()
   const loaderRef = useRef<HTMLDivElement>(null)
+
+  // защита от повторных вызовов, когда сентинел в видимой зоне
   const lockRef = useRef(false)
+  // как только понимаем, что больше ничего не приходит — навсегда отключаем дозагрузку
+  const disabledRef = useRef(false)
+  // актуальная длина списка между вызовами
+  const lastLenRef = useRef(groups.length)
+  // чтобы можно было корректно disconnect()
+  const ioRef = useRef<IntersectionObserver | null>(null)
+
+  // следим за длиной массива и обновляем ref
+  useEffect(() => {
+    lastLenRef.current = groups.length
+    // если список сброшен (новый поиск/фильтр) — позволяем заново дозагружать
+    if (groups.length === 0) {
+      disabledRef.current = false
+    }
+  }, [groups.length])
 
   useEffect(() => {
-    const el = loaderRef.current
-    const canObserve = !!loadMore && !!hasMore && !loading && !!el
-    if (!canObserve) return
+    const target = loaderRef.current
+    if (!target) return
+    if (!loadMore) return
+    if (disabledRef.current) return
 
     const io = new IntersectionObserver(
       (entries) => {
         const entry = entries[0]
         if (!entry.isIntersecting) return
         if (lockRef.current || loading) return
-        lockRef.current = true
 
-        const p = loadMore?.()
-        // Снимаем лок по завершению (и если loadMore не вернул промис — снимаем чуть позже)
-        if (p && typeof (p as any).finally === "function") {
-          ;(p as Promise<unknown>).finally(() => {
+        lockRef.current = true
+        const before = lastLenRef.current
+
+        const finish = () => {
+          // Ждём тик, чтобы стейт наверху успел обновиться
+          setTimeout(() => {
+            const after = lastLenRef.current
+            // если ничего не добавилось — достигли конца; дальше не наблюдаем
+            if (after <= before) {
+              disabledRef.current = true
+              ioRef.current?.disconnect()
+            }
             lockRef.current = false
-          })
-        } else {
-          setTimeout(() => (lockRef.current = false), 200)
+          }, 0)
+        }
+
+        try {
+          const p = loadMore()
+          if (p && typeof (p as any).finally === "function") {
+            ;(p as Promise<unknown>).finally(finish)
+          } else {
+            finish()
+          }
+        } catch {
+          // при ошибке тоже снимаем лок, чтобы не повиснуть
+          finish()
         }
       },
-      { root: null, rootMargin: "300px 0px 0px 0px", threshold: 0 }
+      { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 }
     )
 
-    io.observe(el)
-    return () => io.disconnect()
-  }, [loadMore, hasMore, loading])
+    io.observe(target)
+    ioRef.current = io
+
+    return () => {
+      io.disconnect()
+      if (ioRef.current === io) ioRef.current = null
+    }
+  }, [loadMore, loading])
 
   return (
     <CardSection noPadding>
@@ -59,8 +99,7 @@ const GroupsList = ({ groups, loadMore, loading = false, hasMore = false }: Prop
           />
         ))}
       </div>
-
-      {/* Сентинел. Прячем, но оставляем для обсерверa */}
+      {/* Сентинел для IntersectionObserver — полностью прозрачный, 1px высоты */}
       <div ref={loaderRef} aria-hidden style={{ height: 1, width: "100%", opacity: 0 }} />
     </CardSection>
   )
