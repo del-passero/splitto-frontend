@@ -37,7 +37,7 @@ function Switch({
   )
 }
 
-/** Строка секции (только для этой модалки) — edge-to-edge, divider как в CurrencyPickerModal */
+/** Строка секции — edge-to-edge, divider как в CurrencyPickerModal */
 function Row({
   icon,
   label,
@@ -81,7 +81,7 @@ function Row({
 
       {/* Divider как в модалке валют: НЕ под иконкой */}
       {!isLast && (
-        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/20 pointer-events-none" />
+        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/25 pointer-events-none" />
       )}
     </div>
   )
@@ -173,14 +173,14 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контейнер формы: уменьшил общий gap, хинты вплотную */}
+          {/* Контейнер формы: хинты вплотную; общий gap минимальный */}
           <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-1">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
 
-            {/* Имя + хинт вплотную */}
-            <div className="space-y-1">
+            {/* Имя + хинт вплотную (точно такая же высота как у описания ниже) */}
+            <div className="space-y-[4px]">
               <input
                 type="text"
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -201,8 +201,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + хинт вплотную (то же расстояние, что и у Name) */}
-            <div className="space-y-1">
+            {/* Описание + хинт вплотную (ровно те же 4px) */}
+            <div className="space-y-[4px]">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
                            border-[var(--tg-secondary-bg-color,#e7e7e7)]
@@ -222,9 +222,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Секция валюты/переключателя — edge-to-edge и без лишней вертикали */}
-            <div className="-mx-4 -my-1">
-              <CardSection>
+            {/* Один CardSection: валюта + тумблер + (при включении) поле даты */}
+            <div className="-mx-4">
+              <CardSection className="py-0">
                 <Row
                   icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
                   label={t("currency.main_currency")}
@@ -236,42 +236,34 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   label={t("group_form.is_trip")}
                   right={<Switch checked={isTrip} onChange={setIsTrip} ariaLabel={t("group_form.is_trip")} />}
                   onClick={() => setIsTrip((v) => !v)}
-                  isLast
+                  isLast={!isTrip} // если будет поле даты — эта строка НЕ последняя (чтобы бордерлайн сохранился)
                 />
+
+                {/* Поле даты — в этом же CardSection, сразу под переключателем, с минимальными отступами */}
+                {isTrip && (
+                  <div className="pl-[64px] pr-4 pt-2 pb-3">
+                    {/* псевдо-инпут */}
+                    <button
+                      type="button"
+                      className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
+                                 border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
+                                 font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                      onClick={() => {
+                        // @ts-ignore
+                        if (hiddenDateRef.current?.showPicker) hiddenDateRef.current.showPicker()
+                        else hiddenDateRef.current?.focus()
+                      }}
+                    >
+                      {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
+                    </button>
+                    {/* подпись под полем, как у хинтов: вплотную */}
+                    <div className="text-[12px] text-[var(--tg-hint-color)] mt-[4px]">
+                      {t("group_form.trip_date")}
+                    </div>
+                  </div>
+                )}
               </CardSection>
             </div>
-
-            {/* Дата — максимально высоко, подпись снизу как у хинтов */}
-            {isTrip && (
-              <div className="flex flex-col gap-1 mt-0">
-                {/* псевдо-инпут */}
-                <button
-                  type="button"
-                  className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
-                             border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
-                             font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
-                  onClick={() => {
-                    // @ts-ignore
-                    if (hiddenDateRef.current?.showPicker) hiddenDateRef.current.showPicker()
-                    else hiddenDateRef.current?.focus()
-                  }}
-                >
-                  {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
-                </button>
-                <input
-                  ref={hiddenDateRef}
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="sr-only absolute"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                />
-                <div className="text-[12px] text-[var(--tg-hint-color)]">
-                  {t("group_form.trip_date")}
-                </div>
-              </div>
-            )}
 
             {/* Ошибка */}
             {error && <div className="text-red-500 text-sm font-medium">{error}</div>}
@@ -281,8 +273,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               <button
                 type="button"
                 onClick={onClose}
-                // ЖЁСТКО чёрный, чтобы не было белого нигде
-                style={{ color: "#000" }}
+                style={{ color: "#000" }} // чёрный текст
                 className="w-1/2 py-3 rounded-xl font-bold text-base
                            bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                            border border-[var(--tg-hint-color)]/30
