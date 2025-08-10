@@ -1,4 +1,6 @@
-import { useRef, useEffect } from "react"
+// src/components/group/GroupMembersList.tsx
+
+import { useRef, useEffect, useMemo } from "react"
 import UserCard from "../UserCard"
 import EmptyContacts from "../EmptyContacts"
 import CardSection from "../CardSection"
@@ -43,9 +45,22 @@ const GroupMembersList = ({
     )
   }
 
+  // --- СОРТИРОВКА: 1-й элемент как есть (владелец), остальные — по алфавиту ---
+  const sorted = useMemo(() => {
+    if (!members || members.length <= 1) return members
+    const [owner, ...rest] = members
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" })
+    const getKey = (m: GroupMember) => {
+      const name = `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim()
+      return (name || m.user.username || String(m.user.id))
+    }
+    rest.sort((a, b) => collator.compare(getKey(a), getKey(b)))
+    return [owner, ...rest]
+  }, [members])
+
   return (
     <CardSection noPadding>
-      {members.map((m, idx) => (
+      {sorted.map((m, idx) => (
         <div key={m.user.id} className="relative flex items-center">
           <UserCard
             name={`${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim()}
@@ -62,7 +77,7 @@ const GroupMembersList = ({
               ✕
             </button>
           )}
-          {idx !== members.length - 1 && (
+          {idx !== sorted.length - 1 && (
             <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
           )}
         </div>

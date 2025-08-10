@@ -1,7 +1,7 @@
 // src/components/group/ParticipantsScroller.tsx
 
 import { UserPlus, Share2 } from "lucide-react"
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { GroupMember } from "../../types/group_member"
 import CardSection from "../CardSection"
@@ -41,6 +41,19 @@ const ParticipantsScroller = ({
     observer.observe(loaderRef.current)
     return () => observer.disconnect()
   }, [hasMore, loading, loadMore])
+
+  // --- СОРТИРОВКА: 1-й элемент как есть (владелец), остальные — по алфавиту ---
+  const sortedMembers = useMemo(() => {
+    if (!members || members.length <= 1) return members
+    const [owner, ...rest] = members
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" })
+    const getKey = (m: GroupMember) => {
+      const name = `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim()
+      return (name || m.user.username || String(m.user.id))
+    }
+    rest.sort((a, b) => collator.compare(getKey(a), getKey(b)))
+    return [owner, ...rest]
+  }, [members])
 
   // ActionCard ТЕПЕРЬ 1:1 с ParticipantMiniCard
   const ActionCard = ({
@@ -84,7 +97,7 @@ const ParticipantsScroller = ({
         className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch", width: "100%" }}
       >
-        {members.map((member) => (
+        {sortedMembers.map((member) => (
           <ParticipantMiniCard
             key={member.user.id}
             member={member}

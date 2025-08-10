@@ -161,8 +161,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
-      <div className="w-full max-w-none mx-0 my-0">
-        <div className="relative w-full mt-4 mb-4 max-h-[88vh] overflow-auto bg-[var(--tg-card-bg,#111)]">
+      {/* full-screen контейнер с максимально стабильной высотой */}
+      <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
+        <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
           <button
             type="button"
             onClick={onClose}
@@ -173,7 +174,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контейнер формы: хинты вплотную; общий gap минимальный */}
+          {/* Контейнер формы */}
           <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-1">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
@@ -201,13 +202,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + хинт (ровно те же 4px) */}
-            <div className="space-y-[4px]">
+            {/* Описание + хинт: фиксированный зазор 4px как у Name */}
+            <div className="grid gap-[4px]">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
                            border-[var(--tg-secondary-bg-color,#e7e7e7)]
                            text-[var(--tg-text-color)] placeholder:text-[var(--tg-hint-color)]
-                           font-normal text-base min-h-[64px] max-h-[160px] resize-none mb-0
+                           font-normal text-base min-h-[64px] max-h-[160px] resize-none
                            focus:border-[var(--tg-accent-color)] focus:outline-none transition"
                 maxLength={DESC_MAX}
                 placeholder={t("group_form.description_placeholder")}
@@ -239,7 +240,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   isLast  // divider под тумблером не рисуем
                 />
 
-                {/* Поле даты: в этом же CardSection, на всю ширину, с таким же отступом, как у инпутов */}
+                {/* Поле даты (при isTrip) */}
                 {isTrip && (
                   <div className="px-4 pt-2 pb-3">
                     <button
