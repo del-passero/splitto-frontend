@@ -16,6 +16,8 @@ type Props = {
   loadMore: () => void
   hasMore: boolean
   loading: boolean
+  /** Новый: точный владелец группы */
+  ownerId?: number
 }
 
 const ParticipantsScroller = ({
@@ -27,6 +29,7 @@ const ParticipantsScroller = ({
   loadMore,
   hasMore,
   loading,
+  ownerId,
 }: Props) => {
   const { t } = useTranslation()
   const loaderRef = useRef<HTMLDivElement>(null)
@@ -34,61 +37,44 @@ const ParticipantsScroller = ({
   useEffect(() => {
     if (!hasMore || loading || !loaderRef.current) return
     const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !loading) {
-        loadMore()
-      }
+      if (entries[0].isIntersecting && hasMore && !loading) loadMore()
     })
     observer.observe(loaderRef.current)
     return () => observer.disconnect()
   }, [hasMore, loading, loadMore])
 
-  // --- СОРТИРОВКА: владелец первым, остальные по алфавиту ---
+  // Владелец первым, остальные по алфавиту
   const sortedMembers = useMemo(() => {
     if (!members || members.length === 0) return members
-
     const collator = new Intl.Collator(undefined, { sensitivity: "base" })
-    const getKey = (m: GroupMember) => {
-      const name = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
-      return name || m.user?.username || String(m.user?.id ?? "")
+    const key = (m: GroupMember) => {
+      const n = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
+      return n || m.user?.username || String(m.user?.id ?? "")
     }
 
-    // пытаемся найти владельца по нескольким безопасным "подсказкам"
-    const ownerIdx = members.findIndex((m: any) =>
-      m?.is_owner === true ||
-      m?.role === "owner" ||
-      (m?.owner_id && m?.user?.id && String(m.owner_id) === String(m.user.id)) ||
-      m?.user?.is_owner === true
-    )
-
+    let ownerIdx = -1
+    if (typeof ownerId === "number") {
+      ownerIdx = members.findIndex(m => Number(m.user?.id) === Number(ownerId))
+    }
     if (ownerIdx < 0) {
-      // владельца не нашли — просто алфавит всех
-      return [...members].sort((a, b) => collator.compare(getKey(a), getKey(b)))
+      // фоллбэк: просто алфавит
+      return [...members].sort((a, b) => collator.compare(key(a), key(b)))
     }
-
     const owner = members[ownerIdx]
-    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(getKey(a), getKey(b)))
+    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(key(a), key(b)))
     return [owner, ...rest]
-  }, [members])
+  }, [members, ownerId])
 
-  // ActionCard ТЕПЕРЬ 1:1 с ParticipantMiniCard
   const ActionCard = ({
     icon,
     label,
     onClick,
-  }: {
-    icon: React.ReactNode
-    label: string
-    onClick: () => void
-  }) => (
+  }: { icon: React.ReactNode; label: string; onClick: () => void }) => (
     <button
       type="button"
-      className={`
-        flex flex-col items-center w-20 min-w-[60px] py-2
-        bg-[var(--tg-card-bg)]
-        rounded border border-[var(--tg-hint-color)]/30 shadow-sm
-        hover:shadow-md transition cursor-pointer
-        focus:outline-none flex-shrink-0
-      `}
+      className="flex flex-col items-center w-20 min-w-[60px] py-2 bg-[var(--tg-card-bg)]
+                 rounded border border-[var(--tg-hint-color)]/30 shadow-sm hover:shadow-md transition
+                 cursor-pointer focus:outline-none flex-shrink-0"
       onClick={onClick}
       tabIndex={0}
       aria-label={label}
@@ -112,7 +98,7 @@ const ParticipantsScroller = ({
         className="flex items-end gap-x-1 px-0 py-2 overflow-x-auto scroll-smooth hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch", width: "100%" }}
       >
-        {sortedMembers.map((member) => (
+        {sortedMembers.map(member => (
           <ParticipantMiniCard
             key={member.user.id}
             member={member}
@@ -132,9 +118,7 @@ const ParticipantsScroller = ({
           label={t("group_add_member")}
           onClick={onAddClick}
         />
-        {hasMore && !loading && (
-          <div ref={loaderRef} className="w-2" />
-        )}
+        {hasMore && !loading && <div ref={loaderRef} className="w-2" />}
         {loading && (
           <div className="w-10 flex items-center justify-center text-[var(--tg-hint-color)] text-xs">
             {t("loading")}

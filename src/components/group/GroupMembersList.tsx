@@ -13,6 +13,8 @@ type Props = {
   isOwner?: boolean
   fetchMore?: () => void
   hasMore?: boolean
+  /** Новый: точный владелец группы */
+  ownerId?: number
 }
 
 const GroupMembersList = ({
@@ -22,16 +24,14 @@ const GroupMembersList = ({
   isOwner = false,
   fetchMore,
   hasMore = false,
+  ownerId,
 }: Props) => {
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Infinity scroll
   useEffect(() => {
     if (!hasMore || loading || !loaderRef.current || !fetchMore) return
     const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !loading) {
-        fetchMore()
-      }
+      if (entries[0].isIntersecting && hasMore && !loading) fetchMore()
     })
     observer.observe(loaderRef.current)
     return () => observer.disconnect()
@@ -45,32 +45,25 @@ const GroupMembersList = ({
     )
   }
 
-  // --- СОРТИРОВКА: владелец первым, остальные по алфавиту ---
+  // Владелец первым, остальные по алфавиту
   const sorted = useMemo(() => {
     if (!members || members.length === 0) return members
-
     const collator = new Intl.Collator(undefined, { sensitivity: "base" })
-    const getKey = (m: GroupMember) => {
-      const name = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
-      return name || m.user?.username || String(m.user?.id ?? "")
+    const key = (m: GroupMember) => {
+      const n = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
+      return n || m.user?.username || String(m.user?.id ?? "")
     }
-
-    // поиск владельца по нескольким признакам
-    const ownerIdx = members.findIndex((m: any) =>
-      m?.is_owner === true ||
-      m?.role === "owner" ||
-      (m?.owner_id && m?.user?.id && String(m.owner_id) === String(m.user.id)) ||
-      m?.user?.is_owner === true
-    )
-
+    let ownerIdx = -1
+    if (typeof ownerId === "number") {
+      ownerIdx = members.findIndex(m => Number(m.user?.id) === Number(ownerId))
+    }
     if (ownerIdx < 0) {
-      return [...members].sort((a, b) => collator.compare(getKey(a), getKey(b)))
+      return [...members].sort((a, b) => collator.compare(key(a), key(b)))
     }
-
     const owner = members[ownerIdx]
-    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(getKey(a), getKey(b)))
+    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(key(a), key(b)))
     return [owner, ...rest]
-  }, [members])
+  }, [members, ownerId])
 
   return (
     <CardSection noPadding>
@@ -96,11 +89,8 @@ const GroupMembersList = ({
           )}
         </div>
       ))}
-      {/* Loader для infinity scroll */}
       {hasMore && !loading && <div ref={loaderRef} className="w-full h-2" />}
-      {loading && (
-        <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-      )}
+      {loading && <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>}
     </CardSection>
   )
 }
