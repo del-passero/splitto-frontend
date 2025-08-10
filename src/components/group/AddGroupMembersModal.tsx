@@ -17,8 +17,8 @@ type Props = {
   onAdded?: (addedIds: number[]) => void
 }
 
-const FRIENDS_PAGE_SIZE = 20
-const MEMBERS_FETCH_LIMIT = 500 // шаг догрузки ID участников группы на открытии модалки
+const FRIENDS_PAGE_SIZE = 50
+const MEMBERS_FETCH_LIMIT = 500 // шаг догрузки ID участников группы
 
 type FriendItem = {
   id: number
@@ -66,49 +66,52 @@ export default function AddGroupMembersModal({
   // процесс добавления
   const [adding, setAdding] = useState(false)
 
-  // полный Set ID участников группы (из родителя + полная догрузка при открытии модалки)
-  const [membersIdsReady, setMembersIdsReady] = useState(false)
+  // Полный Set id участников (накапливаем постепенно; из пропсов + догрузка)
   const [existingSet, setExistingSet] = useState<Set<number>>(new Set())
 
-  // при открытии — инициализируем Set и дотягиваем ПОЛНЫЙ список ID участников группы
+  // init / обновление existingSet при открытии
   useEffect(() => {
+    if (!open) return
+    // стартуем с того, что знаем из родителя
+    setExistingSet(new Set((existingMemberIds || []).filter((x) => typeof x === "number")))
+  }, [open, existingMemberIds])
+
+  // Догружаем ВСЕ id участников группы (постранично) — параллельно друзьям.
+  useEffect(() => {
+    if (!open) return
     let cancelled = false
-    async function loadAllMemberIds() {
-      // стартуем с того, что пришло сверху (может быть неполно)
-      const acc = new Set<number>(existingMemberIds || [])
+    ;(async () => {
       try {
-        // крутим постранично, пока не соберём total
         let offset = 0
         let total = Infinity
         while (!cancelled && offset < total) {
           const res = await getGroupMembers(groupId, offset, MEMBERS_FETCH_LIMIT)
           const items = res.items || []
-          items.forEach((m) => acc.add(m.user.id))
+          // аккуратно добавляем user_id
+          const ids = items
+            .map((m: any) => (typeof m?.user_id === "number" ? m.user_id : (typeof m?.user?.id === "number" ? m.user.id : null)))
+            .filter((x: number | null) => typeof x === "number") as number[]
+
+          if (ids.length) {
+            setExistingSet(prev => {
+              const next = new Set(prev)
+              ids.forEach(id => next.add(id))
+              return next
+            })
+          }
+
           total = typeof res.total === "number" ? res.total : offset + items.length
           offset += items.length
           if (items.length === 0) break
         }
       } catch {
-        // если что-то пошло не так — хотя бы используем то, что пришло сверху
-      } finally {
-        if (!cancelled) {
-          setExistingSet(acc)
-          setMembersIdsReady(true)
-        }
+        // игнорим — в худшем случае останемся на частичном списке, но ничего лишнего не скроем
       }
-    }
-
-    if (open) {
-      setMembersIdsReady(false)
-      setExistingSet(new Set(existingMemberIds || []))
-      loadAllMemberIds()
-    }
+    })()
     return () => { cancelled = true }
-    // существующие id из пропсов можно учитывать при каждом открытии
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, groupId])
 
-  // фильтруем друзей «только не в группе» по ПОЛНОМУ Set'у
+  // фильтрация друзей «только не в группе»
   const visibleFriends: FriendItem[] = useMemo(
     () => friends.filter((f: FriendItem) => !existingSet.has(f.user.id)),
     [friends, existingSet]
@@ -122,7 +125,7 @@ export default function AddGroupMembersModal({
     return () => { document.body.style.overflow = prev }
   }, [open])
 
-  // первичная загрузка / смена поиска — грузим друзей параллельно с догрузкой участников
+  // первичная загрузка / смена поиска — грузим друзей
   useEffect(() => {
     if (!open) return
     clearFriends()
@@ -194,16 +197,16 @@ export default function AddGroupMembersModal({
 
     setRowErrors(errors)
 
-    // убираем успешно добавленных из выбора и добавляем их в existingSet, чтобы они сразу исчезли из списка
+    // сразу исключаем успешно добавленных
     if (added.length > 0) {
-      setExistingSet((prev) => {
+      setExistingSet(prev => {
         const next = new Set(prev)
-        added.forEach((uid) => next.add(uid))
+        added.forEach(uid => next.add(uid))
         return next
       })
-      setSelected((prev) => {
+      setSelected(prev => {
         const next = new Set(prev)
-        added.forEach((uid) => next.delete(uid))
+        added.forEach(uid => next.delete(uid))
         return next
       })
     }
@@ -246,86 +249,77 @@ export default function AddGroupMembersModal({
           />
         </div>
 
-        {/* список друзей (только не в группе) */}
+        {/* список друзей (фильтруем по текущему existingSet; он пополняется асинхронно) */}
         <div className="flex-1 overflow-y-auto">
-          {/* пока не знаем полный состав группы — показываем лёгкий лоадер, чтобы не мигал «неправильный» список */}
-          {!membersIdsReady && (
-            <div className="px-4 py-6 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+          {!!error && (
+            <div className="px-4 py-6 text-center text-red-500">{String(error)}</div>
           )}
 
-          {membersIdsReady && (
-            <>
-              {!!error && (
-                <div className="px-4 py-6 text-center text-red-500">{String(error)}</div>
-              )}
+          {!loading && visibleFriends.length === 0 && (
+            <div className="px-4 py-10 text-center text-[var(--tg-hint-color)]">
+              {t("add_members_modal.empty")}
+            </div>
+          )}
 
-              {!loading && visibleFriends.length === 0 && (
-                <div className="px-4 py-10 text-center text-[var(--tg-hint-color)]">
-                  {t("add_members_modal.empty")}
-                </div>
-              )}
+          {visibleFriends.map((friend, idx) => {
+            const u = friend.user
+            const userId = u.id
+            const checked = selected.has(userId)
+            const errText = rowErrors[userId]
 
-              {visibleFriends.map((friend, idx) => {
-                const u = friend.user
-                const userId = u.id
-                const checked = selected.has(userId)
-                const errText = rowErrors[userId]
-
-                return (
-                  <div key={friend.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => toggle(userId)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition text-left"
-                    >
-                      {/* левый блок — аватар + имя/username */}
-                      <div className="flex items-center min-w-0">
-                        <img
-                          src={u.photo_url || ""}
-                          alt=""
-                          className="w-11 h-11 rounded-full object-cover bg-[var(--tg-secondary-bg-color,#e7e7e7)] mr-3"
-                          onError={(e: any) => { e.currentTarget.style.visibility = "hidden" }}
-                        />
-                        <div className="flex flex-col min-w-0">
-                          <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
-                            {`${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.username || `@${u.id}`}
-                          </div>
-                          {!!u.username && (
-                            <div className="text-[12px] text-[var(--tg-hint-color)]">@{u.username}</div>
-                          )}
-                        </div>
+            return (
+              <div key={friend.id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => toggle(userId)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition text-left"
+                >
+                  {/* левый блок — аватар + имя/username */}
+                  <div className="flex items-center min-w-0">
+                    <img
+                      src={u.photo_url || ""}
+                      alt=""
+                      className="w-11 h-11 rounded-full object-cover bg-[var(--tg-secondary-bg-color,#e7e7e7)] mr-3"
+                      onError={(e: any) => { e.currentTarget.style.visibility = "hidden" }}
+                    />
+                    <div className="flex flex-col min-w-0">
+                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
+                        {`${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.username || `@${u.id}`}
                       </div>
-
-                      {/* чекбокс */}
-                      <div
-                        className={`relative flex items-center justify-center w-6 h-6 rounded-md border
-                                    ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}
-                        aria-checked={checked}
-                        role="checkbox"
-                      >
-                        {checked && <div className="w-3.5 h-3.5 rounded-sm" style={{ background: "var(--tg-link-color)" }} />}
-                      </div>
-                    </button>
-
-                    {/* разделитель — как в ContactsList: не под аватаром */}
-                    {idx !== visibleFriends.length - 1 && (
-                      <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-                    )}
-
-                    {/* ошибка по строке */}
-                    {!!errText && (
-                      <div className="px-4 pb-2 text-[12px] text-red-500">{errText}</div>
-                    )}
+                      {!!u.username && (
+                        <div className="text-[12px] text-[var(--tg-hint-color)]">@{u.username}</div>
+                      )}
+                    </div>
                   </div>
-                )
-              })}
 
-              {hasMore && <div ref={loaderRef} style={{ height: 1, width: "100%" }} />}
+                  {/* чекбокс */}
+                  <div
+                    className={`relative flex items-center justify-center w-6 h-6 rounded-md border
+                                ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}
+                    aria-checked={checked}
+                    role="checkbox"
+                  >
+                    {checked && <div className="w-3.5 h-3.5 rounded-sm" style={{ background: "var(--tg-link-color)" }} />}
+                  </div>
+                </button>
 
-              {loading && visibleFriends.length > 0 && (
-                <div className="px-4 py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
-              )}
-            </>
+                {/* разделитель — как в ContactsList: не под аватаром */}
+                {idx !== visibleFriends.length - 1 && (
+                  <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                )}
+
+                {/* ошибка по строке */}
+                {!!errText && (
+                  <div className="px-4 pb-2 text-[12px] text-red-500">{errText}</div>
+                )}
+              </div>
+            )
+          })}
+
+          {hasMore && <div ref={loaderRef} style={{ height: 1, width: "100%" }} />}
+
+          {loading && visibleFriends.length > 0 && (
+            <div className="px-4 py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
           )}
         </div>
 

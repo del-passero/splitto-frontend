@@ -45,16 +45,30 @@ const GroupMembersList = ({
     )
   }
 
-  // --- СОРТИРОВКА: 1-й элемент как есть (владелец), остальные — по алфавиту ---
+  // --- СОРТИРОВКА: владелец первым, остальные по алфавиту ---
   const sorted = useMemo(() => {
-    if (!members || members.length <= 1) return members
-    const [owner, ...rest] = members
+    if (!members || members.length === 0) return members
+
     const collator = new Intl.Collator(undefined, { sensitivity: "base" })
     const getKey = (m: GroupMember) => {
-      const name = `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim()
-      return (name || m.user.username || String(m.user.id))
+      const name = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
+      return name || m.user?.username || String(m.user?.id ?? "")
     }
-    rest.sort((a, b) => collator.compare(getKey(a), getKey(b)))
+
+    // поиск владельца по нескольким признакам
+    const ownerIdx = members.findIndex((m: any) =>
+      m?.is_owner === true ||
+      m?.role === "owner" ||
+      (m?.owner_id && m?.user?.id && String(m.owner_id) === String(m.user.id)) ||
+      m?.user?.is_owner === true
+    )
+
+    if (ownerIdx < 0) {
+      return [...members].sort((a, b) => collator.compare(getKey(a), getKey(b)))
+    }
+
+    const owner = members[ownerIdx]
+    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(getKey(a), getKey(b)))
     return [owner, ...rest]
   }, [members])
 
