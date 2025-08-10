@@ -37,7 +37,7 @@ function Switch({
   )
 }
 
-/** Ряд секции (только для этой модалки) — без внешних горизонтальных отступов */
+/** Ряд секции — edge-to-edge, divider как в CurrencyPickerModal */
 function Row({
   icon,
   label,
@@ -61,17 +61,14 @@ function Row({
         className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        {/* иконка — выравнивание по левому краю как у инпутов (контейнер формы даёт p-4) */}
+        {/* слева выравниваем по инпутам */}
         <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
           {icon}
         </span>
 
-        {/* текст */}
-        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">
-          {label}
-        </span>
+        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
 
-        {/* правая часть — вплотную к правому краю формы (p-4) */}
+        {/* правая часть — по правому краю формы (p-4) */}
         {right ? (
           <span className="mr-4">{right}</span>
         ) : (
@@ -82,9 +79,9 @@ function Row({
         )}
       </button>
 
-      {/* Divider: сразу после области иконки (22 + 3 + 16px паддинга слева = ~41 + p-4 => используем left-[58px]) */}
+      {/* Divider как в окне валют: НЕ под иконкой */}
       {!isLast && (
-        <div className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)]/35 left-[58px] pointer-events-none" />
+        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
       )}
     </div>
   )
@@ -156,8 +153,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   if (!open) return null
 
-  const onNameChange = (v: string) => setName(v.slice(0, NAME_MAX))
-  const onDescChange = (v: string) => setDesc(v.slice(0, DESC_MAX))
+  // жёсткое ограничение по длине (обрезаем ввод)
+  const onNameChange = (v: string) => setName(v.length > NAME_MAX ? v.slice(0, NAME_MAX) : v)
+  const onDescChange = (v: string) => setDesc(v.length > DESC_MAX ? v.slice(0, DESC_MAX) : v)
   const nameLeft = Math.max(0, NAME_MAX - name.length)
   const descLeft = Math.max(0, DESC_MAX - desc.length)
 
@@ -175,8 +173,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контент формы: горизонтальные отступы как на профиле */}
-          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-3">
+          {/* Контейнер формы: уменьшил общий gap, подсказки вплотную */}
+          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-2">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
@@ -203,7 +201,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + подсказка вплотную */}
+            {/* Описание + подсказка вплотную (точно такое же расстояние) */}
             <div className="space-y-1">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -224,9 +222,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Секция валюты/переключателя — без боковых отступов вообще */}
-            <div className="-mx-4">
-              <CardSection>
+            {/* Секция валюты/переключателя — edge-to-edge, минимальные внешние отступы */}
+            <div className="-mx-4 mt-1">
+              <CardSection className="py-0">
                 <Row
                   icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
                   label={t("currency.main_currency")}
@@ -243,13 +241,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </CardSection>
             </div>
 
-            {/* Дата — минимальный отступ от переключателя */}
+            {/* Дата — «максимально высоко», лейбл СНИЗУ инпута, стиль как у подсказок, без лишних отступов */}
             {isTrip && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[var(--tg-hint-color)] text-sm">
-                  {t("group_form.trip_date")}
-                </label>
-
+              <div className="flex flex-col gap-1 mt-1">
                 {/* псевдо-инпут */}
                 <button
                   type="button"
@@ -273,6 +267,10 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   tabIndex={-1}
                   aria-hidden="true"
                 />
+                {/* подпись снизу, как у хинтов */}
+                <div className="text-[12px] text-[var(--tg-hint-color)]">
+                  {t("group_form.trip_date")}
+                </div>
               </div>
             )}
 
@@ -289,7 +287,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                            hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
                 onClick={onClose}
               >
-                {/* инлайн-стиль перебивает любые унаследованные цвета */}
+                {/* инлайн-стиль — чтобы НИКОГДА не был белым */}
                 <span style={{ color: "var(--tg-accent-color)" }}>{t("cancel")}</span>
               </button>
               <button
@@ -320,4 +318,3 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 }
 
 export default CreateGroupModal
-
