@@ -1,40 +1,49 @@
 // src/pages/GroupsPage.tsx
+// Минимальные правки: первая загрузка (reset=true), пробрасываем searchQuery в GroupsList,
+// счётчик в шапке считаем по отфильтрованным группам, как ты делал раньше.
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import MainLayout from "../layouts/MainLayout"
+import { Users, HandCoins } from "lucide-react"
 import { useUserStore } from "../store/userStore"
 import { useGroupsStore } from "../store/groupsStore"
-import GroupsList from "../components/GroupsList"
+import TopInfoRow from "../components/TopInfoRow"
 import FiltersRow from "../components/FiltersRow"
-import MainLayout from "../layouts/MainLayout"
+import CardSection from "../components/CardSection"
+import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
-import TopInfoRow from "../components/TopInfoRow"
-import CardSection from "../components/CardSection"
-import { Users, HandCoins } from "lucide-react"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const {
-    groups, groupsLoading, groupsError, groupsHasMore,
-    fetchGroups, loadMoreGroups
+    groups, groupsLoading, groupsError,
+    fetchGroups,
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
 
+  // ВАЖНО: первая загрузка только при появлении user.id
   useEffect(() => {
-    if (user?.id) fetchGroups(user.id, { reset: true })
+    if (user?.id) {
+      // полная перезагрузка списка с offset=0
+      fetchGroups(user.id, { reset: true })
+    }
   }, [user?.id, fetchGroups])
 
-  const filteredGroups = groups.filter(group =>
-    group.name?.toLowerCase().includes(search.toLowerCase())
-  )
+  // Счётчик в шапке — как раньше: по отфильтрованным группам
+  const filteredCount = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return groups.length
+    return groups.filter(g => (g.name ?? "").toLowerCase().includes(q)).length
+  }, [groups, search])
 
   const isSearching = search.length > 0
-  const noGroups = !filteredGroups.length && !isSearching
-  const notFound = !filteredGroups.length && isSearching
+  const noGroups = !filteredCount && !isSearching
+  const notFound = !filteredCount && isSearching
 
   const fabActions = [
     {
@@ -81,10 +90,9 @@ const GroupsPage = () => {
       />
 
       <CardSection noPadding>
-        <TopInfoRow count={filteredGroups.length} labelKey="groups_count" />
-        <GroupsList
-          groups={filteredGroups}
-        />
+        <TopInfoRow count={filteredCount} labelKey="groups_count" />
+        {/* список сам ходит в стор и сам догружает страницы */}
+        <GroupsList searchQuery={search} />
       </CardSection>
 
       {groupsLoading && (
