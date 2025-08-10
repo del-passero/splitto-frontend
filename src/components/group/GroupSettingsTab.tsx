@@ -1,8 +1,12 @@
 // src/components/group/GroupSettingsTab.tsx
 
-import { Save, LogOut, Trash2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Save, LogOut, Trash2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
 import CardSection from "../CardSection"
 import { useTranslation } from "react-i18next"
+import { useParams } from "react-router-dom"
+import CurrencyPickerModal from "../currency/CurrencyPickerModal"
+import { getGroupDetails, patchGroupCurrency, patchGroupSchedule } from "../../api/groupsApi"
 
 type Props = {
   isOwner: boolean
@@ -10,6 +14,83 @@ type Props = {
   onDelete: () => void
   onSaveAndExit: () => void
   canLeave?: boolean
+}
+
+/** Переключатель, как в CreateGroupModal */
+function Switch({
+  checked,
+  onChange,
+  ariaLabel,
+}: { checked: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      aria-pressed={checked}
+      onClick={(e) => { e.stopPropagation(); onChange(!checked) }}
+      className={`relative inline-flex items-center w-12 h-7 rounded-full transition-colors
+        ${checked ? "bg-[var(--tg-theme-button-color,#40A7E3)]" : "bg-[var(--tg-secondary-bg-color,#e6e6e6)]"}`}
+    >
+      <span className={`absolute h-6 w-6 rounded-full bg-white shadow transform transition-transform
+        ${checked ? "translate-x-5" : "translate-x-1"}`} />
+    </button>
+  )
+}
+
+/** Ряд секции (edge-to-edge), как в CreateGroupModal */
+function Row({
+  icon,
+  label,
+  value,
+  right,
+  onClick,
+  isLast,
+}: {
+  icon: React.ReactNode
+  label: string
+  value?: string
+  right?: React.ReactNode
+  onClick?: () => void
+  isLast?: boolean
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
+        style={{ minHeight: 48 }}
+      >
+        {/* слева выравниваем по инпутам (контейнер CardSection даёт p-4) */}
+        <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
+          {icon}
+        </span>
+
+        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
+
+        {/* правая часть — к правому краю CardSection (p-4) */}
+        {right ? (
+          <span className="mr-4">{right}</span>
+        ) : (
+          <>
+            {value && <span className="text-[var(--tg-link-color)] text-[16px] mr-2">{value}</span>}
+            {onClick && <ChevronRight className="text-[var(--tg-hint-color)] mr-4" size={20} />}
+          </>
+        )}
+      </button>
+
+      {/* Divider как в CurrencyPickerModal: НЕ под иконкой */}
+      {!isLast && (
+        <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
+      )}
+    </div>
+  )
+}
+
+function formatDateYmdToDmy(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd
+  const [y, m, d] = ymd.split("-")
+  return `${d}.${m}.${y}`
 }
 
 const GroupSettingsTab = ({
@@ -20,11 +101,163 @@ const GroupSettingsTab = ({
   canLeave = true,
 }: Props) => {
   const { t } = useTranslation()
+  const { groupId } = useParams()
+  const gid = Number(groupId)
+
+  // локальное состояние для «валюта + поездка»
+  const [currencyCode, setCurrencyCode] = useState<string>("USD")
+  const [currencyModal, setCurrencyModal] = useState(false)
+  const [endDate, setEndDate] = useState<string>("") // YYYY-MM-DD или ""
+  const hiddenDateRef = useRef<HTMLInputElement | null>(null)
+
+  const [loadingCurrency, setLoadingCurrency] = useState(false)
+  const [loadingSchedule, setLoadingSchedule] = useState(false)
+
+  // первичная загрузка значений из БД
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      if (!gid) return
+      try {
+        const g = await getGroupDetails(gid)
+        if (cancelled || !g) return
+        setCurrencyCode(g.default_currency_code || "USD")
+        setEndDate((g.end_date as string) || "")
+      } catch {
+        // ignore
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [gid])
+
+  const isTrip = !!endDate
+
+  async function handlePickCurrency(code: string) {
+    if (!gid || !code || code === currencyCode) return setCurrencyModal(false)
+    try {
+      setLoadingCurrency(true)
+      await patchGroupCurrency(gid, code)
+      setCurrencyCode(code)
+    } catch {
+      // можно добавить toast
+    } finally {
+      setLoadingCurrency(false)
+      setCurrencyModal(false)
+    }
+  }
+
+  async function handleToggleTrip(next: boolean) {
+    if (!gid) return
+    // выключение — очищаем дату
+    if (!next) {
+      try {
+        setLoadingSchedule(true)
+        await patchGroupSchedule(gid, { end_date: null, auto_archive: false })
+        setEndDate("")
+      } catch {
+        // ignore
+      } finally {
+        setLoadingSchedule(false)
+      }
+      return
+    }
+    // включение — если даты нет, сразу открываем пикер
+    if (!endDate) {
+      const el = hiddenDateRef.current
+      // @ts-ignore
+      if (el && typeof el.showPicker === "function") el.showPicker()
+      else el?.click()
+    } else {
+      // уже есть дата — можно «подтвердить» отправкой ещё раз (опционально)
+      try {
+        setLoadingSchedule(true)
+        await patchGroupSchedule(gid, { end_date: endDate })
+      } catch {
+        // ignore
+      } finally {
+        setLoadingSchedule(false)
+      }
+    }
+  }
+
+  async function handleDateChange(v: string) {
+    if (!gid) return
+    setEndDate(v)
+    try {
+      setLoadingSchedule(true)
+      await patchGroupSchedule(gid, { end_date: v })
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSchedule(false)
+    }
+  }
+
   const leaveHint = t("group_settings_cannot_leave_due_debt")
 
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
-      {/* Save & exit — primary */}
+      {/* Блок «Валюта + поездка» в том же стиле, что и в CreateGroupModal */}
+      <div className="-mx-4">
+        <CardSection className="py-0">
+          <Row
+            icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
+            label={t("currency.main_currency")}
+            value={currencyCode || "USD"}
+            onClick={() => setCurrencyModal(true)}
+          />
+          <Row
+            icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
+            label={t("group_form.is_trip")}
+            right={
+              <Switch
+                checked={isTrip}
+                onChange={handleToggleTrip}
+                ariaLabel={t("group_form.is_trip")}
+              />
+            }
+            onClick={() => handleToggleTrip(!isTrip)}
+            isLast
+          />
+
+          {/* Поле даты — только если включено */}
+          {isTrip && (
+            <div className="px-4 pt-2 pb-3">
+              <button
+                type="button"
+                disabled={loadingSchedule}
+                className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
+                           border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
+                           font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition disabled:opacity-60"
+                onClick={() => {
+                  const el = hiddenDateRef.current
+                  // @ts-ignore
+                  if (el && typeof el.showPicker === "function") el.showPicker()
+                  else el?.click()
+                }}
+              >
+                {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
+              </button>
+
+              <input
+                ref={hiddenDateRef}
+                type="date"
+                value={endDate}
+                onChange={(e) => handleDateChange(e.target.value)}
+                className="absolute opacity-0 pointer-events-none w-0 h-0"
+                tabIndex={-1}
+              />
+
+              <div className="text-[12px] text-[var(--tg-hint-color)] mt-[4px]">
+                {t("group_form.trip_date")}
+              </div>
+            </div>
+          )}
+        </CardSection>
+      </div>
+
+      {/* Сохранить и выйти — primary */}
       <button
         type="button"
         onClick={onSaveAndExit}
@@ -42,13 +275,13 @@ const GroupSettingsTab = ({
         {t("group_settings_save_and_exit")}
       </button>
 
-      {/* Leave group — neutral */}
+      {/* Покинуть группу — ВСЕГДА чёрный текст */}
       <button
         type="button"
         onClick={onLeave}
         aria-label={t("group_settings_leave_group")}
         className="w-full h-12 rounded-xl font-semibold
-                   text-[var(--tg-text-color)]
+                   text-black
                    bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                    hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
                    active:scale-95 transition
@@ -65,7 +298,7 @@ const GroupSettingsTab = ({
         </div>
       )}
 
-      {/* Delete group — danger (only owner) */}
+      {/* Удалить группу — danger (только владелец) */}
       {isOwner && (
         <button
           type="button"
@@ -82,6 +315,15 @@ const GroupSettingsTab = ({
           {t("group_settings_delete_group")}
         </button>
       )}
+
+      {/* Модалка выбора валюты */}
+      <CurrencyPickerModal
+        open={currencyModal}
+        onClose={() => setCurrencyModal(false)}
+        selectedCode={currencyCode || "USD"}
+        onSelect={(c) => handlePickCurrency(c.code)}
+        closeOnSelect={false}
+      />
     </CardSection>
   )
 }

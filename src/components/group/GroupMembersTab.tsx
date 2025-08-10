@@ -34,9 +34,8 @@ const GroupMembersTab = ({
 
   return (
     <div className="flex flex-col gap-3 p-4 min-h-[280px]">
-      {/* Invite/Add кнопки */}
+      {/* Invite / Add — одинаковые, базируемся на Invite */}
       <div className="flex gap-2 mb-3 mt-0">
-        {/* Primary (accent) */}
         <button
           type="button"
           onClick={onInvite}
@@ -54,17 +53,17 @@ const GroupMembersTab = ({
           {t("group_members_invite")}
         </button>
 
-        {/* Secondary (neutral) */}
         <button
           type="button"
           onClick={onAdd}
           aria-label={t("group_members_add")}
           className="flex-1 h-11 rounded-xl font-semibold
-                     text-[var(--tg-text-color)]
-                     bg-[var(--tg-secondary-bg-color,#e6e6e6)]
-                     hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                     text-white
+                     bg-[var(--tg-accent-color,#40A7E3)]
+                     hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
                      active:scale-95 transition
-                     border border-[var(--tg-hint-color)]/30
+                     shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
+                     border border-[var(--tg-hint-color)]/20
                      flex items-center justify-center gap-2"
         >
           <UserPlus className="w-5 h-5" />
@@ -104,3 +103,4 @@ const GroupMembersTab = ({
 }
 
 export default GroupMembersTab
+
