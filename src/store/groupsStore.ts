@@ -1,9 +1,14 @@
 // src/store/groupsStore.ts
-// Zustand-стор для групп: пагинация + ПОИСК с сервера (как friendsStore)
+// Zustand-стор для групп: пагинация + серверный поиск (как friendsStore)
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
 import { getUserGroups } from "../api/groupsApi"
+
+interface FetchOpts {
+  reset?: boolean
+  q?: string
+}
 
 interface GroupsStoreState {
   groups: GroupPreview[]
@@ -13,12 +18,12 @@ interface GroupsStoreState {
   groupsLoading: boolean
   groupsError: string | null
 
-  fetchGroups: (userId: number, opts?: { reset?: boolean; q?: string }) => Promise<void>
+  fetchGroups: (userId: number, opts?: FetchOpts) => Promise<void>
   loadMoreGroups: (userId: number, q?: string) => Promise<void>
   clearGroups: () => void
 }
 
-const DEFAULT_LIMIT = 20
+const PAGE_SIZE = 20
 
 export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   groups: [],
@@ -34,30 +39,37 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
 
   async fetchGroups(userId, opts) {
     const state = get()
-    const isReset = !!opts?.reset
+    const reset = !!opts?.reset
     const q = opts?.q?.trim() || undefined
-    const offset = isReset ? 0 : state.groupsOffset
-    const limit = DEFAULT_LIMIT
 
-    if (isReset) {
-      set({ groups: [], groupsTotal: 0, groupsOffset: 0, groupsHasMore: true })
-    }
+    // offset для запроса
+    const offset = reset ? 0 : state.groupsOffset
+    const limit = PAGE_SIZE
 
+    // лок загрузки
     set({ groupsLoading: true, groupsError: null })
+
     try {
-      const { items, total } = await getUserGroups(userId, { limit, offset, q })
-      set((s) => {
-        const nextItems = offset === 0 ? items : [...s.groups, ...items]
-        const nextOffset = offset + items.length
-        const hasMore = nextOffset < total
-        return {
-          groups: nextItems,
-          groupsTotal: total,
-          groupsOffset: nextOffset,
-          groupsHasMore: hasMore,
-          groupsLoading: false,
-          groupsError: null,
-        }
+      // getUserGroups ДОЛЖЕН вернуть { items, total }.
+      // Внутри он может читать X-Total-Count из заголовка /user/{id}.
+      const { items, total }: { items: GroupPreview[]; total: number } =
+        await getUserGroups(userId, { limit, offset, q })
+
+      const next = reset ? items : [...state.groups, ...items.filter(i => !state.groups.some(g => g.id === i.id))]
+      const nextOffset = reset ? items.length : next.length
+
+      // hasMore: до тех пор, пока догружаем меньше total
+      // если total отсутствует (на всякий) — fallback по размеру страницы
+      const t = typeof total === "number" ? total : next.length
+      const hasMore = typeof total === "number"
+        ? next.length < total
+        : items.length === limit
+
+      set({
+        groups: next,
+        groupsTotal: t,
+        groupsOffset: nextOffset,
+        groupsHasMore: hasMore,
       })
     } catch (e: any) {
       set({
@@ -65,6 +77,9 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
         groupsError: e?.message || "Ошибка загрузки групп",
         groupsHasMore: false,
       })
+      return
+    } finally {
+      set({ groupsLoading: false })
     }
   },
 
