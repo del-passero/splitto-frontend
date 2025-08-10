@@ -144,5 +144,6 @@ export default {
     not_found: "Ничего не найдено",
     main_currency: "Основная валюта",
     select_short: "Выберите валюту",
+	currency_popular: "Пополярные",
   },
 }

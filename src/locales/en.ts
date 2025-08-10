@@ -145,5 +145,6 @@ export default {
     not_found: "Nothing found",
     main_currency: "Main currency",
     select_short: "Select currency",
+	currency_popular: "Popular",
   },
 }

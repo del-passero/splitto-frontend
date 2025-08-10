@@ -145,5 +145,6 @@ export default {
     not_found: "No se encontró nada",
     main_currency: "Divisa principal",
     select_short: "Elige una divisa",
+	currency_popular: "Popular",
   },
 }

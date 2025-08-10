@@ -1,22 +1,4 @@
 // src/components/currency/CurrencyPickerModal.tsx
-// Модалка выбора валюты в стиле Telegram Wallet.
-// Самодостаточна: сама ходит в API, умеет поиск и бесконечную прокрутку.
-// Ничего не ломает в существующем коде.
-//
-// Пропсы:
-//   open: boolean
-//   onClose: () => void
-//   selectedCode?: string
-//   onSelect: (item: CurrencyItem) => void
-//   closeOnSelect?: boolean (по умолчанию true)
-//
-// Использование:
-//   <CurrencyPickerModal
-//     open={isOpen}
-//     onClose={() => setOpen(false)}
-//     selectedCode={currencyCode}
-//     onSelect={(c) => { setCurrencyCode(c.code); }}
-//   />
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -41,6 +23,7 @@ type Props = {
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const PAGE_SIZE = 40
+const SEARCH_MODE_LIMIT = 2000 // при поиске тянем “всё” и фильтруем на клиенте
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -176,9 +159,9 @@ const PopularChips = ({
                 border
                 ${active
                   ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10"
-                  : "border-[var(--tg-hint-color)]/40 bg-[var(--tg-card-bg)]"}
-                shadow-[0_6px_18px_-8px_rgba(0,0,0,0.35)]
-                hover:shadow-[0_8px_22px_-8px_rgba(0,0,0,0.45)]
+                  : "border-[var(--tg-hint-color)]/50 bg-[var(--tg-card-bg)]"}
+                shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)]
+                hover:shadow-[0_14px_36px_-12px_rgba(0,0,0,0.6)]
                 transition
                 whitespace-nowrap
               `}
@@ -194,15 +177,16 @@ const PopularChips = ({
   )
 }
 
-// Клиентская подстраховка поиска по всем словам (лечит кейс на русском)
+// Клиентская подстраховка: матч по любому слову (русский кейс «второе слово»)
 function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
-  const q = (query || "").trim().toLocaleLowerCase()
+  const q = (query || "").trim()
   if (!q) return items
-  const tokens = q.split(/\s+/).filter(Boolean)
+  // режем на слова и ищем ВХОЖДЕНИЕ любого слова (OR), без порядка
+  const tokens = q.split(/\s+/).filter(Boolean).map((s) => s.toLocaleLowerCase())
   if (!tokens.length) return items
   return items.filter((it) => {
     const hay = `${it.name ?? ""} ${it.code ?? ""}`.toLocaleLowerCase()
-    return tokens.every((tok) => hay.includes(tok))
+    return tokens.some((tok) => hay.includes(tok))
   })
 }
 
@@ -227,10 +211,12 @@ export default function CurrencyPickerModal({
   const qRef = useRef(q)
   const reqIdRef = useRef(0)
 
-  const listRef = useRef<HTMLDivElement | null>(null)        // скролл-контейнер
+  const listRef = useRef<HTMLDivElement | null>(null)        // прокручиваемая область
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
+
+  const isSearchMode = (s: string) => s.trim().length > 0
 
   // дебаунс поиска
   useEffect(() => {
@@ -270,7 +256,7 @@ export default function CurrencyPickerModal({
     setLoading(true)
 
     if (reset) {
-      // сброс данных и СРАЗУ прокручиваем список наверх
+      // сброс и фиксируем модалку: обнуляем скролл списка
       setItems([])
       setOffset(0)
       setTotal(0)
@@ -278,31 +264,36 @@ export default function CurrencyPickerModal({
         ioRef.current.disconnect()
         ioRef.current = null
       }
-      // моментально наверх (без анимации)
       if (listRef.current) listRef.current.scrollTop = 0
     }
 
     try {
+      const searching = isSearchMode(qRef.current)
+      const reqOffset = reset ? 0 : offset
+      const reqLimit = searching ? SEARCH_MODE_LIMIT : PAGE_SIZE
+
       const { items: page, total } = await apiListCurrencies({
         locale,
-        offset: reset ? 0 : offset,
-        limit: PAGE_SIZE,
-        q: qRef.current || undefined,
+        offset: searching ? 0 : reqOffset,
+        limit: reqLimit,
+        q: searching ? undefined : (qRef.current || undefined), // серверный q — только в обычном режиме
       })
+
       if (reqIdRef.current !== myId) return
 
-      // дофильтруем по всем словам (Русский)
-      const pageFiltered = clientFilter(page, qRef.current || "")
+      // В ПОИСКЕ всегда фильтруем на клиенте по любому слову (русский кейс)
+      const pageFiltered = searching ? clientFilter(page, qRef.current || "") : page
 
-      const newOffset = (reset ? 0 : offset) + page.length
+      const newOffset = searching ? page.length : reqOffset + page.length
+      const newTotal = searching ? pageFiltered.length : (total ?? newOffset)
+
       setItems(reset ? pageFiltered : [...items, ...pageFiltered])
       setOffset(newOffset)
-      setTotal(total ?? newOffset)
+      setTotal(newTotal)
       setError(null)
 
-      // ещё раз гарантируем наверх после вставки результатов
+      // гарантируем, что после поиска список остаётся вверху
       if (reset && listRef.current) {
-        // следующий тик, чтобы DOM уже отрисовал элементы
         setTimeout(() => {
           if (listRef.current) listRef.current.scrollTop = 0
         }, 0)
@@ -316,11 +307,13 @@ export default function CurrencyPickerModal({
   }
 
   const hasMore = offset < total
+  const observerEnabled = open && !isSearchMode(qRef.current) // при поиске — без авто-дозагрузки
 
-  // инфинити-скролл
+  // инфинити-скролл: корень — сам список (фикс модалки + не «утягивает» экран)
   useEffect(() => {
     const el = sentinelRef.current
-    if (!open || !el) return
+    const root = listRef.current
+    if (!observerEnabled || !el || !root) return
 
     if (ioRef.current) {
       ioRef.current.disconnect()
@@ -338,13 +331,17 @@ export default function CurrencyPickerModal({
           lockRef.current = false
         })
       },
-      { root: null, rootMargin: "300px 0px 0px 0px", threshold: 0 }
+      {
+        root,                    // наблюдаем внутри списка, не относительно окна
+        rootMargin: "200px 0px 0px 0px",
+        threshold: 0,
+      }
     )
     io.observe(el)
     ioRef.current = io
 
     return () => io.disconnect()
-  }, [open, hasMore, loading, offset, total])
+  }, [observerEnabled, hasMore, loading, offset, total])
 
   if (!open) return null
 
@@ -376,7 +373,7 @@ export default function CurrencyPickerModal({
               onSelect(c)
               if (closeOnSelect) onClose()
             }}
-            label={t("currency.popular") || "Популярные"}
+            label={t("currency_popular") || "Популярные"}
           />
         )}
 
