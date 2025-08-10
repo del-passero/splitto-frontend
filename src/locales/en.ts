@@ -62,7 +62,8 @@ export default {
   // --- Transactions ---
   group_transactions_empty: "No expenses yet — add the first one!",
   group_transactions_not_found: "No expenses found",
-  group_transactions_placeholder: "Placeholder for the transactions list. Your group transactions will appear here.",
+  group_transactions_placeholder:
+    "Placeholder for the transactions list. Your group transactions will appear here.",
 
   // --- Balance tab ---
   group_balance_microtab_mine: "My balance",
@@ -97,7 +98,8 @@ export default {
   shared: "The link is ready to paste!",
   invite_friend: "Invite a friend",
   invite_error: "Failed to create link. Try again later.",
-  invite_message: "Join me on Splitto — an easy way to manage shared expenses without leaving Telegram.\nHere is your invite link:\n{{link}}",
+  invite_message:
+    "Join me on Splitto — an easy way to manage shared expenses without leaving Telegram.\nHere is your invite link:\n{{link}}",
   error_invite_link: "Failed to get invite link",
 
   // --- Contacts ---
@@ -145,6 +147,23 @@ export default {
     not_found: "Nothing found",
     main_currency: "Main currency",
     select_short: "Select currency",
-	currency_popular: "Popular",
+    currency_popular: "Popular",
+  },
+
+  // --- ADDED: common + group form namespace ---
+  common: {
+    yes: "Yes",
+    no: "No",
+  },
+  errors: {
+    group_name_required: "Please enter a group name",
+    group_trip_date_required: "Please select a trip date",
+    create_group_failed: "Failed to create group",
+  },
+  group_form: {
+    name_placeholder: "Group name",
+    description_placeholder: "Group description",
+    is_trip: "Group for a trip?",
+    trip_date: "Trip date",
   },
 }

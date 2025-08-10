@@ -62,7 +62,8 @@ export default {
   // --- Transacciones ---
   group_transactions_empty: "Aún no hay gastos — ¡añade el primero!",
   group_transactions_not_found: "No se encontraron gastos",
-  group_transactions_placeholder: "Marcador de posición para la lista de transacciones. Aquí aparecerán las transacciones de tu grupo.",
+  group_transactions_placeholder:
+    "Marcador de posición para la lista de transacciones. Aquí aparecerán las transacciones de tu grupo.",
 
   // --- Pestaña Saldo ---
   group_balance_microtab_mine: "Mi saldo",
@@ -97,7 +98,8 @@ export default {
   shared: "¡El enlace está listo para pegar!",
   invite_friend: "Invitar a un amigo",
   invite_error: "No se pudo crear el enlace. Inténtalo más tarde.",
-  invite_message: "Únete a mí en Splitto — una forma sencilla de gestionar gastos compartidos sin salir de Telegram.\nAquí está tu enlace de invitación:\n{{link}}",
+  invite_message:
+    "Únete a mí en Splitto — una forma sencilla de gestionar gastos compartidos sin salir de Telegram.\nAquí está tu enlace de invitación:\n{{link}}",
   error_invite_link: "No se pudo obtener el enlace de invitación",
 
   // --- Contactos ---
@@ -145,6 +147,23 @@ export default {
     not_found: "No se encontró nada",
     main_currency: "Divisa principal",
     select_short: "Elige una divisa",
-	currency_popular: "Popular",
+    currency_popular: "Popular",
+  },
+
+  // --- AÑADIDO: comunes + namespace del formulario de grupo ---
+  common: {
+    yes: "Sí",
+    no: "No",
+  },
+  errors: {
+    group_name_required: "Introduce el nombre del grupo",
+    group_trip_date_required: "Selecciona la fecha del viaje",
+    create_group_failed: "No se pudo crear el grupo",
+  },
+  group_form: {
+    name_placeholder: "Nombre del grupo",
+    description_placeholder: "Descripción del grupo",
+    is_trip: "¿Grupo para viaje?",
+    trip_date: "Fecha del viaje",
   },
 }

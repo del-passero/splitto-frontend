@@ -23,7 +23,6 @@ type Props = {
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const PAGE_SIZE = 40
-const SEARCH_MODE_LIMIT = 2000 // при активном поиске тянем большую страницу и фильтруем локально
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -58,15 +57,15 @@ async function apiListCurrencies(params: {
   return res.json()
 }
 
-/** Безопасная нормализация строки (латиница/кириллица, удаляем диакритику). */
+// Нормализация для поиска (латиница/кириллица; убираем комб.диакритики)
 function norm(s: string) {
   return (s || "")
     .toLocaleLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // только комбинируемые диакритики — без \p{…}
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
-/** Клиентский фильтр: матч по ЛЮБОМУ слову (OR) в name ИЛИ code, вне зависимости от позиции. */
+// Клиентский «подстраховочный» фильтр: ИЩЕМ по ЛЮБОМУ слову (OR) в name ИЛИ code
 function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
   const q = norm(query).trim()
   if (!q) return items
@@ -224,7 +223,6 @@ export default function CurrencyPickerModal({
   const [total, setTotal] = useState<number>(0)
   const [offset, setOffset] = useState<number>(0)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [q, setQ] = useState("")
   const qRef = useRef(q)
@@ -235,7 +233,7 @@ export default function CurrencyPickerModal({
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
 
-  // запрет прокрутки body — модалка «стоит» на месте и растягивается в высоту
+  // блокируем прокрутку body, шит растянут вниз
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -244,8 +242,6 @@ export default function CurrencyPickerModal({
       document.body.style.overflow = prev
     }
   }, [open])
-
-  const isSearchMode = (s: string) => s.trim().length > 0
 
   // дебаунс поиска
   useEffect(() => {
@@ -261,7 +257,6 @@ export default function CurrencyPickerModal({
   // первичная загрузка
   useEffect(() => {
     if (!open) return
-    setError(null)
     setQ("")
     qRef.current = ""
     setItems([])
@@ -285,7 +280,7 @@ export default function CurrencyPickerModal({
     setLoading(true)
 
     if (reset) {
-      // сброс и фикс позы модалки: скроллим список в самый верх
+      // ресет и наверх
       setItems([])
       setOffset(0)
       setTotal(0)
@@ -297,51 +292,42 @@ export default function CurrencyPickerModal({
     }
 
     try {
-      const searching = isSearchMode(qRef.current)
       const reqOffset = reset ? 0 : offset
-      const reqLimit = searching ? SEARCH_MODE_LIMIT : PAGE_SIZE
-
-      // при поиске: большая страница БЕЗ серверного q, фильтруем локально (надёжно для русского)
       const { items: page, total } = await apiListCurrencies({
         locale,
-        offset: searching ? 0 : reqOffset,
-        limit: reqLimit,
-        q: searching ? undefined : (qRef.current || undefined),
+        offset: reqOffset,
+        limit: PAGE_SIZE,
+        q: qRef.current || undefined, // ВСЕГДА отдаём q на бэк
       })
-
       if (reqIdRef.current !== myId) return
 
-      const pageFiltered = searching ? clientFilter(page, qRef.current || "") : page
+      // подстраховка по словам/коду — локально
+      const pageFiltered = clientFilter(page, qRef.current || "")
 
-      const newOffset = searching ? page.length : reqOffset + page.length
-      const newTotal = searching ? pageFiltered.length : (total ?? newOffset)
+      const newOffset = reqOffset + page.length // сдвигаемся по факту ответа бэка
+      const newTotal = typeof total === "number" ? total : newOffset
 
       setItems((prev) => (reset ? pageFiltered : [...prev, ...pageFiltered]))
       setOffset(newOffset)
       setTotal(newTotal)
-      setError(null)
 
       if (reset && listRef.current) {
         requestAnimationFrame(() => {
           if (listRef.current) listRef.current.scrollTop = 0
         })
       }
-    } catch (e: any) {
-      if (reqIdRef.current !== myId) return
-      setError(e?.message || "Failed to load currencies")
     } finally {
       if (reqIdRef.current === myId) setLoading(false)
     }
   }
 
   const hasMore = offset < total
-  const observerEnabled = open && !isSearchMode(qRef.current)
 
-  // infinity-scroll: root = собственный список
+  // infinity-scroll: root = собственный список (и в поиске тоже)
   useEffect(() => {
     const el = sentinelRef.current
     const root = listRef.current
-    if (!observerEnabled || !el || !root) return
+    if (!open || !el || !root) return
 
     if (ioRef.current) {
       ioRef.current.disconnect()
@@ -364,16 +350,12 @@ export default function CurrencyPickerModal({
     ioRef.current = io
 
     return () => io.disconnect()
-  }, [observerEnabled, hasMore, loading, offset, total])
+  }, [open, hasMore, loading, offset, total])
 
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-end justify-center" // нижний шит, растянутый почти на весь экран
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="fixed inset-0 z-[1000] flex items-end justify-center" role="dialog" aria-modal="true">
       {/* фон */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
       {/* контейнер */}
@@ -411,7 +393,7 @@ export default function CurrencyPickerModal({
           />
         )}
 
-        {/* список — скроллим только его; разделители как в ContactsList */}
+        {/* список — разделители как в ContactsList */}
         <div className="flex-1 overflow-y-auto" ref={listRef}>
           {items.map((it, idx) => (
             <Row
@@ -434,9 +416,7 @@ export default function CurrencyPickerModal({
           )}
 
           {/* лоадер */}
-          {loading && (
-            <div className="px-4 py-4 text-[13px] text-[var(--tg-hint-color)]">{t("loading")}</div>
-          )}
+          {loading && <div className="px-4 py-4 text-[13px] text-[var(--tg-hint-color)]">{t("loading")}</div>}
 
           {/* сентинел */}
           <div ref={sentinelRef} style={{ height: 1 }} />
