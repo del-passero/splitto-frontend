@@ -159,6 +159,7 @@ const GroupDetailsPage = () => {
         loadMore={loadMembers}
         hasMore={hasMore}
         loading={membersLoading}
+		ownerId={group.owner_id}   // ← НОВОЕ
       />
 
       {/* Вкладки и содержимое — внутри одного CardSection */}

@@ -13,6 +13,7 @@ type Props = {
   loading?: boolean
   fetchMore?: () => void
   hasMore?: boolean
+  ownerId?: number            // ← НОВОЕ
 }
 
 const GroupMembersTab = ({
@@ -25,6 +26,7 @@ const GroupMembersTab = ({
   loading = false,
   fetchMore,
   hasMore,
+  ownerId,                    // ← НОВОЕ
 }: Props) => {
   const { t } = useTranslation()
 
@@ -57,6 +59,7 @@ const GroupMembersTab = ({
         onRemove={onRemove}
         fetchMore={fetchMore}
         hasMore={hasMore}
+		ownerId={ownerId}         // ← НОВОЕ
       />
 
       <div className="flex-1" />

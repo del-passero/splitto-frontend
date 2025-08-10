@@ -151,6 +151,7 @@ const GroupDetailsPageSettings = () => {
               loading={membersLoading}
               fetchMore={loadMembers}
               hasMore={hasMore}
+			  ownerId={group.owner_id}   // ← НОВОЕ
             />
           )}
         </div>
