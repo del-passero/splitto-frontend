@@ -81,7 +81,7 @@ function Row({
 
       {/* Divider как в модалке валют: НЕ под иконкой */}
       {!isLast && (
-        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/25 pointer-events-none" />
+        <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
       )}
     </div>
   )
@@ -179,7 +179,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               {t("create_group")}
             </div>
 
-            {/* Имя + хинт вплотную (точно такая же высота как у описания ниже) */}
+            {/* Имя + хинт (вплотную) */}
             <div className="space-y-[4px]">
               <input
                 type="text"
@@ -201,7 +201,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + хинт вплотную (ровно те же 4px) */}
+            {/* Описание + хинт (ровно те же 4px) */}
             <div className="space-y-[4px]">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -236,13 +236,12 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   label={t("group_form.is_trip")}
                   right={<Switch checked={isTrip} onChange={setIsTrip} ariaLabel={t("group_form.is_trip")} />}
                   onClick={() => setIsTrip((v) => !v)}
-                  isLast={!isTrip} // если будет поле даты — эта строка НЕ последняя (чтобы бордерлайн сохранился)
+                  isLast={!isTrip} // если будет поле даты — разделитель под тумблером остаётся
                 />
 
-                {/* Поле даты — в этом же CardSection, сразу под переключателем, с минимальными отступами */}
+                {/* Поле даты: в этом же CardSection, на всю ширину, с таким же отступом, как у инпутов */}
                 {isTrip && (
-                  <div className="pl-[64px] pr-4 pt-2 pb-3">
-                    {/* псевдо-инпут */}
+                  <div className="px-4 pt-2 pb-3">
                     <button
                       type="button"
                       className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
