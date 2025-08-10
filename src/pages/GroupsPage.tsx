@@ -1,8 +1,7 @@
 // src/pages/GroupsPage.tsx
-// Минимальные правки: первая загрузка (reset=true), пробрасываем searchQuery в GroupsList,
-// счётчик в шапке считаем по отфильтрованным группам, как ты делал раньше.
+// Как ContactsPage: поиск уходит на сервер, счётчик берём из total, инфинити-скролл через GroupsList.loadMore
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import MainLayout from "../layouts/MainLayout"
 import { Users, HandCoins } from "lucide-react"
@@ -20,30 +19,26 @@ const GroupsPage = () => {
   const { user } = useUserStore()
   const {
     groups, groupsLoading, groupsError,
-    fetchGroups,
+    groupsHasMore, groupsTotal,
+    fetchGroups, loadMoreGroups, clearGroups
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
 
-  // ВАЖНО: первая загрузка только при появлении user.id
+  // Первая загрузка и при смене user/search — как в ContactsPage
   useEffect(() => {
-    if (user?.id) {
-      // полная перезагрузка списка с offset=0
-      fetchGroups(user.id, { reset: true })
-    }
-  }, [user?.id, fetchGroups])
+    if (!user?.id) return
+    clearGroups()
+    const q = search.trim()
+    fetchGroups(user.id, { reset: true, q: q.length ? q : undefined })
+    // eslint-disable-next-line
+  }, [user?.id, search])
 
-  // Счётчик в шапке — как раньше: по отфильтрованным группам
-  const filteredCount = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return groups.length
-    return groups.filter(g => (g.name ?? "").toLowerCase().includes(q)).length
-  }, [groups, search])
-
-  const isSearching = search.length > 0
-  const noGroups = !filteredCount && !isSearching
-  const notFound = !filteredCount && isSearching
+  const isSearching = search.trim().length > 0
+  const nothingLoaded = !groupsLoading && !groupsError && groups.length === 0
+  const notFound = isSearching && nothingLoaded
+  const noGroups = !isSearching && nothingLoaded
 
   const fabActions = [
     {
@@ -62,7 +57,7 @@ const GroupsPage = () => {
     },
   ]
 
-  if (!groupsLoading && !groupsError && (noGroups || notFound)) {
+  if (noGroups || notFound) {
     return (
       <MainLayout fabActions={fabActions}>
         <FiltersRow
@@ -75,11 +70,11 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={() => user?.id && fetchGroups(user.id, { reset: true })}
+          onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
         />
       </MainLayout>
     )
-  }
+    }
 
   return (
     <MainLayout fabActions={fabActions}>
@@ -90,9 +85,17 @@ const GroupsPage = () => {
       />
 
       <CardSection noPadding>
-        <TopInfoRow count={filteredCount} labelKey="groups_count" />
-        {/* список сам ходит в стор и сам догружает страницы */}
-        <GroupsList searchQuery={search} />
+        {/* ВАЖНО: считаем по total, а не по длине текущей страницы */}
+        <TopInfoRow count={groupsTotal} labelKey="groups_count" />
+        <GroupsList
+          groups={groups}
+          loading={groupsLoading}
+          loadMore={groupsHasMore ? () => {
+            if (!user?.id) return
+            const q = search.trim()
+            loadMoreGroups(user.id, q.length ? q : undefined)
+          } : undefined}
+        />
       </CardSection>
 
       {groupsLoading && (
@@ -109,7 +112,7 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={() => user?.id && fetchGroups(user.id, { reset: true })}
+        onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
       />
     </MainLayout>
   )

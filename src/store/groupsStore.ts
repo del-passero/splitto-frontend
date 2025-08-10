@@ -1,4 +1,5 @@
 // src/store/groupsStore.ts
+// Zustand-стор для групп: пагинация + ПОИСК с сервера (как friendsStore)
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
@@ -12,8 +13,9 @@ interface GroupsStoreState {
   groupsLoading: boolean
   groupsError: string | null
 
-  fetchGroups: (userId: number, opts?: { reset?: boolean }) => Promise<void>
-  loadMoreGroups: (userId: number) => Promise<void>
+  fetchGroups: (userId: number, opts?: { reset?: boolean; q?: string }) => Promise<void>
+  loadMoreGroups: (userId: number, q?: string) => Promise<void>
+  clearGroups: () => void
 }
 
 const DEFAULT_LIMIT = 20
@@ -26,40 +28,31 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   groupsLoading: false,
   groupsError: null,
 
+  clearGroups() {
+    set({ groups: [], groupsTotal: 0, groupsOffset: 0, groupsHasMore: true, groupsError: null })
+  },
+
   async fetchGroups(userId, opts) {
     const state = get()
     const isReset = !!opts?.reset
+    const q = opts?.q?.trim() || undefined
     const offset = isReset ? 0 : state.groupsOffset
     const limit = DEFAULT_LIMIT
 
     if (isReset) {
       set({ groups: [], groupsTotal: 0, groupsOffset: 0, groupsHasMore: true })
     }
+
     set({ groupsLoading: true, groupsError: null })
-
     try {
-      const { items, total } = await getUserGroups(userId, { limit, offset })
-
-      // Fallback, если из-за CORS не прочитался X-Total-Count
-      // (на корректном бэке total уже верный)
-      const totalEffective =
-        typeof total === "number" && !Number.isNaN(total)
-          ? total
-          : (offset + items.length + (items.length === limit ? 1 : 0))
-
-      set((prev) => {
-        const nextItems = offset === 0 ? items : [...prev.groups, ...items]
+      const { items, total } = await getUserGroups(userId, { limit, offset, q })
+      set((s) => {
+        const nextItems = offset === 0 ? items : [...s.groups, ...items]
         const nextOffset = offset + items.length
-
-        // Если последняя порция короче лимита — дальше нечего грузить.
-        // Если total пришёл — сверяемся ещё и с ним.
-        const reachedEndBySize = items.length < limit
-        const reachedEndByTotal = nextOffset >= totalEffective
-        const hasMore = !(reachedEndBySize || reachedEndByTotal)
-
+        const hasMore = nextOffset < total
         return {
           groups: nextItems,
-          groupsTotal: totalEffective,
+          groupsTotal: total,
           groupsOffset: nextOffset,
           groupsHasMore: hasMore,
           groupsLoading: false,
@@ -75,9 +68,9 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     }
   },
 
-  async loadMoreGroups(userId) {
+  async loadMoreGroups(userId, q) {
     const { groupsHasMore, groupsLoading } = get()
     if (!groupsHasMore || groupsLoading) return
-    await get().fetchGroups(userId, { reset: false })
+    await get().fetchGroups(userId, { reset: false, q })
   },
 }))

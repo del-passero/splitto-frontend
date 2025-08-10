@@ -1,6 +1,6 @@
 // src/api/groupsApi.ts
-// API-групп: добавили пагинацию, флаги includeHidden/includeArchived,
-// работу с X-Total-Count и новые действия (hide/unhide, archive/unarchive, softDelete/restore, patchCurrency).
+// API-групп: пагинация + поиск с сервера (как в контактах)
+// Берём X-Total-Count из заголовка и возвращаем { items, total }.
 
 import type { Group, GroupPreview } from "../types/group"
 
@@ -26,7 +26,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return await res.json()
 }
 
-/** Получить список всех групп (админ/служебный) — теперь с пагинацией */
+/** Получить список всех групп (админ/служебный) — с пагинацией */
 export async function getGroups(params?: { limit?: number; offset?: number }): Promise<Group[]> {
   const limit = params?.limit ?? 100
   const offset = params?.offset ?? 0
@@ -35,9 +35,9 @@ export async function getGroups(params?: { limit?: number; offset?: number }): P
 }
 
 /**
- * Получить список групп текущего пользователя (кастомное превью).
- * Бэкенд кладёт total в заголовок X-Total-Count, тело — массив GroupPreview (прошлый формат).
- * Мы возвращаем { items, total }.
+ * Список групп пользователя (превью) + пагинация + ПОИСК.
+ * Бэкенд кладёт total в заголовок X-Total-Count, тело — массив GroupPreview.
+ * Возвращаем { items, total }.
  */
 export async function getUserGroups(
   userId: number,
@@ -46,13 +46,17 @@ export async function getUserGroups(
     offset?: number
     includeHidden?: boolean
     includeArchived?: boolean
+    q?: string
   }
 ): Promise<{ items: GroupPreview[]; total: number }> {
   const limit = params?.limit ?? 20
   const offset = params?.offset ?? 0
   const includeHidden = params?.includeHidden ? "true" : "false"
   const includeArchived = params?.includeArchived ? "true" : "false"
-  const url = `${API_URL}/groups/user/${userId}?limit=${limit}&offset=${offset}&include_hidden=${includeHidden}&include_archived=${includeArchived}`
+  const q = (params?.q ?? "").trim()
+
+  let url = `${API_URL}/groups/user/${userId}?limit=${limit}&offset=${offset}&include_hidden=${includeHidden}&include_archived=${includeArchived}`
+  if (q.length > 0) url += `&q=${encodeURIComponent(q)}`
 
   const headers: HeadersInit = { "x-telegram-initdata": getTelegramInitData() }
   const res = await fetch(url, { headers })
@@ -63,21 +67,21 @@ export async function getUserGroups(
   return { items, total }
 }
 
-/** Детали группы (bulk список участников с опциональной пагинацией) */
+/** Детали группы */
 export async function getGroupDetails(groupId: number, offset: number = 0, limit?: number): Promise<Group> {
   let url = `${API_URL}/groups/${groupId}/detail/?offset=${offset}`
   if (typeof limit === "number") url += `&limit=${limit}`
   return await fetchJson<Group>(url)
 }
 
-/** Балансы по группе */
-export async function getGroupBalances(groupId: number): Promise<Array<{ user_id: number; balance: number }>> {
+/** Балансы */
+export async function getGroupBalances(groupId: number) {
   const url = `${API_URL}/groups/${groupId}/balances`
   return await fetchJson(url)
 }
 
-/** Расчёт settle-up по группе */
-export async function getGroupSettleUp(groupId: number): Promise<Array<{ from_user_id: number; to_user_id: number; amount: number }>> {
+/** Settle-up */
+export async function getGroupSettleUp(groupId: number) {
   const url = `${API_URL}/groups/${groupId}/settle-up`
   return await fetchJson(url)
 }
@@ -92,43 +96,37 @@ export async function createGroup(payload: { name: string; description: string; 
   })
 }
 
-/** Персонально скрыть группу */
+/** hide/unhide */
 export async function hideGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/hide`
   await fetchJson<void>(url, { method: "POST" })
 }
-
-/** Снять персональное скрытие */
 export async function unhideGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/unhide`
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** Архивировать группу (только владелец, 409 если есть долги) */
+/** archive/unarchive */
 export async function archiveGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/archive`
   await fetchJson<void>(url, { method: "POST" })
 }
-
-/** Разархивировать группу (только владелец) */
 export async function unarchiveGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/unarchive`
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** Soft-delete (только владелец, 409 если есть долги) */
+/** soft-delete/restore */
 export async function softDeleteGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}`
   await fetchJson<void>(url, { method: "DELETE" })
 }
-
-/** Восстановить soft-deleted (возвращается в archived) */
 export async function restoreGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/restore`
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** Сменить валюту группы (только владелец, запрет если уже есть транзакции) */
+/** patch currency */
 export async function patchGroupCurrency(groupId: number, code: string): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/currency?code=${encodeURIComponent(code)}`
   await fetchJson<void>(url, { method: "PATCH" })
