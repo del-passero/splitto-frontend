@@ -260,10 +260,10 @@ export default function CurrencyPickerModal({
 
   if (!open) return null
 
-  // безопасный фоллбек для ключа (пока у тебя i18n не подхватывает currency_popular)
+  // безопасный фоллбек для ключа (пока у тебя i18n не подхватывает currency.currency_popular)
   const popularLabel = (() => {
-    const s = t("currency_popular")
-    return s && s !== "currency_popular" ? s : "Популярные"
+    const s = t("currency.currency_popular")
+    return s && s !== "currency.currency_popular" ? s : "Популярные"
   })()
 
   return (
