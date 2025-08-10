@@ -1,6 +1,6 @@
 // src/components/CreateGroupModal.tsx
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
@@ -14,6 +14,9 @@ type Props = {
   onCreated?: (group: { id: number; name: string; description: string }) => void
   ownerId: number
 }
+
+const NAME_MAX = 40
+const DESC_MAX = 120
 
 /** iOS-подобный свитч */
 function Switch({
@@ -45,7 +48,7 @@ function Switch({
   )
 }
 
-/** Локальная строка секции — стиль повторяет SettingItem (из профиля) */
+/** Локальная строка секции — под эту модалку */
 function Row({
   icon,
   label,
@@ -66,10 +69,10 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className="flex items-center w-full px-1 py-4 bg-transparent focus:outline-none hover:bg-[var(--tg-accent-bg-color)] transition"
+        className="flex items-center w-full px-4 py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        <span className="mr-4 flex items-center">{icon}</span>
+        <span className="mr-4 w-6 flex items-center justify-center">{icon}</span>
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
 
         {right ? (
@@ -82,11 +85,19 @@ function Row({
         )}
       </button>
 
+      {/* Divider: после иконки, до самого правого края */}
       {!isLast && (
-        <div className="absolute left-5 right-5 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
+        <div className="absolute right-4 bottom-0 h-px bg-[var(--tg-hint-color)]/20 pointer-events-none left-[56px]" />
       )}
     </div>
   )
+}
+
+function formatDateYmdToDmy(ymd: string): string {
+  // "2025-08-09" -> "09.08.2025"
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd
+  const [y, m, d] = ymd.split("-")
+  return `${d}.${m}.${y}`
 }
 
 const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
@@ -103,6 +114,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   const [isTrip, setIsTrip] = useState(false)
   const [endDate, setEndDate] = useState<string>("") // YYYY-MM-DD
+  const hiddenDateRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -166,9 +178,12 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   if (!open) return null
 
+  const nameLeft = Math.max(0, NAME_MAX - name.length)
+  const descLeft = Math.max(0, DESC_MAX - desc.length)
+
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
-      {/* на всю ширину, НЕ на всю высоту; сверху — отступ */}
+      {/* На всю ширину; сверху отступ; по высоте до ~88vh */}
       <div className="w-full max-w-none mx-0 my-0">
         <div className="relative w-full mt-4 mb-4 max-h-[88vh] overflow-auto bg-[var(--tg-card-bg,#111)]">
           {/* Close */}
@@ -200,13 +215,18 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 focus:border-[var(--tg-accent-color)] focus:outline-none
                 transition
               "
-              maxLength={40}
+              maxLength={NAME_MAX}
               autoFocus
               placeholder={t("group_form.name_placeholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={loading}
             />
+            <div className="text-[12px] text-[var(--tg-hint-color)] px-1">
+              {name.length === 0
+                ? t("group_form.name_hint_initial", { max: NAME_MAX })
+                : t("group_form.name_hint_remaining", { n: nameLeft })}
+            </div>
 
             {/* Описание */}
             <textarea
@@ -221,12 +241,17 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 focus:border-[var(--tg-accent-color)] focus:outline-none
                 transition
               "
-              maxLength={120}
+              maxLength={DESC_MAX}
               placeholder={t("group_form.description_placeholder")}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               disabled={loading}
             />
+            <div className="text-[12px] text-[var(--tg-hint-color)] px-1">
+              {desc.length === 0
+                ? t("group_form.desc_hint_initial", { max: DESC_MAX })
+                : t("group_form.desc_hint_remaining", { n: descLeft })}
+            </div>
 
             {/* Секция: валюта и переключатель "для путешествия" */}
             <CardSection>
@@ -257,21 +282,35 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 <label className="text-[var(--tg-hint-color)] text-sm">
                   {t("group_form.trip_date")}
                 </label>
-                <input
-                  type="date"
+
+                {/* Псевдо-инпут, открывающий скрытый native date-picker */}
+                <button
+                  type="button"
                   className="
-                    w-full px-4 py-3 rounded-xl border
+                    w-full px-4 py-3 rounded-xl border text-left
                     bg-[var(--tg-bg-color,#fff)]
                     border-[var(--tg-secondary-bg-color,#e7e7e7)]
                     text-[var(--tg-text-color)]
-                    placeholder:text-[var(--tg-hint-color)]
                     font-normal text-base
                     focus:border-[var(--tg-accent-color)] focus:outline-none
                     transition
                   "
+                  onClick={() => {
+                    // @ts-ignore — showPicker есть не везде, зато отлично в мобильных WebView
+                    if (hiddenDateRef.current?.showPicker) hiddenDateRef.current.showPicker()
+                    else hiddenDateRef.current?.focus()
+                  }}
+                >
+                  {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
+                </button>
+                <input
+                  ref={hiddenDateRef}
+                  type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  disabled={loading}
+                  className="sr-only absolute"
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
               </div>
             )}
@@ -286,7 +325,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 className="
                   w-1/2 py-3 rounded-xl font-bold text-base
                   bg-[var(--tg-secondary-bg-color,#e6e6e6)]
-                  text-[var(--tg-accent-color)]
                   border border-[var(--tg-hint-color)]/30
                   hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10
                   active:scale-95 transition
@@ -294,7 +332,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 onClick={onClose}
                 disabled={loading}
               >
-                {t("cancel")}
+                {/* принудительно акцентный цвет, даже если где-то глобально красится в белый */}
+                <span
+                  className="block"
+                  style={{ color: "var(--tg-accent-color)" }}
+                >
+                  {t("cancel")}
+                </span>
               </button>
               <button
                 type="submit"
@@ -328,3 +372,4 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 }
 
 export default CreateGroupModal
+
