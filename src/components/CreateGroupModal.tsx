@@ -1,6 +1,4 @@
 // src/components/CreateGroupModal.tsx
-
-// src/components/CreateGroupModal.tsx
 import { useState, useEffect, useRef } from "react"
 import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -39,7 +37,7 @@ function Switch({
   )
 }
 
-/** Ряд для этой модалки (без зависимости от SettingItem) */
+/** Ряд секции (только для этой модалки) — без внешних горизонтальных отступов */
 function Row({
   icon,
   label,
@@ -60,27 +58,31 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className="flex items-center w-full px-4 py-4 bg-transparent focus:outline-none active:opacity-90"
+        className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        {/* иконка: выравнивание по левому краю как у инпутов */}
-        <span className="mr-3 flex items-center" style={{ width: 22 }}>{icon}</span>
+        {/* иконка — выравнивание по левому краю как у инпутов (контейнер формы даёт p-4) */}
+        <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
+          {icon}
+        </span>
 
         {/* текст */}
-        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
+        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">
+          {label}
+        </span>
 
-        {/* правая часть: значение/свитч, ровно по правому краю */}
+        {/* правая часть — вплотную к правому краю формы (p-4) */}
         {right ? (
-          <span className="ml-3">{right}</span>
+          <span className="mr-4">{right}</span>
         ) : (
           <>
-            {value && <span className="ml-auto text-[var(--tg-link-color)] text-[16px]">{value}</span>}
-            {onClick && <ChevronRight className="ml-2 text-[var(--tg-hint-color)]" size={20} />}
+            {value && <span className="text-[var(--tg-link-color)] text-[16px] mr-2">{value}</span>}
+            {onClick && <ChevronRight className="text-[var(--tg-hint-color)] mr-4" size={20} />}
           </>
         )}
       </button>
 
-      {/* Divider — сразу после иконки до самого края */}
+      {/* Divider: сразу после области иконки (22 + 3 + 16px паддинга слева = ~41 + p-4 => используем left-[58px]) */}
       {!isLast && (
         <div className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)]/35 left-[58px] pointer-events-none" />
       )}
@@ -154,6 +156,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   if (!open) return null
 
+  const onNameChange = (v: string) => setName(v.slice(0, NAME_MAX))
+  const onDescChange = (v: string) => setDesc(v.slice(0, DESC_MAX))
   const nameLeft = Math.max(0, NAME_MAX - name.length)
   const descLeft = Math.max(0, DESC_MAX - desc.length)
 
@@ -171,73 +175,82 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-4">
+          {/* Контент формы: горизонтальные отступы как на профиле */}
+          <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-3">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
 
-            {/* Имя */}
-            <input
-              type="text"
-              className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
-                         border-[var(--tg-secondary-bg-color,#e7e7e7)]
-                         text-[var(--tg-text-color)] placeholder:text-[var(--tg-hint-color)]
-                         font-medium text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
-              maxLength={NAME_MAX}
-              autoFocus
-              placeholder={t("group_form.name_placeholder")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={loading}
-            />
-            <div className={`text-[12px] px-1 ${nameLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
-              {name.length === 0
-                ? t("group_form.name_hint_initial", { max: NAME_MAX })
-                : t("group_form.name_hint_remaining", { n: nameLeft })}
+            {/* Имя + подсказка вплотную */}
+            <div className="space-y-1">
+              <input
+                type="text"
+                className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
+                           border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                           text-[var(--tg-text-color)] placeholder:text-[var(--tg-hint-color)]
+                           font-medium text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                maxLength={NAME_MAX}
+                autoFocus
+                placeholder={t("group_form.name_placeholder")}
+                value={name}
+                onChange={(e) => onNameChange(e.target.value)}
+                disabled={loading}
+              />
+              <div className={`text-[12px] ${nameLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
+                {name.length === 0
+                  ? t("group_form.name_hint_initial", { max: NAME_MAX })
+                  : t("group_form.name_hint_remaining", { n: nameLeft })}
+              </div>
             </div>
 
-            {/* Описание */}
-            <textarea
-              className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
-                         border-[var(--tg-secondary-bg-color,#e7e7e7)]
-                         text-[var(--tg-text-color)] placeholder:text-[var(--tg-hint-color)]
-                         font-normal text-base min-h-[64px] max-h-[160px] resize-none
-                         focus:border-[var(--tg-accent-color)] focus:outline-none transition"
-              maxLength={DESC_MAX}
-              placeholder={t("group_form.description_placeholder")}
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              disabled={loading}
-            />
-            <div className={`text-[12px] px-1 ${descLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
-              {desc.length === 0
-                ? t("group_form.desc_hint_initial", { max: DESC_MAX })
-                : t("group_form.desc_hint_remaining", { n: descLeft })}
+            {/* Описание + подсказка вплотную */}
+            <div className="space-y-1">
+              <textarea
+                className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
+                           border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                           text-[var(--tg-text-color)] placeholder:text-[var(--tg-hint-color)]
+                           font-normal text-base min-h-[64px] max-h-[160px] resize-none
+                           focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                maxLength={DESC_MAX}
+                placeholder={t("group_form.description_placeholder")}
+                value={desc}
+                onChange={(e) => onDescChange(e.target.value)}
+                disabled={loading}
+              />
+              <div className={`text-[12px] ${descLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
+                {desc.length === 0
+                  ? t("group_form.desc_hint_initial", { max: DESC_MAX })
+                  : t("group_form.desc_hint_remaining", { n: descLeft })}
+              </div>
             </div>
 
-            {/* Валюта и переключатель */}
-            <CardSection>
-              <Row
-                icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
-                label={t("currency.main_currency")}
-                value={currency?.code || "USD"}
-                onClick={() => setCurrencyModal(true)}
-              />
-              <Row
-                icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
-                label={t("group_form.is_trip")}
-                right={<Switch checked={isTrip} onChange={setIsTrip} ariaLabel={t("group_form.is_trip")} />}
-                onClick={() => setIsTrip((v) => !v)}
-                isLast
-              />
-            </CardSection>
+            {/* Секция валюты/переключателя — без боковых отступов вообще */}
+            <div className="-mx-4">
+              <CardSection>
+                <Row
+                  icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
+                  label={t("currency.main_currency")}
+                  value={currency?.code || "USD"}
+                  onClick={() => setCurrencyModal(true)}
+                />
+                <Row
+                  icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
+                  label={t("group_form.is_trip")}
+                  right={<Switch checked={isTrip} onChange={setIsTrip} ariaLabel={t("group_form.is_trip")} />}
+                  onClick={() => setIsTrip((v) => !v)}
+                  isLast
+                />
+              </CardSection>
+            </div>
 
-            {/* Дата поездки */}
+            {/* Дата — минимальный отступ от переключателя */}
             {isTrip && (
-              <div className="flex flex-col gap-2">
-                <label className="text-[var(--tg-hint-color)] text-sm">{t("group_form.trip_date")}</label>
+              <div className="flex flex-col gap-1">
+                <label className="text-[var(--tg-hint-color)] text-sm">
+                  {t("group_form.trip_date")}
+                </label>
 
-                {/* псевдо-инпут, без чёрной иконки */}
+                {/* псевдо-инпут */}
                 <button
                   type="button"
                   className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
@@ -264,20 +277,20 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             )}
 
             {/* Ошибка */}
-            {error && <div className="text-red-500 text-sm font-medium mt-0">{error}</div>}
+            {error && <div className="text-red-500 text-sm font-medium">{error}</div>}
 
             {/* Кнопки */}
-            <div className="flex flex-row gap-2 mt-2 w-full">
+            <div className="flex flex-row gap-2 mt-1 w-full">
               <button
                 type="button"
                 className="w-1/2 py-3 rounded-xl font-bold text-base
                            bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                            border border-[var(--tg-hint-color)]/30
-                           hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition
-                           text-[var(--tg-accent-color)]"
+                           hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
                 onClick={onClose}
               >
-                {t("cancel")}
+                {/* инлайн-стиль перебивает любые унаследованные цвета */}
+                <span style={{ color: "var(--tg-accent-color)" }}>{t("cancel")}</span>
               </button>
               <button
                 type="submit"
@@ -307,3 +320,4 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 }
 
 export default CreateGroupModal
+
