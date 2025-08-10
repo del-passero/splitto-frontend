@@ -1,5 +1,6 @@
 // src/store/groupsStore.ts
-// Zustand-стор для групп: пагинация + ПОИСК с сервера (как friendsStore)
+// Zustand-стор для групп: пагинация + серверный поиск.
+// Фикс гонок: reqId — применяем только последний ответ.
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
@@ -12,10 +13,11 @@ interface GroupsStoreState {
   groupsHasMore: boolean
   groupsLoading: boolean
   groupsError: string | null
+  reqId: number
 
+  clearGroups: () => void
   fetchGroups: (userId: number, opts?: { reset?: boolean; q?: string }) => Promise<void>
   loadMoreGroups: (userId: number, q?: string) => Promise<void>
-  clearGroups: () => void
 }
 
 const PAGE_SIZE = 20
@@ -27,9 +29,17 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   groupsHasMore: true,
   groupsLoading: false,
   groupsError: null,
+  reqId: 0,
 
   clearGroups() {
-    set({ groups: [], groupsTotal: 0, groupsOffset: 0, groupsHasMore: true, groupsError: null })
+    set({
+      groups: [],
+      groupsTotal: 0,
+      groupsOffset: 0,
+      groupsHasMore: true,
+      groupsError: null,
+      // reqId не сбрасываем намеренно — чтобы старые ответы не перетёрли новый поиск
+    })
   },
 
   async fetchGroups(userId, opts) {
@@ -37,27 +47,38 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const reset = !!opts?.reset
     const q = opts?.q?.trim() || undefined
 
+    const myId = state.reqId + 1
+    set({ reqId: myId, groupsLoading: true, groupsError: null })
+
+    // offset для запроса
     const offset = reset ? 0 : state.groupsOffset
     const limit = PAGE_SIZE
 
-    set({ groupsLoading: true, groupsError: null })
-
     try {
       const { items, total } = await getUserGroups(userId, { limit, offset, q })
-      const merged = reset
-        ? items
-        : [...state.groups, ...items.filter(i => !state.groups.some(g => g.id === i.id))]
+
+      // если уже стартовал следующий запрос — игнорим этот ответ
+      if (get().reqId !== myId) return
+
+      const prev = reset ? [] : state.groups
+      // защита от дублей
+      const newItems = items.filter(i => !prev.some(g => g.id === i.id))
+      const merged = reset ? newItems : [...prev, ...newItems]
 
       const nextOffset = merged.length
-      const hasMore = typeof total === "number" ? nextOffset < total : items.length === limit
+      const t = Number.isFinite(total) ? total : merged.length
+      const nextHasMore = Number.isFinite(total)
+        ? nextOffset < t
+        : items.length === limit
 
       set({
         groups: merged,
-        groupsTotal: typeof total === "number" ? total : merged.length,
+        groupsTotal: t,
         groupsOffset: nextOffset,
-        groupsHasMore: hasMore,
+        groupsHasMore: nextHasMore,
       })
     } catch (e: any) {
+      if (get().reqId !== myId) return
       set({
         groupsLoading: false,
         groupsError: e?.message || "Ошибка загрузки групп",
@@ -65,7 +86,9 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
       })
       return
     } finally {
-      set({ groupsLoading: false })
+      if (get().reqId === myId) {
+        set({ groupsLoading: false })
+      }
     }
   },
 

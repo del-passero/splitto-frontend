@@ -1,12 +1,10 @@
 // src/api/groupsApi.ts
-// API-групп: пагинация + поиск
-// Берём X-Total-Count из заголовка и возвращаем { items, total }.
+// Пагинация + серверный поиск. total берём из X-Total-Count.
 
 import type { Group, GroupPreview } from "../types/group"
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 
-// Telegram WebApp initData (нужен бэку для авторизации запроса)
 function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
@@ -27,11 +25,6 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return res.status === 204 ? undefined : await res.json()
 }
 
-/**
- * Список групп пользователя (превью) + пагинация + ПОИСК.
- * Бэкенд кладёт total в заголовок X-Total-Count, тело — массив GroupPreview.
- * Возвращаем { items, total }.
- */
 export async function getUserGroups(
   userId: number,
   params?: {
@@ -48,16 +41,16 @@ export async function getUserGroups(
   const includeArchived = params?.includeArchived ? "true" : "false"
   const q = (params?.q ?? "").trim()
 
-  let url =
-    `${API_URL}/groups/user/${userId}` +
-    `?limit=${encodeURIComponent(String(limit))}` +
-    `&offset=${encodeURIComponent(String(offset))}` +
-    `&include_hidden=${includeHidden}` +
-    `&include_archived=${includeArchived}`
-  if (q.length > 0) url += `&q=${encodeURIComponent(q)}`
+  const sp = new URLSearchParams()
+  sp.set("limit", String(limit))
+  sp.set("offset", String(offset))
+  sp.set("include_hidden", includeHidden)
+  sp.set("include_archived", includeArchived)
+  if (q.length > 0) sp.set("q", q)
 
-  const headers: HeadersInit = { "x-telegram-initdata": getTelegramInitData() }
-  const res = await fetch(url, { headers })
+  const url = `${API_URL}/groups/user/${userId}?` + sp.toString()
+
+  const res = await fetch(url, { headers: { "x-telegram-initdata": getTelegramInitData() } })
   if (!res.ok) {
     let msg = ""
     try { msg = await res.text() } catch {}
@@ -70,26 +63,24 @@ export async function getUserGroups(
   return { items, total }
 }
 
-/** Детали группы */
 export async function getGroupDetails(groupId: number, offset: number = 0, limit?: number): Promise<Group> {
-  let url = `${API_URL}/groups/${groupId}/detail/?offset=${encodeURIComponent(String(offset))}`
-  if (typeof limit === "number") url += `&limit=${encodeURIComponent(String(limit))}`
+  const sp = new URLSearchParams()
+  sp.set("offset", String(offset))
+  if (typeof limit === "number") sp.set("limit", String(limit))
+  const url = `${API_URL}/groups/${groupId}/detail/?` + sp.toString()
   return await fetchJson<Group>(url)
 }
 
-/** Балансы */
 export async function getGroupBalances(groupId: number) {
   const url = `${API_URL}/groups/${groupId}/balances`
   return await fetchJson(url)
 }
 
-/** Settle-up */
 export async function getGroupSettleUp(groupId: number) {
   const url = `${API_URL}/groups/${groupId}/settle-up`
   return await fetchJson(url)
 }
 
-/** Создать группу */
 export async function createGroup(payload: { name: string; description: string; owner_id: number }): Promise<Group> {
   const url = `${API_URL}/groups/`
   return await fetchJson<Group>(url, {
@@ -99,7 +90,6 @@ export async function createGroup(payload: { name: string; description: string; 
   })
 }
 
-/** hide/unhide */
 export async function hideGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/hide`
   await fetchJson<void>(url, { method: "POST" })
@@ -109,7 +99,6 @@ export async function unhideGroup(groupId: number): Promise<void> {
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** archive/unarchive */
 export async function archiveGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/archive`
   await fetchJson<void>(url, { method: "POST" })
@@ -119,7 +108,6 @@ export async function unarchiveGroup(groupId: number): Promise<void> {
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** soft-delete/restore */
 export async function softDeleteGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}`
   await fetchJson<void>(url, { method: "DELETE" })
@@ -129,7 +117,6 @@ export async function restoreGroup(groupId: number): Promise<void> {
   await fetchJson<void>(url, { method: "POST" })
 }
 
-/** patch currency */
 export async function patchGroupCurrency(groupId: number, code: string): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/currency?code=${encodeURIComponent(code)}`
   await fetchJson<void>(url, { method: "PATCH" })
