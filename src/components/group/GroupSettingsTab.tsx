@@ -149,8 +149,9 @@ const GroupSettingsTab = ({
 
   async function handleToggleTrip(next: boolean) {
     if (!gid) return
-    // выключение — очищаем дату
+
     if (!next) {
+      // выключаем: очищаем дату + сбрасываем автоархив
       try {
         setLoadingSchedule(true)
         await patchGroupSchedule(gid, { end_date: null, auto_archive: false })
@@ -162,23 +163,12 @@ const GroupSettingsTab = ({
       }
       return
     }
-    // включение — если даты нет, сразу открываем пикер
-    if (!endDate) {
-      const el = hiddenDateRef.current
-      // @ts-ignore
-      if (el && typeof el.showPicker === "function") el.showPicker()
-      else el?.click()
-    } else {
-      // уже есть дата — можно «подтвердить» отправкой ещё раз (опционально)
-      try {
-        setLoadingSchedule(true)
-        await patchGroupSchedule(gid, { end_date: endDate })
-      } catch {
-        // ignore
-      } finally {
-        setLoadingSchedule(false)
-      }
-    }
+
+    // включаем: если даты нет — сразу просим выбрать
+    const el = hiddenDateRef.current
+    // @ts-ignore
+    if (el && typeof el.showPicker === "function") el.showPicker()
+    else el?.click()
   }
 
   async function handleDateChange(v: string) {
@@ -221,7 +211,18 @@ const GroupSettingsTab = ({
             isLast
           />
 
-          {/* Поле даты — только если включено */}
+          {/* скрытый date-input ВСЕГДА в DOM, чтобы showPicker/click работали и при выключенном тумблере */}
+          <input
+            ref={hiddenDateRef}
+            type="date"
+            value={endDate}
+            onChange={(e) => handleDateChange(e.target.value)}
+            className="sr-only opacity-0 pointer-events-none"
+            style={{ position: "fixed", left: "-9999px", width: 1, height: 1 }}
+            tabIndex={-1}
+          />
+
+          {/* Видимое поле даты — только когда включено */}
           {isTrip && (
             <div className="px-4 pt-2 pb-3">
               <button
@@ -239,15 +240,6 @@ const GroupSettingsTab = ({
               >
                 {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
               </button>
-
-              <input
-                ref={hiddenDateRef}
-                type="date"
-                value={endDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                className="absolute opacity-0 pointer-events-none w-0 h-0"
-                tabIndex={-1}
-              />
 
               <div className="text-[12px] text-[var(--tg-hint-color)] mt-[4px]">
                 {t("group_form.trip_date")}

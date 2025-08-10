@@ -86,7 +86,7 @@ export default {
   group_members_add: "Add",
   group_members_empty: "No members in this group yet",
   group_settings_close: "Close",
-  group_settings_save_and_exit: "Save & exit",
+  group_settings_save_and_exit: "Save & Close",
 
   // --- Invites ---
   create_invite_link: "Create invite link",
