@@ -108,9 +108,11 @@ const GroupSettingsTab = ({
   const [currencyCode, setCurrencyCode] = useState<string>("USD")
   const [currencyModal, setCurrencyModal] = useState(false)
 
-  const [endDate, setEndDate] = useState<string>("")       // YYYY-MM-DD или ""
-  const [tripEnabled, setTripEnabled] = useState<boolean>(false) // локальный флаг тумблера (A-вариант UX)
+  const [endDate, setEndDate] = useState<string>("")             // YYYY-MM-DD или ""
+  const [tripEnabled, setTripEnabled] = useState<boolean>(false)  // UX-вариант A
   const hiddenDateRef = useRef<HTMLInputElement | null>(null)
+  const tripBlockRef = useRef<HTMLDivElement | null>(null)        // для скролла к полю
+  const [tripDateError, setTripDateError] = useState(false)       // подсветка подписи красным
 
   const [loadingCurrency, setLoadingCurrency] = useState(false)
   const [loadingSchedule, setLoadingSchedule] = useState(false)
@@ -142,7 +144,7 @@ const GroupSettingsTab = ({
       await patchGroupCurrency(gid, code)
       setCurrencyCode(code)
     } catch {
-      // можно добавить toast
+      // ignore
     } finally {
       setLoadingCurrency(false)
       setCurrencyModal(false)
@@ -150,14 +152,14 @@ const GroupSettingsTab = ({
   }
 
   // Вариант A:
-  // - Включение тумблера только раскрывает поле даты (без автопоказа пикера), на сервер ничего не шлём.
-  // - Выключение тумблера — очищаем дату на бэке.
+  // - Включение тумблера лишь раскрывает поле даты. На сервер не шлём.
+  // - Выключение — очищаем дату на бэке.
   async function handleToggleTrip(next: boolean) {
     if (!gid) return
+    setTripDateError(false) // сбрасываем ошибку при любом переключении
     setTripEnabled(next)
 
     if (!next) {
-      // выключаем: очищаем дату + сбрасываем автоархив
       try {
         setLoadingSchedule(true)
         await patchGroupSchedule(gid, { end_date: null, auto_archive: false })
@@ -168,16 +170,15 @@ const GroupSettingsTab = ({
         setLoadingSchedule(false)
       }
     }
-    // если next === true — просто показали поле даты; патчим только при выборе даты
   }
 
   async function handleDateChange(v: string) {
     if (!gid) return
     setEndDate(v)
+    setTripDateError(false) // дата выбрана — ошибки больше нет
     try {
       setLoadingSchedule(true)
       await patchGroupSchedule(gid, { end_date: v })
-      // tripEnabled уже true — ничего не меняем дополнительно
     } catch {
       // ignore
     } finally {
@@ -185,8 +186,19 @@ const GroupSettingsTab = ({
     }
   }
 
-  const leaveHint = t("group_settings_cannot_leave_due_debt")
-  const needDateHint = tripEnabled && !endDate
+  // Save & exit с мягкой проверкой даты: красим подпись и скроллим к полю
+  function handleSaveClick() {
+    if (tripEnabled && !endDate) {
+      setTripDateError(true)
+      // скроллим к блоку с полем даты
+      const el = tripBlockRef.current
+      if (el && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      return
+    }
+    onSaveAndExit()
+  }
 
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
@@ -213,16 +225,15 @@ const GroupSettingsTab = ({
             isLast
           />
 
-          {/* Видимое поле даты — показываем только когда тумблер включён */}
+          {/* Видимое поле даты — только когда тумблер включён */}
           {tripEnabled && (
-            <div className="px-4 pt-2 pb-3">
+            <div ref={tripBlockRef} className="px-4 pt-2 pb-3">
               <button
                 type="button"
                 disabled={loadingSchedule}
                 className={`w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
                            border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
-                           font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition disabled:opacity-60
-                           ${needDateHint ? "ring-2 ring-[var(--tg-accent-color,#40A7E3)]/30" : ""}`}
+                           font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition disabled:opacity-60`}
                 onClick={() => {
                   const el = hiddenDateRef.current
                   // @ts-ignore
@@ -233,7 +244,7 @@ const GroupSettingsTab = ({
                 {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
               </button>
 
-              {/* скрытый input, появляется только вместе с полем (здесь автопоказ не нужен) */}
+              {/* скрытый input (открываем нативный пикер) */}
               <input
                 ref={hiddenDateRef}
                 type="date"
@@ -243,8 +254,9 @@ const GroupSettingsTab = ({
                 tabIndex={-1}
               />
 
-              <div className={`text-[12px] mt-[4px] ${needDateHint ? "text-[var(--tg-accent-color,#40A7E3)]" : "text-[var(--tg-hint-color)]"}`}>
-                {needDateHint ? (t("errors.group_trip_date_required") || "Укажите дату поездки") : t("group_form.trip_date")}
+              {/* подпись ВСЕГДА trip_date; красим в красный только при попытке Save без даты */}
+              <div className={`text-[12px] mt-[4px] ${tripDateError ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
+                {t("group_form.trip_date")}
               </div>
             </div>
           )}
@@ -254,7 +266,7 @@ const GroupSettingsTab = ({
       {/* Сохранить и выйти — primary */}
       <button
         type="button"
-        onClick={onSaveAndExit}
+        onClick={handleSaveClick}
         aria-label={t("group_settings_save_and_exit")}
         className="w-full h-12 rounded-xl font-semibold
                    text-white
@@ -323,3 +335,4 @@ const GroupSettingsTab = ({
 }
 
 export default GroupSettingsTab
+
