@@ -165,5 +165,10 @@ export default {
     description_placeholder: "Descripción del grupo",
     is_trip: "¿Grupo para viaje?",
     trip_date: "Fecha del viaje",
+    name_hint_initial: "Introduce el nombre del grupo (hasta {{max}} caracteres)",
+    name_hint_remaining: "Quedan {{n}} caracteres",
+    desc_hint_initial: "Introduce la descripción del grupo (hasta {{max}} caracteres)",
+    desc_hint_remaining: "Quedan {{n}} caracteres",
+    trip_date_placeholder: "DD.MM.AAAA",
   },
 }

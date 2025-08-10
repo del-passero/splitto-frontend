@@ -162,6 +162,11 @@ export default {
     name_placeholder: "Название группы",
     description_placeholder: "Описание группы",
     is_trip: "Группа для путешествия?",
-    trip_date: "Дата поездки",
+    trip_date: "Дата завершения поездки",
+    name_hint_initial: "Введите название группы (до {{max}} символов)",
+    name_hint_remaining: "Осталось {{n}} символов",
+    desc_hint_initial: "Введите описание группы (до {{max}} символов)",
+    desc_hint_remaining: "Осталось {{n}} символов",
+    trip_date_placeholder: "ДД.ММ.ГГГГ",
   },
 }

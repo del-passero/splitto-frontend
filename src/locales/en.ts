@@ -164,6 +164,11 @@ export default {
     name_placeholder: "Group name",
     description_placeholder: "Group description",
     is_trip: "Group for a trip?",
-    trip_date: "Trip date",
+    trip_date: "End Trip date",
+    name_hint_initial: "Enter a group name (up to {{max}} chars)",
+    name_hint_remaining: "Remaining: {{n}}",
+    desc_hint_initial: "Enter a group description (up to {{max}} chars)",
+    desc_hint_remaining: "Remaining: {{n}}",
+    trip_date_placeholder: "DD.MM.YYYY",
   },
 }
