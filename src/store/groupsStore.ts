@@ -36,15 +36,30 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
       set({ groups: [], groupsTotal: 0, groupsOffset: 0, groupsHasMore: true })
     }
     set({ groupsLoading: true, groupsError: null })
+
     try {
       const { items, total } = await getUserGroups(userId, { limit, offset })
-      set((state) => {
-        const nextItems = offset === 0 ? items : [...state.groups, ...items]
+
+      // Fallback, если из-за CORS не прочитался X-Total-Count
+      // (на корректном бэке total уже верный)
+      const totalEffective =
+        typeof total === "number" && !Number.isNaN(total)
+          ? total
+          : (offset + items.length + (items.length === limit ? 1 : 0))
+
+      set((prev) => {
+        const nextItems = offset === 0 ? items : [...prev.groups, ...items]
         const nextOffset = offset + items.length
-        const hasMore = nextOffset < total
+
+        // Если последняя порция короче лимита — дальше нечего грузить.
+        // Если total пришёл — сверяемся ещё и с ним.
+        const reachedEndBySize = items.length < limit
+        const reachedEndByTotal = nextOffset >= totalEffective
+        const hasMore = !(reachedEndBySize || reachedEndByTotal)
+
         return {
           groups: nextItems,
-          groupsTotal: total,
+          groupsTotal: totalEffective,
           groupsOffset: nextOffset,
           groupsHasMore: hasMore,
           groupsLoading: false,
