@@ -23,7 +23,7 @@ type Props = {
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const PAGE_SIZE = 40
-const SEARCH_MODE_LIMIT = 2000 // при активном поиске тянем большой список и фильтруем на клиенте
+const SEARCH_MODE_LIMIT = 2000 // при активном поиске тянем большую страницу и фильтруем локально
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -58,14 +58,15 @@ async function apiListCurrencies(params: {
   return res.json()
 }
 
-// нормализация для поиска (в т.ч. кириллица, диакритика)
+/** Безопасная нормализация строки (латиница/кириллица, удаляем диакритику). */
 function norm(s: string) {
   return (s || "")
     .toLocaleLowerCase()
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[\u0300-\u036f]/g, "") // только комбинируемые диакритики — без \p{…}
 }
 
+/** Клиентский фильтр: матч по ЛЮБОМУ слову (OR) в name ИЛИ code, вне зависимости от позиции. */
 function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
   const q = norm(query).trim()
   if (!q) return items
@@ -73,7 +74,6 @@ function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
   if (!tokens.length) return items
   return items.filter((it) => {
     const hay = norm(`${it.name ?? ""} ${it.code ?? ""}`)
-    // матч по ЛЮБОМУ слову (OR), без привязки к началу
     return tokens.some((tok) => hay.includes(tok))
   })
 }
@@ -108,47 +108,59 @@ const Row = ({
   item,
   selected,
   onClick,
+  showDivider,
 }: {
   item: CurrencyItem
   selected: boolean
   onClick: () => void
+  showDivider: boolean
 }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="
-      w-full flex items-center justify-between
-      px-4 py-3
-      hover:bg-black/5 dark:hover:bg-white/5
-      transition
-    "
-    aria-selected={selected}
-  >
-    <div className="flex items-center min-w-0">
-      <div
-        className="flex items-center justify-center mr-3 rounded-full"
-        style={{ width: 34, height: 34, fontSize: 20, background: "transparent" }}
-      >
-        <span aria-hidden>{item.flag_emoji || "🏳️"}</span>
-      </div>
-      <div className="flex flex-col text-left min-w-0">
-        <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
-          {item.name}
-        </div>
-        <div className="text-[12px] text-[var(--tg-hint-color)]">{item.code}</div>
-      </div>
-    </div>
-
-    <div
-      className={`
-        relative flex items-center justify-center
-        w-6 h-6 rounded-full border
-        ${selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}
-      `}
+  <div className="relative">
+    <button
+      type="button"
+      onClick={onClick}
+      className="
+        w-full flex items-center justify-between
+        px-4 py-3
+        hover:bg-black/5 dark:hover:bg-white/5
+        transition
+      "
+      aria-selected={selected}
     >
-      {selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
-    </div>
-  </button>
+      <div className="flex items-center min-w-0">
+        {/* флаг */}
+        <div
+          className="flex items-center justify-center mr-3 rounded-full"
+          style={{ width: 34, height: 34, fontSize: 20, background: "transparent" }}
+        >
+          <span aria-hidden>{item.flag_emoji || "🏳️"}</span>
+        </div>
+        {/* название + код */}
+        <div className="flex flex-col text-left min-w-0">
+          <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
+            {item.name}
+          </div>
+          <div className="text-[12px] text-[var(--tg-hint-color)]">{item.code}</div>
+        </div>
+      </div>
+
+      {/* радио */}
+      <div
+        className={`
+          relative flex items-center justify-center
+          w-6 h-6 rounded-full border
+          ${selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}
+        `}
+      >
+        {selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
+      </div>
+    </button>
+
+    {/* разделитель как в ContactsList: НЕ под флагом */}
+    {showDivider && (
+      <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+    )}
+  </div>
 )
 
 const PopularChips = ({
@@ -218,12 +230,12 @@ export default function CurrencyPickerModal({
   const qRef = useRef(q)
   const reqIdRef = useRef(0)
 
-  const listRef = useRef<HTMLDivElement | null>(null)        // собственный скролл
+  const listRef = useRef<HTMLDivElement | null>(null) // собственный скролл
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
 
-  // запрет прокрутки body, чтобы модалка «стояла» на месте
+  // запрет прокрутки body — модалка «стоит» на месте и растягивается в высоту
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -242,7 +254,7 @@ export default function CurrencyPickerModal({
       if (qRef.current === q) return
       qRef.current = q
       void reload(true)
-    }, 300)
+    }, 280)
     return () => clearTimeout(h)
   }, [q, open])
 
@@ -289,7 +301,7 @@ export default function CurrencyPickerModal({
       const reqOffset = reset ? 0 : offset
       const reqLimit = searching ? SEARCH_MODE_LIMIT : PAGE_SIZE
 
-      // при поиске: берем большую страницу БЕЗ серверного q и фильтруем локально (чтобы русские вторые слова ловились)
+      // при поиске: большая страница БЕЗ серверного q, фильтруем локально (надёжно для русского)
       const { items: page, total } = await apiListCurrencies({
         locale,
         offset: searching ? 0 : reqOffset,
@@ -310,7 +322,6 @@ export default function CurrencyPickerModal({
       setError(null)
 
       if (reset && listRef.current) {
-        // после отрисовки результатов — ещё раз вверх
         requestAnimationFrame(() => {
           if (listRef.current) listRef.current.scrollTop = 0
         })
@@ -326,7 +337,7 @@ export default function CurrencyPickerModal({
   const hasMore = offset < total
   const observerEnabled = open && !isSearchMode(qRef.current)
 
-  // инфинити-скролл: root = собственный список (не окно)
+  // infinity-scroll: root = собственный список
   useEffect(() => {
     const el = sentinelRef.current
     const root = listRef.current
@@ -359,7 +370,7 @@ export default function CurrencyPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center" // ВСЕГДА фиксированно по центру
+      className="fixed inset-0 z-[1000] flex items-end justify-center" // нижний шит, растянутый почти на весь экран
       role="dialog"
       aria-modal="true"
     >
@@ -370,8 +381,8 @@ export default function CurrencyPickerModal({
         className="
           relative w-full sm:max-w-md
           bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]
-          rounded-2xl shadow-tg-card overflow-hidden animate-modal-pop
-          max-h-[80vh] flex flex-col
+          rounded-t-2xl shadow-tg-card overflow-hidden animate-modal-pop
+          h-[88vh] max-h-[88vh] flex flex-col
         "
       >
         {/* header */}
@@ -396,25 +407,24 @@ export default function CurrencyPickerModal({
               onSelect(c)
               if (closeOnSelect) onClose()
             }}
-            label={t("currency_popular") || "Популярные"}
+            label={t("currency_popular", { defaultValue: "Популярные" })}
           />
         )}
 
-        {/* список с разделителями между валютами */}
+        {/* список — скроллим только его; разделители как в ContactsList */}
         <div className="flex-1 overflow-y-auto" ref={listRef}>
-          <div className="divide-y divide-[var(--tg-secondary-bg-color,#e7e7e7)]">
-            {items.map((it) => (
-              <Row
-                key={it.code}
-                item={it}
-                selected={it.code === selectedCode}
-                onClick={() => {
-                  onSelect(it)
-                  if (closeOnSelect) onClose()
-                }}
-              />
-            ))}
-          </div>
+          {items.map((it, idx) => (
+            <Row
+              key={it.code}
+              item={it}
+              selected={it.code === selectedCode}
+              onClick={() => {
+                onSelect(it)
+                if (closeOnSelect) onClose()
+              }}
+              showDivider={idx !== items.length - 1}
+            />
+          ))}
 
           {/* пусто */}
           {!loading && items.length === 0 && (
