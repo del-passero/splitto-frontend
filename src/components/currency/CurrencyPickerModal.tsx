@@ -23,7 +23,7 @@ type Props = {
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const PAGE_SIZE = 40
-const SEARCH_MODE_LIMIT = 2000 // при поиске тянем “всё” и фильтруем на клиенте
+const SEARCH_MODE_LIMIT = 2000 // при активном поиске тянем большой список и фильтруем на клиенте
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -56,6 +56,26 @@ async function apiListCurrencies(params: {
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
+}
+
+// нормализация для поиска (в т.ч. кириллица, диакритика)
+function norm(s: string) {
+  return (s || "")
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+}
+
+function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
+  const q = norm(query).trim()
+  if (!q) return items
+  const tokens = q.split(/\s+/).filter(Boolean)
+  if (!tokens.length) return items
+  return items.filter((it) => {
+    const hay = norm(`${it.name ?? ""} ${it.code ?? ""}`)
+    // матч по ЛЮБОМУ слову (OR), без привязки к началу
+    return tokens.some((tok) => hay.includes(tok))
+  })
 }
 
 const SearchField = ({
@@ -177,19 +197,6 @@ const PopularChips = ({
   )
 }
 
-// Клиентская подстраховка: матч по любому слову (русский кейс «второе слово»)
-function clientFilter(items: CurrencyItem[], query: string): CurrencyItem[] {
-  const q = (query || "").trim()
-  if (!q) return items
-  // режем на слова и ищем ВХОЖДЕНИЕ любого слова (OR), без порядка
-  const tokens = q.split(/\s+/).filter(Boolean).map((s) => s.toLocaleLowerCase())
-  if (!tokens.length) return items
-  return items.filter((it) => {
-    const hay = `${it.name ?? ""} ${it.code ?? ""}`.toLocaleLowerCase()
-    return tokens.some((tok) => hay.includes(tok))
-  })
-}
-
 export default function CurrencyPickerModal({
   open,
   onClose,
@@ -211,10 +218,20 @@ export default function CurrencyPickerModal({
   const qRef = useRef(q)
   const reqIdRef = useRef(0)
 
-  const listRef = useRef<HTMLDivElement | null>(null)        // прокручиваемая область
+  const listRef = useRef<HTMLDivElement | null>(null)        // собственный скролл
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
+
+  // запрет прокрутки body, чтобы модалка «стояла» на месте
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
 
   const isSearchMode = (s: string) => s.trim().length > 0
 
@@ -256,7 +273,7 @@ export default function CurrencyPickerModal({
     setLoading(true)
 
     if (reset) {
-      // сброс и фиксируем модалку: обнуляем скролл списка
+      // сброс и фикс позы модалки: скроллим список в самый верх
       setItems([])
       setOffset(0)
       setTotal(0)
@@ -272,31 +289,31 @@ export default function CurrencyPickerModal({
       const reqOffset = reset ? 0 : offset
       const reqLimit = searching ? SEARCH_MODE_LIMIT : PAGE_SIZE
 
+      // при поиске: берем большую страницу БЕЗ серверного q и фильтруем локально (чтобы русские вторые слова ловились)
       const { items: page, total } = await apiListCurrencies({
         locale,
         offset: searching ? 0 : reqOffset,
         limit: reqLimit,
-        q: searching ? undefined : (qRef.current || undefined), // серверный q — только в обычном режиме
+        q: searching ? undefined : (qRef.current || undefined),
       })
 
       if (reqIdRef.current !== myId) return
 
-      // В ПОИСКЕ всегда фильтруем на клиенте по любому слову (русский кейс)
       const pageFiltered = searching ? clientFilter(page, qRef.current || "") : page
 
       const newOffset = searching ? page.length : reqOffset + page.length
       const newTotal = searching ? pageFiltered.length : (total ?? newOffset)
 
-      setItems(reset ? pageFiltered : [...items, ...pageFiltered])
+      setItems((prev) => (reset ? pageFiltered : [...prev, ...pageFiltered]))
       setOffset(newOffset)
       setTotal(newTotal)
       setError(null)
 
-      // гарантируем, что после поиска список остаётся вверху
       if (reset && listRef.current) {
-        setTimeout(() => {
+        // после отрисовки результатов — ещё раз вверх
+        requestAnimationFrame(() => {
           if (listRef.current) listRef.current.scrollTop = 0
-        }, 0)
+        })
       }
     } catch (e: any) {
       if (reqIdRef.current !== myId) return
@@ -307,9 +324,9 @@ export default function CurrencyPickerModal({
   }
 
   const hasMore = offset < total
-  const observerEnabled = open && !isSearchMode(qRef.current) // при поиске — без авто-дозагрузки
+  const observerEnabled = open && !isSearchMode(qRef.current)
 
-  // инфинити-скролл: корень — сам список (фикс модалки + не «утягивает» экран)
+  // инфинити-скролл: root = собственный список (не окно)
   useEffect(() => {
     const el = sentinelRef.current
     const root = listRef.current
@@ -326,16 +343,11 @@ export default function CurrencyPickerModal({
         if (lockRef.current || loading) return
         if (!hasMore) return
         lockRef.current = true
-        const p = reload(false)
-        Promise.resolve(p).finally(() => {
+        Promise.resolve(reload(false)).finally(() => {
           lockRef.current = false
         })
       },
-      {
-        root,                    // наблюдаем внутри списка, не относительно окна
-        rootMargin: "200px 0px 0px 0px",
-        threshold: 0,
-      }
+      { root, rootMargin: "200px 0px 0px 0px", threshold: 0 }
     )
     io.observe(el)
     ioRef.current = io
@@ -346,13 +358,24 @@ export default function CurrencyPickerModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center" // ВСЕГДА фиксированно по центру
+      role="dialog"
+      aria-modal="true"
+    >
       {/* фон */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
       {/* контейнер */}
-      <div className="relative w-full sm:max-w-md bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] rounded-t-2xl sm:rounded-2xl shadow-tg-card overflow-hidden animate-modal-pop">
+      <div
+        className="
+          relative w-full sm:max-w-md
+          bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]
+          rounded-2xl shadow-tg-card overflow-hidden animate-modal-pop
+          max-h-[80vh] flex flex-col
+        "
+      >
         {/* header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 dark:border-black/20">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
           <div className="text-[15px] font-semibold">
             {t("currency.select_title") || "Выбор валюты"}
           </div>
@@ -377,19 +400,21 @@ export default function CurrencyPickerModal({
           />
         )}
 
-        {/* список */}
-        <div className="max-h-[70vh] overflow-y-auto" ref={listRef}>
-          {items.map((it) => (
-            <Row
-              key={it.code}
-              item={it}
-              selected={it.code === selectedCode}
-              onClick={() => {
-                onSelect(it)
-                if (closeOnSelect) onClose()
-              }}
-            />
-          ))}
+        {/* список с разделителями между валютами */}
+        <div className="flex-1 overflow-y-auto" ref={listRef}>
+          <div className="divide-y divide-[var(--tg-secondary-bg-color,#e7e7e7)]">
+            {items.map((it) => (
+              <Row
+                key={it.code}
+                item={it}
+                selected={it.code === selectedCode}
+                onClick={() => {
+                  onSelect(it)
+                  if (closeOnSelect) onClose()
+                }}
+              />
+            ))}
+          </div>
 
           {/* пусто */}
           {!loading && items.length === 0 && (
