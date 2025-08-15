@@ -1,73 +1,86 @@
 // src/api/transactionsApi.ts
-// Транзакции: список/деталь/создание/удаление (soft-delete).
-// Учитывает новые правила бэкенда: валюта транзакции = валюта группы (можно НЕ слать),
-// удаление — мягкое, фильтры по группе требуют членство, по user_id — только текущего юзера.
+// API транзакций: список/создание/удаление.
+// Везде подставляем x-telegram-initdata. Формат ответа для списка: читаем массив и заголовок X-Total-Count.
 
-import type { Transaction } from "../types/transaction"
-import { API_URL, tgFetchJson } from "./http"
+import type {
+  TransactionOut,
+  TransactionCreateRequest,
+  TxType,
+} from "../types/transaction"
 
-/** Параметры фильтра для списка транзакций */
-export type ListTransactionsParams = {
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+
+function getTelegramInitData(): string {
+  // @ts-ignore
+  return window?.Telegram?.WebApp?.initData || ""
+}
+
+function buildQuery(params: Record<string, unknown>) {
+  const sp = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return
+    if (Array.isArray(v)) v.forEach((x) => sp.append(k, String(x)))
+    else sp.append(k, String(v))
+  })
+  return sp.toString()
+}
+
+/** Получить транзакции с пагинацией и фильтрами. Возвращает { total, items } */
+export async function getTransactions(params: {
   groupId?: number
   userId?: number
-  type?: "expense" | "transfer"
+  type?: TxType
+  offset?: number
+  limit?: number
+  signal?: AbortSignal
+}): Promise<{ total: number; items: TransactionOut[] }> {
+  const qs = buildQuery({
+    group_id: params.groupId,
+    user_id: params.userId,
+    type: params.type,
+    offset: params.offset ?? 0,
+    limit: params.limit ?? 20,
+  })
+
+  const res = await fetch(`${API_URL}/transactions?${qs}`, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+    signal: params.signal,
+  })
+
+  if (!res.ok) throw new Error(await res.text())
+
+  const total = Number(res.headers.get("X-Total-Count") || "0")
+  const items = (await res.json()) as TransactionOut[]
+  return { total, items }
 }
 
-/** Вход для одной доли при создании */
-export interface TransactionShareInput {
-  user_id: number
-  amount: number
-  shares?: number | null
-}
-
-/** Пэйлоад создания транзакции (совместим с бэком) */
-export interface CreateTransactionPayload {
-  group_id: number
-  type: "expense" | "transfer"
-  amount: number
-  date?: string            // ISO-строка; если не указать — на бэке свои дефолты
-  description?: string
-  category_id?: number | null
-  paid_by?: number | null         // для expense
-  transfer_from?: number | null   // для transfer
-  currency?: string | null        // МОЖНО НЕ СЛАТЬ: бэк подставит валюту группы
-  shares?: TransactionShareInput[]
-}
-
-/** Список транзакций с фильтрами (soft-deleted не возвращаются) */
-export async function listTransactions(params?: ListTransactionsParams): Promise<Transaction[]> {
-  const q: string[] = []
-  if (params?.groupId != null) q.push(`group_id=${params.groupId}`)
-  if (params?.userId != null) q.push(`user_id=${params.userId}`)
-  if (params?.type) q.push(`type=${encodeURIComponent(params.type)}`)
-  const qs = q.length ? `?${q.join("&")}` : ""
-  const url = `${API_URL}/transactions${qs}`
-  return tgFetchJson<Transaction[]>(url)
-}
-
-/** Одна транзакция (вернёт 404 если удалена/не найдена) */
-export async function getTransaction(id: number): Promise<Transaction> {
-  const url = `${API_URL}/transactions/${id}`
-  return tgFetchJson<Transaction>(url)
-}
-
-/**
- * Создать транзакцию.
- * Важно:
- *  • currency можно НЕ указывать — бэк подставит валюту группы,
- *  • 403/409 ловим как Error с текстом (например, "Category is not allowed", "Transaction currency must match group currency").
- */
-export async function createTransaction(payload: CreateTransactionPayload): Promise<Transaction> {
-  const url = `${API_URL}/transactions/`
-  return tgFetchJson<Transaction>(url, {
+/** Создать транзакцию */
+export async function createTransaction(payload: TransactionCreateRequest): Promise<TransactionOut> {
+  const res = await fetch(`${API_URL}/transactions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "x-telegram-initdata": getTelegramInitData(),
+    },
     body: JSON.stringify(payload),
   })
+  if (!res.ok) throw new Error(await res.text())
+  return await res.json()
 }
 
-/** Удалить (soft-delete) транзакцию */
-export async function deleteTransaction(id: number): Promise<void> {
-  const url = `${API_URL}/transactions/${id}`
-  await tgFetchJson<void>(url, { method: "DELETE" })
+/** Удалить транзакцию (soft delete на бэке) */
+export async function removeTransaction(transactionId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/transactions/${transactionId}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: {
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+  })
+  if (!res.ok) throw new Error(await res.text())
 }

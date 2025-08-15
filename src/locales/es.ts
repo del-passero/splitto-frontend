@@ -1,3 +1,4 @@
+// src/i18n/es.ts
 export default {
   // --- Navegación y secciones ---
   main: "Inicio",
@@ -182,4 +183,32 @@ export default {
     adding: "Añadiendo...",
     error_some_failed: "Añadidos: {{added}}, fallidos: {{failed}}",
   },
-}
+
+  // --- Nuevo: modal de transacciones ---
+  tx_modal: {
+    title: "Nueva transacción",
+    choose_group: "Elige un grupo",
+    group_placeholder: "Seleccionar…",
+    type: "Tipo",
+    expense: "Gasto",
+    transfer: "Transferencia",
+    amount: "Importe",
+    currency: "Moneda",
+    date: "Fecha",
+    comment: "Comentario",
+    category: "Categoría",
+    paid_by: "Pagado por",
+    participants: "Participantes",
+    split: "Reparto",
+    split_equal: "Igual",
+    split_shares: "Acciones",
+    split_custom: "Manual",
+    transfer_from: "Remitente",
+    transfer_to: "Destinatarios",
+    cancel: "Cancelar",
+    create: "Crear",
+    next: "Siguiente",
+    back: "Atrás",
+    choose_group_first: "Primero elige un grupo",
+  },
+};

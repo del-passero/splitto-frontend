@@ -1,39 +1,63 @@
 // src/types/transaction.ts
+// Типы для транзакций и долей
 
-import type { Group } from "./group"
-import type { GroupMember } from "./group_member"
-import type { ExpenseCategory } from "./expense_category"
+import type { ExpenseCategoryOut } from "./expense_category"
 
-export type TransactionType = "expense" | "transfer"
+export type TxType = "expense" | "transfer"
+export type SplitType = "equal" | "shares" | "custom"
 
-export interface TransactionShare {
+export interface TransactionShareOut {
   id: number
-  transaction_id: number
   user_id: number
-  amount: number
-  shares: number
+  amount: string // Decimal как строка
+  shares?: number | null
 }
 
-export interface Transaction {
+export interface TransactionOut {
   id: number
   group_id: number
-  amount: number
-  type: TransactionType
-  date: string
-  description?: string
-  deleted: boolean
-  currency: string
-
-  // optional fields
-  group?: Group
-  category?: ExpenseCategory
-  shares?: TransactionShare[]
-
-  // расход: кто оплатил
+  type: TxType
+  amount: string // Decimal как строка
+  date: string // ISO
+  comment?: string | null
+  category_id?: number | null
   paid_by?: number | null
-  paid_by_member?: GroupMember | null
-
-  // перевод: между какими счетами
+  split_type?: SplitType | null
   transfer_from?: number | null
-  transfer_to?: number | null
+  transfer_to?: number[] | null
+
+  created_by: number
+  created_at: string // ISO
+  updated_at: string // ISO
+  currency?: string | null
+  is_deleted?: boolean
+  receipt_url?: string | null
+  receipt_data?: Record<string, unknown> | null
+
+  category?: ExpenseCategoryOut | null
+  shares: TransactionShareOut[]
+}
+
+export interface TransactionCreateRequest {
+  group_id: number
+  type: TxType
+  amount: string // Decimal строкой
+  date: string // ISO
+  comment?: string
+  category_id?: number | null
+  paid_by?: number | null
+  split_type?: SplitType | null
+  transfer_from?: number | null
+  transfer_to?: number[] | null
+  currency?: string | null
+  shares?: Array<{
+    user_id: number
+    amount: string
+    shares?: number | null
+  }>
+}
+
+export interface ListResponse<T> {
+  items: T[]
+  total: number
 }

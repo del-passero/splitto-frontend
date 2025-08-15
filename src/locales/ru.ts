@@ -1,3 +1,4 @@
+// src/i18n/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -182,4 +183,32 @@ export default {
     adding: "Добавление...",
     error_some_failed: "Добавлено: {{added}}, не удалось: {{failed}}",
   },
-}
+
+  // --- Новое: модалка транзакций ---
+  tx_modal: {
+    title: "Новая транзакция",
+    choose_group: "Выберите группу",
+    group_placeholder: "Выберите…",
+    type: "Тип",
+    expense: "Расход",
+    transfer: "Перевод",
+    amount: "Сумма",
+    currency: "Валюта",
+    date: "Дата",
+    comment: "Комментарий",
+    category: "Категория",
+    paid_by: "Кто платил",
+    participants: "Участники",
+    split: "Деление",
+    split_equal: "Поровну",
+    split_shares: "По долям",
+    split_custom: "Вручную",
+    transfer_from: "Отправитель",
+    transfer_to: "Получатели",
+    cancel: "Отмена",
+    create: "Создать",
+    next: "Далее",
+    back: "Назад",
+    choose_group_first: "Сначала выберите группу",
+  },
+};

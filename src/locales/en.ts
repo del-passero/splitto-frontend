@@ -1,3 +1,4 @@
+// src/i18n/en.ts
 export default {
   // --- Navigation & sections ---
   main: "Home",
@@ -182,4 +183,32 @@ export default {
     adding: "Adding...",
     error_some_failed: "Added: {{added}}, failed: {{failed}}",
   },
-}
+
+  // --- New: transaction modal ---
+  tx_modal: {
+    title: "New transaction",
+    choose_group: "Choose a group",
+    group_placeholder: "Select…",
+    type: "Type",
+    expense: "Expense",
+    transfer: "Transfer",
+    amount: "Amount",
+    currency: "Currency",
+    date: "Date",
+    comment: "Comment",
+    category: "Category",
+    paid_by: "Paid by",
+    participants: "Participants",
+    split: "Split",
+    split_equal: "Equal",
+    split_shares: "Shares",
+    split_custom: "Custom",
+    transfer_from: "Sender",
+    transfer_to: "Recipients",
+    cancel: "Cancel",
+    create: "Create",
+    next: "Next",
+    back: "Back",
+    choose_group_first: "Choose a group first",
+  },
+};

@@ -1,4 +1,5 @@
 // src/pages/DashboardPage.tsx
+// Подключена CreateTransactionModal без t/locale пропсов — i18n внутри модалки.
 
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -8,13 +9,16 @@ import InviteFriendModal from "../components/InviteFriendModal"
 import CreateGroupModal from "../components/CreateGroupModal"
 import { useUserStore } from "../store/userStore"
 import { useGroupsStore } from "../store/groupsStore"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
 const DashboardPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
+  const [createTxOpen, setCreateTxOpen] = useState(false)
+
   const user = useUserStore(state => state.user)
-  const { fetchGroups } = useGroupsStore()
+  const { fetchGroups, groups } = useGroupsStore()
 
   const handleGroupCreated = () => {
     setCreateGroupOpen(false)
@@ -39,7 +43,7 @@ const DashboardPage = () => {
     {
       key: "add-transaction",
       icon: <HandCoins size={28} strokeWidth={1.5} />,
-      onClick: () => {},
+      onClick: () => setCreateTxOpen(true),
       ariaLabel: t("add_transaction"),
       label: t("add_transaction"),
     },
@@ -50,16 +54,24 @@ const DashboardPage = () => {
       <div className="w-full max-w-md mx-auto py-6">
         <h1 className="text-xl font-bold mb-4">{t("main")}</h1>
       </div>
+
       <InviteFriendModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         inviteLink={null}
       />
+
       <CreateGroupModal
         open={createGroupOpen}
         onClose={() => setCreateGroupOpen(false)}
         ownerId={user?.id ?? 0}
         onCreated={handleGroupCreated}
+      />
+
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        groups={(groups ?? []).map((g: any) => ({ id: g.id, name: g.name, icon: g.icon, color: g.color }))}
       />
     </MainLayout>
   )

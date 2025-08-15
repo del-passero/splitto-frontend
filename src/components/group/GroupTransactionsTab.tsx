@@ -6,6 +6,12 @@ import GroupFAB from "./GroupFAB"
 import EmptyTransactions from "../EmptyTransactions"
 import { useTranslation } from "react-i18next"
 
+import CreateTransactionModal from "../transactions/CreateTransactionModal"
+import TransactionCard from "../transactions/TransactionCard"
+
+// строго относительный путь на стор
+import { useGroupsStore } from "../../store/groupsStore"
+
 type Props = {
   loading: boolean
   transactions: any[]
@@ -19,6 +25,16 @@ const GroupTransactionsTab = ({
 }: Props) => {
   const { t } = useTranslation()
   const [search, setSearch] = useState("")
+  const [openCreate, setOpenCreate] = useState(false)
+
+  const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? [])
+
+  const handleAddClick = () => {
+    onAddTransaction && onAddTransaction()
+    setOpenCreate(true)
+  }
+
+  const filtered = transactions
 
   return (
     <div className="relative w-full h-full min-h-[320px]">
@@ -27,17 +43,26 @@ const GroupTransactionsTab = ({
         <div className="flex justify-center py-12 text-[var(--tg-hint-color)]">
           {t("loading")}
         </div>
-      ) : transactions.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyTransactions />
       ) : (
         <div className="flex flex-col gap-3 py-4">
-          {/* Заглушка вместо TransactionCard/TransactionsList */}
-          <div className="bg-[var(--tg-card-bg)] rounded-xl px-5 py-6 text-center text-[var(--tg-hint-color)] shadow">
-            {t("group_transactions_placeholder")}
-          </div>
+          {filtered.map((tx: any) => (
+            <TransactionCard key={tx.id} tx={tx} />
+          ))}
         </div>
       )}
-      <GroupFAB onClick={onAddTransaction} />
+      <GroupFAB onClick={handleAddClick} />
+      <CreateTransactionModal
+        open={openCreate}
+        onOpenChange={setOpenCreate}
+        groups={groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          color: g.color,
+        }))}
+      />
     </div>
   )
 }
