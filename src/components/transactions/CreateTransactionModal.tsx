@@ -1,5 +1,3 @@
-// src/components/transactions/CreateTransactionModal.tsx
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -105,10 +103,11 @@ function SelectedGroupPill({
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
+// ВАЖНО: порядок как в Header — сначала currency_code, затем default_currency_code, затем currency
 function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string {
   const code =
-    (g as any)?.default_currency_code ||
     (g as any)?.currency_code ||
+    (g as any)?.default_currency_code ||
     (g as any)?.currency ||
     "RUB";
   return (typeof code === "string" && code.trim().length ? code : "RUB").toUpperCase();
@@ -279,8 +278,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
       if (splitData.type === "custom" && customMismatch) {
         errs.split = locale.startsWith("ru") ? "Сумма по участникам должна равняться общей" : "Participants total must equal overall";
       }
-    } else {
-      // если ещё ни разу не открывали — по умолчанию equal со всеми; ошибку не ставим
     }
     return errs;
   }, [selectedGroupId, amount, amountNumber, comment, locale, type, categoryId, splitData, customMismatch, t]);
@@ -324,7 +321,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
       comment: comment.trim(),
       ...(type === "expense" ? { category_id: categoryId } : {}),
       paid_by: paidBy,
-      split: splitData || { type: "equal", participants: [] as any[] }, // на бэке можно дефолт обработать
+      split: splitData || { type: "equal", participants: [] as any[] },
       date,
     };
     // eslint-disable-next-line no-console
@@ -666,7 +663,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         closeOnSelect
       />
 
-      {/* Выбор плательщика (модалку не меняли — как и просил) */}
+      {/* Выбор плательщика */}
       <MemberPickerModal
         open={payerOpen && !!selectedGroupId}
         onClose={() => setPayerOpen(false)}
@@ -680,7 +677,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         closeOnSelect
       />
 
-      {/* Выбор деления */}
+      {/* Выбор деления + управление Paid by внутри модалки */}
       <SplitPickerModal
         open={splitOpen && !!selectedGroupId}
         onClose={() => setSplitOpen(false)}
@@ -688,6 +685,14 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         amount={Number(toFixedSafe(amount || "0", currency.decimals))}
         currency={{ code: currency.code, symbol: currency.symbol, decimals: currency.decimals }}
         initial={splitData || { type: splitType, participants: [] as any[] }}
+        paidByUserId={paidBy}
+        paidByName={paidByName}
+        paidByAvatarUrl={paidByAvatar}
+        onChangePaidBy={(u) => {
+          setPaidBy(u.id);
+          setPaidByName(u.name || "");
+          setPaidByAvatar(u.avatar_url || undefined);
+        }}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
       />
     </div>
