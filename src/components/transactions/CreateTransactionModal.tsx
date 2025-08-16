@@ -21,7 +21,7 @@ export interface MinimalGroup {
   color?: string | null;
   icon?: string | null;
 
-  // как в GroupHeader: только эти 3 поля учитываем при определении валюты
+  // РОВНО как в GroupHeader
   default_currency_code?: string | null;
   currency_code?: string | null;
   currency?: string | null;
@@ -78,7 +78,6 @@ function SelectedGroupPill({
   locked?: boolean;
 }) {
   const ch = (name || "").trim().charAt(0).toUpperCase() || "👥";
-  // принимаем любой валидный CSS-цвет, а не только hex
   const bg = (typeof color === "string" && color.trim().length) ? (color as string) : "var(--tg-link-color)";
   return (
     <button
@@ -101,7 +100,7 @@ function SelectedGroupPill({
   );
 }
 
-// --- Валюта: код -> символ/дробь
+// --- Валюта
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
@@ -115,7 +114,7 @@ function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string | null {
   return (typeof raw === "string" && raw.trim()) ? raw.trim().toUpperCase() : null;
 }
 function makeCurrency(g?: MinimalGroup | null) {
-  const code = resolveCurrencyCodeFromGroup(g); // может быть null
+  const code = resolveCurrencyCodeFromGroup(g);
   return {
     code,
     symbol: code ? (SYMBOL_BY_CODE[code] ?? code) : "",
@@ -154,12 +153,12 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
   }
 }
 
-// --- Цвета категории: надёжная заливка
+// --- Цвета категории
 function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
   let h = input.trim().replace(/^#/, "");
   if (/^[0-9a-f]{3}$/i.test(h)) {
-    h = h.split("").map(ch => ch + ch).join("");
+    h = h.split("").map(ch => ch + ch).join(""); // abc -> aabbcc
   }
   if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`;
   return null;
@@ -186,23 +185,15 @@ function chipStyle(color?: string | null) {
       border: `1px solid ${hexWithAlpha(hex6, 0.33)}`,
     } as React.CSSProperties;
   }
-  return {
-    backgroundColor: asRgbaFallback(color, 0.13),
-  } as React.CSSProperties;
+  return { backgroundColor: asRgbaFallback(color, 0.13) } as React.CSSProperties;
 }
 function fillStyle(color?: string | null) {
   if (!color) return {};
   const hex6 = to6Hex(color);
   if (hex6) {
-    return {
-      backgroundColor: hexWithAlpha(hex6, 0.10),
-      borderRadius: 12,
-    } as React.CSSProperties;
+    return { backgroundColor: hexWithAlpha(hex6, 0.10), borderRadius: 12 } as React.CSSProperties;
   }
-  return {
-    backgroundColor: asRgbaFallback(color, 0.10),
-    borderRadius: 12,
-  } as React.CSSProperties;
+  return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as React.CSSProperties;
 }
 
 export default function CreateTransactionModal({ open, onOpenChange, groups: groupsProp, defaultGroupId }: Props) {
@@ -258,7 +249,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const [payerOpen, setPayerOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
 
-  // Валидация
+  // Валидация и меню
   const [showErrors, setShowErrors] = useState(false);
   const [amountTouched, setAmountTouched] = useState(false);
   const [commentTouched, setCommentTouched] = useState(false);
@@ -364,7 +355,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const handleCommentBlur = () => setCommentTouched(true);
 
   const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
-    const raw = it.color ?? it.bg_color ?? it.hex ?? it.background_color ?? it.color_hex;
+    const raw = (it as any).color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
     const hex6 = to6Hex(raw) ?? raw ?? null;
     setCategoryId(it.id);
     setCategoryName(it.name);
@@ -436,7 +427,10 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  // подписи
+  // Открыватели модалок с явным закрытием остальных — чтобы "To" точно открывался
+  const openPayerPicker = () => { setGroupModal(false); setRecipientOpen(false); setSplitOpen(false); setPayerOpen(true); };
+  const openRecipientPicker = () => { setGroupModal(false); setPayerOpen(false); setSplitOpen(false); setRecipientOpen(true); };
+
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
   const fromLabel = locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From";
@@ -446,7 +440,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
         <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
-          {/* Header (выровнен с крестиком) */}
+          {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
             <div className="text-[17px] font-bold text-[var(--tg-text-color)]">{t("tx_modal.title")}</div>
             <button
@@ -491,10 +485,10 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
               </CardSection>
             </div>
 
-            {/* Если группа не выбрана — остальное прячем */}
+            {/* Остальной UI */}
             {mustPickGroupFirst ? null : (
               <>
-                {/* Тип — центрируем, с иконками */}
+                {/* Тип */}
                 <div className="-mx-3">
                   <CardSection className="py-0.5">
                     <div className="px-3 pb-0.5 flex justify-center">
@@ -546,17 +540,17 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                   </CardSection>
                 </div>
 
-                {/* expense-специфика */}
+                {/* EXPENSE */}
                 {type === "expense" ? (
                   <>
-                    {/* Категория + Комментарий (50/50) с заливкой цвета категории */}
+                    {/* Категория + Комментарий */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div
                           className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
                           style={fillStyle(categoryColor)}
                         >
-                          {/* слева: категория */}
+                          {/* Категория */}
                           <button
                             type="button"
                             onClick={() => setCategoryModal(true)}
@@ -573,7 +567,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             </span>
                           </button>
 
-                          {/* справа: комментарий */}
+                          {/* Комментарий */}
                           <div className="min-w-0 flex items-center gap-2">
                             <FileText size={16} className="opacity-80 shrink-0" />
                             <input
@@ -597,32 +591,45 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                       </CardSection>
                     </div>
 
-                    {/* Paid by / Split — 50/50 */}
+                    {/* Paid by / Split — 50/50 + очистка Paid by */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          {/* Paid by */}
                           <button
                             type="button"
-                            onClick={() => setPayerOpen(true)}
-                            className="min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            onClick={openPayerPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {paidBy ? (
-                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                                {paidByAvatar ? (
-                                  <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                                ) : (
-                                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                                )}
-                                <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
-                              </span>
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {paidByAvatar ? (
+                                    <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
+                                </span>
+                                {/* Кнопка очистки */}
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
                             ) : (
                               <span className="opacity-70 truncate">{t("tx_modal.paid_by")}</span>
                             )}
                           </button>
 
+                          {/* Split */}
                           <button
                             type="button"
-                            onClick={() => setSplitOpen(true)}
+                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
                             className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
                           >
                             <span className="truncate">{t("tx_modal.split")}</span>
@@ -696,53 +703,75 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                   </>
                 ) : null}
 
-                {/* transfer-специфика */}
+                {/* TRANSFER */}
                 {type === "transfer" ? (
                   <>
-                    {/* From / To — 50/50 как у expense-блоков */}
+                    {/* From / To — 50/50; у обоих есть «очистить» */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          {/* From (sender) */}
                           <button
                             type="button"
-                            onClick={() => setPayerOpen(true)}
-                            className="min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            onClick={openPayerPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {paidBy ? (
-                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                                {paidByAvatar ? (
-                                  <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                                ) : (
-                                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                                )}
-                                <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
-                              </span>
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {paidByAvatar ? (
+                                    <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
+                                </span>
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
                             ) : (
                               <span className="opacity-70 truncate">{fromLabel}</span>
                             )}
                           </button>
 
+                          {/* To (recipient) */}
                           <button
                             type="button"
-                            onClick={() => setRecipientOpen(true)}
-                            className="min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            onClick={openRecipientPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {toUser ? (
-                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                                {toUserAvatar ? (
-                                  <img src={toUserAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                                ) : (
-                                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                                )}
-                                <strong className="truncate">{firstName(toUserName) || t("not_specified")}</strong>
-                              </span>
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {toUserAvatar ? (
+                                    <img src={toUserAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstName(toUserName) || t("not_specified")}</strong>
+                                </span>
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setToUser(undefined); setToUserName(""); setToUserAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
                             ) : (
                               <span className="opacity-70 truncate">{toLabel}</span>
                             )}
                           </button>
                         </div>
 
-                        {/* Комментарий — отдельной строкой */}
+                        {/* Комментарий */}
                         <div className="px-3 pt-1 pb-1">
                           <div className="min-w-0 flex items-center gap-2">
                             <FileText size={16} className="opacity-80 shrink-0" />
@@ -887,7 +916,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         closeOnSelect
       />
 
-      {/* Выбор плательщика (и для expense, и как From в transfer) */}
+      {/* Выбор плательщика (Paid by / From) */}
       <MemberPickerModal
         open={payerOpen && !!selectedGroupId}
         onClose={() => setPayerOpen(false)}
@@ -896,14 +925,13 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onSelect={(u) => {
           setPaidBy(u.id);
           setPaidByName(u.name || "");
-          // поддержка и avatar_url, и photo_url (на будущее)
           // @ts-ignore
           setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />
 
-      {/* Выбор получателя (To) для transfer */}
+      {/* Выбор получателя (To) */}
       <MemberPickerModal
         open={recipientOpen && !!selectedGroupId}
         onClose={() => setRecipientOpen(false)}
@@ -918,7 +946,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         closeOnSelect
       />
 
-      {/* Выбор деления (только для expense) */}
+      {/* Деление (только для expense) */}
       <SplitPickerModal
         open={splitOpen && !!selectedGroupId}
         onClose={() => setSplitOpen(false)}
