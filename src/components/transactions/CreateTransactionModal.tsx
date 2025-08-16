@@ -1,15 +1,13 @@
-// src/components/transactions/CreateTransactionModal.tsx
 // Визуальная модалка создания транзакции (пока без сохранения).
-// Фиксы: последовательность полей, CardSection вокруг каждого блока,
-// тип деления — выпадающий список, компактные отступы (~в 2.5 раза меньше),
-// выбор группы — в стиле выбора валюты через отдельную модалку.
-// Автоподгрузка групп при открытии, если стора пуст.
+// Добавлено: модалка выбора категории (в стиле CurrencyPickerModal),
+// сброс категории при смене группы/типа, дизейбл категории для transfer.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Layers, CalendarDays, CircleDollarSign, CreditCard, MessageSquare, ChevronRight, Shuffle, Users } from "lucide-react";
 import CardSection from "../CardSection";
 import GroupPickerModal from "../group/GroupPickerModal";
+import CategoryPickerModal, { type CategoryItem } from "../category/CategoryPickerModal";
 import { useUserStore } from "../../store/userStore";
 import { useGroupsStore } from "../../store/groupsStore";
 
@@ -29,13 +27,26 @@ type Props = {
   defaultGroupId?: number;
 };
 
-function Row({ icon, label, value, onClick, right, isLast }: { icon: React.ReactNode; label: string; value?: string; onClick?: () => void; right?: React.ReactNode; isLast?: boolean }) {
+function Row({ icon, label, value, onClick, right, isLast, disabled }: { icon: React.ReactNode; label: string; value?: string; onClick?: () => void; right?: React.ReactNode; isLast?: boolean; disabled?: boolean }) {
   return (
     <div className="relative">
-      <button type="button" onClick={onClick} className="flex items-center w-full py-2.5 bg-transparent focus:outline-none active:opacity-90" style={{ minHeight: 44 }}>
+      <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        className={`flex items-center w-full py-2.5 bg-transparent focus:outline-none active:opacity-90 ${disabled ? "opacity-60" : ""}`}
+        style={{ minHeight: 44 }}
+      >
         <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>{icon}</span>
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[15px]">{label}</span>
-        {right ? <span className="mr-3">{right}</span> : (<>{value && <span className="text-[var(--tg-link-color)] text-[15px] mr-1.5">{value}</span>}{onClick && <ChevronRight className="text-[var(--tg-hint-color)] mr-3" size={18} />}</>)}
+        {right ? (
+          <span className="mr-3">{right}</span>
+        ) : (
+          <>
+            {value && <span className="text-[var(--tg-link-color)] text-[15px] mr-1.5">{value}</span>}
+            {onClick && !disabled && <ChevronRight className="text-[var(--tg-hint-color)] mr-3" size={18} />}
+          </>
+        )}
       </button>
       {!isLast && <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />}
     </div>
@@ -65,9 +76,11 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
 
   // форма
   const [groupModal, setGroupModal] = useState(false);
+  const [categoryModal, setCategoryModal] = useState(false);
+
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
   const [type, setType] = useState<TxType>("expense");
-  const [categoryName, setCategoryName] = useState<string | null>(null); // пока плейсхолдер
+  const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
   const [amount, setAmount] = useState<string>("");
   const [split, setSplit] = useState<"equal" | "shares" | "custom">("equal");
   const [paidBy, setPaidBy] = useState<number | undefined>(undefined);
@@ -79,13 +92,21 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     if (open) return;
     setSelectedGroupId(defaultGroupId);
     setType("expense");
-    setCategoryName(null);
+    setSelectedCategory(null);
     setAmount("");
     setSplit("equal");
     setPaidBy(undefined);
     setDate(new Date().toISOString().slice(0, 10));
     setComment("");
   }, [open, defaultGroupId]);
+
+  // сброс категории при смене группы/типа
+  useEffect(() => {
+    setSelectedCategory(null);
+  }, [selectedGroupId]);
+  useEffect(() => {
+    if (type === "transfer") setSelectedCategory(null);
+  }, [type]);
 
   const selectedGroup = useMemo(() => localGroups.find((g) => g.id === selectedGroupId), [localGroups, selectedGroupId]);
 
@@ -103,7 +124,13 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
             {/* 1) Группа */}
             <div className="-mx-4">
               <CardSection className="py-0">
-                <Row icon={<Users className="text-[var(--tg-link-color)]" size={20} />} label={t("tx_modal.choose_group")} value={selectedGroup ? selectedGroup.name : t("tx_modal.group_placeholder")} onClick={() => setGroupModal(true)} isLast />
+                <Row
+                  icon={<Users className="text-[var(--tg-link-color)]" size={20} />}
+                  label={t("tx_modal.choose_group")}
+                  value={selectedGroup ? selectedGroup.name : t("tx_modal.group_placeholder")}
+                  onClick={() => setGroupModal(true)}
+                  isLast
+                />
               </CardSection>
             </div>
 
@@ -124,10 +151,20 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
               </CardSection>
             </div>
 
-            {/* 3) Категория (пока плейсхолдер) */}
+            {/* 3) Категория */}
             <div className="-mx-4">
               <CardSection className="py-0">
-                <Row icon={<Layers className="text-[var(--tg-link-color)]" size={20} />} label={t("tx_modal.category")} value={categoryName || "—"} onClick={() => { /* позже откроем модалку выбора категорий */ }} isLast />
+                <Row
+                  icon={<Layers className="text-[var(--tg-link-color)]" size={20} />}
+                  label={t("tx_modal.category")}
+                  value={selectedCategory?.name || "—"}
+                  onClick={() => {
+                    if (!selectedGroupId) { setGroupModal(true); return }
+                    setCategoryModal(true)
+                  }}
+                  isLast
+                  disabled={type === "transfer"}
+                />
               </CardSection>
             </div>
 
@@ -205,15 +242,59 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
 
             {/* Кнопки */}
             <div className="flex flex-row gap-2 mt-1 w-full">
-              <button type="button" onClick={() => onOpenChange(false)} style={{ color: "#000" }} className="w-1/2 py-2.5 rounded-xl font-bold text-[15px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition">{t("cancel")}</button>
-              <button type="button" onClick={() => { console.log("[CreateTransactionModal] draft", { group_id: selectedGroupId, type, category: categoryName, amount, split, paid_by: paidBy, date, comment }); onOpenChange(false); }} className="w-1/2 py-2.5 rounded-xl font-bold text-[15px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60" disabled={!selectedGroupId || !amount.trim()}>{t("tx_modal.create")}</button>
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                style={{ color: "#000" }}
+                className="w-1/2 py-2.5 rounded-xl font-bold text-[15px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  console.log("[CreateTransactionModal] draft", {
+                    group_id: selectedGroupId,
+                    type,
+                    category_id: selectedCategory?.id ?? null,
+                    category_name: selectedCategory?.name ?? null,
+                    amount,
+                    split,
+                    paid_by: paidBy,
+                    date,
+                    comment,
+                  });
+                  onOpenChange(false);
+                }}
+                className="w-1/2 py-2.5 rounded-xl font-bold text-[15px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
+                disabled={!selectedGroupId || !amount.trim()}
+              >
+                {t("tx_modal.create")}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       {/* Выбор группы (как выбор валюты) */}
-      <GroupPickerModal open={groupModal} onClose={() => setGroupModal(false)} selectedId={selectedGroupId} onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false); }} />
+      <GroupPickerModal
+        open={groupModal}
+        onClose={() => setGroupModal(false)}
+        selectedId={selectedGroupId}
+        onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false); }}
+      />
+
+      {/* Выбор категории */}
+      {selectedGroupId !== undefined && (
+        <CategoryPickerModal
+          open={categoryModal}
+          onClose={() => setCategoryModal(false)}
+          groupId={selectedGroupId}
+          selectedId={selectedCategory?.id}
+          onSelect={(c) => setSelectedCategory(c)}
+          closeOnSelect
+        />
+      )}
     </div>
   );
 }

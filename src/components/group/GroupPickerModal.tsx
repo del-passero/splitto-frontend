@@ -82,7 +82,6 @@ export default function GroupPickerModal({ open, onClose, selectedId, onSelect, 
                     <Avatar name={g.name} color={g.color} icon={g.icon || undefined} />
                     <div className="flex flex-col text-left min-w-0">
                       <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{g.name}</div>
-                      <div className="text-[12px] text-[var(--tg-hint-color)]">ID: {g.id}</div>
                     </div>
                   </div>
                   <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>{selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}</div>
