@@ -1,5 +1,7 @@
 // src/components/transactions/SplitPickerModal.tsx
-// Выбор способа разделения: Equal / Shares / Custom + ALL, с валидацией.
+// Модалка выбора способа деления: Equal / Shares / Custom, с ALL, выбором участников,
+// строгая проверка суммы в Custom (без совпадения сохранить нельзя).
+// Экспортирует утилиту computePerPerson для пересчёта превью в родительской модалке.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,215 +9,241 @@ import FiltersRow from "../FiltersRow";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { GroupMember } from "../../types/group_member";
 
-export type SplitType = "equal" | "shares" | "custom";
+type Currency = { code: string; symbol: string; decimals: number };
 
-export type SplitResult =
-  | { type: "equal"; participants: { user_id: number; name: string; avatar_url?: string | null }[] }
-  | { type: "shares"; participants: { user_id: number; name: string; avatar_url?: string | null; share: number }[] }
-  | { type: "custom"; participants: { user_id: number; name: string; avatar_url?: string | null; amount: number }[] };
+export type SplitSelection =
+  | { type: "equal"; participants: Array<{ user_id: number; name: string; avatar_url?: string | null }> }
+  | { type: "shares"; participants: Array<{ user_id: number; name: string; avatar_url?: string | null; share: number }> }
+  | { type: "custom"; participants: Array<{ user_id: number; name: string; avatar_url?: string | null; amount: number }> };
+
+export type PerPerson = { user_id: number; name: string; avatar_url?: string | null; amount: number };
 
 type Props = {
   open: boolean;
   onClose: () => void;
   groupId: number;
-  amount: number; // общая сумма
-  currency: { code: string; symbol: string; decimals: number };
-  initial?: SplitResult;
-  onSave: (result: SplitResult) => void;
+  amount: number; // в валюте (major units)
+  currency: Currency;
+  initial: SplitSelection;
+  onSave: (sel: SplitSelection) => void;
 };
 
-function norm(s: string) { return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
-function shortName(full: string): string { return (full || "").split(/\s+/)[0] || full || "User"; }
-function toMinor(v: number, decimals: number) { return Math.round(v * 10 ** decimals); }
-function fromMinor(v: number, decimals: number) { return v / 10 ** decimals; }
+function norm(s: string) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+function fullName(u: any): string {
+  const a = (u?.first_name || "").trim();
+  const b = (u?.last_name || "").trim();
+  const uname = (u?.username || "").trim();
+  const fallback = (u?.name || "").trim();
+  const name = [a, b].filter(Boolean).join(" ") || fallback || uname || "User";
+  return name;
+}
+function firstNameOnly(s: string) { return (s || "").split(/\s+/)[0] || s || ""; }
 
-function parseAmountInput(raw: string, decimals: number): string {
-  let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
-  const firstDot = s.indexOf(".");
-  if (firstDot !== -1) {
-    const head = s.slice(0, firstDot + 1);
-    const tail = s.slice(firstDot + 1).replace(/\./g, "");
-    s = head + tail;
-  }
-  if (s.includes(".")) {
-    const [int, dec] = s.split(".");
-    s = int + "." + dec.slice(0, decimals);
-  }
-  return s;
+function toMinor(n: number, decimals: number) {
+  return Math.round(n * Math.pow(10, decimals));
+}
+function fromMinor(v: number, decimals: number) {
+  return v / Math.pow(10, decimals);
 }
 
-export default function SplitPickerModal({
-  open,
-  onClose,
-  groupId,
-  amount,
-  currency,
-  initial,
-  onSave,
-}: Props) {
+// распределение по долям с «честным» остатком
+function fairDistribute(total: number, weights: number[], decimals: number): number[] {
+  // total — major units; переводим в minor (целые)
+  const T = toMinor(total, decimals);
+  const sumW = weights.reduce((s, w) => s + w, 0);
+  if (sumW <= 0) return weights.map(() => 0);
+
+  const raw = weights.map((w) => (T * w) / sumW);
+  const floors = raw.map((x) => Math.floor(x));
+  let used = floors.reduce((s, x) => s + x, 0);
+  let rem = T - used;
+
+  // индексы по убыванию дробной части
+  const order = raw
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac)
+    .map((o) => o.i);
+
+  const result = [...floors];
+  let k = 0;
+  while (rem > 0) {
+    result[order[k % order.length]] += 1;
+    k += 1;
+    rem -= 1;
+  }
+  return result.map((v) => fromMinor(v, decimals));
+}
+
+export function computePerPerson(selection: SplitSelection, total: number, decimals: number): PerPerson[] {
+  if (total <= 0) return [];
+  if (selection.type === "equal") {
+    const ids = selection.participants;
+    if (!ids.length) return [];
+    const weights = ids.map(() => 1);
+    const amounts = fairDistribute(total, weights, decimals);
+    return ids.map((p, idx) => ({ user_id: p.user_id, name: p.name, avatar_url: p.avatar_url, amount: amounts[idx] }));
+  }
+  if (selection.type === "shares") {
+    const ps = selection.participants;
+    const weights = ps.map((p) => Math.max(0, p.share || 0));
+    if (weights.reduce((s, w) => s + w, 0) <= 0) return [];
+    const amounts = fairDistribute(total, weights, decimals);
+    return ps.map((p, idx) => ({ user_id: p.user_id, name: p.name, avatar_url: p.avatar_url, amount: amounts[idx] }));
+  }
+  // custom
+  return selection.participants.map((p) => ({ user_id: p.user_id, name: p.name, avatar_url: p.avatar_url, amount: p.amount }));
+}
+
+// type guard для сужения union
+function isShares(sel: SplitSelection): sel is Extract<SplitSelection, { type: "shares" }> {
+  return sel.type === "shares";
+}
+
+// @ts-ignore – экспорт-обёртка, чтобы можно было навесить статическое свойство ниже
+export default function SplitPickerModal(props: Props) { return InnerSplitPickerModal(props); }
+
+function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initial, onSave }: Props) {
   const { t, i18n } = useTranslation();
   const locale = (i18n.language || "ru").split("-")[0];
 
-  const [mode, setMode] = useState<SplitType>(initial?.type || "equal");
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [checked, setChecked] = useState<Record<number, boolean>>({});
-  const [shares, setShares] = useState<Record<number, number>>({});
-  const [customAmounts, setCustomAmounts] = useState<Record<number, string>>({}); // строки для инпутов
+
+  const [mode, setMode] = useState<"equal" | "shares" | "custom">(initial?.type ?? "equal");
+  const [equalSel, setEqualSel] = useState<Set<number>>(new Set());
+  const [shares, setShares] = useState<Map<number, number>>(new Map());
+  const [custom, setCustom] = useState<Map<number, number>>(new Map()); // major units
 
   const reqIdRef = useRef(0);
 
   useEffect(() => {
     if (!open || !groupId) return;
     setSearch("");
-    const myId = ++reqIdRef.current;
 
+    // init from initial
+    setMode(initial?.type ?? "equal");
+    setEqualSel(new Set(initial?.type === "equal" ? initial.participants.map((p) => p.user_id) : []));
+    setShares(new Map(initial?.type === "shares" ? initial.participants.map((p) => [p.user_id, p.share]) : []));
+    setCustom(new Map(initial?.type === "custom" ? initial.participants.map((p) => [p.user_id, p.amount]) : []));
+
+    const myId = ++reqIdRef.current;
     (async () => {
       setLoading(true);
       try {
+        // грузим всех (постранично)
         let offset = 0;
+        const PAGE = 100;
         const acc: GroupMember[] = [];
+        /* eslint-disable no-constant-condition */
         while (true) {
-          const res = await getGroupMembers(groupId, offset, 200);
-          const page: GroupMember[] = res?.items ?? [];
-          acc.push(...page);
-          offset += page.length;
-          if (page.length < 200) break;
+          const res = await getGroupMembers(groupId, offset, PAGE);
+          const items = res?.items || [];
+          acc.push(...items);
+          offset += items.length;
+          if (items.length < PAGE) break;
         }
         if (reqIdRef.current !== myId) return;
         setMembers(acc);
-
-        // инициализация состояния по initial/по умолчанию
-        const baseChecked: Record<number, boolean> = {};
-        const baseShares: Record<number, number> = {};
-        const baseCustom: Record<number, string> = {};
-
-        if (initial?.type === "equal") {
-          acc.forEach((m) => { baseChecked[m.user.id] = true; });
-        } else if (initial?.type === "shares") {
-          acc.forEach((m) => {
-            const found = (initial as any).participants?.find((p: any) => p.user_id === m.user.id);
-            baseShares[m.user.id] = Math.max(0, Number(found?.share || 0));
-          });
-        } else if (initial?.type === "custom") {
-          acc.forEach((m) => {
-            const found = (initial as any).participants?.find((p: any) => p.user_id === m.user.id);
-            baseCustom[m.user.id] = typeof found?.amount === "number" ? found.amount.toFixed(currency.decimals) : "";
-          });
-        } else {
-          acc.forEach((m) => { baseChecked[m.user.id] = true; });
+        // если initial пуст — по умолчанию Equal: все участники
+        if (!initial || !("participants" in initial) || initial.participants.length === 0) {
+          setEqualSel(new Set(acc.map((m) => m.user.id)));
         }
-
-        setMode(initial?.type || "equal");
-        setChecked(baseChecked);
-        setShares(baseShares);
-        setCustomAmounts(baseCustom);
-      } catch {
-        // ignore
       } finally {
         if (reqIdRef.current === myId) setLoading(false);
       }
     })();
-  }, [open, groupId, initial, currency.decimals]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, groupId]);
 
-  useEffect(() => { if (!open) setSearch(""); }, [open]);
-
-  const list = useMemo(() => {
+  const items = useMemo(() => {
     const q = norm(search).trim();
-    const src = members || [];
-    if (!q) return src;
-    return src.filter((m) => norm(`${m.user.first_name || ""} ${m.user.last_name || ""} ${m.user.username || ""}`).includes(q));
+    const list = members || [];
+    if (!q) return list;
+    return list.filter((m) => norm(fullName(m.user)).includes(q));
   }, [members, search]);
 
+  const allIds = useMemo(() => new Set((members || []).map((m) => m.user.id)), [members]);
   const allSelected = useMemo(() => {
-    if (mode !== "equal") return false;
-    if (!list.length) return false;
-    return list.every((m) => checked[m.user.id]);
-  }, [mode, list, checked]);
+    if (mode === "equal") return allIds.size > 0 && Array.from(allIds).every((id) => equalSel.has(id));
+    if (mode === "shares") return allIds.size > 0 && Array.from(allIds).every((id) => (shares.get(id) || 0) > 0);
+    return allIds.size > 0 && Array.from(allIds).every((id) => (custom.get(id) || 0) > 0);
+  }, [mode, allIds, equalSel, shares, custom]);
 
   const toggleAll = () => {
-    if (mode !== "equal") return;
-    const next: Record<number, boolean> = { ...checked };
-    const make = !allSelected;
-    list.forEach((m) => { next[m.user.id] = make; });
-    setChecked(next);
+    if (mode === "equal") {
+      setEqualSel(allSelected ? new Set() : new Set(allIds));
+    } else if (mode === "shares") {
+      if (allSelected) {
+        setShares(new Map());
+      } else {
+        const m = new Map<number, number>();
+        allIds.forEach((id) => m.set(id, 1));
+        setShares(m);
+      }
+    } else {
+      if (allSelected) {
+        setCustom(new Map());
+      } else {
+        const avg = amount > 0 ? (amount / Math.max(1, allIds.size)) : 0;
+        const m = new Map<number, number>();
+        allIds.forEach((id) => m.set(id, Number(avg.toFixed(currency.decimals))));
+        setCustom(m);
+      }
+    }
   };
 
-  const nf = useMemo(() => new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }), [locale, currency.decimals]);
-
-  // проверки
-  const validation = useMemo(() => {
+  // selection для предпросмотра/сохранения
+  const selection: SplitSelection = useMemo(() => {
+    const pack = (id: number) => {
+      const m = members.find((mm) => mm.user.id === id);
+      const name = firstNameOnly(fullName(m?.user));
+      return { user_id: id, name, avatar_url: (m?.user as any)?.avatar_url };
+    };
     if (mode === "equal") {
-      const ids = members.filter((m) => checked[m.user.id]).map((m) => m.user.id);
-      if (ids.length === 0) return { ok: false, reason: "no_participants" };
-      return { ok: true as const };
+      return { type: "equal", participants: Array.from(equalSel).map(pack) };
     }
     if (mode === "shares") {
-      const total = Object.values(shares).reduce((s, x) => s + (Number(x) || 0), 0);
-      if (total <= 0) return { ok: false, reason: "no_shares" };
-      return { ok: true as const };
+      return { type: "shares", participants: Array.from(shares.entries()).filter(([, s]) => s > 0).map(([id, share]) => ({ ...pack(id), share })) };
     }
-    // custom
-    const targetMinor = toMinor(amount, currency.decimals);
-    let sumMinor = 0;
-    for (const m of members) {
-      const raw = (customAmounts[m.user.id] || "").trim();
-      if (!raw) continue;
-      const n = Number(raw);
-      if (isFinite(n)) sumMinor += toMinor(n, currency.decimals);
-    }
-    if (sumMinor !== targetMinor) {
-      return { ok: false, reason: "custom_mismatch", sum: fromMinor(sumMinor, currency.decimals), target: amount };
-    }
-    if (sumMinor <= 0) return { ok: false, reason: "no_custom_values" };
-    return { ok: true as const };
-  }, [mode, members, checked, shares, customAmounts, amount, currency.decimals]);
+    return { type: "custom", participants: Array.from(custom.entries()).filter(([, a]) => a > 0).map(([id, amount]) => ({ ...pack(id), amount })) };
+  }, [mode, equalSel, shares, custom, members]);
 
-  const save = () => {
-    if (!validation.ok) return;
-    if (mode === "equal") {
-      const participants = members
-        .filter((m) => checked[m.user.id])
-        .map((m) => ({
-          user_id: m.user.id,
-          name: shortName(`${m.user.first_name || ""} ${m.user.last_name || ""}` || m.user.username || "User"),
-          avatar_url: (m.user as any)?.photo_url,
-        }));
-      onSave({ type: "equal", participants });
-      onClose();
-      return;
+  const perPerson = useMemo(() => computePerPerson(selection, amount, currency.decimals), [selection, amount, currency.decimals]);
+
+  const sumCustom = useMemo(() => {
+    if (selection.type !== "custom") return null;
+    const s = selection.participants.reduce((x, p) => x + (p.amount || 0), 0);
+    return s;
+  }, [selection]);
+
+  const customMismatch = useMemo(() => {
+    if (selection.type !== "custom") return false;
+    const eps = 1 / Math.pow(10, currency.decimals);
+    return Math.abs((sumCustom || 0) - (amount || 0)) > eps;
+  }, [selection, sumCustom, amount, currency.decimals]);
+
+  // totalShares — строго в ветке shares (для TypeScript)
+  const totalShares = useMemo(() => (isShares(selection)
+    ? selection.participants.reduce((s, p) => s + (p.share || 0), 0)
+    : 0), [selection]);
+
+  const fmt = (n: number) => {
+    try {
+      return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol;
+    } catch {
+      return n.toFixed(currency.decimals) + " " + currency.symbol;
     }
-    if (mode === "shares") {
-      const participants = members
-        .filter((m) => (shares[m.user.id] || 0) > 0)
-        .map((m) => ({
-          user_id: m.user.id,
-          share: Math.max(0, Math.floor(Number(shares[m.user.id]) || 0)),
-          name: shortName(`${m.user.first_name || ""} ${m.user.last_name || ""}` || m.user.username || "User"),
-          avatar_url: (m.user as any)?.photo_url,
-        }));
-      onSave({ type: "shares", participants });
-      onClose();
-      return;
-    }
-    // custom
-    const participants = members
-      .map((m) => {
-        const raw = (customAmounts[m.user.id] || "").trim();
-        const n = Number(raw);
-        if (!raw || !isFinite(n) || n <= 0) return null;
-        return {
-          user_id: m.user.id,
-          amount: n,
-          name: shortName(`${m.user.first_name || ""} ${m.user.last_name || ""}` || m.user.username || "User"),
-          avatar_url: (m.user as any)?.photo_url,
-        };
-      })
-      .filter(Boolean) as any[];
-    onSave({ type: "custom", participants });
-    onClose();
   };
+
+  const canSave = useMemo(() => {
+    if (selection.type === "equal") return selection.participants.length > 0;
+    if (selection.type === "shares") return selection.participants.length > 0 && totalShares > 0;
+    // custom
+    return selection.participants.length > 0 && !customMismatch;
+  }, [selection, totalShares, customMismatch]);
 
   if (!open) return null;
 
@@ -229,173 +257,203 @@ export default function SplitPickerModal({
           <button onClick={onClose} className="text-[13px] opacity-70 hover:opacity-100 transition">{t("close")}</button>
         </div>
 
-        {/* режимы */}
-        <div className="px-4 pt-2 pb-1">
+        {/* mode switch */}
+        <div className="px-4 pt-2">
           <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
-            <button type="button" onClick={() => setMode("equal")} className={`px-3 h-9 text-[13px] ${mode === "equal" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}>{t("tx_modal.split_equal")}</button>
-            <button type="button" onClick={() => setMode("shares")} className={`px-3 h-9 text-[13px] ${mode === "shares" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}>{t("tx_modal.split_shares")}</button>
-            <button type="button" onClick={() => setMode("custom")} className={`px-3 h-9 text-[13px] ${mode === "custom" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}>{t("tx_modal.split_custom")}</button>
+            <button className={`px-3 h-9 text-[13px] ${mode === "equal" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("equal")}>{t("tx_modal.split_equal")}</button>
+            <button className={`px-3 h-9 text-[13px] ${mode === "shares" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("shares")}>{t("tx_modal.split_shares")}</button>
+            <button className={`px-3 h-9 text-[13px] ${mode === "custom" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("custom")}>{t("tx_modal.split_custom")}</button>
           </div>
         </div>
 
-        {/* поиск */}
+        {/* поиск + ALL */}
         <div className="px-2 pt-1 pb-1">
           <FiltersRow search={search} setSearch={setSearch} />
-        </div>
+          <div className="px-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                // ALL toggle
+                const allIds = new Set((members || []).map((m) => m.user.id));
+                const allSelected =
+                  mode === "equal"
+                    ? allIds.size > 0 && Array.from(allIds).every((id) => (equalSel as Set<number>).has(id))
+                    : mode === "shares"
+                    ? allIds.size > 0 && Array.from(allIds).every((id) => (shares.get(id) || 0) > 0)
+                    : allIds.size > 0 && Array.from(allIds).every((id) => (custom.get(id) || 0) > 0);
 
-        {/* строка ALL для equal */}
-        {mode === "equal" && (
-          <div className="px-4 pb-1">
-            <button onClick={toggleAll} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${allSelected ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/50 bg-[var(--tg-card-bg)]"}`}>
-              <span className="text-sm">{t("tx_modal.all")}</span>
+                if (mode === "equal") {
+                  setEqualSel(allSelected ? new Set() : new Set(allIds));
+                } else if (mode === "shares") {
+                  if (allSelected) setShares(new Map());
+                  else {
+                    const m = new Map<number, number>();
+                    allIds.forEach((id) => m.set(id, 1));
+                    setShares(m);
+                  }
+                } else {
+                  if (allSelected) setCustom(new Map());
+                  else {
+                    const avg = amount > 0 ? (amount / Math.max(1, allIds.size)) : 0;
+                    const m = new Map<number, number>();
+                    allIds.forEach((id) => m.set(id, Number(avg.toFixed(currency.decimals))));
+                    setCustom(m);
+                  }
+                }
+              }}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${allSelected ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/50"}`}
+            >
+              <span className="font-medium">ALL</span>
             </button>
           </div>
-        )}
+        </div>
 
         {/* список участников */}
         <div className="flex-1 overflow-y-auto">
-          {list.map((m) => {
-            const baseName = shortName(`${m.user.first_name || ""} ${m.user.last_name || ""}` || m.user.username || "User");
-            const avatar = (m.user as any)?.photo_url;
+          {items.map((m) => {
+            const u = m.user;
+            const id = u.id;
+            const name = firstNameOnly(fullName(u));
+            const avatar = (u as any)?.avatar_url as string | undefined;
 
+            let right: React.ReactNode = null;
             if (mode === "equal") {
-              const sel = !!checked[m.user.id];
-              return (
-                <label key={m.user.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition">
-                  <span className="flex items-center min-w-0">
-                    {avatar ? (
-                      <img src={avatar} alt={baseName} className="mr-3 rounded-xl object-cover" style={{ width: 34, height: 34 }} />
-                    ) : (
-                      <div className="flex items-center justify-center mr-3 rounded-xl text-white" style={{ width: 34, height: 34, background: "#40A7E3" }}>
-                        <span style={{ fontSize: 16 }}>{baseName.charAt(0).toUpperCase()}</span>
-                      </div>
-                    )}
-                    <span className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{baseName}</span>
-                  </span>
-                  <input type="checkbox" className="w-5 h-5" checked={sel} onChange={(e) => setChecked((s) => ({ ...s, [m.user.id]: e.target.checked }))} />
-                </label>
-              );
-            }
-
-            if (mode === "shares") {
-              const val = Math.max(0, Number(shares[m.user.id] || 0));
-              return (
-                <div key={m.user.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition">
-                  <span className="flex items-center min-w-0">
-                    {avatar ? (
-                      <img src={avatar} alt={baseName} className="mr-3 rounded-xl object-cover" style={{ width: 34, height: 34 }} />
-                    ) : (
-                      <div className="flex items-center justify-center mr-3 rounded-xl text-white" style={{ width: 34, height: 34, background: "#40A7E3" }}>
-                        <span style={{ fontSize: 16 }}>{baseName.charAt(0).toUpperCase()}</span>
-                      </div>
-                    )}
-                    <span className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{baseName}</span>
-                  </span>
-                  <div className="inline-flex items-center gap-1">
-                    <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares((s) => ({ ...s, [m.user.id]: Math.max(0, (s[m.user.id] || 0) - 1) }))}>–</button>
-                    <input
-                      inputMode="numeric"
-                      value={val}
-                      onChange={(e) => {
-                        const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
-                        setShares((s) => ({ ...s, [m.user.id]: n }));
-                      }}
-                      className="w-14 text-center rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-transparent py-1"
-                    />
-                    <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares((s) => ({ ...s, [m.user.id]: (s[m.user.id] || 0) + 1 }))}>+</button>
-                  </div>
+              const checked = equalSel.has(id);
+              right = (
+                <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>
+                  {checked && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
                 </div>
               );
-            }
-
-            // custom
-            const raw = customAmounts[m.user.id] ?? "";
-            return (
-              <div key={m.user.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition">
-                <span className="flex items-center min-w-0">
-                  {avatar ? (
-                    <img src={avatar} alt={baseName} className="mr-3 rounded-xl object-cover" style={{ width: 34, height: 34 }} />
-                  ) : (
-                    <div className="flex items-center justify-center mr-3 rounded-xl text-white" style={{ width: 34, height: 34, background: "#40A7E3" }}>
-                      <span style={{ fontSize: 16 }}>{baseName.charAt(0).toUpperCase()}</span>
-                    </div>
-                  )}
-                  <span className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{baseName}</span>
-                </span>
-                <div className="inline-flex items-center gap-2">
-                  <span className="text-xs opacity-70">{currency.code}</span>
+            } else if (mode === "shares") {
+              const val = shares.get(id) || 0;
+              right = (
+                <div className="flex items-center gap-2">
+                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, Math.max(0, val - 1))))}>−</button>
                   <input
-                    inputMode="decimal"
-                    value={raw}
+                    value={String(val)}
                     onChange={(e) => {
-                      const next = parseAmountInput(e.target.value, currency.decimals);
-                      setCustomAmounts((s) => ({ ...s, [m.user.id]: next }));
+                      const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                      setShares(new Map(shares.set(id, n)));
                     }}
-                    className="w-28 text-right rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-transparent py-1 px-2"
-                    placeholder={(0).toFixed(currency.decimals)}
+                    inputMode="numeric"
+                    className="w-12 text-center bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]"
                   />
+                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, val + 1)))}>+</button>
                 </div>
+              );
+            } else {
+              const val = custom.get(id) || 0;
+              right = (
+                <input
+                  value={val === 0 ? "" : String(val)}
+                  onChange={(e) => {
+                    let s = e.target.value.replace(",", ".").replace(/[^\d.]/g, "");
+                    const firstDot = s.indexOf(".");
+                    if (firstDot !== -1) {
+                      const head = s.slice(0, firstDot + 1);
+                      const tail = s.slice(firstDot + 1).replace(/\./g, "");
+                      s = head + tail;
+                    }
+                    if (s.includes(".")) {
+                      const [int, dec] = s.split(".");
+                      s = int + "." + dec.slice(0, currency.decimals);
+                    }
+                    const n = Number(s || 0);
+                    setCustom(new Map(custom.set(id, isFinite(n) ? n : 0)));
+                  }}
+                  inputMode="decimal"
+                  placeholder="0"
+                  className="w-24 text-right bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]"
+                />
+              );
+            }
+
+            return (
+              <div key={id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mode === "equal") {
+                      const next = new Set(equalSel);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      setEqualSel(next);
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                >
+                  <div className="flex items-center min-w-0">
+                    {avatar ? (
+                      <img src={avatar} alt="" className="mr-3 rounded-xl object-cover" style={{ width: 34, height: 34 }} />
+                    ) : (
+                      <div className="flex items-center justify-center mr-3 rounded-xl text-white" style={{ width: 34, height: 34, background: "var(--tg-link-color)" }}>
+                        <span style={{ fontSize: 16 }}>{name?.[0] || "U"}</span>
+                      </div>
+                    )}
+                    <div className="flex flex-col text-left min-w-0">
+                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{name}</div>
+                    </div>
+                  </div>
+                  <div className="ml-3">{right}</div>
+                </button>
+                <div className="absolute left-[74px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               </div>
             );
           })}
+
+          {!loading && items.length === 0 && (
+            <div className="px-4 py-8 text-center text-[var(--tg-hint-color)]">
+              {t("contacts_not_found")}
+            </div>
+          )}
+          {loading && (
+            <div className="px-4 py-4 text-[13px] text-[var(--tg-hint-color)]">
+              {t("loading")}
+            </div>
+          )}
         </div>
 
-        {/* итог / валидация */}
+        {/* итоги / ошибки */}
         <div className="px-4 py-3 border-t border-[var(--tg-secondary-bg-color,#e7e7e7)]">
-          {mode === "equal" && (
-            <div className="text-sm opacity-80">
+          {selection.type === "equal" && (
+            <div className="text-[13px] opacity-80">
+              {locale.startsWith("ru") ? "Участников" : "Participants"}: {selection.participants.length} • {locale.startsWith("ru") ? "по" : "≈ each"}{" "}
               {(() => {
-                const ids = members.filter((m) => checked[m.user.id]).map((m) => m.user.id);
-                const n = ids.length;
-                const per = n > 0 ? amount / n : 0;
-                return `${n} ${locale.startsWith("ru") ? "участников" : "people"} • ${nf.format(per)} ${currency.symbol}`;
+                const n = perPerson[0]?.amount || (amount / Math.max(1, selection.participants.length));
+                try { return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol; }
+                catch { return n.toFixed(currency.decimals) + " " + currency.symbol; }
               })()}
             </div>
           )}
-          {mode === "shares" && (
-            <div className="text-sm opacity-80">
+          {selection.type === "shares" && (
+            <div className="text-[13px] opacity-80">
+              {locale.startsWith("ru") ? "Всего долей" : "Total shares"}: {totalShares} • {locale.startsWith("ru") ? "за долю ≈" : "per share ≈"}{" "}
               {(() => {
-                const totalShares = Object.values(shares).reduce((s, x) => s + (Number(x) || 0), 0);
-                const perShare = totalShares > 0 ? amount / totalShares : 0;
-                return `${t("tx_modal.total_shares")}: ${totalShares} • ${nf.format(perShare)} ${currency.symbol}/${t("tx_modal.per_share")}`;
+                const n = (amount / Math.max(1, totalShares)) || 0;
+                try { return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol; }
+                catch { return n.toFixed(currency.decimals) + " " + currency.symbol; }
               })()}
             </div>
           )}
-          {mode === "custom" && (
-            <div className={`text-sm ${!validation.ok && (validation as any).reason === "custom_mismatch" ? "text-red-500" : "opacity-80"}`}>
-              {(() => {
-                let sum = 0;
-                for (const v of Object.values(customAmounts)) {
-                  const n = Number(v);
-                  if (isFinite(n)) sum += n;
-                }
-                return `${locale.startsWith("ru") ? "Сумма по участникам" : "Participants total"}: ${nf.format(sum)} ${currency.symbol} • ${locale.startsWith("ru") ? "Итого" : "Total"}: ${nf.format(amount)} ${currency.symbol}`;
-              })()}
+          {selection.type === "custom" && (
+            <div className={`text-[13px] ${customMismatch ? "text-red-500" : "opacity-80"}`}>
+              {locale.startsWith("ru")
+                ? `По участникам: ${new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(sumCustom || 0)} ${currency.symbol} • Общая: ${new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(amount)} ${currency.symbol}`
+                : `Participants: ${new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(sumCustom || 0)} ${currency.symbol} • Total: ${new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(amount)} ${currency.symbol}`
+              }
             </div>
           )}
 
-          {!validation.ok && (
-            <div className="text-xs mt-1 text-red-500">
-              {((r) => {
-                switch (r) {
-                  case "no_participants": return t("tx_modal.split_no_participants");
-                  case "no_shares": return t("tx_modal.split_no_shares");
-                  case "no_custom_values": return t("tx_modal.split_custom_no_values");
-                  case "custom_mismatch": return t("tx_modal.split_custom_mismatch");
-                  default: return "";
-                }
-              })((validation as any).reason)}
-            </div>
-          )}
-
-          <div className="mt-2 flex gap-2 justify-end">
-            <button className="px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={onClose}>{t("cancel")}</button>
+          <div className="mt-2 flex gap-8 justify-end">
+            <button className="px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={onClose}>
+              {t("cancel")}
+            </button>
             <button
-              className="px-3 py-2 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white disabled:opacity-60"
-              onClick={save}
-              disabled={!validation.ok}
+              className="px-4 py-2 rounded-xl text-white bg-[var(--tg-accent-color,#40A7E3)] disabled:opacity-60"
+              disabled={!canSave}
+              onClick={() => onSave(selection)}
             >
-              {t("save")}
+              {t("save") || "Save"}
             </button>
           </div>
         </div>
@@ -403,3 +461,7 @@ export default function SplitPickerModal({
     </div>
   );
 }
+
+// Чтобы можно было использовать статически из родителя
+// (например, SplitPickerModal.computePerPerson(...))
+(SplitPickerModal as any).computePerPerson = computePerPerson;
