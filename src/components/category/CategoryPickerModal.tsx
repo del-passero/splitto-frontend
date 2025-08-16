@@ -1,3 +1,11 @@
+// src/components/category/CategoryPickerModal.tsx
+// Модалка выбора категории для группы (в стиле CurrencyPickerModal).
+// Особенности:
+//  • Берёт текущую локаль из i18n и передаёт ?locale=... в бэкенд.
+//  • Тянет все категории постранично (PAGE_SIZE) и фильтрует на клиенте (по name).
+//  • Разделители как в ContactsList (НЕ под иконкой).
+//  • Радио-выбор, закрытие по клику вне, запрет прокрутки body при открытии.
+
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -27,14 +35,37 @@ function getTelegramInitData(): string {
   return window?.Telegram?.WebApp?.initData || ""
 }
 
+// ---- API ----
+
+type ApiExpenseCategoryOut = {
+  id: number
+  key: string
+  name: string
+  icon?: string | null
+  color?: string | null
+  parent_id?: number | null
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+  name_i18n?: Record<string, string> | null
+}
+
+type ApiListResp = {
+  items: ApiExpenseCategoryOut[]
+  total: number
+  restricted: boolean
+}
+
 async function apiListGroupCategoriesPage(params: {
   groupId: number
   offset: number
   limit: number
-}): Promise<{ items: CategoryItem[]; total?: number }> {
+  locale: string
+}): Promise<ApiListResp> {
   const url = new URL(`${API_URL}/groups/${params.groupId}/categories`)
   url.searchParams.set("offset", String(params.offset))
   url.searchParams.set("limit", String(params.limit))
+  url.searchParams.set("locale", params.locale)
   const res = await fetch(url.toString(), {
     headers: { "x-telegram-initdata": getTelegramInitData() },
   })
@@ -42,15 +73,12 @@ async function apiListGroupCategoriesPage(params: {
   return res.json()
 }
 
-// нормализация (без завязки на локаль)
+// ---- Utils ----
+
 function norm(s: string) {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
 
-// фильтр по клиенту (OR по подстрокам)
 function clientFilter(items: CategoryItem[], query: string): CategoryItem[] {
   const q = norm(query).trim()
   if (!q) return items
@@ -61,6 +89,8 @@ function clientFilter(items: CategoryItem[], query: string): CategoryItem[] {
     return tokens.some((tok) => hay.includes(tok))
   })
 }
+
+// ---- UI parts ----
 
 const SearchField = ({
   value,
@@ -101,14 +131,10 @@ const Row = ({
       aria-selected={selected}
     >
       <div className="flex items-center min-w-0">
-        {/* эмодзи/иконка */}
-        <div
-          className="flex items-center justify-center mr-3 rounded-full"
-          style={{ width: 34, height: 34, fontSize: 20, background: "transparent" }}
-        >
-          <span aria-hidden>{item.emoji || "🏷️"}</span>
+        {/* иконка/эмодзи */}
+        <div className="flex items-center justify-center mr-3 rounded-full" style={{ width: 34, height: 34, fontSize: 20 }}>
+          <span aria-hidden>{item.icon || item.emoji || "🏷️"}</span>
         </div>
-
         {/* название */}
         <div className="flex flex-col text-left min-w-0">
           <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{item.name}</div>
@@ -116,11 +142,7 @@ const Row = ({
       </div>
 
       {/* радио */}
-      <div
-        className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${
-          selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"
-        }`}
-      >
+      <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>
         {selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
       </div>
     </button>
@@ -130,6 +152,8 @@ const Row = ({
   </div>
 )
 
+// ---- Component ----
+
 export default function CategoryPickerModal({
   open,
   onClose,
@@ -138,9 +162,10 @@ export default function CategoryPickerModal({
   onSelect,
   closeOnSelect = true,
 }: Props) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
+  const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language])
 
-  const [allItems, setAllItems] = useState<CategoryItem[]>([]) // полный список (один раз на открытие)
+  const [allItems, setAllItems] = useState<CategoryItem[]>([]) // полный список (один раз на открытие/смену группы)
   const [items, setItems] = useState<CategoryItem[]>([]) // отфильтрованный вид
   const [loading, setLoading] = useState(false)
 
@@ -159,29 +184,40 @@ export default function CategoryPickerModal({
     }
   }, [open])
 
-  // первичное открытие/смена groupId
+  // первичное открытие/смена groupId/locale — подгружаем заново
   useEffect(() => {
     if (!open || !groupId) return
     setQ("")
     qRef.current = ""
     setItems([])
     setAllItems([])
-    void initLoad(groupId)
-  }, [open, groupId])
+    void initLoad(groupId, locale)
+  }, [open, groupId, locale])
 
-  async function initLoad(groupIdParam: number) {
+  async function initLoad(groupIdParam: number, loc: string) {
     const myId = ++reqIdRef.current
     setLoading(true)
     try {
       let offset = 0
       const acc: CategoryItem[] = []
+
+      // крутим до последней страницы
       /* eslint-disable no-constant-condition */
       while (true) {
-        const { items: page } = await apiListGroupCategoriesPage({ groupId: groupIdParam, offset, limit: PAGE_SIZE })
-        acc.push(...page)
-        offset += page.length
-        if (page.length < PAGE_SIZE || offset >= MAX_TOTAL) break
+        const page = await apiListGroupCategoriesPage({ groupId: groupIdParam, offset, limit: PAGE_SIZE, locale: loc })
+        const mapped = (page.items || []).map<CategoryItem>((it) => ({
+          id: it.id,
+          name: it.name,          // уже локализован на бэке
+          icon: it.icon || null,  // может быть эмодзи
+          color: it.color || null,
+          emoji: it.icon || null, // для совместимости с интерфейсом
+        }))
+        acc.push(...mapped)
+
+        offset += (page.items?.length || 0)
+        if ((page.items?.length || 0) < PAGE_SIZE || offset >= MAX_TOTAL) break
       }
+
       if (reqIdRef.current !== myId) return
       setAllItems(acc)
       setItems(acc)
@@ -206,6 +242,7 @@ export default function CategoryPickerModal({
 
   if (!open) return null
 
+  // безопасные фолбэки для i18n-ключей
   const titleSafe = (() => {
     const s = t("category.select_title")
     return s && s !== "category.select_title" ? s : "Выбор категории"
