@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   X, Layers, CalendarDays, ChevronRight,
-  Users, ChevronDown, ChevronRight as Chevron, FileText
+  Users, ChevronDown, ChevronRight as Chevron, FileText, Receipt, Send
 } from "lucide-react";
 import CardSection from "../CardSection";
 import GroupPickerModal from "../group/GroupPickerModal";
@@ -21,10 +21,12 @@ export interface MinimalGroup {
   color?: string | null;
   icon?: string | null;
 
-  // поля валюты — как в GroupHeader
+  // как в GroupHeader
   default_currency_code?: string | null;
   currency_code?: string | null;
-  currency?: string | null;
+  currency?: string | null | { code?: string | null };
+  default_currency?: { code?: string | null } | null;
+  main_currency_code?: string | null;
 }
 
 type Props = {
@@ -104,14 +106,20 @@ function SelectedGroupPill({
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-// ВАЖНО: как в GroupHeader: currency_code -> default_currency_code -> currency -> RUB
+// извлекаем код валюты, как в хедере, с поддержкой разных форматов
 function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string {
-  const raw =
-    (g as any)?.currency_code ??
-    (g as any)?.default_currency_code ??
-    (g as any)?.currency ??
-    "RUB";
-  return (typeof raw === "string" && raw.trim().length ? raw : "RUB").toUpperCase();
+  const candidates: Array<unknown> = [
+    (g as any)?.currency_code,
+    (g as any)?.default_currency_code,
+    (g as any)?.currency,
+    (g as any)?.currency?.code,
+    (g as any)?.default_currency?.code,
+    (g as any)?.main_currency_code,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw === "string" && raw.trim()) return raw.trim().toUpperCase();
+  }
+  return "RUB";
 }
 function makeCurrency(g?: MinimalGroup | null) {
   const code = resolveCurrencyCodeFromGroup(g);
@@ -151,6 +159,15 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
   } catch {
     return `${n.toFixed(decimals)} ${symbol}`;
   }
+}
+
+// нормализация цвета категории (hex или hex без #)
+function normalizeHex(input?: unknown): string | null {
+  if (!input || typeof input !== "string") return null;
+  let c = input.trim();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return c;
+  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return `#${c}`;
+  return null;
 }
 
 // чип и фоновая заливка категории
@@ -279,20 +296,20 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const errors = useMemo(() => {
     const errs: Record<string, string> = {};
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
-    if (!amount || amountNumber <= 0) errs.amount = locale.startsWith("ru") ? "Введите сумму больше 0" : "Enter amount > 0";
-    if (!comment.trim()) errs.comment = locale.startsWith("ru") ? "Заполните комментарий" : "Enter a comment";
-    if (type === "expense" && !categoryId) errs.category = locale.startsWith("ru") ? "Выберите категорию" : "Choose a category";
+    if (!amount || amountNumber <= 0) errs.amount = locale === "ru" ? "Введите сумму больше 0" : locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
+    if (!comment.trim()) errs.comment = locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Enter a comment";
+    if (type === "expense" && !categoryId) errs.category = locale === "ru" ? "Выберите категорию" : locale === "es" ? "Elige una categoría" : "Choose a category";
     if (splitData) {
       if (splitData.type === "equal" && splitData.participants.length === 0) {
-        errs.split = locale.startsWith("ru") ? "Выберите участников" : "Select participants";
+        errs.split = locale === "ru" ? "Выберите участников" : locale === "es" ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "shares") {
         const totalShares = splitData.participants.reduce((s, p) => s + (p.share || 0), 0);
-        if (totalShares <= 0) errs.split = locale.startsWith("ru") ? "Доли должны быть больше нуля" : "Shares must be > 0";
-        if (splitData.participants.length === 0) errs.split = locale.startsWith("ru") ? "Выберите участников" : "Select participants";
+        if (totalShares <= 0) errs.split = locale === "ru" ? "Доли должны быть больше нуля" : locale === "es" ? "Las cuotas deben ser > 0" : "Shares must be > 0";
+        if (splitData.participants.length === 0) errs.split = locale === "ru" ? "Выберите участников" : locale === "es" ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "custom" && customMismatch) {
-        errs.split = locale.startsWith("ru") ? "Сумма по участникам должна равняться общей" : "Participants total must equal overall";
+        errs.split = locale === "ru" ? "Сумма по участникам должна равняться общей" : locale === "es" ? "La suma por participantes debe igualar el total" : "Participants total must equal overall";
       }
     }
     return errs;
@@ -304,10 +321,11 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const handleAmountBlur = () => { setAmountTouched(true); setAmount((prev) => toFixedSafe(prev, currency.decimals)); };
   const handleCommentBlur = () => setCommentTouched(true);
 
-  const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null }) => {
+  const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
+    const hex = normalizeHex(it.color || it.bg_color || it.hex || it.background_color || it.color_hex) ?? null;
     setCategoryId(it.id);
     setCategoryName(it.name);
-    setCategoryColor(it.color ?? null);
+    setCategoryColor(hex);
     setCategoryIcon((it as any).icon ?? null);
   };
 
@@ -365,8 +383,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  const paidByLabel = t("tx_modal.paid_by_label");
-  const owesLabel = t("tx_modal.owes_label");
+  const paidByLabel = locale === "ru" ? "Заплатил" : locale === "es" ? "Pagó" : "Paid by";
+  const owesLabel = locale === "ru" ? "Должен" : locale === "es" ? "Debe" : "Owes";
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
@@ -420,7 +438,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
             {/* Если группа не выбрана — остальное прячем */}
             {mustPickGroupFirst ? null : (
               <>
-                {/* Тип — центрируем */}
+                {/* Тип — центрируем, с иконками */}
                 <div className="-mx-3">
                   <CardSection className="py-0.5">
                     <div className="px-3 pb-0.5 flex justify-center">
@@ -428,16 +446,18 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         <button
                           type="button"
                           onClick={() => setType("expense")}
-                          className={`px-3 h-9 text-[13px] ${type === "expense" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                          className={`px-3 h-9 text-[13px] flex items-center ${type === "expense" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
                         >
+                          <Receipt size={14} className="mr-1.5" />
                           {t("tx_modal.expense")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setType("transfer")}
-                          className={`px-3 h-9 text-[13px] ${type === "transfer" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                          className={`px-3 h-9 text-[13px] flex items-center ${type === "transfer" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
                         >
                           {t("tx_modal.transfer")}
+                          <Send size={14} className="ml-1.5" />
                         </button>
                       </div>
                     </div>
@@ -461,7 +481,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
                         />
                       </div>
-                      {/* Подпись под суммой убрана по требованию */}
                     </div>
                   </CardSection>
                 </div>
@@ -512,43 +531,39 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         )}
                         {(showErrors || commentTouched) && !comment.trim() && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                            {locale.startsWith("ru") ? "Заполните комментарий" : "Please enter a comment"}
+                            {locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Please enter a comment"}
                           </div>
                         )}
                       </CardSection>
                     </div>
 
-                    {/* Чипы Paid by / Split */}
+                    {/* Paid by / Split — 50/50 как выше */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <div className="px-3 py-1 flex gap-2 flex-wrap">
+                        <div className="px-3 py-1 grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => setPayerOpen(true)}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            className="min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
-                            <span>{t("tx_modal.paid_by")}</span>
-                            {paidBy ? (
-                              <span className="inline-flex items-center gap-1 max-w-[160px] truncate">
-                                {paidByAvatar ? (
-                                  <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                                ) : (
-                                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                                )}
-                                <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
-                              </span>
-                            ) : (
-                              <strong className="truncate">{t("not_specified")}</strong>
-                            )}
+                            <span className="truncate">{t("tx_modal.paid_by")}</span>
+                            <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                              {paidByAvatar ? (
+                                <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                              ) : (
+                                <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                              )}
+                              <strong className="truncate">{paidBy ? (firstName(paidByName) || t("not_specified")) : t("not_specified")}</strong>
+                            </span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => setSplitOpen(true)}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                            className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
                           >
-                            <span>{t("tx_modal.split")}</span>
-                            <strong>
+                            <span className="truncate">{t("tx_modal.split")}</span>
+                            <strong className="truncate">
                               {splitData?.type
                                 ? splitData.type === "equal"
                                   ? t("tx_modal.split_equal")
@@ -562,7 +577,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
 
                         {/* Превью: плательщик и кто сколько должен */}
                         {!!perPerson.length && (
-                          <div className="px-3 pb-1 -mt-1">
+                          <div className="px-3 pb-1 mt-1">{/* опустил чуть вниз (mt-1) */}
                             <div className="flex flex-col gap-1">
                               {/* 1) строка плательщика */}
                               {paidBy && (
@@ -609,8 +624,10 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         {/* Предупреждение при кастомном расхождении */}
                         {customMismatch && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                            {locale.startsWith("ru")
+                            {locale === "ru"
                               ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.symbol, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.symbol, locale)}`
+                              : locale === "es"
+                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.symbol, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.symbol, locale)}`
                               : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.symbol, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.symbol, locale)}`
                             }
                           </div>
@@ -706,7 +723,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onClose={() => setCategoryModal(false)}
         groupId={selectedGroupId || 0}
         selectedId={categoryId}
-        onSelect={(it) => { handleSelectCategory({ id: it.id, name: it.name, color: it.color, icon: (it as any).icon }); setCategoryModal(false); }}
+        onSelect={(it) => { handleSelectCategory({ id: it.id, name: it.name, color: (it as any).color, icon: (it as any).icon } as any); setCategoryModal(false); }}
         closeOnSelect
       />
 
