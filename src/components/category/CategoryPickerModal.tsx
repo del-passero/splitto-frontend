@@ -4,12 +4,14 @@
 //  • Выбирать можно ТОЛЬКО подкатегории (у родительских нет радио и клика выбора).
 //  • Поиск: если совпал родитель — показываем ВСЕ его подкатегории; если совпадают только дети — показываем только совпавших детей.
 //  • Локаль берём из i18n и прокидываем ?locale=... в API.
+//  • Порядок секций (родителей): Food and drinks → Transport → Travel → Housing → Entertainments → остальные.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export type CategoryItem = {
   id: number
+  key: string
   name: string
   parent_id: number | null
   icon?: string | null
@@ -78,6 +80,32 @@ function norm(s: string) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
 
+// Приоритет сортировки родительских категорий (по key)
+const PARENT_ORDER: Record<string, number> = {
+  // 1) Food and drinks
+  food_and_drinks: 0,
+  food_drinks: 0,
+  food: 0,
+  // 2) Transport
+  transport: 1,
+  transportation: 1,
+  // 3) Travel
+  travel: 2,
+  // 4) Housing
+  housing: 3,
+  home_housing: 3,
+  // 5) Entertainments
+  entertainments: 4,
+  entertainment: 4,
+  entertainment_and_arts: 4,
+}
+
+const getParentPriority = (key?: string | null) => {
+  if (!key) return 999
+  const k = String(key).toLowerCase()
+  return PARENT_ORDER[k] ?? 999
+}
+
 // ---- UI parts ----
 
 const SearchField = ({
@@ -137,7 +165,6 @@ const ParentHeader = ({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-semibold text-[var(--tg-text-color)] truncate">{item.name}</div>
-          <div className="text-[12px] text-[var(--tg-hint-color)] mt-0.5">Выберите подкатегорию ниже</div>
         </div>
         {/* у родителя НЕТ радио и клика выбора */}
       </div>
@@ -164,7 +191,7 @@ const ChildRow = ({
       <button
         type="button"
         onClick={onClick}
-        className="w-full flex items-center justify-between pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg.white/5 transition"
+        className="w-full flex items-center justify-between pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition"
       >
         <div className="flex items-center min-w-0">
           <div className="flex items-center justify-center mr-3 rounded-full" style={{ width: 30, height: 30, fontSize: 18 }}>
@@ -235,6 +262,7 @@ export default function CategoryPickerModal({
         const page = await apiListGroupCategoriesPage({ groupId: groupIdParam, offset, limit: PAGE_SIZE, locale: loc })
         const mapped = (page.items || []).map<CategoryItem>((it) => ({
           id: it.id,
+          key: it.key,
           name: it.name, // уже локализовано на бэке
           parent_id: it.parent_id ?? null,
           icon: it.icon || null,
@@ -275,7 +303,16 @@ export default function CategoryPickerModal({
     }
 
     const coll = new Intl.Collator(locale)
-    parents.sort((a, b) => coll.compare(a.name, b.name))
+
+    // Родители: сначала по приоритету, потом по имени
+    parents.sort((a, b) => {
+      const pa = getParentPriority(a.key)
+      const pb = getParentPriority(b.key)
+      if (pa !== pb) return pa - pb
+      return coll.compare(a.name, b.name)
+    })
+
+    // Дети: по имени
     childrenByParent.forEach((arr) => arr.sort((a, b) => coll.compare(a.name, b.name)))
     orphans.sort((a, b) => coll.compare(a.name, b.name))
 
@@ -316,7 +353,13 @@ export default function CategoryPickerModal({
       if (includes(c.name)) outOrphans.push(c)
     }
 
-    outParents.sort((a, b) => coll.compare(a.name, b.name))
+    // Сохранить требуемый порядок родителей
+    outParents.sort((a, b) => {
+      const pa = getParentPriority(a.key)
+      const pb = getParentPriority(b.key)
+      if (pa !== pb) return pa - pb
+      return coll.compare(a.name, b.name)
+    })
     outChildrenByParent.forEach((arr) => arr.sort((a, b) => coll.compare(a.name, b.name)))
     outOrphans.sort((a, b) => coll.compare(a.name, b.name))
 
@@ -336,10 +379,6 @@ export default function CategoryPickerModal({
   const titleSafe = (() => {
     const s = t("category.select_title")
     return s && s !== "category.select_title" ? s : "Выбор категории"
-  })()
-  const placeholderSafe = (() => {
-    const s = t("category.search_placeholder")
-    return s && s !== "category.search_placeholder" ? s : "Поиск категории"
   })()
   const notFoundSafe = (() => {
     const s = t("category.not_found")
@@ -367,8 +406,8 @@ export default function CategoryPickerModal({
           </button>
         </div>
 
-        {/* поиск */}
-        <SearchField value={q} onChange={setQ} placeholder={placeholderSafe} />
+        {/* поиск — текст ИМЕННО через ключ локализации */}
+        <SearchField value={q} onChange={setQ} placeholder={t("category.search_placeholder")} />
 
         {/* список (всегда развернутый) */}
         <div className="flex-1 overflow-y-auto" ref={listRef}>
@@ -403,7 +442,7 @@ export default function CategoryPickerModal({
             )
           })}
 
-          {/* Сироты (когда родителя нет в выдаче) — тоже считаем подкатегориями */}
+          {/* Сироты (когда родителя нет в выдаче) — считаем подкатегориями */}
           {tree.orphans.length > 0 && (
             <div className="mt-2">
               <div className="px-4 py-2 text-[12px] opacity-60">Другие</div>
