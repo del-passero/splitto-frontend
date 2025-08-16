@@ -21,7 +21,7 @@ export interface MinimalGroup {
   color?: string | null;
   icon?: string | null;
 
-  // как в GroupHeader
+  // возможные варианты поля валюты (как в GroupHeader + доп. варианты)
   default_currency_code?: string | null;
   currency_code?: string | null;
   currency?: string | null | { code?: string | null };
@@ -102,7 +102,7 @@ function SelectedGroupPill({
   );
 }
 
-// валюта: код -> символ/дробь
+// --- Валюта: код -> символ/дробь
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
@@ -130,7 +130,7 @@ function makeCurrency(g?: MinimalGroup | null) {
   };
 }
 
-// Маска суммы
+// --- Маска суммы
 function parseAmountInput(raw: string): string {
   let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
   const firstDot = s.indexOf(".");
@@ -161,27 +161,53 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
   }
 }
 
-// нормализация цвета категории (hex или hex без #)
-function normalizeHex(input?: unknown): string | null {
+// --- Цвета категории: надёжная заливка
+function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
-  let c = input.trim();
-  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return c;
-  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return `#${c}`;
+  let h = input.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(h)) {
+    h = h.split("").map(ch => ch + ch).join(""); // abc -> aabbcc
+  }
+  if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`;
   return null;
 }
-
-// чип и фоновая заливка категории
+function hexWithAlpha(hex6: string, alpha: number) {
+  const h = hex6.replace("#", "");
+  const a = Math.round(alpha * 255).toString(16).padStart(2, "0");
+  return `#${h}${a}`;
+}
+function asRgbaFallback(color: string, alpha: number) {
+  if (color.startsWith("rgb(") || color.startsWith("rgba(")) {
+    const nums = color.replace(/[rgba()]/g, "").split(",").map(s => s.trim());
+    const [r, g, b] = nums;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color; // var(--...), named — без альфы
+}
 function chipStyle(color?: string | null) {
-  if (!color || !/^#([0-9a-f]{3}){1,2}$/i.test(color)) return {};
+  if (!color) return {};
+  const hex6 = to6Hex(color);
+  if (hex6) {
+    return {
+      backgroundColor: hexWithAlpha(hex6, 0.13),
+      border: `1px solid ${hexWithAlpha(hex6, 0.33)}`,
+    } as React.CSSProperties;
+  }
   return {
-    background: `${color}22`,
-    border: `1px solid ${color}55`,
+    backgroundColor: asRgbaFallback(color, 0.13),
   } as React.CSSProperties;
 }
 function fillStyle(color?: string | null) {
-  if (!color || !/^#([0-9a-f]{3}){1,2}$/i.test(color)) return {};
+  if (!color) return {};
+  const hex6 = to6Hex(color);
+  if (hex6) {
+    return {
+      backgroundColor: hexWithAlpha(hex6, 0.10),
+      borderRadius: 12,
+    } as React.CSSProperties;
+  }
   return {
-    background: `${color}18`,
+    backgroundColor: asRgbaFallback(color, 0.10),
     borderRadius: 12,
   } as React.CSSProperties;
 }
@@ -278,7 +304,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return isFinite(n) ? n : 0;
   }, [amount]);
 
-  // ---- split preview (перерасчёт на лету) ----
+  // перерасчёт превью сплита
   const perPerson: PerPerson[] = useMemo(() => {
     if (!splitData || amountNumber <= 0) return [];
     return computePerPerson(splitData, amountNumber, currency.decimals);
@@ -292,7 +318,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return Math.abs(totalParts - total) > eps ? { sumParts: totalParts, total } : null;
   }, [splitData, perPerson, amountNumber, currency.decimals]);
 
-  // Валидация
+  // ошибки
   const errors = useMemo(() => {
     const errs: Record<string, string> = {};
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
@@ -322,10 +348,11 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const handleCommentBlur = () => setCommentTouched(true);
 
   const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
-    const hex = normalizeHex(it.color || it.bg_color || it.hex || it.background_color || it.color_hex) ?? null;
+    const raw = it.color ?? it.bg_color ?? it.hex ?? it.background_color ?? it.color_hex;
+    const hex6 = to6Hex(raw) ?? raw ?? null;
     setCategoryId(it.id);
     setCategoryName(it.name);
-    setCategoryColor(hex);
+    setCategoryColor(hex6);
     setCategoryIcon((it as any).icon ?? null);
   };
 
@@ -383,8 +410,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  const paidByLabel = locale === "ru" ? "Заплатил" : locale === "es" ? "Pagó" : "Paid by";
-  const owesLabel = locale === "ru" ? "Должен" : locale === "es" ? "Debe" : "Owes";
+  const paidByLabel = t("tx_modal.paid_by_label");
+  const owesLabel = t("tx_modal.owes_label");
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
@@ -464,7 +491,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                   </CardSection>
                 </div>
 
-                {/* Сумма */}
+                {/* Сумма (без подписи под полем) */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
@@ -546,15 +573,18 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             onClick={() => setPayerOpen(true)}
                             className="min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
-                            <span className="truncate">{t("tx_modal.paid_by")}</span>
-                            <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                              {paidByAvatar ? (
-                                <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                              )}
-                              <strong className="truncate">{paidBy ? (firstName(paidByName) || t("not_specified")) : t("not_specified")}</strong>
-                            </span>
+                            {paidBy ? (
+                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                {paidByAvatar ? (
+                                  <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                ) : (
+                                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                )}
+                                <strong className="truncate">{firstName(paidByName) || t("not_specified")}</strong>
+                              </span>
+                            ) : (
+                              <span className="opacity-70 truncate">{t("tx_modal.paid_by")}</span>
+                            )}
                           </button>
 
                           <button
@@ -577,7 +607,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
 
                         {/* Превью: плательщик и кто сколько должен */}
                         {!!perPerson.length && (
-                          <div className="px-3 pb-1 mt-1">{/* опустил чуть вниз (mt-1) */}
+                          <div className="px-3 pb-1 mt-1">
                             <div className="flex flex-col gap-1">
                               {/* 1) строка плательщика */}
                               {paidBy && (
