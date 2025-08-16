@@ -1,12 +1,9 @@
 // Модалка выбора способа деления: Equal / Shares / Custom, с ALL, выбором участников,
 // строгая проверка суммы в Custom (без совпадения сохранить нельзя).
 // Экспортирует утилиту computePerPerson для пересчёта превью в родительской модалке.
-// ДОБАВЛЕНО: выбор/смена Paid By внутри модалки, и плательщик всегда активен.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import FiltersRow from "../FiltersRow";
-import MemberPickerModal from "../group/MemberPickerModal";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { GroupMember } from "../../types/group_member";
 
@@ -27,17 +24,8 @@ type Props = {
   currency: Currency;
   initial: SplitSelection;
   onSave: (sel: SplitSelection) => void;
-
-  // Новое: управление "кто платил" прямо из модалки
-  paidByUserId?: number;
-  paidByName?: string;
-  paidByAvatarUrl?: string | null;
-  onChangePaidBy?: (u: { id: number; name: string; avatar_url?: string | null }) => void;
 };
 
-function norm(s: string) {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
 function fullName(u: any): string {
   const a = (u?.first_name || "").trim();
   const b = (u?.last_name || "").trim();
@@ -57,7 +45,6 @@ function fromMinor(v: number, decimals: number) {
 
 // распределение по долям с «честным» остатком
 function fairDistribute(total: number, weights: number[], decimals: number): number[] {
-  // total — major units; переводим в minor (целые)
   const T = toMinor(total, decimals);
   const sumW = weights.reduce((s, w) => s + w, 0);
   if (sumW <= 0) return weights.map(() => 0);
@@ -67,7 +54,6 @@ function fairDistribute(total: number, weights: number[], decimals: number): num
   let used = floors.reduce((s, x) => s + x, 0);
   let rem = T - used;
 
-  // индексы по убыванию дробной части
   const order = raw
     .map((x, i) => ({ i, frac: x - Math.floor(x) }))
     .sort((a, b) => b.frac - a.frac)
@@ -103,7 +89,6 @@ export function computePerPerson(selection: SplitSelection, total: number, decim
   return selection.participants.map((p) => ({ user_id: p.user_id, name: p.name, avatar_url: p.avatar_url, amount: p.amount }));
 }
 
-// type guard для сужения union
 function isShares(sel: SplitSelection): sel is Extract<SplitSelection, { type: "shares" }> {
   return sel.type === "shares";
 }
@@ -111,15 +96,11 @@ function isShares(sel: SplitSelection): sel is Extract<SplitSelection, { type: "
 // @ts-ignore – экспорт-обёртка, чтобы можно было навесить статическое свойство ниже
 export default function SplitPickerModal(props: Props) { return InnerSplitPickerModal(props); }
 
-function InnerSplitPickerModal({
-  open, onClose, groupId, amount, currency, initial, onSave,
-  paidByUserId, paidByName, paidByAvatarUrl, onChangePaidBy,
-}: Props) {
+function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initial, onSave }: Props) {
   const { t, i18n } = useTranslation();
   const locale = (i18n.language || "ru").split("-")[0];
 
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
   const [members, setMembers] = useState<GroupMember[]>([]);
 
   const [mode, setMode] = useState<"equal" | "shares" | "custom">(initial?.type ?? "equal");
@@ -127,13 +108,10 @@ function InnerSplitPickerModal({
   const [shares, setShares] = useState<Map<number, number>>(new Map());
   const [custom, setCustom] = useState<Map<number, number>>(new Map()); // major units
 
-  const [payerModalOpen, setPayerModalOpen] = useState(false);
-
   const reqIdRef = useRef(0);
 
   useEffect(() => {
     if (!open || !groupId) return;
-    setSearch("");
 
     // init from initial
     setMode(initial?.type ?? "equal");
@@ -145,11 +123,9 @@ function InnerSplitPickerModal({
     (async () => {
       setLoading(true);
       try {
-        // грузим всех (постранично)
         let offset = 0;
         const PAGE = 100;
         const acc: GroupMember[] = [];
-        /* eslint-disable no-constant-condition */
         while (true) {
           const res = await getGroupMembers(groupId, offset, PAGE);
           const items = res?.items || [];
@@ -159,21 +135,8 @@ function InnerSplitPickerModal({
         }
         if (reqIdRef.current !== myId) return;
         setMembers(acc);
-
-        // по умолчанию Equal: все участники
         if (!initial || !("participants" in initial) || initial.participants.length === 0) {
           setEqualSel(new Set(acc.map((m) => m.user.id)));
-        }
-
-        // плательщик всегда активен — сразу «включаем» в текущем режиме
-        if (paidByUserId) {
-          setEqualSel((s) => new Set(s).add(paidByUserId));
-          setShares((m) => {
-            const copy = new Map(m);
-            if (!copy.get(paidByUserId) || (copy.get(paidByUserId) || 0) <= 0) copy.set(paidByUserId, 1);
-            return copy;
-          });
-          setCustom((m) => new Map(m.set(paidByUserId, m.get(paidByUserId) ?? 0)));
         }
       } finally {
         if (reqIdRef.current === myId) setLoading(false);
@@ -182,24 +145,7 @@ function InnerSplitPickerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, groupId]);
 
-  // если меняется payer снаружи — поддерживаем инварианты
-  useEffect(() => {
-    if (!open || !paidByUserId) return;
-    setEqualSel((s) => new Set(s).add(paidByUserId));
-    setShares((m) => {
-      const copy = new Map(m);
-      if (!copy.get(paidByUserId) || (copy.get(paidByUserId) || 0) <= 0) copy.set(paidByUserId, 1);
-      return copy;
-    });
-    setCustom((m) => new Map(m.set(paidByUserId, m.get(paidByUserId) ?? 0)));
-  }, [open, paidByUserId]);
-
-  const items = useMemo(() => {
-    const q = norm(search).trim();
-    const list = members || [];
-    if (!q) return list;
-    return list.filter((m) => norm(fullName(m.user)).includes(q));
-  }, [members, search]);
+  const items = members || [];
 
   const allIds = useMemo(() => new Set((members || []).map((m) => m.user.id)), [members]);
   const allSelected = useMemo(() => {
@@ -210,16 +156,10 @@ function InnerSplitPickerModal({
 
   const toggleAll = () => {
     if (mode === "equal") {
-      const next = allSelected ? new Set<number>() : new Set<number>(allIds);
-      // плательщик всегда включён
-      if (paidByUserId) next.add(paidByUserId);
-      setEqualSel(next);
+      setEqualSel(allSelected ? new Set() : new Set(allIds));
     } else if (mode === "shares") {
       if (allSelected) {
-        const m = new Map<number, number>();
-        // плательщику оставляем 1
-        if (paidByUserId) m.set(paidByUserId, 1);
-        setShares(m);
+        setShares(new Map());
       } else {
         const m = new Map<number, number>();
         allIds.forEach((id) => m.set(id, 1));
@@ -227,59 +167,31 @@ function InnerSplitPickerModal({
       }
     } else {
       if (allSelected) {
-        const m = new Map<number, number>();
-        // плательщика оставляем с 0 (присутствует, но сумма 0)
-        if (paidByUserId) m.set(paidByUserId, 0);
-        setCustom(m);
+        setCustom(new Map());
       } else {
         const avg = amount > 0 ? (amount / Math.max(1, allIds.size)) : 0;
         const m = new Map<number, number>();
         allIds.forEach((id) => m.set(id, Number(avg.toFixed(currency.decimals))));
-        // плательщика точно добавим (если его вдруг нет)
-        if (paidByUserId && !m.has(paidByUserId)) m.set(paidByUserId, 0);
         setCustom(m);
       }
     }
   };
 
-  // selection для предпросмотра/сохранения (плательщик в equal/shares точно включён; в custom включаем даже при 0)
+  // selection для предпросмотра/сохранения
   const selection: SplitSelection = useMemo(() => {
     const pack = (id: number) => {
       const m = members.find((mm) => mm.user.id === id);
       const name = firstNameOnly(fullName(m?.user));
-      // фото из поля photo_url/avatar_url (backward совместимость)
-      const avatar_url = (m?.user as any)?.avatar_url ?? (m?.user as any)?.photo_url ?? null;
-      return { user_id: id, name, avatar_url };
+      return { user_id: id, name, avatar_url: (m?.user as any)?.avatar_url };
     };
-
     if (mode === "equal") {
-      const ids = new Set(equalSel);
-      if (paidByUserId) ids.add(paidByUserId);
-      return { type: "equal", participants: Array.from(ids).map(pack) };
+      return { type: "equal", participants: Array.from(equalSel).map(pack) };
     }
-
     if (mode === "shares") {
-      const base = new Map(shares);
-      if (paidByUserId && (!base.get(paidByUserId) || (base.get(paidByUserId) || 0) <= 0)) {
-        base.set(paidByUserId, 1);
-      }
-      return {
-        type: "shares",
-        participants: Array.from(base.entries())
-          .filter(([, s]) => s > 0)
-          .map(([id, share]) => ({ ...pack(id), share })),
-      };
+      return { type: "shares", participants: Array.from(shares.entries()).filter(([, s]) => s > 0).map(([id, share]) => ({ ...pack(id), share })) };
     }
-
-    // custom — включаем всех с amount > 0 И/ИЛИ плательщика (даже если 0)
-    const entries = Array.from(custom.entries());
-    const has = new Set<number>(entries.filter(([, a]) => a > 0).map(([id]) => id));
-    if (paidByUserId) has.add(paidByUserId);
-    return {
-      type: "custom",
-      participants: Array.from(has).map((id) => ({ ...pack(id), amount: custom.get(id) || 0 })),
-    };
-  }, [mode, equalSel, shares, custom, members, paidByUserId]);
+    return { type: "custom", participants: Array.from(custom.entries()).filter(([, a]) => a > 0).map(([id, amount]) => ({ ...pack(id), amount })) };
+  }, [mode, equalSel, shares, custom, members]);
 
   const perPerson = useMemo(() => computePerPerson(selection, amount, currency.decimals), [selection, amount, currency.decimals]);
 
@@ -295,7 +207,6 @@ function InnerSplitPickerModal({
     return Math.abs((sumCustom || 0) - (amount || 0)) > eps;
   }, [selection, sumCustom, amount, currency.decimals]);
 
-  // totalShares — строго в ветке shares (для TypeScript)
   const totalShares = useMemo(() => (isShares(selection)
     ? selection.participants.reduce((s, p) => s + (p.share || 0), 0)
     : 0), [selection]);
@@ -311,13 +222,10 @@ function InnerSplitPickerModal({
   const canSave = useMemo(() => {
     if (selection.type === "equal") return selection.participants.length > 0;
     if (selection.type === "shares") return selection.participants.length > 0 && totalShares > 0;
-    // custom
     return selection.participants.length > 0 && !customMismatch;
   }, [selection, totalShares, customMismatch]);
 
   if (!open) return null;
-
-  const payerFirstName = paidByName ? firstNameOnly(paidByName) : "";
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-end justify-center" role="dialog" aria-modal="true">
@@ -329,29 +237,6 @@ function InnerSplitPickerModal({
           <button onClick={onClose} className="text-[13px] opacity-70 hover:opacity-100 transition">{t("close")}</button>
         </div>
 
-        {/* блок с Paid by */}
-        <div className="px-4 pt-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
-            onClick={() => setPayerModalOpen(true)}
-          >
-            <span>{t("tx_modal.paid_by")}</span>
-            {paidByUserId ? (
-              <span className="inline-flex items-center gap-1 max-w-[160px] truncate">
-                {paidByAvatarUrl ? (
-                  <img src={paidByAvatarUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
-                ) : (
-                  <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                )}
-                <strong className="truncate">{payerFirstName || t("not_specified")}</strong>
-              </span>
-            ) : (
-              <strong className="truncate">{t("not_specified")}</strong>
-            )}
-          </button>
-        </div>
-
         {/* mode switch */}
         <div className="px-4 pt-2">
           <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
@@ -361,18 +246,15 @@ function InnerSplitPickerModal({
           </div>
         </div>
 
-        {/* поиск + ALL */}
-        <div className="px-2 pt-1 pb-1">
-          <FiltersRow search={search} setSearch={setSearch} />
-          <div className="px-2 pt-2">
-            <button
-              type="button"
-              onClick={toggleAll}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${allSelected ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/50"}`}
-            >
-              <span className="font-medium">ALL</span>
-            </button>
-          </div>
+        {/* Кнопка ALL без поиска */}
+        <div className="px-4 pt-2">
+          <button
+            type="button"
+            onClick={toggleAll}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${allSelected ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/50"}`}
+          >
+            <span className="font-medium">ALL</span>
+          </button>
         </div>
 
         {/* список участников */}
@@ -380,54 +262,36 @@ function InnerSplitPickerModal({
           {items.map((m) => {
             const u = m.user;
             const id = u.id;
-            const nameFull = fullName(u);
-            const name = firstNameOnly(nameFull);
-            const avatar = (u as any)?.avatar_url ?? (u as any)?.photo_url as string | undefined;
+            const name = firstNameOnly(fullName(u));
+            const avatar = (u as any)?.avatar_url as string | undefined;
 
-            // правый контрол в зависимости от режима
             let right: React.ReactNode = null;
             if (mode === "equal") {
               const checked = equalSel.has(id);
-              const isPayer = paidByUserId === id;
               right = (
-                <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"} ${isPayer ? "opacity-60" : ""}`}>
+                <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>
                   {checked && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
                 </div>
               );
             } else if (mode === "shares") {
               const val = shares.get(id) || 0;
-              const isPayer = paidByUserId === id;
               right = (
                 <div className="flex items-center gap-2">
-                  <button
-                    className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const next = Math.max(0, Math.floor(val - 1));
-                      // плательщика не даём опустить до 0
-                      const final = (isPayer && next <= 0) ? 1 : next;
-                      setShares(new Map(shares.set(id, final)));
-                    }}
-                  >−</button>
+                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, Math.max(0, val - 1))))}>−</button>
                   <input
                     value={String(val)}
                     onChange={(e) => {
                       const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
-                      // плательщика держим ≥1
-                      const final = (paidByUserId === id && n <= 0) ? 1 : n;
-                      setShares(new Map(shares.set(id, final)));
+                      setShares(new Map(shares.set(id, n)));
                     }}
                     inputMode="numeric"
                     className="w-12 text-center bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]"
                   />
-                  <button
-                    className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]"
-                    onClick={(e) => { e.preventDefault(); setShares(new Map(shares.set(id, val + 1))); }}
-                  >+</button>
+                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, val + 1)))}>+</button>
                 </div>
               );
             } else {
-              const val = custom.get(id) ?? 0;
+              const val = custom.get(id) || 0;
               right = (
                 <input
                   value={val === 0 ? "" : String(val)}
@@ -459,8 +323,6 @@ function InnerSplitPickerModal({
                   type="button"
                   onClick={() => {
                     if (mode === "equal") {
-                      // плательщика не даём снимать
-                      if (paidByUserId === id) return;
                       const next = new Set(equalSel);
                       if (next.has(id)) next.delete(id);
                       else next.add(id);
@@ -478,10 +340,7 @@ function InnerSplitPickerModal({
                       </div>
                     )}
                     <div className="flex flex-col text-left min-w-0">
-                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
-                        {name}
-                        {paidByUserId === id && <span className="ml-2 text-[11px] opacity-70">({t("tx_modal.paid_by")})</span>}
-                      </div>
+                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{name}</div>
                     </div>
                   </div>
                   <div className="ml-3">{right}</div>
@@ -548,31 +407,9 @@ function InnerSplitPickerModal({
           </div>
         </div>
       </div>
-
-      {/* Встроенная модалка смены плательщика */}
-      <MemberPickerModal
-        open={payerModalOpen}
-        onClose={() => setPayerModalOpen(false)}
-        groupId={groupId}
-        selectedUserId={paidByUserId}
-        onSelect={(u) => {
-          onChangePaidBy?.({ id: u.id, name: u.name, avatar_url: u.avatar_url });
-          // поддержим инварианты сразу
-          setEqualSel((s) => new Set(s).add(u.id));
-          setShares((m) => {
-            const copy = new Map(m);
-            if (!copy.get(u.id) || (copy.get(u.id) || 0) <= 0) copy.set(u.id, 1);
-            return copy;
-          });
-          setCustom((m) => new Map(m.set(u.id, m.get(u.id) ?? 0)));
-          setPayerModalOpen(false);
-        }}
-        closeOnSelect
-      />
     </div>
   );
 }
 
 // Чтобы можно было использовать статически из родителя
-// (например, SplitPickerModal.computePerPerson(...))
 (SplitPickerModal as any).computePerPerson = computePerPerson;

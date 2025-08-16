@@ -1,7 +1,5 @@
-// src/components/group/MemberPickerModal.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import FiltersRow from "../FiltersRow";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { GroupMember } from "../../types/group_member";
 
@@ -13,10 +11,6 @@ type Props = {
   onSelect: (user: { id: number; name: string; avatar_url?: string | null }) => void;
   closeOnSelect?: boolean;
 };
-
-function norm(s: string) {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
 
 function fullName(u: any): string {
   const a = (u?.first_name || "").trim();
@@ -53,14 +47,12 @@ export default function MemberPickerModal({
 }: Props) {
   const { t } = useTranslation();
 
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<GroupMember[]>([]);
   const reqIdRef = useRef(0);
 
   useEffect(() => {
     if (!open || !groupId) return;
-    setSearch("");
     setItems([]);
     const myId = ++reqIdRef.current;
 
@@ -86,15 +78,6 @@ export default function MemberPickerModal({
     })();
   }, [open, groupId]);
 
-  useEffect(() => { if (!open) setSearch(""); }, [open]);
-
-  const list = useMemo(() => {
-    const q = norm(search).trim();
-    const src = items || [];
-    if (!q) return src;
-    return src.filter((m) => norm(fullName(m.user)).includes(q));
-  }, [items, search]);
-
   if (!open) return null;
 
   return (
@@ -106,15 +89,13 @@ export default function MemberPickerModal({
           <button onClick={onClose} className="text-[13px] opacity-70 hover:opacity-100 transition">{t("close")}</button>
         </div>
 
-        <div className="px-2 pt-1 pb-1">
-          <FiltersRow search={search} setSearch={setSearch} />
-        </div>
-
+        {/* список участников без поиска */}
         <div className="flex-1 overflow-y-auto">
-          {list.map((m, idx) => {
+          {items.map((m, idx) => {
             const name = fullName(m.user);
             const selected = m.user.id === selectedUserId;
-            const avatar = (m.user as any)?.photo_url; // << important
+            const avatar = (m.user as any)?.photo_url;
+
             return (
               <div key={m.user.id} className="relative">
                 <button
@@ -133,12 +114,12 @@ export default function MemberPickerModal({
                     {selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
                   </div>
                 </button>
-                {idx !== list.length - 1 && <div className="absolute left-[74px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />}
+                {idx !== items.length - 1 && <div className="absolute left-[74px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />}
               </div>
             );
           })}
 
-          {!loading && list.length === 0 && (
+          {!loading && items.length === 0 && (
             <div className="px-4 py-8 text-center text-[var(--tg-hint-color)]">
               {t("contacts_not_found")}
             </div>

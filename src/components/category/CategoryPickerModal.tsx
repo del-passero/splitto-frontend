@@ -16,6 +16,8 @@ export type CategoryItem = {
   parent_id: number | null
   icon?: string | null
   color?: string | null
+  // НОВОЕ: цвет родителя (если у подкатегории цвета нет)
+  parent_color?: string | null
 }
 
 type Props = {
@@ -201,15 +203,15 @@ const ChildRow = ({
 }: {
   item: CategoryItem
   selected: boolean
-  onClick: () => void
+  onClick: (it: CategoryItem) => void
   showDivider: boolean
 }) => {
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={onClick}
-        className="w-full flex items-center justify-between pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition"
+        onClick={() => onClick(item)}
+        className="w-full flex items-center justify-between pl:[64px] md:pl-[64px] pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition"
       >
         <div className="flex items-center min-w-0">
           <div className="flex items-center justify-center mr-3 rounded-full" style={{ width: 30, height: 30, fontSize: 18 }}>
@@ -437,12 +439,16 @@ export default function CategoryPickerModal({
                     {kids.map((c, idxC) => {
                       const isLastChild = idxC === kids.length - 1
                       const divider = !isLastChild || !isLastParent
+                      const childWithParentColor: CategoryItem = {
+                        ...c,
+                        parent_color: p.color || null,
+                      }
                       return (
                         <ChildRow
                           key={`c-${c.id}`}
-                          item={c}
+                          item={childWithParentColor}
                           selected={selectedId === c.id}
-                          onClick={() => handleSelect(c)}
+                          onClick={(item) => handleSelect(item)}
                           showDivider={divider}
                         />
                       )
@@ -462,7 +468,7 @@ export default function CategoryPickerModal({
                   key={`o-${c.id}`}
                   item={c}
                   selected={selectedId === c.id}
-                  onClick={() => handleSelect(c)}
+                  onClick={(item) => handleSelect(item)}
                   showDivider={idx !== tree.orphans.length - 1}
                 />
               ))}
