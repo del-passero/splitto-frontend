@@ -1,3 +1,5 @@
+// src/components/transactions/CreateTransactionModal.tsx
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -103,12 +105,11 @@ function SelectedGroupPill({
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-// ВАЖНО: определяем валюту ТАК ЖЕ, как в GroupHeader
+// ВАЖНО: определяем валюту ТАК ЖЕ, как в GroupHeader (приоритет полей совпадает)
 function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string {
-  // приоритет: currency_code -> default_currency_code -> currency -> RUB (бэкап)
   const raw =
-    (g as any)?.currency_code ??
     (g as any)?.default_currency_code ??
+    (g as any)?.currency_code ??
     (g as any)?.currency ??
     "RUB";
   return (typeof raw === "string" && raw.trim().length ? raw : "RUB").toUpperCase();
@@ -153,6 +154,15 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
   }
 }
 
+// небольшой помощник чтобы подсветить чип категории
+function chipStyle(color?: string | null) {
+  if (!color || !/^#([0-9a-f]{3}){1,2}$/i.test(color)) return {};
+  return {
+    background: `${color}22`,
+    border: `1px solid ${color}55`,
+  } as React.CSSProperties;
+}
+
 export default function CreateTransactionModal({ open, onOpenChange, groups: groupsProp, defaultGroupId }: Props) {
   const { t, i18n } = useTranslation();
   const user = useUserStore((s) => s.user);
@@ -183,6 +193,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const [categoryModal, setCategoryModal] = useState(false);
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [categoryName, setCategoryName] = useState<string | null>(null);
+  const [categoryColor, setCategoryColor] = useState<string | null>(null);
+  const [categoryIcon, setCategoryIcon] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<string>("");
   const [splitType, setSplitType] = useState<"equal" | "shares" | "custom">("equal");
@@ -212,6 +224,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     setCategoryModal(false);
     setCategoryId(undefined);
     setCategoryName(null);
+    setCategoryColor(null);
+    setCategoryIcon(null);
     setAmount("");
     setSplitType("equal");
     setSplitData(null);
@@ -289,12 +303,19 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const handleAmountBlur = () => { setAmountTouched(true); setAmount((prev) => toFixedSafe(prev, currency.decimals)); };
   const handleCommentBlur = () => setCommentTouched(true);
 
-  const handleSelectCategory = (it: { id: number; name: string }) => { setCategoryId(it.id); setCategoryName(it.name); };
+  const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null }) => {
+    setCategoryId(it.id);
+    setCategoryName(it.name);
+    setCategoryColor(it.color ?? null);
+    setCategoryIcon((it as any).icon ?? null);
+  };
 
   const resetForNew = () => {
     setType("expense");
     setCategoryId(undefined);
     setCategoryName(null);
+    setCategoryColor(null);
+    setCategoryIcon(null);
     setAmount("");
     setSplitType("equal");
     setSplitData(null);
@@ -325,6 +346,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
       split: splitData || { type: "equal", participants: [] as any[] },
       date,
     };
+    // eslint-disable-next-line no-console
     console.log("[CreateTransactionModal] draft", payload);
 
     if (mode === "close") onOpenChange(false);
@@ -421,31 +443,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                   </CardSection>
                 </div>
 
-                {/* Комментарий (обязателен) */}
-                <div className="-mx-3">
-                  <CardSection className="py-0">
-                    <div className="px-3 pt-1">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center">
-                          <FileText size={16} className="opacity-80" />
-                        </div>
-                        <input
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          onBlur={handleCommentBlur}
-                          placeholder={t("tx_modal.comment")}
-                          className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1.5 text-[14px]"
-                        />
-                      </div>
-                      {(showErrors || commentTouched) && !comment.trim() && (
-                        <div className="mt-1 text-[12px] text-red-500">
-                          {locale.startsWith("ru") ? "Заполните комментарий" : "Please enter a comment"}
-                        </div>
-                      )}
-                    </div>
-                  </CardSection>
-                </div>
-
                 {/* Сумма */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
@@ -477,18 +474,48 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 {/* expense-специфика */}
                 {type === "expense" ? (
                   <>
-                    {/* Категория */}
+                    {/* ОБЪЕДИНЁННЫЙ элемент: Категория + Комментарий */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <Row
-                          icon={<Layers className="text-[var(--tg-link-color)]" size={18} />}
-                          label={t("tx_modal.category")}
-                          value={categoryName || "—"}
-                          onClick={() => setCategoryModal(true)}
-                          isLast
-                        />
-                        {showErrors && errors.category && (
-                          <div className="px-4 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
+                        <div className="px-3 pt-1 pb-1 flex items-center gap-2">
+                          {/* Чип категории слева */}
+                          <button
+                            type="button"
+                            onClick={() => setCategoryModal(true)}
+                            className="flex items-center gap-2 h-9 rounded-full border px-2 shrink-0"
+                            style={categoryColor ? chipStyle(categoryColor) : {}}
+                          >
+                            <span className="inline-flex w-6 h-6 items-center justify-center rounded-full border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
+                              <span style={{ fontSize: 14 }} aria-hidden>
+                                {categoryIcon || <Layers size={14} />}
+                              </span>
+                            </span>
+                            <span className="text-[13px] font-medium">
+                              {categoryName || t("tx_modal.category")}
+                            </span>
+                          </button>
+
+                          {/* Поле комментария справа */}
+                          <div className="flex-1 min-w-0 flex items-center gap-2">
+                            <FileText size={16} className="opacity-80 shrink-0" />
+                            <input
+                              value={comment}
+                              onChange={(e) => setComment(e.target.value)}
+                              onBlur={handleCommentBlur}
+                              placeholder={t("tx_modal.comment")}
+                              className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1.5 text-[14px]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Подсказки/ошибки */}
+                        {(showErrors && errors.category) && (
+                          <div className="px-3 pb-0.5 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
+                        )}
+                        {(showErrors || commentTouched) && !comment.trim() && (
+                          <div className="px-3 pb-2 -mt-0.5 text-[12px] text-red-500">
+                            {locale.startsWith("ru") ? "Заполните комментарий" : "Please enter a comment"}
+                          </div>
                         )}
                       </CardSection>
                     </div>
@@ -681,7 +708,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onClose={() => setCategoryModal(false)}
         groupId={selectedGroupId || 0}
         selectedId={categoryId}
-        onSelect={(it) => { handleSelectCategory({ id: it.id, name: it.name }); setCategoryModal(false); }}
+        onSelect={(it) => { handleSelectCategory({ id: it.id, name: it.name, color: it.color, icon: (it as any).icon }); setCategoryModal(false); }}
         closeOnSelect
       />
 
