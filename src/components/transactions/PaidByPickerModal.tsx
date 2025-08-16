@@ -1,11 +1,4 @@
 // src/components/transactions/PaidByPickerModal.tsx
-// Модалка выбора плательщика.
-// Похожа на GroupPickerModal: шапка, поиск, список участников с аватарками и радио-выбором.
-// Без условных хуков. Подгружает участников группы на открытии.
-// Модалка выбора плательщика.
-// Похожа на GroupPickerModal: шапка, поиск, список участников с аватарками (инициал в цветном кружке) и радио-выбором.
-// Без условных хуков. Подгружает участников группы на открытии.
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import FiltersRow from "../FiltersRow";
@@ -25,23 +18,16 @@ function norm(s: string) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-// Детерминированный цвет по id (простая палитра)
 const PALETTE = [
   "#40A7E3", "#8E61FF", "#FF6B6B", "#FFB020", "#2EC4B6",
   "#7DCE82", "#FF7AB6", "#6C8AE4", "#E67E22", "#9B59B6",
 ];
-function colorById(id: number | undefined) {
+function colorById(id?: number) {
   if (!id || id < 0) return "#40A7E3";
   return PALETTE[id % PALETTE.length];
 }
 
-function Avatar({
-  name,
-  id,
-}: {
-  name: string;
-  id?: number;
-}) {
+function Avatar({ name, id }: { name: string; id?: number }) {
   const bg = colorById(id);
   const letter = (name || "?").trim().charAt(0).toUpperCase();
   return (
@@ -68,29 +54,20 @@ export default function PaidByPickerModal({
   const [loading, setLoading] = useState(false);
   const reqIdRef = useRef(0);
 
-  // сброс состояния при закрытии
   useEffect(() => {
-    if (!open) {
-      setSearch("");
-    }
+    if (!open) setSearch("");
   }, [open]);
 
-  // загрузка участников на открытии
   useEffect(() => {
     if (!open) return;
-    if (!groupId) {
-      setMembers([]);
-      return;
-    }
+    if (!groupId) { setMembers([]); return; }
     const my = ++reqIdRef.current;
     (async () => {
       try {
         setLoading(true);
-        const PAGE = 100;
-        const res = await getGroupMembers(groupId, 0, PAGE);
+        const res = await getGroupMembers(groupId, 0, 100);
         if (reqIdRef.current !== my) return;
-        const arr = Array.isArray(res?.items) ? (res.items as GroupMember[]) : [];
-        setMembers(arr);
+        setMembers(Array.isArray(res?.items) ? (res.items as GroupMember[]) : []);
       } catch {
         if (reqIdRef.current === my) setMembers([]);
       } finally {
@@ -115,7 +92,6 @@ export default function PaidByPickerModal({
     <div className="fixed inset-0 z-[1100] flex items-end justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
       <div className="relative w-full sm:max-w-md bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] rounded-t-2xl shadow-tg-card overflow-hidden animate-modal-pop h-[80vh] max-h-[80vh] flex flex-col">
-        {/* header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
           <div className="text-[15px] font-semibold">{t("tx_modal.paid_by")}</div>
           <button onClick={onClose} className="text-[13px] opacity-70 hover:opacity-100 transition">
@@ -123,12 +99,10 @@ export default function PaidByPickerModal({
           </button>
         </div>
 
-        {/* поиск (без автофокуса) */}
         <div className="px-2 pt-1 pb-1">
           <FiltersRow search={search} setSearch={setSearch} />
         </div>
 
-        {/* список */}
         <div className="flex-1 overflow-y-auto">
           {filtered.map((m, idx) => {
             const id = m.user?.id ?? 0;
@@ -138,29 +112,17 @@ export default function PaidByPickerModal({
               <div key={id || `u-${idx}`} className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (id) {
-                      onSelect(id);
-                      if (closeOnSelect) onClose();
-                    }
-                  }}
+                  onClick={() => { if (id) { onSelect(id); if (closeOnSelect) onClose(); } }}
                   className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg:white/5 transition"
                   aria-selected={selected}
                 >
                   <div className="flex items-center min-w-0">
                     <Avatar name={nameOnly} id={id} />
                     <div className="flex flex-col text-left min-w-0">
-                      {/* Только имя, без фамилии. Обрезаем текст. */}
-                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
-                        {nameOnly}
-                      </div>
+                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{nameOnly}</div>
                     </div>
                   </div>
-                  <div
-                    className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${
-                      selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"
-                    }`}
-                  >
+                  <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${selected ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>
                     {selected && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
                   </div>
                 </button>
@@ -172,13 +134,9 @@ export default function PaidByPickerModal({
           })}
 
           {!loading && filtered.length === 0 && (
-            <div className="px-4 py-8 text-center text-[var(--tg-hint-color)]">
-              {t("contacts_not_found")}
-            </div>
+            <div className="px-4 py-8 text-center text-[var(--tg-hint-color)]">{t("contacts_not_found")}</div>
           )}
-          {loading && (
-            <div className="px-4 py-4 text-[13px] text-[var(--tg-hint-color)]">{t("loading")}</div>
-          )}
+          {loading && <div className="px-4 py-4 text-[13px] text-[var(--tg-hint-color)]">{t("loading")}</div>}
         </div>
       </div>
     </div>

@@ -1,25 +1,29 @@
 // src/components/transactions/CreateTransactionModal.tsx
-// Визуальная модалка создания транзакции (интерфейс обновлён).
-// Фиксы:
-//  - Заголовок оставлен (tx_modal.title).
-//  - Крестик не налезает: добавлен внутренний отступ сверху.
-//  - Компактные отступы везде (меньше вертикальных зазоров).
-//  - Пилюля группы: если groupLocked=true — не кликабельна.
-//  - Выбор плательщика: модалка PaidByPickerModal, показываем только имя и аватар.
-//  - Никаких условных вызовов хуков (во избежание React error #310).
-//  - Никаких изменений vite.config.ts/main.tsx/API.
+// Модалка создания транзакции — компактный интерфейс «как в Splitwise».
+// Что внутри:
+//  • Заголовок (tx_modal.title)
+//  • Выбор группы в виде «пилюли» (цветной аватар по цвету группы). Если groupLocked=true — нельзя менять
+//  • Тип: Расход / Перевод (toggle)
+//  • Категория (плейсхолдер — как было)
+//  • Сумма: нормализация "," → ".", 2 знака после запятой; снизу «≈ 123,45 ₽» по валюте группы
+//  • Кто платил: отдельная модалка PaidByPickerModal; после выбора показываем аватар (инициал) и ТОЛЬКО имя
+//  • Дата
+//  • Комментарий (обязательное поле). Подсказка показывается после попытки сохранения, если поле пустое
+//  • Кнопки: Отмена / Создать (disabled при незаполненных обязательных)
+// Важно: не трогаем другие файлы/конфиги.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  X, Layers, CalendarDays, CircleDollarSign, CreditCard,
-  MessageSquare, ChevronRight, Shuffle, Users
+  X, Layers, CalendarDays, CircleDollarSign, ChevronRight, Shuffle, Users,
 } from "lucide-react";
 import CardSection from "../CardSection";
 import GroupPickerModal from "../group/GroupPickerModal";
 import { useUserStore } from "../../store/userStore";
 import { useGroupsStore } from "../../store/groupsStore";
 import PaidByPickerModal from "./PaidByPickerModal";
+import { getGroupMembers } from "../../api/groupMembersApi";
+import type { GroupMember } from "../../types/group_member";
 
 export type TxType = "expense" | "transfer";
 
@@ -28,7 +32,7 @@ export interface MinimalGroup {
   name: string;
   color?: string | null;
   icon?: string | null;
-  // currency берём из группы, если в сторе она есть — здесь опционально
+  // валюта группы — где доступно
   currency_code?: string | null;
 }
 
@@ -37,11 +41,11 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   groups: MinimalGroup[];           // можно передавать пустой — модалка сама подгрузит
   defaultGroupId?: number;
-  groupLocked?: boolean;            // если true — группу нельзя сменить (страница деталей группы)
+  groupLocked?: boolean;            // на странице детали группы
 };
 
 function Row({
-  icon, label, value, onClick, right, isLast
+  icon, label, value, onClick, right, isLast,
 }: {
   icon: React.ReactNode; label: string; value?: string; onClick?: () => void; right?: React.ReactNode; isLast?: boolean;
 }) {
@@ -64,9 +68,7 @@ function Row({
           </>
         )}
       </button>
-      {!isLast && (
-        <div className="absolute left-[46px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
-      )}
+      {!isLast && <div className="absolute left-[46px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />}
     </div>
   );
 }
@@ -76,17 +78,19 @@ function GroupPill({
 }: {
   group?: MinimalGroup; disabled?: boolean; onClick?: () => void;
 }) {
-  if (!group) return (
-    <button
-      type="button"
-      onClick={disabled ? undefined : onClick}
-      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)]
-        ${disabled ? "opacity-60" : "hover:bg-[var(--tg-accent-color)]/10"} transition`}
-    >
-      <Users className="text-[var(--tg-link-color)]" size={18} />
-      <span className="text-[14px]">{/* placeholder отрисуется в Row-заголовке */}</span>
-    </button>
-  );
+  if (!group) {
+    return (
+      <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)]
+          ${disabled ? "opacity-60 cursor-default" : "hover:bg-[var(--tg-accent-color)]/10"} transition`}
+      >
+        <Users className="text-[var(--tg-link-color)]" size={18} />
+        <span className="text-[14px]" />
+      </button>
+    );
+  }
 
   const bg = group.color || "#40A7E3";
   const letter = (group.name || "?").charAt(0).toUpperCase();
@@ -105,6 +109,7 @@ function GroupPill({
         <span style={{ fontSize: 14 }}>{group.icon || letter}</span>
       </div>
       <div className="flex-1 min-w-0 text-left">
+        {/* длинные имена не переносим — только truncate */}
         <div className="text-[14px] font-medium truncate">{group.name}</div>
       </div>
       {!disabled && <ChevronRight className="text-[var(--tg-hint-color)]" size={16} />}
@@ -112,19 +117,27 @@ function GroupPill({
   );
 }
 
+// цветной инициал по userId (для «Кто платил»)
+const PALETTE = [
+  "#40A7E3", "#8E61FF", "#FF6B6B", "#FFB020", "#2EC4B6",
+  "#7DCE82", "#FF7AB6", "#6C8AE4", "#E67E22", "#9B59B6",
+];
+function colorById(id?: number) {
+  if (!id || id < 0) return "#40A7E3";
+  return PALETTE[id % PALETTE.length];
+}
+
 export default function CreateTransactionModal({
-  open, onOpenChange, groups: groupsProp, defaultGroupId, groupLocked = false
+  open, onOpenChange, groups: groupsProp, defaultGroupId, groupLocked = false,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const user = useUserStore((s) => s.user);
   const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
 
-  // локальные группы (из пропа или стора)
+  // локальные группы
   const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
-    setLocalGroups(
-      groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? [])
-    );
+    setLocalGroups(groupsProp?.length ? groupsProp : (groupsStoreItems ?? []));
   }, [groupsProp, groupsStoreItems]);
 
   // автоподгрузка групп при первом открытии
@@ -149,8 +162,29 @@ export default function CreateTransactionModal({
   const [paidBy, setPaidBy] = useState<number | undefined>(undefined);
   const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [comment, setComment] = useState<string>("");
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
-  // модалка выбора плательщика
+  // участники группы (для показа имени/аватарки плательщика, модалку «Кто платил» не трогаем)
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const membersReqId = useRef(0);
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedGroupId) { setMembers([]); return; }
+    const my = ++membersReqId.current;
+    (async () => {
+      try {
+        // небольшой буфер
+        const res = await getGroupMembers(selectedGroupId, 0, 100);
+        if (membersReqId.current !== my) return;
+        const items = Array.isArray(res?.items) ? (res.items as GroupMember[]) : [];
+        setMembers(items);
+      } catch {
+        if (membersReqId.current === my) setMembers([]);
+      }
+    })();
+  }, [open, selectedGroupId]);
+
+  // выбор плательщика — модалка
   const [paidByModal, setPaidByModal] = useState(false);
 
   // сброс при закрытии
@@ -164,6 +198,7 @@ export default function CreateTransactionModal({
     setPaidBy(undefined);
     setDate(new Date().toISOString().slice(0, 10));
     setComment("");
+    setAttemptedSubmit(false);
     setGroupModal(false);
     setPaidByModal(false);
   }, [open, defaultGroupId]);
@@ -173,25 +208,60 @@ export default function CreateTransactionModal({
     [localGroups, selectedGroupId]
   );
 
-  // формат отображения суммы-черновика (без строгой маски — маску подключим отдельно)
+  // ===== amount: нормализация и формат
   const normalizedAmount = useMemo(() => {
-    const v = amount.replace(",", ".").trim();
-    if (!v) return "";
-    const n = Number(v);
-    if (isNaN(n)) return "";
+    const raw = amount.replace(",", ".").replace(/[^\d.]/g, "");
+    if (!raw) return "";
+    const n = Number(raw);
+    if (!isFinite(n)) return "";
     return n.toFixed(2);
   }, [amount]);
 
-  if (!open) return null;
+  // код/символ валюты — best-effort (как в GroupHeader — пытаемся найти код/символ, иначе RUB)
+  function resolveCurrencyCode(g?: any): string {
+    return (
+      g?.currency?.code ||
+      g?.currency_code ||
+      g?.currencyCode ||
+      "RUB"
+    );
+  }
+  const currencyCode = resolveCurrencyCode(selectedGroup);
+  const approxFormatted = useMemo(() => {
+    if (!normalizedAmount) return "";
+    try {
+      const nf = new Intl.NumberFormat(i18n.language || "ru-RU", {
+        style: "currency",
+        currency: currencyCode,
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      });
+      return nf.format(Number(normalizedAmount));
+    } catch {
+      // Fallback «123,45 CUR»
+      const nf = new Intl.NumberFormat(i18n.language || "ru-RU", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      });
+      return `${nf.format(Number(normalizedAmount))} ${currencyCode}`;
+    }
+  }, [normalizedAmount, currencyCode, i18n.language]);
+
+  // плательщик — найдём имя по id из кеша участников
+  const paidByUser = useMemo(() => {
+    if (!paidBy) return undefined;
+    return members.find((m) => (m.user?.id ?? 0) === paidBy)?.user;
+  }, [paidBy, members]);
 
   const canSubmit = Boolean(selectedGroupId && normalizedAmount && comment.trim().length > 0);
-  const groupPickDisabled = groupLocked;
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
         <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
-          {/* Кнопка закрытия */}
+          {/* Кнопка закрытия — не накладывается на контент */}
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -201,9 +271,9 @@ export default function CreateTransactionModal({
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контент с верхним отступом, чтобы крестик не перекрывал */}
+          {/* Контент с верхним отступом */}
           <div className="p-4 pt-9 flex flex-col gap-1">
-            {/* Заголовок (по просьбе — вернуть) */}
+            {/* Заголовок */}
             <div className="text-[16px] font-bold text-[var(--tg-text-color)] mb-1">
               {t("tx_modal.title")}
             </div>
@@ -215,7 +285,7 @@ export default function CreateTransactionModal({
                   <div className="text-[12px] font-medium opacity-80 mb-1">{t("tx_modal.choose_group")}</div>
                   <GroupPill
                     group={selectedGroup}
-                    disabled={groupPickDisabled}
+                    disabled={!!groupLocked}
                     onClick={() => setGroupModal(true)}
                   />
                 </div>
@@ -251,7 +321,7 @@ export default function CreateTransactionModal({
               </CardSection>
             </div>
 
-            {/* 3) Категория (плейсхолдер) */}
+            {/* 3) Категория (плейсхолдер — как было) */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <Row
@@ -259,7 +329,7 @@ export default function CreateTransactionModal({
                   label={t("tx_modal.category")}
                   value={categoryName || "—"}
                   onClick={() => {
-                    // позже откроем CategoryPickerModal
+                    // здесь позже откроем CategoryPickerModal
                   }}
                   isLast
                 />
@@ -276,14 +346,23 @@ export default function CreateTransactionModal({
                       inputMode="decimal"
                       placeholder="0.00"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value.replace(",", "."))}
+                      onChange={(e) => {
+                        // разрешаем цифры и , .; всё остальное отбрасываем на лету
+                        const v = e.target.value;
+                        const safe = v.replace(",", ".").replace(/[^\d.]/g, "");
+                        setAmount(safe);
+                      }}
+                      onBlur={() => {
+                        if (!amount) return;
+                        const n = Number(amount.replace(",", "."));
+                        if (isFinite(n)) setAmount(n.toFixed(2));
+                      }}
                       className="w-full rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 py-2 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
                     />
                     <CircleDollarSign className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                   </div>
-                  {/* Пример форматированного вида рядом */}
                   {normalizedAmount && (
-                    <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">≈ {normalizedAmount}</div>
+                    <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">≈ {approxFormatted}</div>
                   )}
                 </div>
               </CardSection>
@@ -293,16 +372,38 @@ export default function CreateTransactionModal({
             <div className="-mx-4">
               <CardSection className="py-0">
                 <div className="px-3 py-2">
-                  <label className="block text-[12px] font-medium opacity-80 mb-1">{t("tx_modal.paid_by")}</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[12px] font-medium opacity-80 mb-1">{t("tx_modal.paid_by")}</label>
+                    {/* Кнопка «выбрать плательщика» компактная, справа; после выбора показываем инициал+имя */}
+                  </div>
                   <button
                     type="button"
                     onClick={() => selectedGroupId && setPaidByModal(true)}
                     className="w-full flex items-center justify-between rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 py-2 text-[14px] text-left"
                   >
-                    <div className="flex items-center min-w-0">
-                      <CreditCard className="opacity-50 mr-2" size={16} />
+                    <div className="flex items-center min-w-0 gap-2">
+                      {/* аватар-инициал цветной */}
+                      {paidByUser ? (
+                        <div
+                          className="shrink-0 rounded-lg text-white flex items-center justify-center"
+                          style={{ width: 24, height: 24, background: colorById(paidByUser.id || 0) }}
+                        >
+                          <span style={{ fontSize: 12 }}>
+                            {(paidByUser.first_name || "?").trim().charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          className="shrink-0 rounded-lg text-white flex items-center justify-center"
+                          style={{ width: 24, height: 24, background: "#9aa3ab" }}
+                        >
+                          <span style={{ fontSize: 12 }}>?</span>
+                        </div>
+                      )}
+
+                      {/* Только ИМЯ, без фамилии, truncate чтобы не ломать разметку */}
                       <span className="truncate">
-                        {paidBy ? t("tx_modal.paid_by") : t("not_specified")}
+                        {paidByUser ? String(paidByUser.first_name || "").trim() || "—" : t("not_specified")}
                       </span>
                     </div>
                     <ChevronRight className="text-[var(--tg-hint-color)]" size={16} />
@@ -329,7 +430,7 @@ export default function CreateTransactionModal({
               </CardSection>
             </div>
 
-            {/* 7) Комментарий (обязательное поле) */}
+            {/* 7) Комментарий (обязательное поле; подсказка при попытке сохранить) */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <div className="px-3 py-2">
@@ -339,14 +440,17 @@ export default function CreateTransactionModal({
                       rows={2}
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      className="w-full rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 py-2 text-[14px] resize-y min-h-[64px] focus:outline-none focus:border-[var(--tg-accent-color)]"
+                      className={`w-full rounded-xl border bg-[var(--tg-bg-color,#fff)] px-3 py-2 text-[14px] resize-y min-h-[64px] focus:outline-none ${
+                        attemptedSubmit && !comment.trim().length
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)]"
+                      }`}
                     />
-                    <MessageSquare className="absolute right-3 top-2 opacity-40" size={16} />
                   </div>
-                  {/* Подсказка при пустом значении */}
-                  {!comment.trim() && (
-                    <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
-                      {t("errors?.comment_required") || "Введите комментарий"}
+                  {attemptedSubmit && !comment.trim().length && (
+                    <div className="mt-1 text-[12px] text-red-500">
+                      {/* Добавлен отдельный ключ ошибок для комментария, если его ещё нет — запасной текст */}
+                      {t("errors.comment_required") || "Введите комментарий"}
                     </div>
                   )}
                 </div>
@@ -366,14 +470,23 @@ export default function CreateTransactionModal({
               <button
                 type="button"
                 onClick={() => {
+                  setAttemptedSubmit(true);
+                  if (!canSubmit) return;
                   console.log("[CreateTransactionModal] draft", {
-                    group_id: selectedGroupId, type, category: categoryName, amount: normalizedAmount,
-                    split, paid_by: paidBy, date, comment
+                    group_id: selectedGroupId,
+                    type,
+                    category: categoryName,
+                    amount: normalizedAmount,
+                    split,
+                    paid_by: paidBy,
+                    date,
+                    comment,
+                    currency: currencyCode,
                   });
                   onOpenChange(false);
                 }}
                 className="w-1/2 py-2 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
-                disabled={!canSubmit}
+                disabled={!selectedGroupId || !normalizedAmount}
               >
                 {t("tx_modal.create")}
               </button>
@@ -384,7 +497,7 @@ export default function CreateTransactionModal({
 
       {/* Выбор группы */}
       <GroupPickerModal
-        open={groupModal && !groupPickDisabled}
+        open={groupModal && !groupLocked}
         onClose={() => setGroupModal(false)}
         selectedId={selectedGroupId}
         onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false); }}
