@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CheckSquare, Square } from "lucide-react";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { GroupMember } from "../../types/group_member";
 
@@ -26,6 +27,9 @@ type Props = {
   onSave: (sel: SplitSelection) => void;
 };
 
+function norm(s: string) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 function fullName(u: any): string {
   const a = (u?.first_name || "").trim();
   const b = (u?.last_name || "").trim();
@@ -89,12 +93,27 @@ export function computePerPerson(selection: SplitSelection, total: number, decim
   return selection.participants.map((p) => ({ user_id: p.user_id, name: p.name, avatar_url: p.avatar_url, amount: p.amount }));
 }
 
+// type guard
 function isShares(sel: SplitSelection): sel is Extract<SplitSelection, { type: "shares" }> {
   return sel.type === "shares";
 }
 
 // @ts-ignore – экспорт-обёртка, чтобы можно было навесить статическое свойство ниже
 export default function SplitPickerModal(props: Props) { return InnerSplitPickerModal(props); }
+
+function Checkbox({ checked }: { checked: boolean }) {
+  return (
+    <div
+      className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center ${checked ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/70"}`}
+    >
+      {checked && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+          <path d="M20 6L9 17l-5-5" stroke="var(--tg-link-color)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </div>
+  );
+}
 
 function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initial, onSave }: Props) {
   const { t, i18n } = useTranslation();
@@ -123,6 +142,7 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
     (async () => {
       setLoading(true);
       try {
+        // грузим всех (постранично)
         let offset = 0;
         const PAGE = 100;
         const acc: GroupMember[] = [];
@@ -135,6 +155,7 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
         }
         if (reqIdRef.current !== myId) return;
         setMembers(acc);
+        // по умолчанию — Equal: все участники
         if (!initial || !("participants" in initial) || initial.participants.length === 0) {
           setEqualSel(new Set(acc.map((m) => m.user.id)));
         }
@@ -142,10 +163,9 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
         if (reqIdRef.current === myId) setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, groupId]);
+  }, [open, groupId, initial]);
 
-  const items = members || [];
+  const items = useMemo(() => members || [], [members]);
 
   const allIds = useMemo(() => new Set((members || []).map((m) => m.user.id)), [members]);
   const allSelected = useMemo(() => {
@@ -182,7 +202,9 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
     const pack = (id: number) => {
       const m = members.find((mm) => mm.user.id === id);
       const name = firstNameOnly(fullName(m?.user));
-      return { user_id: id, name, avatar_url: (m?.user as any)?.avatar_url };
+      // ВАЖНО: поддерживаем и avatar_url, и photo_url
+      const avatar = (m?.user as any)?.avatar_url || (m?.user as any)?.photo_url || null;
+      return { user_id: id, name, avatar_url: avatar };
     };
     if (mode === "equal") {
       return { type: "equal", participants: Array.from(equalSel).map(pack) };
@@ -227,6 +249,14 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
 
   if (!open) return null;
 
+  const allLabel = (() => {
+    const k = t("tx_modal.all");
+    if (k && k !== "tx_modal.all") return k;
+    if (locale === "ru") return "ВСЕ";
+    if (locale === "es") return "TODOS";
+    return "ALL";
+  })();
+
   return (
     <div className="fixed inset-0 z-[1100] flex items-end justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
@@ -237,42 +267,42 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
           <button onClick={onClose} className="text-[13px] opacity-70 hover:opacity-100 transition">{t("close")}</button>
         </div>
 
-        {/* mode switch */}
+        {/* mode switch + ALL */}
         <div className="px-4 pt-2">
-          <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
-            <button className={`px-3 h-9 text-[13px] ${mode === "equal" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("equal")}>{t("tx_modal.split_equal")}</button>
-            <button className={`px-3 h-9 text-[13px] ${mode === "shares" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("shares")}>{t("tx_modal.split_shares")}</button>
-            <button className={`px-3 h-9 text-[13px] ${mode === "custom" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("custom")}>{t("tx_modal.split_custom")}</button>
+          <div className="flex items-center justify-between">
+            <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
+              <button className={`px-3 h-9 text-[13px] ${mode === "equal" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("equal")}>{t("tx_modal.split_equal")}</button>
+              <button className={`px-3 h-9 text-[13px] ${mode === "shares" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("shares")}>{t("tx_modal.split_shares")}</button>
+              <button className={`px-3 h-9 text-[13px] ${mode === "custom" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : ""}`} onClick={() => setMode("custom")}>{t("tx_modal.split_custom")}</button>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleAll}
+              className={`ml-3 inline-flex items-center gap-2 px-3 h-9 rounded-full border transition ${
+                allSelected
+                  ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10"
+                  : "border-[var(--tg-hint-color)]/50"
+              }`}
+            >
+              {allSelected ? <CheckSquare size={16} /> : <Square size={16} className="opacity-70" />}
+              <span className="text-[13px] font-medium">{allLabel}</span>
+            </button>
           </div>
         </div>
 
-        {/* Кнопка ALL без поиска */}
-        <div className="px-4 pt-2">
-          <button
-            type="button"
-            onClick={toggleAll}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${allSelected ? "border-[var(--tg-link-color)] bg-[var(--tg-accent-color,#40A7E3)]/10" : "border-[var(--tg-hint-color)]/50"}`}
-          >
-            <span className="font-medium">ALL</span>
-          </button>
-        </div>
-
         {/* список участников */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto mt-1">
           {items.map((m) => {
             const u = m.user;
             const id = u.id;
             const name = firstNameOnly(fullName(u));
-            const avatar = (u as any)?.avatar_url as string | undefined;
+            const avatar = (u as any)?.avatar_url || (u as any)?.photo_url;
 
             let right: React.ReactNode = null;
             if (mode === "equal") {
               const checked = equalSel.has(id);
-              right = (
-                <div className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${checked ? "border-[var(--tg-link-color)]" : "border-[var(--tg-hint-color)]"}`}>
-                  {checked && <div className="w-3 h-3 rounded-full" style={{ background: "var(--tg-link-color)" }} />}
-                </div>
-              );
+              right = <Checkbox checked={checked} />;
             } else if (mode === "shares") {
               const val = shares.get(id) || 0;
               right = (
