@@ -1,4 +1,3 @@
-// src/i18n/en.ts
 export default {
   // --- Navigation & sections ---
   main: "Home",
@@ -29,7 +28,8 @@ export default {
   groups_count: "Total groups: {{count}}",
   groups_top_info: "You have {{count}} active groups",
   empty_groups: "You don't have any groups yet",
-  empty_groups_hint: "Create your first group to manage shared expenses!",
+  empty_groups_hint:
+    "Create your first group to manage shared expenses!",
   search_group_placeholder: "Search group...",
   debts_reserved: "Debts — coming soon!",
   and_more_members: "and {{count}} more",
@@ -61,7 +61,8 @@ export default {
   group_fab_add_transaction: "Add transaction",
 
   // --- Transactions ---
-  group_transactions_empty: "No expenses yet — add the first one!",
+  group_transactions_empty:
+    "No expenses yet — add the first one!",
   group_transactions_not_found: "No expenses found",
   group_transactions_placeholder:
     "Placeholder for the transactions list. Your group transactions will appear here.",
@@ -73,7 +74,8 @@ export default {
   group_balance_get_from: "Owed to you: {{sum}} ?",
   group_balance_owe_to: "You owe: {{sum}} ?",
   group_balance_no_debt_with: "No debt",
-  group_balance_no_debts_all: "No one owes anyone in this group",
+  group_balance_no_debts_all:
+    "No one owes anyone in this group",
 
   // --- Analytics tab ---
   group_analytics_coming_soon: "Analytics coming soon",
@@ -152,7 +154,10 @@ export default {
   },
 
   // --- Added: common & group form ---
-  common: { yes: "Yes", no: "No" },
+  common: {
+    yes: "Yes",
+    no: "No",
+  },
   errors: {
     group_name_required: "Enter a group name",
     group_trip_date_required: "Select trip date",
@@ -164,9 +169,11 @@ export default {
     is_trip: "Group for a trip?",
     trip_date:
       "Enter the date after which the group (if there are no debts) will be moved to archive automatically",
-    name_hint_initial: "Enter a group name (up to {{max}} chars)",
+    name_hint_initial:
+      "Enter a group name (up to {{max}} chars)",
     name_hint_remaining: "{{n}} chars left",
-    desc_hint_initial: "Enter a group description (up to {{max}} chars)",
+    desc_hint_initial:
+      "Enter a group description (up to {{max}} chars)",
     desc_hint_remaining: "{{n}} chars left",
     trip_date_placeholder: "DD.MM.YYYY",
   },
@@ -208,23 +215,19 @@ export default {
     back: "Back",
     choose_group_first: "Choose a group first",
 
-    // UI
-    create_and_new: "Create and add another",
-    all: "ALL",
-    each: "each",
-    total_shares: "Total shares",
-    per_share: "per share",
-    custom_amounts_set: "Custom amounts set",
-    totals_mismatch: "Totals mismatch",
-
-    // Errors / validation
-    amount_required: "Enter amount > 0",
+    // added for validation/preview
+    amount_required: "Enter amount",
     comment_required: "Enter a comment",
     category_required: "Choose a category",
-    split_no_participants: "Select at least one participant",
-    split_no_shares: "Total shares must be greater than zero",
-    split_custom_no_values: "Enter amounts for participants",
-    split_custom_mismatch: "Participants sum must equal the total",
+    split_no_participants: "Select participants",
+    split_no_shares: "Shares are not set",
+    split_custom_mismatch:
+      "Per-person total doesn’t match the amount",
+    per_share: "Per 1 share",
+    custom_amounts_set: "Per-person amounts set",
+    totals_mismatch: "Totals don’t match",
+    each: "each:",
+    create_and_new: "Create and new",
   },
 
   // --- Categories ---

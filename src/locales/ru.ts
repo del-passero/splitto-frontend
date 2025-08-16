@@ -1,4 +1,3 @@
-// src/i18n/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -29,7 +28,8 @@ export default {
   groups_count: "Всего групп: {{count}}",
   groups_top_info: "У вас {{count}} активных групп",
   empty_groups: "У вас ещё нет ни одной группы",
-  empty_groups_hint: "Создайте свою первую группу для управления совместными расходами!",
+  empty_groups_hint:
+    "Создайте свою первую группу для управления совместными расходами!",
   search_group_placeholder: "Поиск группы...",
   debts_reserved: "Долги — скоро!",
   and_more_members: "и ещё {{count}}",
@@ -61,7 +61,8 @@ export default {
   group_fab_add_transaction: "Добавить транзакцию",
 
   // --- Транзакции ---
-  group_transactions_empty: "В группе пока нет трат — добавьте первую!",
+  group_transactions_empty:
+    "В группе пока нет трат — добавьте первую!",
   group_transactions_not_found: "Траты не найдены",
   group_transactions_placeholder:
     "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
@@ -73,7 +74,8 @@ export default {
   group_balance_get_from: "Вам должны: {{sum}} ₽",
   group_balance_owe_to: "Вы должны: {{sum}} ₽",
   group_balance_no_debt_with: "Нет долга",
-  group_balance_no_debts_all: "В группе никто никому не должен",
+  group_balance_no_debts_all:
+    "В группе никто никому не должен",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",
@@ -151,8 +153,11 @@ export default {
     currency_popular: "Популярные",
   },
 
-  // --- Общие и форма группы ---
-  common: { yes: "Да", no: "Нет" },
+  // --- ДОБАВЛЕНО: общие и форма группы ---
+  common: {
+    yes: "Да",
+    no: "Нет",
+  },
   errors: {
     group_name_required: "Введите название группы",
     group_trip_date_required: "Укажите дату поездки",
@@ -164,14 +169,16 @@ export default {
     is_trip: "Группа для путешествия?",
     trip_date:
       "Введите дату, после которой группа (при условии отсутствия долгов) автоматически переместится в архив",
-    name_hint_initial: "Введите название группы (до {{max}} символов)",
+    name_hint_initial:
+      "Введите название группы (до {{max}} символов)",
     name_hint_remaining: "Осталось {{n}} символов",
-    desc_hint_initial: "Введите описание группы (до {{max}} символов)",
+    desc_hint_initial:
+      "Введите описание группы (до {{max}} символов)",
     desc_hint_remaining: "Осталось {{n}} символов",
     trip_date_placeholder: "ДД.ММ.ГГГГ",
   },
 
-  // --- Модалка добавления участников ---
+  // --- НОВОЕ: модалка добавления участников ---
   add_members_modal: {
     title: "Добавить участников",
     search_placeholder: "Поиск контакта...",
@@ -181,7 +188,7 @@ export default {
     error_some_failed: "Добавлено: {{added}}, не удалось: {{failed}}",
   },
 
-  // --- Модалка транзакций ---
+  // --- Новое: модалка транзакций ---
   tx_modal: {
     title: "Новая транзакция",
     choose_group: "Выберите группу",
@@ -208,23 +215,18 @@ export default {
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
 
-    // UI
-    create_and_new: "Создать и новую",
-    all: "ВСЕ",
-    each: "по",
-    total_shares: "Всего долей",
-    per_share: "доля",
-    custom_amounts_set: "Суммы заданы вручную",
-    totals_mismatch: "Суммы не совпадают",
-
-    // Errors / validation
-    amount_required: "Введите сумму больше 0",
-    comment_required: "Заполните комментарий",
+    // добавлено для валидации/превью
+    amount_required: "Введите сумму",
+    comment_required: "Введите комментарий",
     category_required: "Выберите категорию",
-    split_no_participants: "Выберите хотя бы одного участника",
-    split_no_shares: "Сумма долей должна быть больше нуля",
-    split_custom_no_values: "Введите суммы для участников",
-    split_custom_mismatch: "Суммы участников должны равняться общей сумме",
+    split_no_participants: "Выберите участников",
+    split_no_shares: "Доли не заданы",
+    split_custom_mismatch: "Сумма по участникам не совпадает с общей",
+    per_share: "За 1 долю",
+    custom_amounts_set: "Суммы по участникам заданы",
+    totals_mismatch: "Итоги не сходятся",
+    each: "с каждого:",
+    create_and_new: "Создать и новую",
   },
 
   // --- Категории ---

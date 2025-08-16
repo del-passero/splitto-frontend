@@ -1,4 +1,3 @@
-// src/i18n/es.ts
 export default {
   // --- Navegación y secciones ---
   main: "Inicio",
@@ -29,7 +28,8 @@ export default {
   groups_count: "Total de grupos: {{count}}",
   groups_top_info: "Tienes {{count}} grupos activos",
   empty_groups: "Aún no tienes grupos",
-  empty_groups_hint: "¡Crea tu primer grupo para gestionar gastos compartidos!",
+  empty_groups_hint:
+    "¡Crea tu primer grupo para gestionar gastos compartidos!",
   search_group_placeholder: "Buscar grupo...",
   debts_reserved: "Deudas — ¡próximamente!",
   and_more_members: "y {{count}} más",
@@ -61,7 +61,8 @@ export default {
   group_fab_add_transaction: "Añadir gasto",
 
   // --- Transacciones ---
-  group_transactions_empty: "Aún no hay gastos — ¡añade el primero!",
+  group_transactions_empty:
+    "Aún no hay gastos — ¡añade el primero!",
   group_transactions_not_found: "No se encontraron gastos",
   group_transactions_placeholder:
     "Marcador de posición para la lista de transacciones. Aquí aparecerán las transacciones de tu grupo.",
@@ -73,7 +74,8 @@ export default {
   group_balance_get_from: "Te deben: {{sum}} ₽",
   group_balance_owe_to: "Debes: {{sum}} ₽",
   group_balance_no_debt_with: "Sin deuda",
-  group_balance_no_debts_all: "Nadie debe a nadie en este grupo",
+  group_balance_no_debts_all:
+    "Nadie debe a nadie en este grupo",
 
   // --- Pestaña Analítica ---
   group_analytics_coming_soon: "La analítica llegará pronto",
@@ -98,10 +100,12 @@ export default {
   share: "Compartir",
   shared: "¡El enlace está listo para pegar!",
   invite_friend: "Invitar a un amigo",
-  invite_error: "No se pudo crear el enlace. Inténtalo más tarde.",
+  invite_error:
+    "No se pudo crear el enlace. Inténtalo más tarde.",
   invite_message:
     "Únete a mí en Splitto — una forma sencilla de gestionar gastos compartidos sin salir de Telegram.\nAquí está tu enlace de invitación:\n{{link}}",
-  error_invite_link: "No se pudo obtener el enlace de invitación",
+  error_invite_link:
+    "No se pudo obtener el enlace de invitación",
 
   // --- Contactos ---
   empty_contacts: "Aún no tienes contactos...",
@@ -152,7 +156,10 @@ export default {
   },
 
   // --- Añadido: comunes y formulario de grupo ---
-  common: { yes: "Sí", no: "No" },
+  common: {
+    yes: "Sí",
+    no: "No",
+  },
   errors: {
     group_name_required: "Introduce el nombre del grupo",
     group_trip_date_required: "Indica la fecha del viaje",
@@ -164,9 +171,11 @@ export default {
     is_trip: "¿Grupo para un viaje?",
     trip_date:
       "Introduce la fecha tras la cual el grupo (si no hay deudas) se archivará automáticamente",
-    name_hint_initial: "Introduce el nombre del grupo (hasta {{max}} caracteres)",
+    name_hint_initial:
+      "Introduce el nombre del grupo (hasta {{max}} caracteres)",
     name_hint_remaining: "Quedan {{n}} caracteres",
-    desc_hint_initial: "Introduce la descripción del grupo (hasta {{max}} caracteres)",
+    desc_hint_initial:
+      "Introduce la descripción del grupo (hasta {{max}} caracteres)",
     desc_hint_remaining: "Quedan {{n}} caracteres",
     trip_date_placeholder: "DD.MM.AAAA",
   },
@@ -178,7 +187,8 @@ export default {
     empty: "No hay amigos para añadir",
     add_btn: "Añadir ({{count}})",
     adding: "Añadiendo...",
-    error_some_failed: "Añadidos: {{added}}, fallidos: {{failed}}",
+    error_some_failed:
+      "Añadidos: {{added}}, fallidos: {{failed}}",
   },
 
   // --- Nuevo: modal de transacciones ---
@@ -208,28 +218,25 @@ export default {
     back: "Atrás",
     choose_group_first: "Primero elige un grupo",
 
-    // UI
-    create_and_new: "Crear y añadir otra",
-    all: "TODOS",
-    each: "cada uno",
-    total_shares: "Total de acciones",
-    per_share: "por acción",
-    custom_amounts_set: "Importes personalizados establecidos",
-    totals_mismatch: "Las sumas no coinciden",
-
-    // Errors / validation
-    amount_required: "Introduce un importe > 0",
+    // añadido para validación/preview
+    amount_required: "Introduce el importe",
     comment_required: "Introduce un comentario",
     category_required: "Elige una categoría",
-    split_no_participants: "Selecciona al menos un participante",
-    split_no_shares: "El total de acciones debe ser mayor que cero",
-    split_custom_no_values: "Introduce importes para los participantes",
-    split_custom_mismatch: "La suma de los participantes debe igualar el total",
+    split_no_participants: "Selecciona participantes",
+    split_no_shares: "No se han definido acciones",
+    split_custom_mismatch:
+      "El total por persona no coincide con el importe",
+    per_share: "Por 1 acción",
+    custom_amounts_set:
+      "Importes por persona establecidos",
+    totals_mismatch: "Los totales no coinciden",
+    each: "a cada uno:",
+    create_and_new: "Crear y nueva",
   },
 
   // --- Categorías ---
   category: {
-    select_title: "Seleccionar categoría",
+    select_title: "Elegir categoría",
     search_placeholder: "Buscar categoría",
     not_found: "No se encontró nada",
   },
