@@ -1,14 +1,12 @@
 // src/components/category/CategoryPickerModal.tsx
-// Модалка выбора категории c ИЕРАРХИЧЕСКИМ отображением:
-//  • Топ-категории (parent_id = null) как секции (строки), кликабельные;
-//  • Подкатегории — внутри секции, с отступом;
-//  • Поиск фильтрует и топы, и подкатегории; при поиске раскрываются только секции с совпадениями;
-//  • Локаль берём из i18n и прокидываем ?locale=... в API;
-//  • Разделители как в ContactsList (НЕ под иконкой).
+// Иерархическая модалка выбора категории:
+//  • Все топ-категории (parent_id = null) всегда РАЗВЕРНУТЫ.
+//  • Выбирать можно ТОЛЬКО подкатегории (у родительских нет радио и клика выбора).
+//  • Поиск: если совпал родитель — показываем ВСЕ его подкатегории; если совпадают только дети — показываем только совпавших детей.
+//  • Локаль берём из i18n и прокидываем ?locale=... в API.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ChevronDown, ChevronRight } from "lucide-react"
 
 export type CategoryItem = {
   id: number
@@ -114,59 +112,34 @@ function Radio({ active }: { active: boolean }) {
   )
 }
 
-const ParentRow = ({
+const ParentHeader = ({
   item,
-  selected,
-  expanded,
-  onToggle,
-  onSelect,
   showDivider,
 }: {
   item: CategoryItem
-  selected: boolean
-  expanded: boolean
-  onToggle: () => void
-  onSelect: () => void
   showDivider: boolean
 }) => {
   return (
     <div className="relative">
-      <div className="w-full flex items-center justify-between px-4 py-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex items-center gap-1 text-[var(--tg-text-color)]"
-          title={expanded ? "Collapse" : "Expand"}
+      <div className="w-full flex items-center px-4 py-3 select-none">
+        {/* иконка/цвет */}
+        <div
+          className="flex items-center justify-center mr-3 rounded-full"
+          style={{
+            width: 34,
+            height: 34,
+            fontSize: 20,
+            background: item.color ? `${item.color}22` : "transparent",
+            border: item.color ? `1px solid ${item.color}55` : "1px solid var(--tg-hint-color)",
+          }}
         >
-          {expanded ? (
-            <ChevronDown className="opacity-70" size={18} />
-          ) : (
-            <ChevronRight className="opacity-70" size={18} />
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={onSelect}
-          className="flex-1 flex items-center min-w-0 ml-2 mr-3 hover:opacity-90 transition text-left"
-        >
-          {/* иконка/цвет */}
-          <div
-            className="flex items-center justify-center mr-3 rounded-full"
-            style={{
-              width: 34,
-              height: 34,
-              fontSize: 20,
-              background: item.color ? `${item.color}22` : "transparent",
-              border: item.color ? `1px solid ${item.color}55` : "1px solid var(--tg-hint-color)",
-            }}
-          >
-            <span aria-hidden>{item.icon || "🗂️"}</span>
-          </div>
+          <span aria-hidden>{item.icon || "🗂️"}</span>
+        </div>
+        <div className="flex-1 min-w-0">
           <div className="text-[15px] font-semibold text-[var(--tg-text-color)] truncate">{item.name}</div>
-        </button>
-
-        <Radio active={selected} />
+          <div className="text-[12px] text-[var(--tg-hint-color)] mt-0.5">Выберите подкатегорию ниже</div>
+        </div>
+        {/* у родителя НЕТ радио и клика выбора */}
       </div>
 
       {/* разделитель как в ContactsList: НЕ под иконкой */}
@@ -191,12 +164,14 @@ const ChildRow = ({
       <button
         type="button"
         onClick={onClick}
-        className="w-full flex items-center justify-between pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition"
+        className="w-full flex items-center justify-between pl-[64px] pr-4 py-3 hover:bg-black/5 dark:hover:bg.white/5 transition"
       >
         <div className="flex items-center min-w-0">
           <div className="flex items-center justify-center mr-3 rounded-full" style={{ width: 30, height: 30, fontSize: 18 }}>
             <span aria-hidden>{item.icon || "🏷️"}</span>
           </div>
+        </div>
+        <div className="flex-1 min-w-0 text-left">
           <div className="text-[15px] text-[var(--tg-text-color)] truncate">{item.name}</div>
         </div>
         <Radio active={selected} />
@@ -229,9 +204,6 @@ export default function CategoryPickerModal({
   const reqIdRef = useRef(0)
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  // раскрытые секции (id топ-категорий)
-  const [openSections, setOpenSections] = useState<Set<number>>(new Set())
-
   // запрет прокрутки body
   useEffect(() => {
     if (!open) return
@@ -248,7 +220,6 @@ export default function CategoryPickerModal({
     setQ("")
     qRef.current = ""
     setAllItems([])
-    setOpenSections(new Set())
     void initLoad(groupId, locale)
   }, [open, groupId, locale])
 
@@ -278,15 +249,6 @@ export default function CategoryPickerModal({
       if (reqIdRef.current !== myId) return
       setAllItems(acc)
 
-      // по умолчанию раскрываем секцию, где лежит выбранная категория (если есть)
-      if (selectedId) {
-        const sel = acc.find((x) => x.id === selectedId)
-        const parentId = sel?.parent_id ?? sel?.id ?? null
-        if (parentId) {
-          setOpenSections((prev) => new Set(prev).add(parentId))
-        }
-      }
-
       if (listRef.current) listRef.current.scrollTop = 0
     } finally {
       if (reqIdRef.current === myId) setLoading(false)
@@ -296,7 +258,6 @@ export default function CategoryPickerModal({
   // Построение дерева
   const { parents, childrenByParent, orphans } = useMemo(() => {
     const parents = allItems.filter((x) => x.parent_id == null)
-    // быстрое обращение по id
     const parentIds = new Set(parents.map((p) => p.id))
 
     const childrenByParent = new Map<number, CategoryItem[]>()
@@ -309,12 +270,10 @@ export default function CategoryPickerModal({
         arr.push(item)
         childrenByParent.set(item.parent_id, arr)
       } else {
-        // родителя нет в выдаче — положим в "прочее"
-        orphans.push(item)
+        orphans.push(item) // нет родителя в выдаче
       }
     }
 
-    // сортируем по имени (бэкенд уже сортирует, но клиентская сортировка держит иерархию красивой)
     const coll = new Intl.Collator(locale)
     parents.sort((a, b) => coll.compare(a.name, b.name))
     childrenByParent.forEach((arr) => arr.sort((a, b) => coll.compare(a.name, b.name)))
@@ -323,67 +282,50 @@ export default function CategoryPickerModal({
     return { parents, childrenByParent, orphans }
   }, [allItems, locale])
 
-  // Поиск (фильтруем дерево, оставляя только совпадающие секции/детей)
+  // Поиск:
+  //  • если совпал родитель — показываем ВСЕ его подкатегории;
+  //  • если совпадают только дети — показываем только совпавших детей.
   const filteredTree = useMemo(() => {
     const qn = norm(q).trim()
-    if (!qn) return { parents, childrenByParent, orphans, hasFilter: false }
+    if (!qn) return { parents, childrenByParent, orphans }
 
     const coll = new Intl.Collator(locale)
-    const hitsParents: CategoryItem[] = []
-    const hitsChildrenByParent = new Map<number, CategoryItem[]>()
-    const hitsOrphans: CategoryItem[] = []
-
     const includes = (s: string) => norm(s).includes(qn)
 
-    // проверка родителя и его детей
+    const outParents: CategoryItem[] = []
+    const outChildrenByParent = new Map<number, CategoryItem[]>()
+    const outOrphans: CategoryItem[] = []
+
     for (const p of parents) {
-      const pMatch = includes(p.name)
-      const kids = (childrenByParent.get(p.id) || []).filter((c) => includes(c.name))
-      if (pMatch || kids.length) {
-        hitsParents.push(p)
-        if (kids.length) {
-          kids.sort((a, b) => coll.compare(a.name, b.name))
-          hitsChildrenByParent.set(p.id, kids)
-        } else {
-          // если совпал только родитель — детей не показываем (или можно показать всех — реши сам)
-          hitsChildrenByParent.set(p.id, [])
+      const kids = childrenByParent.get(p.id) || []
+      if (includes(p.name)) {
+        // совпал сам родитель — показываем все его детей
+        outParents.push(p)
+        outChildrenByParent.set(p.id, [...kids])
+      } else {
+        // фильтруем детей
+        const k = kids.filter((c) => includes(c.name))
+        if (k.length) {
+          outParents.push(p)
+          outChildrenByParent.set(p.id, k)
         }
       }
     }
 
-    // сироты
     for (const c of orphans) {
-      if (includes(c.name)) hitsOrphans.push(c)
+      if (includes(c.name)) outOrphans.push(c)
     }
 
-    hitsParents.sort((a, b) => coll.compare(a.name, b.name))
-    hitsOrphans.sort((a, b) => coll.compare(a.name, b.name))
+    outParents.sort((a, b) => coll.compare(a.name, b.name))
+    outChildrenByParent.forEach((arr) => arr.sort((a, b) => coll.compare(a.name, b.name)))
+    outOrphans.sort((a, b) => coll.compare(a.name, b.name))
 
-    return { parents: hitsParents, childrenByParent: hitsChildrenByParent, orphans: hitsOrphans, hasFilter: true }
+    return { parents: outParents, childrenByParent: outChildrenByParent, orphans: outOrphans }
   }, [q, parents, childrenByParent, orphans, locale])
 
-  // При активном поиске — раскрываем все секции, где есть совпадения
-  useEffect(() => {
-    if (!open) return
-    if (!filteredTree.hasFilter) return
-    const next = new Set<number>(openSections)
-    for (const p of filteredTree.parents) {
-      next.add(p.id)
-    }
-    setOpenSections(next)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]) // на каждый новый запрос поиска раскрываем релевантное
-
-  const toggleSection = (pid: number) => {
-    setOpenSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(pid)) next.delete(pid)
-      else next.add(pid)
-      return next
-    })
-  }
-
   const handleSelect = (it: CategoryItem) => {
+    // выбирать можно только подкатегории (те, у кого parent_id != null)
+    if (it.parent_id == null) return
     onSelect(it)
     if (closeOnSelect) onClose()
   }
@@ -428,26 +370,19 @@ export default function CategoryPickerModal({
         {/* поиск */}
         <SearchField value={q} onChange={setQ} placeholder={placeholderSafe} />
 
-        {/* список (дерево) */}
+        {/* список (всегда развернутый) */}
         <div className="flex-1 overflow-y-auto" ref={listRef}>
           {/* Родители с детьми */}
           {tree.parents.map((p, idxP) => {
             const kids = tree.childrenByParent.get(p.id) ?? childrenByParent.get(p.id) ?? []
-            const expanded = openSections.has(p.id) || tree.hasFilter // при поиске секции с матчами раскрыты
             const isLastParent = idxP === tree.parents.length - 1 && (!tree.orphans || tree.orphans.length === 0)
+
             return (
               <div key={`p-${p.id}`} className="relative">
-                <ParentRow
-                  item={p}
-                  selected={selectedId === p.id}
-                  expanded={expanded}
-                  onToggle={() => toggleSection(p.id)}
-                  onSelect={() => handleSelect(p)}
-                  showDivider={!expanded || kids.length === 0 ? !isLastParent : false}
-                />
+                <ParentHeader item={p} showDivider={!kids.length ? !isLastParent : false} />
 
-                {/* дети */}
-                {expanded && kids.length > 0 && (
+                {/* дети (ТОЛЬКО они кликабельны) */}
+                {kids.length > 0 && (
                   <div>
                     {kids.map((c, idxC) => {
                       const isLastChild = idxC === kids.length - 1
@@ -468,7 +403,7 @@ export default function CategoryPickerModal({
             )
           })}
 
-          {/* Сироты (когда родитель не пришёл с бэка) */}
+          {/* Сироты (когда родителя нет в выдаче) — тоже считаем подкатегориями */}
           {tree.orphans.length > 0 && (
             <div className="mt-2">
               <div className="px-4 py-2 text-[12px] opacity-60">Другие</div>
