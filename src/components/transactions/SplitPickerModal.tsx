@@ -1,6 +1,7 @@
+// src/components/transactions/SplitPickerModal.tsx
 // Модалка выбора способа деления: Equal / Shares / Custom, с ALL, выбором участников,
 // строгая проверка суммы в Custom (без совпадения сохранить нельзя).
-// Экспортирует утилиту computePerPerson для пересчёта превью в родительской модалке.
+// Экспортирует утилиту computePerPerson для превью в родительской модалке.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,12 +25,10 @@ type Props = {
   amount: number; // в валюте (major units)
   currency: Currency;
   initial: SplitSelection;
+  paidById?: number; // НОВОЕ: плательщик — нельзя снять
   onSave: (sel: SplitSelection) => void;
 };
 
-function norm(s: string) {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
 function fullName(u: any): string {
   const a = (u?.first_name || "").trim();
   const b = (u?.last_name || "").trim();
@@ -115,7 +114,7 @@ function Checkbox({ checked }: { checked: boolean }) {
   );
 }
 
-function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initial, onSave }: Props) {
+function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initial, paidById, onSave }: Props) {
   const { t, i18n } = useTranslation();
   const locale = (i18n.language || "ru").split("-")[0];
 
@@ -155,15 +154,43 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
         }
         if (reqIdRef.current !== myId) return;
         setMembers(acc);
+
         // по умолчанию — Equal: все участники
         if (!initial || !("participants" in initial) || initial.participants.length === 0) {
-          setEqualSel(new Set(acc.map((m) => m.user.id)));
+          const all = new Set(acc.map((m) => m.user.id));
+          setEqualSel(all);
         }
       } finally {
         if (reqIdRef.current === myId) setLoading(false);
       }
     })();
   }, [open, groupId, initial]);
+
+  // Гарантируем, что плательщик всегда активен
+  useEffect(() => {
+    if (!paidById) return;
+    if (mode === "equal") {
+      setEqualSel((prev) => new Set(prev).add(paidById));
+    } else if (mode === "shares") {
+      setShares((prev) => {
+        const m = new Map(prev);
+        const v = m.get(paidById);
+        if (!v || v < 1) m.set(paidById, 1);
+        return m;
+      });
+    } else if (mode === "custom") {
+      // если custom пуст — распределим поровну по всем
+      setCustom((prev) => {
+        if (prev.size > 0) return prev;
+        const ids = (members || []).map((mm) => mm.user.id);
+        const n = Math.max(1, ids.length);
+        const part = Number((amount / n).toFixed(currency.decimals));
+        const m = new Map<number, number>();
+        ids.forEach((id) => m.set(id, part));
+        return m;
+      });
+    }
+  }, [mode, paidById, members, amount, currency.decimals]);
 
   const items = useMemo(() => members || [], [members]);
 
@@ -176,18 +203,25 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
 
   const toggleAll = () => {
     if (mode === "equal") {
-      setEqualSel(allSelected ? new Set() : new Set(allIds));
+      const next = allSelected ? new Set<number>() : new Set(allIds);
+      if (paidById) next.add(paidById);
+      setEqualSel(next);
     } else if (mode === "shares") {
       if (allSelected) {
-        setShares(new Map());
+        const m = new Map<number, number>();
+        if (paidById) m.set(paidById, 1);
+        setShares(m);
       } else {
         const m = new Map<number, number>();
         allIds.forEach((id) => m.set(id, 1));
+        if (paidById) m.set(paidById, Math.max(1, m.get(paidById) || 0));
         setShares(m);
       }
     } else {
       if (allSelected) {
-        setCustom(new Map());
+        const m = new Map<number, number>();
+        if (paidById) m.set(paidById, Number((amount / Math.max(1, allIds.size)).toFixed(currency.decimals)));
+        setCustom(m);
       } else {
         const avg = amount > 0 ? (amount / Math.max(1, allIds.size)) : 0;
         const m = new Map<number, number>();
@@ -233,14 +267,6 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
     ? selection.participants.reduce((s, p) => s + (p.share || 0), 0)
     : 0), [selection]);
 
-  const fmt = (n: number) => {
-    try {
-      return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol;
-    } catch {
-      return n.toFixed(currency.decimals) + " " + currency.symbol;
-    }
-  };
-
   const canSave = useMemo(() => {
     if (selection.type === "equal") return selection.participants.length > 0;
     if (selection.type === "shares") return selection.participants.length > 0 && totalShares > 0;
@@ -249,13 +275,7 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
 
   if (!open) return null;
 
-  const allLabel = (() => {
-    const k = t("tx_modal.all");
-    if (k && k !== "tx_modal.all") return k;
-    if (locale === "ru") return "ВСЕ";
-    if (locale === "es") return "TODOS";
-    return "ALL";
-  })();
+  const allLabel = t("tx_modal.all") || (locale === "ru" ? "ВСЕ" : locale === "es" ? "TODOS" : "ALL");
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-end justify-center" role="dialog" aria-modal="true">
@@ -307,17 +327,32 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
               const val = shares.get(id) || 0;
               right = (
                 <div className="flex items-center gap-2">
-                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, Math.max(0, val - 1))))}>−</button>
+                  <button
+                    className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]"
+                    onClick={() => {
+                      const next = new Map(shares);
+                      const nv = Math.max(id === paidById ? 1 : 0, (next.get(id) || 0) - 1);
+                      next.set(id, nv);
+                      setShares(next);
+                    }}
+                  >−</button>
                   <input
                     value={String(val)}
                     onChange={(e) => {
-                      const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
-                      setShares(new Map(shares.set(id, n)));
+                      let n = Math.floor(Number(e.target.value) || 0);
+                      if (id === paidById) n = Math.max(1, n);
+                      else n = Math.max(0, n);
+                      const next = new Map(shares);
+                      next.set(id, n);
+                      setShares(next);
                     }}
                     inputMode="numeric"
                     className="w-12 text-center bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]"
                   />
-                  <button className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]" onClick={() => setShares(new Map(shares.set(id, val + 1)))}>+</button>
+                  <button
+                    className="px-2 py-1 rounded border border-[var(--tg-secondary-bg-color,#e7e7e7)]"
+                    onClick={() => setShares(new Map(shares.set(id, (shares.get(id) || 0) + 1)))}
+                  >+</button>
                 </div>
               );
             } else {
@@ -347,19 +382,24 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
               );
             }
 
+            const isLocked = mode === "equal" && paidById === id;
+
             return (
               <div key={id} className="relative">
                 <button
                   type="button"
                   onClick={() => {
                     if (mode === "equal") {
+                      if (paidById === id) return; // Нельзя снять плательщика
                       const next = new Set(equalSel);
                       if (next.has(id)) next.delete(id);
                       else next.add(id);
+                      // ещё раз гарантируем плательщика
+                      if (paidById) next.add(paidById);
                       setEqualSel(next);
                     }
                   }}
-                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                  className={`w-full flex items-center justify-between px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition ${isLocked ? "cursor-default" : ""}`}
                 >
                   <div className="flex items-center min-w-0">
                     {avatar ? (
@@ -370,7 +410,9 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
                       </div>
                     )}
                     <div className="flex flex-col text-left min-w-0">
-                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">{name}</div>
+                      <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
+                        {name}{isLocked ? " • " + (t("tx_modal.paid_by") || "Paid by") : ""}
+                      </div>
                     </div>
                   </div>
                   <div className="ml-3">{right}</div>
@@ -396,7 +438,7 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
         <div className="px-4 py-3 border-t border-[var(--tg-secondary-bg-color,#e7e7e7)]">
           {selection.type === "equal" && (
             <div className="text-[13px] opacity-80">
-              {locale.startsWith("ru") ? "Участников" : "Participants"}: {selection.participants.length} • {locale.startsWith("ru") ? "по" : "≈ each"}{" "}
+              {(locale.startsWith("ru") ? "Участников" : "Participants")}: {selection.participants.length} • {(locale.startsWith("ru") ? "по" : "≈ each")}{" "}
               {(() => {
                 const n = perPerson[0]?.amount || (amount / Math.max(1, selection.participants.length));
                 try { return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol; }
@@ -406,7 +448,7 @@ function InnerSplitPickerModal({ open, onClose, groupId, amount, currency, initi
           )}
           {selection.type === "shares" && (
             <div className="text-[13px] opacity-80">
-              {locale.startsWith("ru") ? "Всего долей" : "Total shares"}: {totalShares} • {locale.startsWith("ru") ? "за долю ≈" : "per share ≈"}{" "}
+              {(locale.startsWith("ru") ? "Всего долей" : "Total shares")}: {totalShares} • {(locale.startsWith("ru") ? "за долю ≈" : "per share ≈")}{" "}
               {(() => {
                 const n = (amount / Math.max(1, totalShares)) || 0;
                 try { return new Intl.NumberFormat(locale, { minimumFractionDigits: currency.decimals, maximumFractionDigits: currency.decimals }).format(n) + " " + currency.symbol; }

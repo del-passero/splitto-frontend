@@ -1,3 +1,4 @@
+// src/locales/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -61,8 +62,7 @@ export default {
   group_fab_add_transaction: "Добавить транзакцию",
 
   // --- Транзакции ---
-  group_transactions_empty:
-    "В группе пока нет трат — добавьте первую!",
+  group_transactions_empty: "В группе пока нет трат — добавьте первую!",
   group_transactions_not_found: "Траты не найдены",
   group_transactions_placeholder:
     "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
@@ -74,8 +74,7 @@ export default {
   group_balance_get_from: "Вам должны: {{sum}} ₽",
   group_balance_owe_to: "Вы должны: {{sum}} ₽",
   group_balance_no_debt_with: "Нет долга",
-  group_balance_no_debts_all:
-    "В группе никто никому не должен",
+  group_balance_no_debts_all: "В группе никто никому не должен",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",
@@ -169,11 +168,9 @@ export default {
     is_trip: "Группа для путешествия?",
     trip_date:
       "Введите дату, после которой группа (при условии отсутствия долгов) автоматически переместится в архив",
-    name_hint_initial:
-      "Введите название группы (до {{max}} символов)",
+    name_hint_initial: "Введите название группы (до {{max}} символов)",
     name_hint_remaining: "Осталось {{n}} символов",
-    desc_hint_initial:
-      "Введите описание группы (до {{max}} символов)",
+    desc_hint_initial: "Введите описание группы (до {{max}} символов)",
     desc_hint_remaining: "Осталось {{n}} символов",
     trip_date_placeholder: "ДД.ММ.ГГГГ",
   },
@@ -227,6 +224,11 @@ export default {
     totals_mismatch: "Итоги не сходятся",
     each: "с каждого:",
     create_and_new: "Создать и новую",
+
+    // НОВОЕ
+    all: "ВСЕ",
+    paid_by_label: "Заплатил",
+    owes_label: "Должен",
   },
 
   // --- Категории ---

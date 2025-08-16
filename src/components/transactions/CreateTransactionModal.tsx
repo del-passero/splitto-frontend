@@ -1,5 +1,4 @@
 // src/components/transactions/CreateTransactionModal.tsx
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -50,8 +49,8 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className="flex items-center w-full py-2 bg-transparent focus:outline-none active:opacity-90"
-        style={{ minHeight: 40 }}
+        className="flex items-center w-full py-1.5 bg-transparent focus:outline-none active:opacity-90"
+        style={{ minHeight: 36 }}
       >
         <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>{icon}</span>
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[14px]">{label}</span>
@@ -84,7 +83,7 @@ function SelectedGroupPill({
     <button
       type="button"
       onClick={locked ? undefined : onClick}
-      className={`mx-3 mt-1 mb-1 inline-flex items-center w-[calc(100%-1.5rem)] justify-between rounded-full border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] px-3 py-1.5 transition focus:outline-none ${locked ? "cursor-default" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+      className={`mx-3 mt-1 mb-1 inline-flex items-center w-[calc(100%-1.5rem)] justify-between rounded-full border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] px-3 py-1 transition focus:outline-none ${locked ? "cursor-default" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
       aria-label={locked ? `Группа: ${name}` : `Текущая группа: ${name}. Нажмите, чтобы сменить`}
     >
       <span className="flex items-center min-w-0">
@@ -105,11 +104,11 @@ function SelectedGroupPill({
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-// ВАЖНО: определяем валюту ТАК ЖЕ, как в GroupHeader (приоритет полей совпадает)
+// ВАЖНО: как в GroupHeader: currency_code -> default_currency_code -> currency -> RUB
 function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string {
   const raw =
-    (g as any)?.default_currency_code ??
     (g as any)?.currency_code ??
+    (g as any)?.default_currency_code ??
     (g as any)?.currency ??
     "RUB";
   return (typeof raw === "string" && raw.trim().length ? raw : "RUB").toUpperCase();
@@ -154,12 +153,19 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
   }
 }
 
-// небольшой помощник чтобы подсветить чип категории
+// чип и фоновая заливка категории
 function chipStyle(color?: string | null) {
   if (!color || !/^#([0-9a-f]{3}){1,2}$/i.test(color)) return {};
   return {
     background: `${color}22`,
     border: `1px solid ${color}55`,
+  } as React.CSSProperties;
+}
+function fillStyle(color?: string | null) {
+  if (!color || !/^#([0-9a-f]{3}){1,2}$/i.test(color)) return {};
+  return {
+    background: `${color}18`,
+    borderRadius: 12,
   } as React.CSSProperties;
 }
 
@@ -254,11 +260,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     const n = Number(amount);
     return isFinite(n) ? n : 0;
   }, [amount]);
-
-  const formattedPreview = useMemo(() => {
-    if (!amount || amountNumber <= 0) return "";
-    return `≈ ${fmtMoney(amountNumber, currency.decimals, currency.symbol, locale)}`;
-  }, [amount, amountNumber, currency, locale]);
 
   // ---- split preview (перерасчёт на лету) ----
   const perPerson: PerPerson[] = useMemo(() => {
@@ -364,8 +365,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  const paidByLabel = locale.startsWith("ru") ? "Заплатил" : "Paid by";
-  const owesLabel = locale.startsWith("ru") ? "Должен" : "Owes";
+  const paidByLabel = t("tx_modal.paid_by_label");
+  const owesLabel = t("tx_modal.owes_label");
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
@@ -419,10 +420,10 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
             {/* Если группа не выбрана — остальное прячем */}
             {mustPickGroupFirst ? null : (
               <>
-                {/* Тип */}
+                {/* Тип — центрируем */}
                 <div className="-mx-3">
                   <CardSection className="py-0.5">
-                    <div className="px-3 pb-1">
+                    <div className="px-3 pb-0.5 flex justify-center">
                       <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
                         <button
                           type="button"
@@ -446,8 +447,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 {/* Сумма */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
-                    <div className="px-3 pb-0.5">
-                      <div className="flex items-center gap-2 mt-1">
+                    <div className="px-3 pb-0">
+                      <div className="flex items-center gap-2 mt-0.5">
                         <div className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2" title={currency.code}>
                           {currency.code}
                         </div>
@@ -460,13 +461,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
                         />
                       </div>
-                      <div className="mt-0.5 text-[12px] opacity-70">
-                        {amountTouched && (showErrors || amountTouched) && errors.amount ? (
-                          <span className="text-red-500">{errors.amount}</span>
-                        ) : (
-                          formattedPreview || <span className="opacity-40">≈ {fmtMoney(0, currency.decimals, currency.symbol, locale)}</span>
-                        )}
-                      </div>
+                      {/* Подпись под суммой убрана по требованию */}
                     </div>
                   </CardSection>
                 </div>
@@ -474,36 +469,39 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 {/* expense-специфика */}
                 {type === "expense" ? (
                   <>
-                    {/* ОБЪЕДИНЁННЫЙ элемент: Категория + Комментарий */}
+                    {/* Категория + Комментарий (50/50) с заливкой цвета категории */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <div className="px-3 pt-1 pb-1 flex items-center gap-2">
-                          {/* Чип категории слева */}
+                        <div
+                          className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
+                          style={fillStyle(categoryColor)}
+                        >
+                          {/* слева: категория */}
                           <button
                             type="button"
                             onClick={() => setCategoryModal(true)}
-                            className="flex items-center gap-2 h-9 rounded-full border px-2 shrink-0"
+                            className="min-w-0 flex items-center gap-2 h-9 rounded-lg border px-2 overflow-hidden"
                             style={categoryColor ? chipStyle(categoryColor) : {}}
                           >
-                            <span className="inline-flex w-6 h-6 items-center justify-center rounded-full border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
+                            <span className="inline-flex w-6 h-6 items-center justify-center rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shrink-0">
                               <span style={{ fontSize: 14 }} aria-hidden>
                                 {categoryIcon || <Layers size={14} />}
                               </span>
                             </span>
-                            <span className="text-[13px] font-medium">
+                            <span className="text-[13px] font-medium truncate">
                               {categoryName || t("tx_modal.category")}
                             </span>
                           </button>
 
-                          {/* Поле комментария справа */}
-                          <div className="flex-1 min-w-0 flex items-center gap-2">
+                          {/* справа: комментарий */}
+                          <div className="min-w-0 flex items-center gap-2">
                             <FileText size={16} className="opacity-80 shrink-0" />
                             <input
                               value={comment}
                               onChange={(e) => setComment(e.target.value)}
                               onBlur={handleCommentBlur}
                               placeholder={t("tx_modal.comment")}
-                              className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1.5 text-[14px]"
+                              className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1 text-[14px]"
                             />
                           </div>
                         </div>
@@ -513,7 +511,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           <div className="px-3 pb-0.5 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
                         )}
                         {(showErrors || commentTouched) && !comment.trim() && (
-                          <div className="px-3 pb-2 -mt-0.5 text-[12px] text-red-500">
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
                             {locale.startsWith("ru") ? "Заполните комментарий" : "Please enter a comment"}
                           </div>
                         )}
@@ -523,7 +521,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                     {/* Чипы Paid by / Split */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <div className="px-3 py-1.5 flex gap-2 flex-wrap">
+                        <div className="px-3 py-1 flex gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => setPayerOpen(true)}
@@ -564,8 +562,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
 
                         {/* Превью: плательщик и кто сколько должен */}
                         {!!perPerson.length && (
-                          <div className="px-3 pb-2 -mt-1">
-                            <div className="flex flex-col gap-1.5">
+                          <div className="px-3 pb-1 -mt-1">
+                            <div className="flex flex-col gap-1">
                               {/* 1) строка плательщика */}
                               {paidBy && (
                                 <div className="flex items-center gap-2 text-[13px] font-medium">
@@ -606,11 +604,11 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         )}
                         {/* Ошибка сплита, если есть */}
                         {(showErrors && errors.split) && (
-                          <div className="px-3 pb-2 -mt-1 text-[12px] text-red-500">{errors.split}</div>
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.split}</div>
                         )}
                         {/* Предупреждение при кастомном расхождении */}
                         {customMismatch && (
-                          <div className="px-3 pb-2 -mt-1 text-[12px] text-red-500">
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
                             {locale.startsWith("ru")
                               ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.symbol, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.symbol, locale)}`
                               : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.symbol, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.symbol, locale)}`
@@ -625,7 +623,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 {/* Дата */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
-                    <div className="px-3 py-1.5">
+                    <div className="px-3 py-1">
                       <label className="block text-[12px] font-medium opacity-80 mb-0.5">{t("tx_modal.date")}</label>
                       <div className="relative">
                         <input
@@ -641,7 +639,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 </div>
 
                 {/* Кнопки */}
-                <div className="flex flex-row gap-2 mt-2 w-full relative">
+                <div className="flex flex-row gap-2 mt-1 w-full relative">
                   <button
                     type="button"
                     onClick={() => onOpenChange(false)}
@@ -682,7 +680,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
                           onClick={() => { setMoreOpen(false); doCreate("again"); }}
                         >
-                          {locale.startsWith("ru") ? "Создать и новую" : "Create and add another"}
+                          {t("tx_modal.create_and_new")}
                         </button>
                       </div>
                     )}
@@ -736,6 +734,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         amount={Number(toFixedSafe(amount || "0", currency.decimals))}
         currency={{ code: currency.code, symbol: currency.symbol, decimals: currency.decimals }}
         initial={splitData || { type: splitType, participants: [] as any[] }}
+        paidById={paidBy}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
       />
     </div>
