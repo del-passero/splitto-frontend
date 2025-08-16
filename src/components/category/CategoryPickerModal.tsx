@@ -4,7 +4,7 @@
 //  • Выбирать можно ТОЛЬКО подкатегории (у родительских нет радио и клика выбора).
 //  • Поиск: если совпал родитель — показываем ВСЕ его подкатегории; если совпадают только дети — показываем только совпавших детей.
 //  • Локаль берём из i18n и прокидываем ?locale=... в API.
-//  • Порядок родителей: Food and drinks → Transport → Travel → Housing → Entertainments → остальные.
+//  • Порядок родителей: Food and drinks → Transport → Travel → Housing → Entertainments → остальные (определяется по key И по локализованному имени).
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -80,8 +80,17 @@ function norm(s: string) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
 
-// Жёсткий порядок родителей + фолбэк по подстрокам key
-const PARENT_ORDER: Record<string, number> = {
+// Регулярки по ЛОКАЛИЗОВАННЫМ названиям (RU/EN/ES) + ключам
+const REG = {
+  food: /(food|drink|grocer|comid|bebid|еда|напит|продукт)/i,
+  transport: /(transport|transportation|transit|транспорт|метро|автобус|такси|поезд|электрич)/i,
+  travel: /(travel|trip|viaje|путеше|поездк|тур)/i,
+  housing: /(housing|home|rent|viviend|casa|жиль|дом|квартир|аренд)/i,
+  entertain: /(entertain|leisure|fun|ocio|entreten|развлек|досуг|кино|театр|муз|игр)/i,
+}
+
+// Жёсткий порядок родителей + фолбэк по подстрокам key И имени
+const KEY_PRIORITY: Record<string, number> = {
   // Food and drinks
   food_and_drinks: 0, food_drinks: 0, food: 0, groceries: 0, dining: 0, eating_out: 0,
   // Transport
@@ -91,18 +100,30 @@ const PARENT_ORDER: Record<string, number> = {
   // Housing
   housing: 3, home_housing: 3, home: 3, rent_housing: 3,
   // Entertainments
-  entertainments: 4, entertainment: 4, entertainment_and_arts: 4, leisure: 4, fun: 4
+  entertainments: 4, entertainment: 4, entertainment_and_arts: 4, leisure: 4, fun: 4,
 }
 
-const getParentPriority = (key?: string | null) => {
-  if (!key) return 999
-  const k = String(key).toLowerCase()
-  if (k in PARENT_ORDER) return PARENT_ORDER[k]
-  if (k.includes("food") || k.includes("drink")) return 0
+function getParentPriority(key?: string | null, name?: string | null) {
+  const k = (key || "").toLowerCase()
+  const n = norm(name || "")
+
+  // сначала — точные/синонимные ключи
+  if (k in KEY_PRIORITY) return KEY_PRIORITY[k]
+  // затем — эвристики по ключу
+  if (k.includes("food") || k.includes("drink") || k.includes("groc")) return 0
   if (k.includes("transport")) return 1
-  if (k.includes("travel")) return 2
-  if (k.includes("hous") || k.includes("home")) return 3
+  if (k.includes("travel") || k.includes("trip")) return 2
+  if (k.includes("hous") || k.includes("home") || k.includes("rent")) return 3
   if (k.includes("entertain") || k.includes("leisure") || k.includes("fun")) return 4
+
+  // затем — эвристики по локализованному имени
+  if (REG.food.test(n)) return 0
+  if (REG.transport.test(n)) return 1
+  if (REG.travel.test(n)) return 2
+  if (REG.housing.test(n)) return 3
+  if (REG.entertain.test(n)) return 4
+
+  // всё остальное — в хвост
   return 999
 }
 
@@ -300,10 +321,10 @@ export default function CategoryPickerModal({
 
     const coll = new Intl.Collator(locale)
 
-    // Родители: сначала по приоритету, затем по имени
+    // Родители: сначала по ПРИОРИТЕТУ (food→transport→travel→housing→entertain), затем по имени
     parents.sort((a, b) => {
-      const pa = getParentPriority(a.key)
-      const pb = getParentPriority(b.key)
+      const pa = getParentPriority(a.key, a.name)
+      const pb = getParentPriority(b.key, b.name)
       if (pa !== pb) return pa - pb
       return coll.compare(a.name, b.name)
     })
@@ -347,8 +368,8 @@ export default function CategoryPickerModal({
 
     // Сохранить требуемый порядок родителей
     outParents.sort((a, b) => {
-      const pa = getParentPriority(a.key)
-      const pb = getParentPriority(b.key)
+      const pa = getParentPriority(a.key, a.name)
+      const pb = getParentPriority(b.key, b.name)
       if (pa !== pb) return pa - pb
       return coll.compare(a.name, b.name)
     })
