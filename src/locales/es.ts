@@ -1,3 +1,4 @@
+// src/i18n/es.ts
 export default {
   // --- Navegación y secciones ---
   main: "Inicio",
@@ -140,7 +141,7 @@ export default {
   group_settings_cannot_leave_due_debt:
     "No puedes salir de este grupo ahora porque tienes deudas pendientes con otros miembros. Asegúrate de saldar todas tus deudas e inténtalo de nuevo.",
 
-  // --- Divisas (nuevo) ---
+  // --- Divisas ---
   currency: {
     select_title: "Seleccionar divisa",
     search_placeholder: "Buscar divisa",
@@ -151,10 +152,7 @@ export default {
   },
 
   // --- Añadido: comunes y formulario de grupo ---
-  common: {
-    yes: "Sí",
-    no: "No",
-  },
+  common: { yes: "Sí", no: "No" },
   errors: {
     group_name_required: "Introduce el nombre del grupo",
     group_trip_date_required: "Indica la fecha del viaje",
@@ -209,11 +207,29 @@ export default {
     next: "Siguiente",
     back: "Atrás",
     choose_group_first: "Primero elige un grupo",
+
+    // UI
+    create_and_new: "Crear y añadir otra",
+    all: "TODOS",
+    each: "cada uno",
+    total_shares: "Total de acciones",
+    per_share: "por acción",
+    custom_amounts_set: "Importes personalizados establecidos",
+    totals_mismatch: "Las sumas no coinciden",
+
+    // Errors / validation
+    amount_required: "Introduce un importe > 0",
+    comment_required: "Introduce un comentario",
+    category_required: "Elige una categoría",
+    split_no_participants: "Selecciona al menos un participante",
+    split_no_shares: "El total de acciones debe ser mayor que cero",
+    split_custom_no_values: "Introduce importes para los participantes",
+    split_custom_mismatch: "La suma de los participantes debe igualar el total",
   },
 
   // --- Categorías ---
   category: {
-    select_title: "Elegir categoría",
+    select_title: "Seleccionar categoría",
     search_placeholder: "Buscar categoría",
     not_found: "No se encontró nada",
   },

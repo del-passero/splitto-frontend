@@ -1,3 +1,4 @@
+// src/i18n/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -140,7 +141,7 @@ export default {
   group_settings_cannot_leave_due_debt:
     "Сейчас Вы не можете покинуть эту группу, поскольку у вас есть непогашенные долги перед другими участниками группы. Пожалуйста, убедитесь, что все ваши долги погашены, и повторите попытку",
 
-  // --- Валюты (новые ключи) ---
+  // --- Валюты ---
   currency: {
     select_title: "Выбор валюты",
     search_placeholder: "Поиск валюты",
@@ -150,11 +151,8 @@ export default {
     currency_popular: "Популярные",
   },
 
-  // --- ДОБАВЛЕНО: общие и форма группы ---
-  common: {
-    yes: "Да",
-    no: "Нет",
-  },
+  // --- Общие и форма группы ---
+  common: { yes: "Да", no: "Нет" },
   errors: {
     group_name_required: "Введите название группы",
     group_trip_date_required: "Укажите дату поездки",
@@ -173,7 +171,7 @@ export default {
     trip_date_placeholder: "ДД.ММ.ГГГГ",
   },
 
-  // --- НОВОЕ: модалка добавления участников ---
+  // --- Модалка добавления участников ---
   add_members_modal: {
     title: "Добавить участников",
     search_placeholder: "Поиск контакта...",
@@ -183,7 +181,7 @@ export default {
     error_some_failed: "Добавлено: {{added}}, не удалось: {{failed}}",
   },
 
-  // --- Новое: модалка транзакций ---
+  // --- Модалка транзакций ---
   tx_modal: {
     title: "Новая транзакция",
     choose_group: "Выберите группу",
@@ -209,6 +207,24 @@ export default {
     next: "Далее",
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
+
+    // UI
+    create_and_new: "Создать и новую",
+    all: "ВСЕ",
+    each: "по",
+    total_shares: "Всего долей",
+    per_share: "доля",
+    custom_amounts_set: "Суммы заданы вручную",
+    totals_mismatch: "Суммы не совпадают",
+
+    // Errors / validation
+    amount_required: "Введите сумму больше 0",
+    comment_required: "Заполните комментарий",
+    category_required: "Выберите категорию",
+    split_no_participants: "Выберите хотя бы одного участника",
+    split_no_shares: "Сумма долей должна быть больше нуля",
+    split_custom_no_values: "Введите суммы для участников",
+    split_custom_mismatch: "Суммы участников должны равняться общей сумме",
   },
 
   // --- Категории ---

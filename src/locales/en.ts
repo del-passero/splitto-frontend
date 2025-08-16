@@ -1,3 +1,4 @@
+// src/i18n/en.ts
 export default {
   // --- Navigation & sections ---
   main: "Home",
@@ -140,7 +141,7 @@ export default {
   group_settings_cannot_leave_due_debt:
     "You can’t leave this group right now because you have outstanding debts to other members. Please make sure all your debts are settled and try again.",
 
-  // --- Currencies (new) ---
+  // --- Currencies ---
   currency: {
     select_title: "Choose currency",
     search_placeholder: "Search currency",
@@ -151,10 +152,7 @@ export default {
   },
 
   // --- Added: common & group form ---
-  common: {
-    yes: "Yes",
-    no: "No",
-  },
+  common: { yes: "Yes", no: "No" },
   errors: {
     group_name_required: "Enter a group name",
     group_trip_date_required: "Select trip date",
@@ -209,6 +207,24 @@ export default {
     next: "Next",
     back: "Back",
     choose_group_first: "Choose a group first",
+
+    // UI
+    create_and_new: "Create and add another",
+    all: "ALL",
+    each: "each",
+    total_shares: "Total shares",
+    per_share: "per share",
+    custom_amounts_set: "Custom amounts set",
+    totals_mismatch: "Totals mismatch",
+
+    // Errors / validation
+    amount_required: "Enter amount > 0",
+    comment_required: "Enter a comment",
+    category_required: "Choose a category",
+    split_no_participants: "Select at least one participant",
+    split_no_shares: "Total shares must be greater than zero",
+    split_custom_no_values: "Enter amounts for participants",
+    split_custom_mismatch: "Participants sum must equal the total",
   },
 
   // --- Categories ---
