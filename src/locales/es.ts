@@ -1,4 +1,3 @@
-// src/i18n/es.ts
 export default {
   // --- Navegación y secciones ---
   main: "Inicio",
@@ -210,5 +209,12 @@ export default {
     next: "Siguiente",
     back: "Atrás",
     choose_group_first: "Primero elige un grupo",
+  },
+
+  // --- Categorías ---
+  category: {
+    select_title: "Elegir categoría",
+    search_placeholder: "Buscar categoría",
+    not_found: "No se encontró nada",
   },
 };

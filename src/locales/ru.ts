@@ -1,4 +1,3 @@
-// src/i18n/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -210,5 +209,12 @@ export default {
     next: "Далее",
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
+  },
+
+  // --- Категории ---
+  category: {
+    select_title: "Выбор категории",
+    search_placeholder: "Поиск категории",
+    not_found: "Ничего не найдено",
   },
 };

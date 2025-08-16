@@ -4,7 +4,7 @@
 //  • Выбирать можно ТОЛЬКО подкатегории (у родительских нет радио и клика выбора).
 //  • Поиск: если совпал родитель — показываем ВСЕ его подкатегории; если совпадают только дети — показываем только совпавших детей.
 //  • Локаль берём из i18n и прокидываем ?locale=... в API.
-//  • Порядок секций (родителей): Food and drinks → Transport → Travel → Housing → Entertainments → остальные.
+//  • Порядок родителей: Food and drinks → Transport → Travel → Housing → Entertainments → остальные.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -80,30 +80,30 @@ function norm(s: string) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
 
-// Приоритет сортировки родительских категорий (по key)
+// Жёсткий порядок родителей + фолбэк по подстрокам key
 const PARENT_ORDER: Record<string, number> = {
-  // 1) Food and drinks
-  food_and_drinks: 0,
-  food_drinks: 0,
-  food: 0,
-  // 2) Transport
-  transport: 1,
-  transportation: 1,
-  // 3) Travel
-  travel: 2,
-  // 4) Housing
-  housing: 3,
-  home_housing: 3,
-  // 5) Entertainments
-  entertainments: 4,
-  entertainment: 4,
-  entertainment_and_arts: 4,
+  // Food and drinks
+  food_and_drinks: 0, food_drinks: 0, food: 0, groceries: 0, dining: 0, eating_out: 0,
+  // Transport
+  transport: 1, transportation: 1, transit: 1,
+  // Travel
+  travel: 2, trips: 2,
+  // Housing
+  housing: 3, home_housing: 3, home: 3, rent_housing: 3,
+  // Entertainments
+  entertainments: 4, entertainment: 4, entertainment_and_arts: 4, leisure: 4, fun: 4
 }
 
 const getParentPriority = (key?: string | null) => {
   if (!key) return 999
   const k = String(key).toLowerCase()
-  return PARENT_ORDER[k] ?? 999
+  if (k in PARENT_ORDER) return PARENT_ORDER[k]
+  if (k.includes("food") || k.includes("drink")) return 0
+  if (k.includes("transport")) return 1
+  if (k.includes("travel")) return 2
+  if (k.includes("hous") || k.includes("home")) return 3
+  if (k.includes("entertain") || k.includes("leisure") || k.includes("fun")) return 4
+  return 999
 }
 
 // ---- UI parts ----
@@ -123,7 +123,6 @@ const SearchField = ({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className="w-full bg-transparent outline-none border-b border-[var(--tg-hint-color)] focus:border-[var(--tg-link-color)] py-3 text-[15px] placeholder:opacity-60"
-      autoFocus
     />
   </div>
 )
@@ -150,7 +149,6 @@ const ParentHeader = ({
   return (
     <div className="relative">
       <div className="w-full flex items-center px-4 py-3 select-none">
-        {/* иконка/цвет */}
         <div
           className="flex items-center justify-center mr-3 rounded-full"
           style={{
@@ -169,7 +167,6 @@ const ParentHeader = ({
         {/* у родителя НЕТ радио и клика выбора */}
       </div>
 
-      {/* разделитель как в ContactsList: НЕ под иконкой */}
       {showDivider && <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />}
     </div>
   )
@@ -204,7 +201,6 @@ const ChildRow = ({
         <Radio active={selected} />
       </button>
 
-      {/* разделитель */}
       {showDivider && <div className="absolute left-[94px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />}
     </div>
   )
@@ -223,7 +219,7 @@ export default function CategoryPickerModal({
   const { i18n, t } = useTranslation()
   const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language])
 
-  const [allItems, setAllItems] = useState<CategoryItem[]>([]) // полный список (на открытие/смену группы/локали)
+  const [allItems, setAllItems] = useState<CategoryItem[]>([])
   const [loading, setLoading] = useState(false)
 
   const [q, setQ] = useState("")
@@ -304,7 +300,7 @@ export default function CategoryPickerModal({
 
     const coll = new Intl.Collator(locale)
 
-    // Родители: сначала по приоритету, потом по имени
+    // Родители: сначала по приоритету, затем по имени
     parents.sort((a, b) => {
       const pa = getParentPriority(a.key)
       const pb = getParentPriority(b.key)
@@ -319,9 +315,7 @@ export default function CategoryPickerModal({
     return { parents, childrenByParent, orphans }
   }, [allItems, locale])
 
-  // Поиск:
-  //  • если совпал родитель — показываем ВСЕ его подкатегории;
-  //  • если совпадают только дети — показываем только совпавших детей.
+  // Поиск
   const filteredTree = useMemo(() => {
     const qn = norm(q).trim()
     if (!qn) return { parents, childrenByParent, orphans }
@@ -336,11 +330,9 @@ export default function CategoryPickerModal({
     for (const p of parents) {
       const kids = childrenByParent.get(p.id) || []
       if (includes(p.name)) {
-        // совпал сам родитель — показываем все его детей
         outParents.push(p)
         outChildrenByParent.set(p.id, [...kids])
       } else {
-        // фильтруем детей
         const k = kids.filter((c) => includes(c.name))
         if (k.length) {
           outParents.push(p)
@@ -367,15 +359,13 @@ export default function CategoryPickerModal({
   }, [q, parents, childrenByParent, orphans, locale])
 
   const handleSelect = (it: CategoryItem) => {
-    // выбирать можно только подкатегории (те, у кого parent_id != null)
-    if (it.parent_id == null) return
+    if (it.parent_id == null) return // только подкатегории
     onSelect(it)
     if (closeOnSelect) onClose()
   }
 
   if (!open) return null
 
-  // безопасные фолбэки для i18n-ключей
   const titleSafe = (() => {
     const s = t("category.select_title")
     return s && s !== "category.select_title" ? s : "Выбор категории"
@@ -406,7 +396,7 @@ export default function CategoryPickerModal({
           </button>
         </div>
 
-        {/* поиск — текст ИМЕННО через ключ локализации */}
+        {/* поиск (placeholder через ключ локализации) */}
         <SearchField value={q} onChange={setQ} placeholder={t("category.search_placeholder")} />
 
         {/* список (всегда развернутый) */}
