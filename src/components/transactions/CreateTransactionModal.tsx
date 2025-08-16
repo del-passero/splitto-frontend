@@ -1,128 +1,247 @@
 // src/components/transactions/CreateTransactionModal.tsx
-// Модалка (визуал) — пока ничего не сохраняет. Локализация через i18n.
+// Модалка создания транзакции в ВАШЕМ визуальном стиле (как CreateGroupModal):
+// • Никаких анимаций и лишних зависимостей
+// • Полная поддержка Telegram-темы (переменные --tg-*)
+// • Сначала выбираем группу — потом появляются остальные поля
+// • Пока НИЧЕГО не сохраняет — только визуал и закрытие по кнопке
 
-import React, { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { useTranslation } from "react-i18next";
-import { X, Calendar, DollarSign, CreditCard, Users, MessageSquare, Layers } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import {
+  X,
+  HandCoins,
+  CalendarDays,
+  MessageSquare,
+  Layers,
+  CreditCard,
+  Users,
+} from "lucide-react"
+import CardSection from "../CardSection"
 
-export interface MinimalGroup {
-  id: number;
-  name: string;
-  color?: string | null;
-  icon?: string | null;
+type MinimalGroup = {
+  id: number
+  name: string
+  color?: string | null
+  icon?: string | null
 }
 
-export type TxType = "expense" | "transfer";
+type TxType = "expense" | "transfer"
+type SplitType = "equal" | "shares" | "custom"
 
-export interface CreateTransactionModalProps {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  groups: MinimalGroup[];
-  defaultGroupId?: number;
+type Props = {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  groups: MinimalGroup[]
+  defaultGroupId?: number
 }
 
-function cx(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(" ");
+function cx(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ")
 }
 
-export default function CreateTransactionModal({
+/** Горизонтальный Row как в CreateGroupModal: без внешних отступов, с edge-to-edge divider */
+function Row({
+  icon,
+  label,
+  value,
+  right,
+  onClick,
+  isLast,
+  disabled,
+}: {
+  icon: React.ReactNode
+  label: string
+  value?: string
+  right?: React.ReactNode
+  onClick?: () => void
+  isLast?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        className={cx(
+          "flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90",
+          disabled && "opacity-60 cursor-not-allowed"
+        )}
+        style={{ minHeight: 48 }}
+      >
+        {/* слева выравниваем по инпутам (контейнер формы даёт p-4) */}
+        <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
+          {icon}
+        </span>
+
+        <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">
+          {label}
+        </span>
+
+        {right ? (
+          <span className="mr-4">{right}</span>
+        ) : (
+          <>
+            {value && (
+              <span className="text-[var(--tg-link-color)] text-[16px] mr-4">
+                {value}
+              </span>
+            )}
+          </>
+        )}
+      </button>
+
+      {!isLast && (
+        <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
+      )}
+    </div>
+  )
+}
+
+const CreateTransactionModal = ({
   open,
   onOpenChange,
   groups,
   defaultGroupId,
-}: CreateTransactionModalProps) {
-  const { t } = useTranslation();
+}: Props) => {
+  const { t } = useTranslation()
 
-  const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
-  const [type, setType] = useState<TxType>("expense");
-  const [amount, setAmount] = useState<string>("");
-  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 16));
-  const [comment, setComment] = useState<string>("");
+  // --- Состояния формы ---
+  const [selectedGroupId, setSelectedGroupId] = useState<number | "">(
+    defaultGroupId ?? ""
+  )
+  const [type, setType] = useState<TxType>("expense")
+  const [amount, setAmount] = useState("")
+  const [date, setDate] = useState<string>("")
+  const [comment, setComment] = useState("")
+  const [splitType, setSplitType] = useState<SplitType>("equal")
 
-  const [paidBy, setPaidBy] = useState<number | undefined>(undefined);
+  // placeholder’ы для будущих полей
+  const [paidBy] = useState<number | "">("")
+  const [transferFrom] = useState<number | "">("")
+  const [transferTo] = useState<readonly number[] | null>(null)
+
+  const hiddenDateRef = useRef<HTMLInputElement | null>(null)
+
+  // --- Жизненный цикл модалки ---
+  useEffect(() => {
+    if (!open) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false)
+    }
+    window.addEventListener("keydown", onEsc)
+    return () => window.removeEventListener("keydown", onEsc)
+  }, [open, onOpenChange])
 
   useEffect(() => {
-    if (!open) {
-      setSelectedGroupId(defaultGroupId);
-      setType("expense");
-      setAmount("");
-      setDate(new Date().toISOString().slice(0, 16));
-      setComment("");
-      setPaidBy(undefined);
+    if (open) {
+      setSelectedGroupId(defaultGroupId ?? "")
+      setType("expense")
+      setAmount("")
+      setDate(new Date().toISOString().slice(0, 10)) // YYYY-MM-DD
+      setComment("")
+      setSplitType("equal")
     }
-  }, [open, defaultGroupId]);
+  }, [open, defaultGroupId])
 
-  const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId), [groups, selectedGroupId]);
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === Number(selectedGroupId)),
+    [groups, selectedGroupId]
+  )
+
+  // --- Рендер ---
+  if (!open) return null
+
+  const disabledPrimary = !selectedGroup || !amount || Number(amount) <= 0
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={() => onOpenChange(false)} />
-
-          <motion.div
-            className={cx(
-              "absolute inset-x-0 bottom-0 md:inset-auto md:top-1/2 md:left-1/2",
-              "md:-translate-x-1/2 md:-translate-y-1/2",
-              "md:w-[640px] w-full rounded-t-3xl md:rounded-3xl shadow-2xl",
-              "bg-white dark:bg-zinc-900"
-            )}
-            initial={{ y: 40, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 40, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+    <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
+      {/* full-screen контейнер с максимально стабильной высотой */}
+      <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
+        <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
+          {/* Close */}
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="absolute top-3 right-3 z-10 p-2 rounded-full hover:bg-[var(--tg-accent-color)]/10 transition"
+            aria-label={t("close")}
+            tabIndex={0}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-800">
-              <h3 className="text-base md:text-lg font-semibold">{t("tx_modal.title")}</h3>
-              <button onClick={() => onOpenChange(false)} className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5" aria-label="Close">
-                <X size={20} />
-              </button>
+            <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
+          </button>
+
+          {/* Форма */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (disabledPrimary) return
+              // Пока просто закрываем и логируем черновик
+              // eslint-disable-next-line no-console
+              console.log("[CreateTransactionModal] draft", {
+                group_id: selectedGroup?.id,
+                type,
+                amount,
+                date,
+                comment,
+                split_type: type === "expense" ? splitType : undefined,
+              })
+              onOpenChange(false)
+            }}
+            className="p-4 pt-4 flex flex-col gap-3"
+          >
+            <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
+              {t("tx_modal.title")}
             </div>
 
-            {/* Body */}
-            <div className="px-4 py-4 md:px-6 md:py-6 space-y-4">
-              {/* STEP 1: GROUP */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium opacity-80">{t("tx_modal.choose_group")}</label>
-                <div className="relative">
-                  <select
-                    className={cx(
-                      "w-full appearance-none rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                      "bg-white/80 dark:bg-zinc-900/80 px-4 py-3 pr-10",
-                      "focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                    )}
-                    value={selectedGroupId ?? ""}
-                    onChange={(e) => setSelectedGroupId(e.target.value ? Number(e.target.value) : undefined)}
-                  >
-                    <option value="">{t("tx_modal.group_placeholder")}</option>
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400">▾</span>
-                </div>
-              </div>
+            {/* ГРУППА */}
+            <div className="space-y-[4px]">
+              <label className="block text-[14px] text-[var(--tg-hint-color)]">
+                {t("tx_modal.choose_group")}
+              </label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
+                           border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                           text-[var(--tg-text-color)]
+                           font-medium text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                value={selectedGroupId}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSelectedGroupId(v === "" ? "" : Number(v))
+                }}
+              >
+                <option value="">{t("tx_modal.group_placeholder")}</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              {/* STEP 2+: OTHER FIELDS */}
-              <AnimatePresence initial={false}>
-                {selectedGroup && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="space-y-4">
-                    {/* TYPE */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium opacity-80">{t("tx_modal.type")}</label>
-                      <div className="grid grid-cols-2 gap-2">
+            {/* Остальные поля появляются ТОЛЬКО после выбора группы */}
+            {selectedGroup && (
+              <>
+                {/* TYPE */}
+                <CardSection className="py-2 -mx-4">
+                  <Row
+                    icon={
+                      <HandCoins
+                        className="text-[var(--tg-link-color)]"
+                        size={22}
+                      />
+                    }
+                    label={t("tx_modal.type")}
+                    isLast
+                    right={
+                      <div className="flex gap-2 mr-2">
                         <button
                           type="button"
                           onClick={() => setType("expense")}
                           className={cx(
-                            "rounded-2xl px-4 py-3 border text-center",
+                            "px-3 py-2 rounded-lg text-sm font-semibold border transition",
                             type === "expense"
-                              ? "border-transparent bg-blue-600 text-white"
-                              : "border-zinc-200 dark:border-zinc-800 hover:bg-black/5 dark:hover:bg-white/5"
+                              ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                              : "bg-transparent text-[var(--tg-text-color)] border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-[var(--tg-accent-color)]/10"
                           )}
                         >
                           {t("tx_modal.expense")}
@@ -131,189 +250,231 @@ export default function CreateTransactionModal({
                           type="button"
                           onClick={() => setType("transfer")}
                           className={cx(
-                            "rounded-2xl px-4 py-3 border text-center",
+                            "px-3 py-2 rounded-lg text-sm font-semibold border transition",
                             type === "transfer"
-                              ? "border-transparent bg-blue-600 text-white"
-                              : "border-zinc-200 dark:border-zinc-800 hover:bg-black/5 dark:hover:bg-white/5"
+                              ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                              : "bg-transparent text-[var(--tg-text-color)] border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-[var(--tg-accent-color)]/10"
                           )}
                         >
                           {t("tx_modal.transfer")}
                         </button>
                       </div>
+                    }
+                  />
+                </CardSection>
+
+                {/* AMOUNT + DATE */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-[4px]">
+                    <label className="block text-[14px] text-[var(--tg-hint-color)]">
+                      {t("tx_modal.amount")}
+                    </label>
+                    <div className="relative">
+                      <input
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(e) =>
+                          setAmount(e.target.value.replace(",", "."))
+                        }
+                        className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
+                                   border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                   text-[var(--tg-text-color)]
+                                   font-medium text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                      />
+                      <HandCoins
+                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50"
+                        size={18}
+                      />
                     </div>
+                  </div>
 
-                    {/* AMOUNT + DATE */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium opacity-80">{t("tx_modal.amount")}</label>
-                        <div className="relative">
-                          <input
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value.replace(",", "."))}
-                            className={cx(
-                              "w-full rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                              "bg-white/80 dark:bg-zinc-900/80 px-4 py-3",
-                              "focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            )}
-                          />
-                          <DollarSign className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={18} />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium opacity-80">{t("tx_modal.date")}</label>
-                        <div className="relative">
-                          <input
-                            type="datetime-local"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className={cx(
-                              "w-full rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                              "bg-white/80 dark:bg-zinc-900/80 px-4 py-3",
-                              "focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            )}
-                          />
-                          <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={18} />
-                        </div>
-                      </div>
+                  <div className="space-y-[4px]">
+                    <label className="block text-[14px] text-[var(--tg-hint-color)]">
+                      {t("tx_modal.date")}
+                    </label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
+                                   border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
+                                   font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                        onClick={() => {
+                          const el = hiddenDateRef.current
+                          if (!el) return
+                          // @ts-ignore
+                          if (typeof el.showPicker === "function") el.showPicker()
+                          else el.click()
+                        }}
+                      >
+                        {date || "YYYY-MM-DD"}
+                      </button>
+                      <input
+                        ref={hiddenDateRef}
+                        type="date"
+                        className="absolute opacity-0 pointer-events-none w-0 h-0"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        tabIndex={-1}
+                      />
+                      <CalendarDays
+                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50"
+                        size={18}
+                      />
                     </div>
+                  </div>
+                </div>
 
-                    {/* COMMENT */}
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium opacity-80">{t("tx_modal.comment")}</label>
-                      <div className="relative">
-                        <textarea
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          rows={2}
-                          className={cx(
-                            "w-full rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                            "bg-white/80 dark:bg-zinc-900/80 px-4 py-3",
-                            "focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                          )}
+                {/* COMMENT */}
+                <div className="grid gap-[4px]">
+                  <label className="block text-[14px] text-[var(--tg-hint-color)]">
+                    {t("tx_modal.comment")}
+                  </label>
+                  <div className="relative">
+                    <textarea
+                      rows={2}
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
+                                 border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                 text-[var(--tg-text-color)]
+                                 font-normal text-base min-h-[64px] max-h-[160px] resize-none
+                                 focus:border-[var(--tg-accent-color)] focus:outline-none transition"
+                    />
+                    <MessageSquare className="absolute right-3 top-3 opacity-50" size={18} />
+                  </div>
+                </div>
+
+                {/* Блоки по типу транзакции */}
+                {type === "expense" ? (
+                  <>
+                    {/* Деление */}
+                    <CardSection className="py-2 -mx-4">
+                      <Row
+                        icon={<Layers className="text-[var(--tg-link-color)]" size={22} />}
+                        label={t("tx_modal.split")}
+                        isLast
+                        right={
+                          <div className="flex gap-2 mr-2">
+                            {(["equal", "shares", "custom"] as SplitType[]).map((k) => (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => setSplitType(k)}
+                                className={cx(
+                                  "px-3 py-2 rounded-lg text-sm font-semibold border transition",
+                                  splitType === k
+                                    ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                                    : "bg-transparent text-[var(--tg-text-color)] border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-[var(--tg-accent-color)]/10"
+                                )}
+                              >
+                                {t(
+                                  k === "equal"
+                                    ? "tx_modal.split_equal"
+                                    : k === "shares"
+                                    ? "tx_modal.split_shares"
+                                    : "tx_modal.split_custom"
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        }
+                      />
+                    </CardSection>
+
+                    {/* Категория + Кто платил (плейсхолдеры, пока disabled) */}
+                    <div className="-mx-4">
+                      <CardSection className="py-0">
+                        <Row
+                          icon={<Layers className="text-[var(--tg-link-color)]" size={22} />}
+                          label={t("tx_modal.category")}
+                          value="—"
+                          disabled
                         />
-                        <MessageSquare className="absolute right-3 top-3 opacity-40" size={18} />
-                      </div>
+                        <Row
+                          icon={<CreditCard className="text-[var(--tg-link-color)]" size={22} />}
+                          label={t("tx_modal.paid_by")}
+                          right={
+                            <select
+                              disabled
+                              className="px-3 py-2 mr-2 rounded-lg border text-[14px]
+                                         bg-[var(--tg-bg-color,#fff)]
+                                         border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                         text-[var(--tg-text-color)]"
+                              value={paidBy}
+                              onChange={() => {}}
+                            >
+                              <option value="">{/* пусто */}—</option>
+                            </select>
+                          }
+                          isLast
+                        />
+                      </CardSection>
                     </div>
-
-                    {/* PLACEHOLDERS (позже подключим категории/участников/сплит) */}
-                    {type === "expense" ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {/* CATEGORY */}
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium opacity-80">{t("tx_modal.category")}</label>
-                          <button
-                            type="button"
+                  </>
+                ) : (
+                  // type === "transfer"
+                  <div className="-mx-4">
+                    <CardSection className="py-0">
+                      <Row
+                        icon={<CreditCard className="text-[var(--tg-link-color)]" size={22} />}
+                        label={t("tx_modal.transfer_from")}
+                        right={
+                          <select
                             disabled
-                            className="w-full rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-3 text-left opacity-70"
-                            title="Coming soon"
+                            className="px-3 py-2 mr-2 rounded-lg border text-[14px]
+                                       bg-[var(--tg-bg-color,#fff)]
+                                       border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                       text-[var(--tg-text-color)]"
+                            value={transferFrom}
+                            onChange={() => {}}
                           >
-                            <div className="flex items-center gap-2 text-sm">
-                              <Layers size={16} className="opacity-60" />
-                              <span>—</span>
-                            </div>
-                          </button>
-                        </div>
-
-                        {/* PAID BY */}
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium opacity-80">{t("tx_modal.paid_by")}</label>
-                          <div className="relative">
-                            <select
-                              disabled
-                              className={cx(
-                                "w-full appearance-none rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                                "bg-white/60 dark:bg-zinc-900/60 px-4 py-3 pr-10 text-zinc-400"
-                              )}
-                              value={paidBy ?? ""}
-                              onChange={(e) => setPaidBy(Number(e.target.value))}
-                            >
-                              <option value="">—</option>
-                            </select>
-                            <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={18} />
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {/* TRANSFER FROM */}
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium opacity-80">{t("tx_modal.transfer_from")}</label>
-                          <div className="relative">
-                            <select
-                              disabled
-                              className={cx(
-                                "w-full appearance-none rounded-2xl border border-zinc-200 dark:border-zinc-800",
-                                "bg-white/60 dark:bg-zinc-900/60 px-4 py-3 pr-10 text-zinc-400"
-                              )}
-                            >
-                              <option>—</option>
-                            </select>
-                            <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={18} />
-                          </div>
-                        </div>
-
-                        {/* TRANSFER TO */}
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium opacity-80">{t("tx_modal.transfer_to")}</label>
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-3 text-left opacity-70"
-                            title="Coming soon"
-                          >
-                            <div className="flex items-center gap-2 text-sm">
-                              <Users size={16} className="opacity-60" />
-                              <span>—</span>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
+                            <option value="">—</option>
+                          </select>
+                        }
+                      />
+                      <Row
+                        icon={<Users className="text-[var(--tg-link-color)]" size={22} />}
+                        label={t("tx_modal.transfer_to")}
+                        value={transferTo ? String(transferTo.length) : "—"}
+                        disabled
+                        isLast
+                      />
+                    </CardSection>
+                  </div>
                 )}
-              </AnimatePresence>
-            </div>
 
-            {/* Footer */}
-            <div className="px-4 py-4 md:px-6 md:py-5 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-              <button onClick={() => onOpenChange(false)} className="px-4 py-2 rounded-xl bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
-                {t("tx_modal.cancel")}
-              </button>
-              <div className="flex items-center gap-2">
-                {!selectedGroup && (
+                {/* Кнопки */}
+                <div className="flex flex-row gap-2 mt-1 w-full">
                   <button
-                    disabled
-                    className="px-4 py-2 rounded-xl bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 cursor-not-allowed"
-                    title={t("tx_modal.choose_group_first")}
+                    type="button"
+                    onClick={() => onOpenChange(false)}
+                    style={{ color: "#000" }}
+                    className="w-1/2 py-3 rounded-xl font-bold text-base
+                               bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                               border border-[var(--tg-hint-color)]/30
+                               hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={disabledPrimary}
+                    className="w-1/2 py-3 rounded-xl font-bold text-base
+                               bg-[var(--tg-accent-color,#40A7E3)] text-white
+                               flex items-center justify-center gap-2 active:scale-95
+                               disabled:opacity-60 disabled:pointer-events-none transition"
                   >
                     {t("tx_modal.create")}
                   </button>
-                )}
-                {selectedGroup && (
-                  <button
-                    onClick={() => {
-                      console.log("[CreateTransactionModal] draft", {
-                        group_id: selectedGroupId,
-                        type,
-                        amount,
-                        date,
-                        comment,
-                      });
-                      onOpenChange(false);
-                    }}
-                    className={cx("px-4 py-2 rounded-xl font-medium shadow-sm", "bg-[var(--tg-link-color,#2563eb)] text-white")}
-                  >
-                    {t("tx_modal.create")}
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+                </div>
+              </>
+            )}
+          </form>
+        </div>
+      </div>
+    </div>
+  )
 }
+
+export default CreateTransactionModal
