@@ -13,6 +13,8 @@ import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
 import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
+import { HandCoins } from "lucide-react"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
 const PAGE_SIZE = 24
 
@@ -35,8 +37,9 @@ const GroupDetailsPageSettings = () => {
   const [membersLoading, setMembersLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
 
-  // модалка Add
+  // модалки
   const [addOpen, setAddOpen] = useState(false)
+  const [createTxOpen, setCreateTxOpen] = useState(false)
 
   // user/owner
   const user = useUserStore(s => s.user)
@@ -151,7 +154,7 @@ const GroupDetailsPageSettings = () => {
               loading={membersLoading}
               fetchMore={loadMembers}
               hasMore={hasMore}
-			  ownerId={group.owner_id}   // ← НОВОЕ
+              ownerId={group.owner_id}   // ← НОВОЕ
             />
           )}
         </div>
@@ -164,6 +167,25 @@ const GroupDetailsPageSettings = () => {
         groupId={id}
         existingMemberIds={existingMemberIds}
         onAdded={() => { /* window.location.reload() вызывается внутри модалки после успеха */ }}
+      />
+
+      {/* FAB создания транзакции для КОНКРЕТНОЙ группы */}
+      <button
+        type="button"
+        onClick={() => setCreateTxOpen(true)}
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-[var(--tg-accent-color,#40A7E3)] text-white shadow-lg active:scale-95 transition flex items-center justify-center"
+        aria-label={t("add_transaction")}
+        title={t("add_transaction")}
+      >
+        <HandCoins size={24} strokeWidth={1.5} />
+      </button>
+
+      {/* Модалка создания транзакции: автоподставляем текущую группу */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        groups={[{ id: group.id, name: group.name, icon: (group as any).icon, color: (group as any).color }]}
+        defaultGroupId={id}
       />
     </div>
   )

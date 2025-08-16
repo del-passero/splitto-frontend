@@ -13,6 +13,7 @@ import CardSection from "../components/CardSection"
 import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
 const GroupsPage = () => {
   const { t } = useTranslation()
@@ -25,6 +26,7 @@ const GroupsPage = () => {
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
+  const [createTxOpen, setCreateTxOpen] = useState(false)
 
   // Первая загрузка и при смене user/search — как в ContactsPage
   useEffect(() => {
@@ -51,7 +53,7 @@ const GroupsPage = () => {
     {
       key: "add-transaction",
       icon: <HandCoins size={28} strokeWidth={1.5} />,
-      onClick: () => {},
+      onClick: () => setCreateTxOpen(true),
       ariaLabel: t("add_transaction"),
       label: t("add_transaction"),
     },
@@ -72,9 +74,20 @@ const GroupsPage = () => {
           ownerId={user?.id || 0}
           onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
         />
+        {/* Модалка создания транзакции (общая) */}
+        <CreateTransactionModal
+          open={createTxOpen}
+          onOpenChange={setCreateTxOpen}
+          groups={(groups ?? []).map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            icon: g.icon,
+            color: g.color,
+          }))}
+        />
       </MainLayout>
     )
-    }
+  }
 
   return (
     <MainLayout fabActions={fabActions}>
@@ -108,11 +121,24 @@ const GroupsPage = () => {
           <div className="text-center py-6 text-red-500">{groupsError}</div>
         </CardSection>
       )}
+
       <CreateGroupModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
         onCreated={() => user?.id && fetchGroups(user.id, { reset: true, q: search.trim() || undefined })}
+      />
+
+      {/* Модалка создания транзакции (общая) */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        groups={(groups ?? []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          color: g.color,
+        }))}
       />
     </MainLayout>
   )

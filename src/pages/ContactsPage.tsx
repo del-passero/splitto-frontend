@@ -9,16 +9,20 @@ import FiltersRow from "../components/FiltersRow"
 import TopInfoRow from "../components/TopInfoRow"
 import ContactsList from "../components/ContactsList"
 import { useFriendsStore } from "../store/friendsStore"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
+import { useGroupsStore } from "../store/groupsStore"
 
 const ContactsPage = () => {
   const { t } = useTranslation()
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [createTxOpen, setCreateTxOpen] = useState(false)
   const [search, setSearch] = useState("")
   const { friends, total, loading, fetchFriends, searchFriends, clearFriends } = useFriendsStore()
+  const { groups } = useGroupsStore()
 
   // Загружаем обычный список или поиск
   useEffect(() => {
-    clearFriends()         // всегда сбрасываем стор при заходе/смене поиска
+    clearFriends() // всегда сбрасываем стор при заходе/смене поиска
     if (search.trim().length > 0) {
       searchFriends(search)
     } else {
@@ -38,7 +42,7 @@ const ContactsPage = () => {
     {
       key: "add-transaction",
       icon: <HandCoins size={28} strokeWidth={1.5} />,
-      onClick: () => {}, // пока ничего не делает
+      onClick: () => setCreateTxOpen(true),
       ariaLabel: t("add_transaction"),
       label: t("add_transaction"),
     },
@@ -69,6 +73,18 @@ const ContactsPage = () => {
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         inviteLink={null}
+      />
+
+      {/* Модалка создания транзакции */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        groups={(groups ?? []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          color: g.color,
+        }))}
       />
     </MainLayout>
   )

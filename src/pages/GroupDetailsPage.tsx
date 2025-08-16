@@ -17,6 +17,7 @@ import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
 const PAGE_SIZE = 24
 
@@ -47,6 +48,9 @@ const GroupDetailsPage = () => {
 
   // Модалка добавления участников
   const [addOpen, setAddOpen] = useState(false)
+
+  // Модалка создания транзакции (для этой группы — автоподстановка groupId)
+  const [createTxOpen, setCreateTxOpen] = useState(false)
 
   // Заглушки (долги/балансы/транзакции — подставишь реальные позже)
   const transactions: any[] = []
@@ -159,7 +163,7 @@ const GroupDetailsPage = () => {
         loadMore={loadMembers}
         hasMore={hasMore}
         loading={membersLoading}
-		ownerId={group.owner_id}   // ← НОВОЕ
+        ownerId={group.owner_id}   // ← НОВОЕ
       />
 
       {/* Вкладки и содержимое — внутри одного CardSection */}
@@ -174,7 +178,7 @@ const GroupDetailsPage = () => {
             <GroupTransactionsTab
               loading={false}
               transactions={transactions}
-              onAddTransaction={() => {/* форма добавления */}}
+              onAddTransaction={() => setCreateTxOpen(true)}
             />
           )}
           {selectedTab === "balance" && (
@@ -183,7 +187,7 @@ const GroupDetailsPage = () => {
               myDebts={myDebts}
               allDebts={allDebts}
               loading={false}
-              onFabClick={() => {/* форма добавления платежа */}}
+              onFabClick={() => setCreateTxOpen(true)}
             />
           )}
           {selectedTab === "analytics" && <GroupAnalyticsTab />}
@@ -200,6 +204,21 @@ const GroupDetailsPage = () => {
         groupId={id}
         existingMemberIds={existingMemberIds}
         onAdded={() => {/* reload внутри модалки */}}
+      />
+
+      {/* Модалка создания транзакции — для текущей группы автоподстановка */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        defaultGroupId={id}
+        groups={group ? [{
+          id: group.id,
+          name: group.name,
+          // @ts-ignore: опциональные поля, если есть в типе
+          icon: (group as any).icon,
+          // @ts-ignore
+          color: (group as any).color,
+        }] : []}
       />
     </div>
   )
