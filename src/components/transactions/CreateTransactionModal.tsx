@@ -21,12 +21,10 @@ export interface MinimalGroup {
   color?: string | null;
   icon?: string | null;
 
-  // возможные варианты поля валюты (как в GroupHeader + доп. варианты)
+  // как в GroupHeader: только эти 3 поля учитываем при определении валюты
   default_currency_code?: string | null;
   currency_code?: string | null;
-  currency?: string | null | { code?: string | null };
-  default_currency?: { code?: string | null } | null;
-  main_currency_code?: string | null;
+  currency?: string | null;
 }
 
 type Props = {
@@ -80,7 +78,8 @@ function SelectedGroupPill({
   locked?: boolean;
 }) {
   const ch = (name || "").trim().charAt(0).toUpperCase() || "👥";
-  const bg = color && /^#([0-9a-f]{3}){1,2}$/i.test(color) ? color : "var(--tg-link-color)";
+  // принимаем любой валидный CSS-цвет, а не только hex
+  const bg = (typeof color === "string" && color.trim().length) ? (color as string) : "var(--tg-link-color)";
   return (
     <button
       type="button"
@@ -106,27 +105,21 @@ function SelectedGroupPill({
 const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-// извлекаем код валюты, как в хедере, с поддержкой разных форматов
-function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string {
-  const candidates: Array<unknown> = [
-    (g as any)?.currency_code,
-    (g as any)?.default_currency_code,
-    (g as any)?.currency,
-    (g as any)?.currency?.code,
-    (g as any)?.default_currency?.code,
-    (g as any)?.main_currency_code,
-  ];
-  for (const raw of candidates) {
-    if (typeof raw === "string" && raw.trim()) return raw.trim().toUpperCase();
-  }
-  return "RUB";
+// РОВНО как в GroupHeader: default_currency_code -> currency_code -> currency
+function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string | null {
+  const raw =
+    (g as any)?.default_currency_code ||
+    (g as any)?.currency_code ||
+    (g as any)?.currency ||
+    null;
+  return (typeof raw === "string" && raw.trim()) ? raw.trim().toUpperCase() : null;
 }
 function makeCurrency(g?: MinimalGroup | null) {
-  const code = resolveCurrencyCodeFromGroup(g);
+  const code = resolveCurrencyCodeFromGroup(g); // может быть null
   return {
     code,
-    symbol: SYMBOL_BY_CODE[code] ?? (code === "RUB" ? "₽" : code),
-    decimals: DECIMALS_BY_CODE[code] ?? 2,
+    symbol: code ? (SYMBOL_BY_CODE[code] ?? code) : "",
+    decimals: code ? (DECIMALS_BY_CODE[code] ?? 2) : 2,
   };
 }
 
@@ -166,7 +159,7 @@ function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
   let h = input.trim().replace(/^#/, "");
   if (/^[0-9a-f]{3}$/i.test(h)) {
-    h = h.split("").map(ch => ch + ch).join(""); // abc -> aabbcc
+    h = h.split("").map(ch => ch + ch).join("");
   }
   if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`;
   return null;
@@ -491,14 +484,19 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                   </CardSection>
                 </div>
 
-                {/* Сумма (без подписи под полем) */}
+                {/* Сумма (без подписи под полем). Код валюты показываем только если он есть */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
                       <div className="flex items-center gap-2 mt-0.5">
-                        <div className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2" title={currency.code}>
-                          {currency.code}
-                        </div>
+                        {currency.code && (
+                          <div
+                            className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
+                            title={currency.code}
+                          >
+                            {currency.code}
+                          </div>
+                        )}
                         <input
                           inputMode="decimal"
                           placeholder="0.00"
@@ -779,7 +777,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onClose={() => setSplitOpen(false)}
         groupId={selectedGroupId || 0}
         amount={Number(toFixedSafe(amount || "0", currency.decimals))}
-        currency={{ code: currency.code, symbol: currency.symbol, decimals: currency.decimals }}
+        currency={{ code: currency.code || "", symbol: currency.symbol, decimals: currency.decimals }}
         initial={splitData || { type: splitType, participants: [] as any[] }}
         paidById={paidBy}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
