@@ -15,7 +15,7 @@ import { useGroupsStore } from "../../store/groupsStore";
 
 // API
 import { getTransactions } from "../../api/transactionsApi";
-import type { TransactionOut, TxType } from "../../types/transaction";
+import type { TransactionOut } from "../../types/transaction";
 
 type Props = {
   loading: boolean;            // не используем — грузим сами
@@ -44,6 +44,10 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
+  // участники группы (для имён/аватаров на карточках)
+  const [membersMap, setMembersMap] = useState<Map<number, any>>(new Map());
+  const [membersCount, setMembersCount] = useState<number>(0);
+
   // для отмены запросов/IO
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
@@ -51,10 +55,49 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const lockRef = useRef(false);
 
   // ключ пересборки при смене фильтров
-  const filtersKey = useMemo(
-    () => JSON.stringify({ groupId }),
-    [groupId]
-  );
+  const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
+
+  // --- Загрузка участников группы (для отображения имён/аватаров) ---
+  useEffect(() => {
+    setMembersMap(new Map());
+    setMembersCount(0);
+    if (!groupId) return;
+
+    const controller = new AbortController();
+
+    const loadMembers = async () => {
+      try {
+        // Берём побольше, чтобы захватить всех
+        const resp = await fetch(`/api/group-members/group/${groupId}?offset=0&limit=200`, {
+          method: "GET",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!resp.ok) {
+          // не падаем интерфейсом — просто оставим без имён
+          return;
+        }
+        const list = await resp.json(); // ожидаем массив { user: {...} }
+        const map = new Map<number, any>();
+        if (Array.isArray(list)) {
+          for (const m of list) {
+            const u = (m && m.user) ? m.user : m;
+            const id = Number(u?.id);
+            if (Number.isFinite(id)) {
+              map.set(id, m); // храним memberLike (совместимо с TransactionCard)
+            }
+          }
+          setMembersCount(list.length);
+        }
+        setMembersMap(map);
+      } catch {
+        // игнор: без участников просто покажем id-фоллбек внутри карточки (если он там есть)
+      }
+    };
+
+    void loadMembers();
+    return () => controller.abort();
+  }, [groupId]);
 
   // первичная загрузка / ресет при смене groupId
   useEffect(() => {
@@ -163,8 +206,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       const hay = [
         tx.comment,
         (tx as any).category?.name, // для expense
-        (tx as any).from_name,      // для transfer
-        (tx as any).to_name,        // для transfer
+        (tx as any).from_name,      // для transfer (если есть на фронте)
+        (tx as any).to_name,        // для transfer (если есть на фронте)
         tx.currency,
         tx.amount?.toString(),
       ]
@@ -185,7 +228,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   };
 
   return (
-    <div className="relative w-full h-full min-h-[320px]">
+    <div className="relative w-full h-full min-h=[320px]">
       <FiltersRow search={search} setSearch={setSearch} />
 
       {error ? (
@@ -200,7 +243,12 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         <div className="flex flex-col gap-2 py-3">
           {visible.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
-              <TransactionCard tx={tx} />
+              <TransactionCard
+                tx={tx}
+                membersById={membersMap}
+                groupMembersCount={membersCount}
+                t={t}
+              />
               {idx !== visible.length - 1 && (
                 <div className="absolute left-14 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               )}
