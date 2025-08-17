@@ -31,8 +31,8 @@ export default function TransactionList({
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // локальный словарь участников группы (чтобы карточки сразу имели имена/аватары)
-  const [membersById, setMembersById] = useState<Map<number, any> | null>(null);
+  // словарь участников группы для карточек
+  const [membersMap, setMembersMap] = useState<Map<number, any> | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
@@ -44,10 +44,10 @@ export default function TransactionList({
     [groupId, userId, type, pageSize, refreshKey]
   );
 
-  // грузим участников группы один раз на groupId
+  // загрузка участников группы (один раз на groupId)
   useEffect(() => {
     if (!groupId) {
-      setMembersById(null);
+      setMembersMap(null);
       return;
     }
     const controller = new AbortController();
@@ -59,23 +59,23 @@ export default function TransactionList({
         });
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
-        const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        const arr: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         const map = new Map<number, any>();
-        for (const it of items) {
+        for (const it of arr) {
           const u = it?.user ?? it;
           const id = Number(u?.id);
           if (!id) continue;
           map.set(id, { user: u });
         }
-        setMembersById(map);
+        setMembersMap(map);
       } catch {
-        setMembersById(null); // карточки сами подгрузят, если что
+        setMembersMap(null);
       }
     })();
     return () => controller.abort();
   }, [groupId]);
 
-  // первичная загрузка / сброс при смене фильтров
+  // первичная загрузка/сброс по фильтрам
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -88,7 +88,7 @@ export default function TransactionList({
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const run = async () => {
+    (async () => {
       setLoading(true);
       try {
         const { total, items } = await getTransactions({
@@ -103,18 +103,16 @@ export default function TransactionList({
         setTotal(total);
         setHasMore(items.length < total);
       } catch (e: any) {
-        if (controller.signal.aborted) return;
-        setError(e?.message || "Failed to load transactions");
+        if (!controller.signal.aborted) setError(e?.message || "Failed to load transactions");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    };
+    })();
 
-    void run();
     return () => controller.abort();
   }, [filtersKey, groupId, userId, type, pageSize]);
 
-  // догрузка следующей страницы
+  // догрузка
   const loadMore = async () => {
     if (loading || !hasMore) return;
     lockRef.current = true;
@@ -147,16 +145,15 @@ export default function TransactionList({
       if (!controller.signal.aborted) setError(e?.message || "Failed to load more");
     } finally {
       setLoading(false);
-      setTimeout(() => {
-        lockRef.current = false;
-      }, 120);
+      setTimeout(() => (lockRef.current = false), 120);
     }
   };
 
-  // IntersectionObserver для бесконечной прокрутки
+  // IntersectionObserver
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
+
     ioRef.current?.disconnect();
     const io = new IntersectionObserver(
       (entries) => {
@@ -169,6 +166,7 @@ export default function TransactionList({
     );
     io.observe(el);
     ioRef.current = io;
+
     return () => {
       io.disconnect();
       if (ioRef.current === io) ioRef.current = null;
@@ -183,7 +181,6 @@ export default function TransactionList({
       </CardSection>
     );
   }
-
   if (loading && items.length === 0) {
     return (
       <CardSection>
@@ -191,12 +188,11 @@ export default function TransactionList({
       </CardSection>
     );
   }
-
   if (!loading && items.length === 0) {
     return <EmptyTransactions />;
   }
 
-  const membersCount = membersById?.size ?? 0;
+  const membersCount = membersMap?.size ?? 0;
 
   return (
     <CardSection noPadding className={className}>
@@ -204,7 +200,7 @@ export default function TransactionList({
         <div key={tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
           <TransactionCard
             tx={tx}
-            membersById={membersById ?? undefined}
+            membersById={membersMap ?? undefined}
             groupMembersCount={membersCount || undefined}
           />
           {idx !== items.length - 1 && (
@@ -212,9 +208,7 @@ export default function TransactionList({
           )}
         </div>
       ))}
-      {/* сентинел */}
       <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
-      {/* подгрузка внизу */}
       {loading && items.length > 0 && (
         <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка…</div>
       )}
