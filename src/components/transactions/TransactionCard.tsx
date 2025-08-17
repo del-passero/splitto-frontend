@@ -2,7 +2,7 @@
 import { ArrowRightLeft, Layers } from "lucide-react";
 
 type Props = {
-  tx: any; // LocalTx
+  tx: any; // LocalTx | TransactionOut
 };
 
 function CategoryAvatar({ name, color, icon }: { name?: string; color?: string | null; icon?: string }) {
@@ -19,7 +19,9 @@ export default function TransactionCard({ tx }: Props) {
   const isExpense = tx.type === "expense";
   const title = isExpense ? (tx.category?.name || "Expense") : `${tx.from_name || "From"} → ${tx.to_name || "To"}`;
   const sub = new Date(tx.date || tx.created_at || Date.now()).toLocaleDateString();
-  const amount = `${(tx.amount ?? 0).toFixed(2)} ${tx.currency || ""}`;
+
+  const amountNum = Number(tx.amount ?? 0); // безопасно приводим Decimal(string) -> number
+  const amount = `${amountNum.toFixed(2)} ${tx.currency || ""}`;
 
   return (
     <div className="relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
@@ -42,8 +44,6 @@ export default function TransactionCard({ tx }: Props) {
 
         <div className="text-[14px] font-semibold shrink-0">{amount}</div>
       </div>
-
-      {/* разделитель снизу для списков, если нужен, можно оставить внешний */}
     </div>
   );
 }

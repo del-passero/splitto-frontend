@@ -13,9 +13,29 @@ const RAW_API_URL =
   "https://splitto-backend-prod-ugraf.amvera.io/api"
 
 // Нормализуем базовый URL:
-// 1) форсим https (важно для Telegram Web / HTTPS);
+// 1) форсим HTTPS только для внешних хостов (не локалка);
 // 2) срезаем хвостовые слэши.
-const API_BASE = RAW_API_URL.replace(/^http:/, "https:").replace(/\/+$/, "")
+const API_BASE = (() => {
+  const raw = RAW_API_URL.replace(/\/+$/, "")
+  try {
+    const u = new URL(raw)
+    const host = u.hostname
+    const isPrivateIp =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+
+    if (!isPrivateIp && u.protocol === "http:") {
+      u.protocol = "https:"
+      return u.toString().replace(/\/+$/, "")
+    }
+    return raw
+  } catch {
+    return raw
+  }
+})()
 
 // Склейка пути и query без двойных слэшей и без "/?".
 function makeUrl(path: string, qs?: string) {

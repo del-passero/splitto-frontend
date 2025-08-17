@@ -498,11 +498,11 @@ export default function CreateTransactionModal({
       setSaving(true);
       const gid = selectedGroupId as number;
 
-      let created: TransactionOut | undefined; // <-- добавлено
+      let created: TransactionOut | undefined;
 
       if (type === "expense") {
         const normalizedSplit = normalizeSplit(splitData);
-        created = (await txStore.createExpense({
+        created = await txStore.createExpense({
           group_id: gid,
           amount: Number(toFixedSafe(amount, currency.decimals)),
           currency: currency.code!,
@@ -511,9 +511,9 @@ export default function CreateTransactionModal({
           category: categoryId ? { id: categoryId, name: categoryName || "", color: categoryColor, icon: categoryIcon || undefined } : undefined,
           paid_by: paidBy,
           split: normalizedSplit,
-        })) as unknown as TransactionOut;
+        });
       } else {
-        created = (await txStore.createTransfer({
+        created = await txStore.createTransfer({
           group_id: gid,
           amount: Number(toFixedSafe(amount, currency.decimals)),
           currency: currency.code!,
@@ -524,10 +524,9 @@ export default function CreateTransactionModal({
           to_name: toUserName,
           from_avatar: paidByAvatar,
           to_avatar: toUserAvatar,
-        })) as unknown as TransactionOut;
+        });
       }
 
-      // уведомим родителя, если нужно
       if (created && onCreated) onCreated(created);
 
       if (mode === "close") onOpenChange(false);

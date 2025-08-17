@@ -1,7 +1,8 @@
 // src/store/transactionsStore.ts
 import { create } from "zustand";
 import type { SplitSelection } from "../components/transactions/SplitPickerModal";
-import { createExpenseAPI, createTransferAPI } from "../services/transactions";
+import { createTransaction } from "../api/transactionsApi";
+import type { TransactionOut, TransactionCreateRequest } from "../types/transaction";
 
 type CategoryLite = { id: number; name: string; color?: string | null; icon?: string | undefined };
 
@@ -65,8 +66,8 @@ type TxState = {
   _addLocal: (tx: LocalTx) => void;
   _replaceLocal: (gid: number, tempId: string | number, real: LocalTx) => void;
   _removeLocal: (gid: number, tempId: string | number) => void;
-  createExpense: (input: LocalExpenseInput) => Promise<void>;
-  createTransfer: (input: LocalTransferInput) => Promise<void>;
+  createExpense: (input: LocalExpenseInput) => Promise<TransactionOut>;
+  createTransfer: (input: LocalTransferInput) => Promise<TransactionOut>;
 };
 
 export const useTransactionsStore = create<TxState>((set, get) => ({
@@ -118,18 +119,28 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
-      const serverTx = await createExpenseAPI(input);
+      const payload: TransactionCreateRequest = {
+        type: "expense",
+        ...input,
+      } as unknown as TransactionCreateRequest;
+
+      const serverTx = await createTransaction(payload);
+
       const real: LocalExpenseTx = {
         ...localTx,
         id: serverTx.id ?? localTx.id,
         created_at: serverTx.created_at ?? localTx.created_at,
-        // возможно, бэкенд вернёт нормализованные поля категории/сплита — аккуратно подставляем
-        category: serverTx.category ?? localTx.category,
-        split: serverTx.split ?? localTx.split,
+        // нормализованные поля от бэка
+        category: (serverTx as any).category ?? localTx.category,
+        split: (serverTx as any).split ?? localTx.split,
+        comment: serverTx.comment ?? localTx.comment,
+        amount: Number((serverTx as any).amount ?? localTx.amount), // ВАЖНО: Decimal(string) -> number
+        currency: serverTx.currency ?? localTx.currency,
+        date: serverTx.date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);
+      return serverTx;
     } catch (e) {
-      // откат при ошибке
       get()._removeLocal(input.group_id, tempId);
       throw e;
     }
@@ -156,13 +167,23 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
-      const serverTx = await createTransferAPI(input);
+      const payload: TransactionCreateRequest = {
+        type: "transfer",
+        ...input,
+      } as unknown as TransactionCreateRequest;
+
+      const serverTx = await createTransaction(payload);
+
       const real: LocalTransferTx = {
         ...localTx,
         id: serverTx.id ?? localTx.id,
         created_at: serverTx.created_at ?? localTx.created_at,
+        amount: Number((serverTx as any).amount ?? localTx.amount), // ВАЖНО: Decimal(string) -> number
+        currency: serverTx.currency ?? localTx.currency,
+        date: serverTx.date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);
+      return serverTx;
     } catch (e) {
       get()._removeLocal(input.group_id, tempId);
       throw e;
