@@ -13,21 +13,15 @@ const RAW_API_URL =
   "https://splitto-backend-prod-ugraf.amvera.io/api"
 
 // Нормализуем базовый URL:
-// 1) форсим HTTPS только для внешних хостов (не локалка);
-// 2) срезаем хвостовые слэши.
+// - всегда апгрейдим до HTTPS, кроме localhost/127.0.0.1
+// - срезаем хвостовые слэши
 const API_BASE = (() => {
   const raw = RAW_API_URL.replace(/\/+$/, "")
   try {
     const u = new URL(raw)
     const host = u.hostname
-    const isPrivateIp =
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      /^10\./.test(host) ||
-      /^192\.168\./.test(host) ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-
-    if (!isPrivateIp && u.protocol === "http:") {
+    const isLocal = host === "localhost" || host === "127.0.0.1"
+    if (!isLocal && u.protocol === "http:") {
       u.protocol = "https:"
       return u.toString().replace(/\/+$/, "")
     }
@@ -37,13 +31,14 @@ const API_BASE = (() => {
   }
 })()
 
-// Склейка пути и query без двойных слэшей и без "/?".
+// Склейка пути и query без двойных слэшей и без "/?"
 function makeUrl(path: string, qs?: string) {
+  // убираем двойные слэши на стыке
+  const base = API_BASE.replace(/\/+$/, "")
   const p = path.startsWith("/") ? path : `/${path}`
-  if (qs && qs.length) {
-    return `${API_BASE}${p}?${qs}`
-  }
-  return `${API_BASE}${p}`
+  const url = `${base}${p}`
+  if (qs && qs.length) return `${url}?${qs}`
+  return url
 }
 
 function getTelegramInitData(): string {
@@ -78,7 +73,8 @@ export async function getTransactions(params: {
     limit: params.limit ?? 20,
   })
 
-  const res = await fetch(makeUrl("/transactions", qs), {
+  // ВАЖНО: используем /transactions/ (со слэшем), чтобы не ловить 307
+  const res = await fetch(makeUrl("/transactions/", qs), {
     method: "GET",
     credentials: "include",
     headers: {
@@ -96,7 +92,8 @@ export async function getTransactions(params: {
 
 /** Создать транзакцию */
 export async function createTransaction(payload: TransactionCreateRequest): Promise<TransactionOut> {
-  const res = await fetch(makeUrl("/transactions"), {
+  // ВАЖНО: /transactions/ со слэшем — иначе FastAPI отдаёт 307
+  const res = await fetch(makeUrl("/transactions/"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -111,7 +108,8 @@ export async function createTransaction(payload: TransactionCreateRequest): Prom
 
 /** Удалить транзакцию (soft delete на бэке) */
 export async function removeTransaction(transactionId: number): Promise<void> {
-  const res = await fetch(makeUrl(`/transactions/${transactionId}`), {
+  // Тоже со слэшем, чтобы не ловить редирект
+  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
     method: "DELETE",
     credentials: "include",
     headers: {
