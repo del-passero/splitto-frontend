@@ -1,5 +1,5 @@
 // src/components/transactions/TransactionCard.tsx
-import { ArrowRightLeft, CalendarClock, Layers, User, Users } from "lucide-react";
+import { ArrowRightLeft, Layers, User, Users } from "lucide-react";
 import { useMemo } from "react";
 
 type TGUser = {
@@ -11,14 +11,13 @@ type TGUser = {
 };
 
 type GroupMember = { user: TGUser };
-
 type MembersMap = Record<number, GroupMember | undefined>;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
   membersById?: MembersMap;
   groupMembersCount?: number;
-  t?: (k: string, vars?: Record<string, any>) => string; // на случай, если пробросите t из верхнего уровня
+  t?: (k: string, vars?: Record<string, any>) => string;
 };
 
 function displayName(u?: TGUser | null): string {
@@ -61,7 +60,7 @@ function Avatar({ user, size = 22 }: { user?: TGUser; size?: number }) {
   );
 }
 
-function AvatarStack({ users, max = 5 }: { users: TGUser[]; max?: number }) {
+function AvatarStack({ users, max = 5, size = 20 }: { users: TGUser[]; max?: number; size?: number }) {
   const shown = users.slice(0, max);
   const rest = users.length - shown.length;
   return (
@@ -69,7 +68,7 @@ function AvatarStack({ users, max = 5 }: { users: TGUser[]; max?: number }) {
       <div className="flex -space-x-2">
         {shown.map((u, i) => (
           <div key={u.id ?? i} className="relative z-0">
-            <Avatar user={u} size={22} />
+            <Avatar user={u} size={size} />
           </div>
         ))}
       </div>
@@ -90,40 +89,33 @@ function CategoryAvatar({ name, color, icon }: { name?: string; color?: string |
   );
 }
 
-function Row({ icon, label, value }: { icon?: React.ReactNode; label?: string; value: React.ReactNode }) {
-  return (
-    <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--tg-secondary-bg-color,#f2f2f2)] text-[11px]">
-      {icon ? <span className="opacity-80">{icon}</span> : null}
-      {label ? <span className="opacity-70">{label}:</span> : null}
-      <span className="font-medium text-[var(--tg-text-color)]">{value}</span>
-    </div>
-  );
-}
-
 export default function TransactionCard({ tx, membersById = {}, groupMembersCount, t }: Props) {
   const _t = (k: string, vars?: any) => (typeof t === "function" ? t(k, vars) : k);
 
   const isExpense = tx.type === "expense";
 
-  // ===== Заголовок =====
+  // ===== Пользователи (по id -> данные) =====
+  const payerUser =
+    (typeof tx.paid_by === "number" && membersById[tx.paid_by]?.user) || null;
+
   const senderUser =
     (typeof tx.transfer_from === "number" && membersById[tx.transfer_from]?.user) || null;
+
   const recipientsUsers =
     (Array.isArray(tx.transfer_to) ? tx.transfer_to : tx.transfer_to ? [tx.transfer_to] : [])
       .map((id: any) => (typeof id === "number" ? membersById[id]?.user : null))
       .filter(Boolean) as TGUser[];
 
-  const payerUser =
-    (typeof tx.paid_by === "number" && membersById[tx.paid_by]?.user) || null;
-
-  const catName = tx.category?.name?.trim() || "";
-  const title = isExpense
-    ? (catName || "Expense")
-    : `${displayName(senderUser) || tx.from_name || "From"} → ${
-        recipientsUsers.length
-          ? recipientsUsers.map(displayName).join(", ")
-          : (Array.isArray(tx.to_name) && tx.to_name.length ? tx.to_name.join(", ") : (tx.to_name || "To"))
-      }`;
+  // ===== Заголовок =====
+  // Расход: по ТЗ вместо "Expense" — комментарий.
+  // Перевод: "From КТО → To КТО"
+  const expenseTitle = (tx.comment || "").toString().trim() || tx.category?.name || "—";
+  const transferTitle = `${displayName(senderUser) || tx.from_name || "From"} → ${
+    recipientsUsers.length
+      ? recipientsUsers.map(displayName).join(", ")
+      : (Array.isArray(tx.to_name) && tx.to_name.length ? tx.to_name.join(", ") : (tx.to_name || "To"))
+  }`;
+  const title = isExpense ? expenseTitle : transferTitle;
 
   // ===== Дата =====
   const dateRaw = tx.date || tx.created_at || Date.now();
@@ -135,55 +127,34 @@ export default function TransactionCard({ tx, membersById = {}, groupMembersCoun
   const currency = tx.currency || "";
   const amount = `${amountNum.toFixed(2)} ${currency}`;
 
-  // ===== Участники =====
+  // ===== Участники расхода =====
   const shareUserIds: number[] = Array.isArray(tx.shares)
     ? Array.from(new Set(tx.shares.map((s: any) => Number(s.user_id)).filter((x: any) => Number.isFinite(x))))
     : [];
 
-  const participantUsersExpense: TGUser[] = useMemo(() => {
-    // если переданы shares — участники из shares
+  const participantsExpense: TGUser[] = useMemo(() => {
     if (shareUserIds.length) {
       return shareUserIds
         .map((uid) => membersById[uid]?.user)
         .filter(Boolean) as TGUser[];
     }
-    // если split_type = equal — считаем, что участвовали все члены группы
     if (tx.split_type === "equal" && typeof groupMembersCount === "number") {
-      // вернём до 8, чтобы отрисовать стаки; текст покажем ВСЕ (N)
-      const list: TGUser[] = Object.values(membersById)
-        .map((gm) => gm?.user)
-        .filter(Boolean) as TGUser[];
-      return list;
+      return Object.values(membersById).map((gm) => gm?.user).filter(Boolean) as TGUser[];
     }
     return [];
   }, [shareUserIds.join(","), tx.split_type, membersById, groupMembersCount]);
 
-  const isAll = tx.split_type === "equal" && groupMembersCount && groupMembersCount > 0;
+  const isAll = isExpense && tx.split_type === "equal" && groupMembersCount && groupMembersCount > 0;
 
-  const participantsValueNode = isAll ? (
-    <span>
-      {_t("tx_modal.all")} ({groupMembersCount})
-    </span>
-  ) : participantUsersExpense.length ? (
-    <span>
-      {participantUsersExpense.slice(0, 3).map(displayName).join(", ")}
-      {participantUsersExpense.length > 3 ? `, +${participantUsersExpense.length - 3}` : ""} ({participantUsersExpense.length})
-    </span>
-  ) : (
-    // Для перевода — участники это отправитель + получатели
-    (tx.type === "transfer" && (senderUser || recipientsUsers.length)) ? (
-      <span>
-        {[senderUser, ...recipientsUsers].filter(Boolean).slice(0, 3).map(displayName).join(", ")}
-        {[senderUser, ...recipientsUsers].filter(Boolean).length > 3
-          ? `, +${[senderUser, ...recipientsUsers].filter(Boolean).length - 3}`
-          : ""} ({[senderUser, ...recipientsUsers].filter(Boolean).length})
-      </span>
-    ) : (
-      <span>—</span>
-    )
-  );
+  // Подпись «за кого» (для расходов)
+  const participantsLabel = isAll
+    ? `${_t("tx_modal.all")} (${groupMembersCount})`
+    : participantsExpense.length
+      ? `${participantsExpense.slice(0, 3).map(displayName).join(", ")}${
+          participantsExpense.length > 3 ? `, +${participantsExpense.length - 3}` : ""
+        } (${participantsExpense.length})`
+      : "—";
 
-  // ====== UI ======
   return (
     <div className="relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
       {/* Верхняя строка */}
@@ -198,59 +169,58 @@ export default function TransactionCard({ tx, membersById = {}, groupMembersCoun
 
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">{title}</div>
-          {/* Дата под заголовком (компактно) */}
           <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{dateLabel}</div>
         </div>
 
         <div className="text-[14px] font-semibold shrink-0">{amount}</div>
       </div>
 
-      {/* Метаданные: платил, участники */}
+      {/* Нижняя зона: по ТЗ */}
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {/* Кто платил / отправитель */}
         {isExpense ? (
-          <Row
-            icon={<User size={14} />}
-            label={_t("tx_modal.paid_by_label")}
-            value={
-              <span className="inline-flex items-center gap-1">
-                <Avatar user={payerUser ?? undefined} />
-                <span>{displayName(payerUser) || tx.paid_by_name || String(tx.paid_by ?? "—")}</span>
+          // "Заплатил {payer} за {участники}"
+          <div className="inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--tg-secondary-bg-color,#f2f2f2)]">
+            <span className="opacity-80"><User size={14} /></span>
+            <span className="text-[11px] opacity-70">{_t("tx_modal.paid_by_label")}:</span>
+            <span className="inline-flex items-center gap-1">
+              <Avatar user={payerUser ?? undefined} />
+              <span className="text-[11px] font-medium text-[var(--tg-text-color)]">
+                {displayName(payerUser) || tx.paid_by_name || String(tx.paid_by ?? "—")}
               </span>
-            }
-          />
-        ) : senderUser ? (
-          <Row
-            icon={<User size={14} />}
-            label={_t("tx_modal.paid_by_label")}
-            value={
-              <span className="inline-flex items-center gap-1">
-                <Avatar user={senderUser} />
-                <span>{displayName(senderUser)}</span>
-              </span>
-            }
-          />
-        ) : null}
+            </span>
+            <span className="text-[11px] opacity-70">&nbsp;за&nbsp;</span>
+            {isAll ? (
+              <>
+                <AvatarStack
+                  users={Object.values(membersById).map((m) => m?.user).filter(Boolean) as TGUser[]}
+                  size={18}
+                />
+                <span className="text-[11px] font-medium text-[var(--tg-text-color)]">{participantsLabel}</span>
+              </>
+            ) : participantsExpense.length ? (
+              <>
+                <AvatarStack users={participantsExpense} size={18} />
+                <span className="text-[11px] font-medium text-[var(--tg-text-color)]">{participantsLabel}</span>
+              </>
+            ) : (
+              <span className="text-[11px] font-medium text-[var(--tg-text-color)]">—</span>
+            )}
+          </div>
+        ) : (
+          // Для переводов заголовок уже "From КТО → To КТО".
+          // Дополнительно компактно покажем участников (отправитель + получатели), чтобы были аватарки.
+          <div className="inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--tg-secondary-bg-color,#f2f2f2)]">
+            <span className="opacity-80"><Users size={14} /></span>
+            <AvatarStack users={[senderUser, ...recipientsUsers].filter(Boolean) as TGUser[]} size={18} />
+          </div>
+        )}
 
-        {/* Участники */}
-        <div className="inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--tg-secondary-bg-color,#f2f2f2)]">
-          <span className="opacity-80"><Users size={14} /></span>
-          <span className="opacity-70 text-[11px]">{_t("tx_modal.participants")}:</span>
-          {/* аватар-стек */}
-          {isAll ? (
-            <AvatarStack users={Object.values(membersById).map((m) => m?.user).filter(Boolean) as TGUser[]} />
-          ) : participantUsersExpense.length ? (
-            <AvatarStack users={participantUsersExpense} />
-          ) : (
-            <AvatarStack users={[senderUser, ...recipientsUsers].filter(Boolean) as TGUser[]} />
-          )}
-          {/* подпись */}
-          <span className="font-medium text-[11px] text-[var(--tg-text-color)]">{participantsValueNode}</span>
-        </div>
-
-        {/* Тип деления — если хотим компактно подсветить */}
+        {/* Тип деления, если нужно подсветить */}
         {isExpense && tx.split_type && (
-          <Row icon={<Layers size={14} />} value={tx.split_type} />
+          <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--tg-secondary-bg-color,#f2f2f2)] text-[11px]">
+            <span className="opacity-80"><Layers size={14} /></span>
+            <span className="font-medium text-[var(--tg-text-color)]">{tx.split_type}</span>
+          </div>
         )}
       </div>
     </div>
