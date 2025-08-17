@@ -70,110 +70,73 @@ type TxState = {
   createTransfer: (input: LocalTransferInput) => Promise<TransactionOut>;
 };
 
-// ----- helpers: money / shares -----
-
-// Строго 2 знака после запятой — как на бэке (Money = Decimal(12,2))
-function toMoneyStr(n: number): string {
-  // Избегаем плавающих ошибок: работаем в "центах"
-  const cents = Math.round(n * 100);
-  const abs = Math.abs(cents);
-  const sign = cents < 0 ? "-" : "";
-  const int = Math.floor(abs / 100);
-  const dec = String(abs % 100).padStart(2, "0");
-  return `${sign}${int}.${dec}`;
-}
-
-function upperCurrency(code?: string | null): string | undefined {
-  return code ? code.trim().toUpperCase() : undefined;
-}
+// --- helpers for money/share rounding ---
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const toMoneyStr = (n: number) => r2(n).toFixed(2);
 
 /**
- * Построить split_type и shares[] из SplitSelection и total.
- * — equal: делим поровну, распределяем остаток по первым N участникам
- * — shares: делим пропорционально .share, распределяем остаток
- * — custom: берём amounts из participants (подправляем последнему, если надо)
+ * Преобразуем SplitSelection в { split_type, shares[] } для бэка.
+ * Если участников нет — вернём split_type='equal' и пустые shares.
+ * Последнюю долю подравниваем, чтобы сумма точно совпала с amount.
  */
-function buildSplitPayload(
+function splitToBackend(
   split: SplitSelection | null | undefined,
-  total: number
-): { split_type?: "equal" | "shares" | "custom"; shares?: Array<{ user_id: number; amount: string; shares?: number | null }> } {
-  if (!split || !split.participants || split.participants.length === 0) {
-    return {};
+  amount: number
+): {
+  split_type: "equal" | "shares" | "custom";
+  shares: Array<{ user_id: number; amount: string; shares?: number | null }>;
+} {
+  if (!split) {
+    return { split_type: "equal", shares: [] };
   }
 
-  const totalCents = Math.round(total * 100);
-
   if (split.type === "equal") {
-    const n = split.participants.length;
-    if (n === 0) return {};
-    const base = Math.floor(totalCents / n);
-    let rest = totalCents - base * n;
-
-    const shares = split.participants.map((p, idx) => {
-      const add = rest > 0 ? 1 : 0;
-      if (rest > 0) rest -= 1;
-      const cents = base + add;
-      return {
-        user_id: p.user_id,
-        amount: toMoneyStr(cents / 100),
-      };
-    });
-
-    return { split_type: "equal", shares };
+    const ids = split.participants.map((p) => p.user_id);
+    const k = ids.length;
+    if (k === 0) return { split_type: "equal", shares: [] };
+    const base = r2(amount / k);
+    const out: number[] = Array.from({ length: k }, () => base);
+    // подрезка/добивка, чтобы суммарно == amount
+    const diff = r2(amount - out.reduce((s, v) => s + v, 0));
+    out[k - 1] = r2(out[k - 1] + diff);
+    return {
+      split_type: "equal",
+      shares: ids.map((uid, i) => ({ user_id: uid, amount: toMoneyStr(out[i]) })),
+    };
   }
 
   if (split.type === "shares") {
-    const totalShares = split.participants.reduce((s, p) => s + (p.share || 0), 0);
-    if (totalShares <= 0) return { split_type: "shares", shares: [] };
-
-    // предварительно распределяем по floor, остаток — по первым
-    let sumCents = 0;
-    const prelim = split.participants.map((p) => {
-      const portion = (totalCents * (p.share || 0)) / totalShares;
-      const cents = Math.floor(portion);
-      sumCents += cents;
-      return { user_id: p.user_id, cents, share: p.share || 0 };
-    });
-
-    let rest = totalCents - sumCents;
-    const shares = prelim.map((x, idx) => {
-      const add = rest > 0 ? 1 : 0;
-      if (rest > 0) rest -= 1;
-      const cents = x.cents + add;
-      return {
-        user_id: x.user_id,
-        amount: toMoneyStr(cents / 100),
-        shares: x.share || undefined,
-      };
-    });
-
-    return { split_type: "shares", shares };
+    const parts = split.participants.map((p) => ({ uid: p.user_id, sh: Number(p.share || 0) }));
+    const totalShares = parts.reduce((s, p) => s + p.sh, 0);
+    if (totalShares <= 0) {
+      return { split_type: "shares", shares: [] };
+    }
+    const perShare = amount / totalShares;
+    const amounts = parts.map((p) => r2(perShare * p.sh));
+    const diff = r2(amount - amounts.reduce((s, v) => s + v, 0));
+    if (amounts.length) amounts[amounts.length - 1] = r2(amounts[amounts.length - 1] + diff);
+    return {
+      split_type: "shares",
+      shares: parts.map((p, i) => ({
+        user_id: p.uid,
+        amount: toMoneyStr(amounts[i] || 0),
+        shares: p.sh || null,
+      })),
+    };
   }
 
   // custom
-  if (split.type === "custom") {
-    // Собираем заявленные суммы, округляем до центов, выравниваем последнего
-    const rawCents = split.participants.map((p) => ({
-      user_id: p.user_id,
-      cents: Math.round((p.amount || 0) * 100),
-    }));
-    let sum = rawCents.reduce((s, x) => s + x.cents, 0);
-    const delta = totalCents - sum;
-    if (rawCents.length > 0 && delta !== 0) {
-      rawCents[rawCents.length - 1].cents += delta; // подправляем последнего
-      sum += delta;
-    }
-    // если всё равно не сошлось (крайне маловероятно) — не отправляем shares
-    if (sum !== totalCents) return { split_type: "custom", shares: [] };
+  const parts = split.participants.map((p) => ({ uid: p.user_id, amt: Number(p.amount || 0) }));
+  const sum = r2(parts.reduce((s, p) => s + p.amt, 0));
+  let amounts = parts.map((p) => r2(p.amt));
+  // лёгкая коррекция последней доли, если сумму ввели с погрешностью
+  const diff = r2(amount - sum);
+  if (amounts.length) amounts[amounts.length - 1] = r2(amounts[amounts.length - 1] + diff);
 
-    const shares = rawCents.map((x) => ({
-      user_id: x.user_id,
-      amount: toMoneyStr(x.cents / 100),
-    }));
-    return { split_type: "custom", shares };
-  }
-
-  return {};
+  return {
+    split_type: "custom",
+    shares: parts.map((p, i) => ({ user_id: p.uid, amount: toMoneyStr(amounts[i] || 0) })),
+  };
 }
 
 export const useTransactionsStore = create<TxState>((set, get) => ({
@@ -185,7 +148,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
   },
 
   _addLocal: (tx: LocalTx) => {
-    set(s => {
+    set((s) => {
       const arr = s.itemsByGroup[tx.group_id] ? [...s.itemsByGroup[tx.group_id]] : [];
       arr.unshift(tx);
       return { itemsByGroup: { ...s.itemsByGroup, [tx.group_id]: arr } };
@@ -193,15 +156,15 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
   },
 
   _replaceLocal: (gid: number, tempId: string | number, real: LocalTx) => {
-    set(s => {
-      const arr = (s.itemsByGroup[gid] || []).map(x => (x.id === tempId ? real : x));
+    set((s) => {
+      const arr = (s.itemsByGroup[gid] || []).map((x) => (x.id === tempId ? real : x));
       return { itemsByGroup: { ...s.itemsByGroup, [gid]: arr } };
     });
   },
 
   _removeLocal: (gid: number, tempId: string | number) => {
-    set(s => {
-      const arr = (s.itemsByGroup[gid] || []).filter(x => x.id !== tempId);
+    set((s) => {
+      const arr = (s.itemsByGroup[gid] || []).filter((x) => x.id !== tempId);
       return { itemsByGroup: { ...s.itemsByGroup, [gid]: arr } };
     });
   },
@@ -215,7 +178,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
       group_id: input.group_id,
       date: input.date,
       amount: input.amount,
-      currency: upperCurrency(input.currency) || input.currency,
+      currency: input.currency,
       comment: input.comment,
       category: input.category,
       paid_by: input.paid_by,
@@ -225,21 +188,19 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
-      // Собираем payload под backend-схему TransactionCreateRequest
-      const amountStr = toMoneyStr(input.amount);
-      const { split_type, shares } = buildSplitPayload(input.split, input.amount);
+      const { split_type, shares } = splitToBackend(input.split, input.amount);
 
       const payload: TransactionCreateRequest = {
         type: "expense",
         group_id: input.group_id,
-        amount: amountStr,
+        amount: toMoneyStr(input.amount),
+        currency: (input.currency || "").toUpperCase(),
         date: input.date,
         comment: input.comment,
-        currency: upperCurrency(input.currency) || null,
-        category_id: input.category ? input.category.id : null,
+        category_id: input.category?.id ?? null,
         paid_by: input.paid_by ?? null,
-        split_type: split_type ?? null,
-        shares: shares && shares.length ? shares : undefined,
+        split_type,
+        shares: shares.length ? shares : undefined, // для equal можно и не слать
       };
 
       const serverTx = await createTransaction(payload);
@@ -250,10 +211,10 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
         created_at: serverTx.created_at ?? localTx.created_at,
         // нормализованные поля от бэка
         category: (serverTx as any).category ?? localTx.category,
-        split: localTx.split, // UI-сплит оставляем локально; сервер отдаёт shares отдельно
+        split: localTx.split, // в ответе нет raw split, оставим локальное
         comment: serverTx.comment ?? localTx.comment,
         amount: Number((serverTx as any).amount ?? localTx.amount),
-        currency: (serverTx.currency ?? localTx.currency) || localTx.currency,
+        currency: serverTx.currency ?? localTx.currency,
         date: serverTx.date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);
@@ -273,7 +234,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
       group_id: input.group_id,
       date: input.date,
       amount: input.amount,
-      currency: upperCurrency(input.currency) || input.currency,
+      currency: input.currency,
       from_user_id: input.from_user_id,
       to_user_id: input.to_user_id,
       from_name: input.from_name,
@@ -285,17 +246,14 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
-      const amountStr = toMoneyStr(input.amount);
-
       const payload: TransactionCreateRequest = {
         type: "transfer",
         group_id: input.group_id,
-        amount: amountStr,
+        amount: toMoneyStr(input.amount),
+        currency: (input.currency || "").toUpperCase(),
         date: input.date,
-        currency: upperCurrency(input.currency) || null,
         transfer_from: input.from_user_id,
         transfer_to: [input.to_user_id],
-        // comment: можно добавить при необходимости
       };
 
       const serverTx = await createTransaction(payload);
@@ -305,7 +263,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
         id: serverTx.id ?? localTx.id,
         created_at: serverTx.created_at ?? localTx.created_at,
         amount: Number((serverTx as any).amount ?? localTx.amount),
-        currency: (serverTx.currency ?? localTx.currency) || localTx.currency,
+        currency: serverTx.currency ?? localTx.currency,
         date: serverTx.date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);

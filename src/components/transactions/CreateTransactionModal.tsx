@@ -502,6 +502,16 @@ export default function CreateTransactionModal({
 
       if (type === "expense") {
         const normalizedSplit = normalizeSplit(splitData);
+
+        // payer обязателен для expense на бэке — если не выбран, берём текущего пользователя
+        const payerId = paidBy ?? user?.id;
+        if (!payerId) {
+          setPayerOpen(true);
+          setShowErrors(true);
+          setSaving(false);
+          return;
+        }
+
         created = await txStore.createExpense({
           group_id: gid,
           amount: Number(toFixedSafe(amount, currency.decimals)),
@@ -509,7 +519,7 @@ export default function CreateTransactionModal({
           date,
           comment: comment.trim(),
           category: categoryId ? { id: categoryId, name: categoryName || "", color: categoryColor, icon: categoryIcon || undefined } : undefined,
-          paid_by: paidBy,
+          paid_by: payerId,
           split: normalizedSplit,
         });
       } else {
