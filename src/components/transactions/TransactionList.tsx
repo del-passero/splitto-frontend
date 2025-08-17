@@ -31,7 +31,7 @@ export default function TransactionList({
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // словарь участников группы для карточек
+  // карта участников группы, чтобы карточки знали имена/аватары
   const [membersMap, setMembersMap] = useState<Map<number, any> | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -44,7 +44,7 @@ export default function TransactionList({
     [groupId, userId, type, pageSize, refreshKey]
   );
 
-  // загрузка участников группы (один раз на groupId)
+  // подгрузка участников текущей группы (1 запрос на группу)
   useEffect(() => {
     if (!groupId) {
       setMembersMap(null);
@@ -75,7 +75,7 @@ export default function TransactionList({
     return () => controller.abort();
   }, [groupId]);
 
-  // первичная загрузка/сброс по фильтрам
+  // первичная загрузка/сброс при смене фильтров
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -112,7 +112,6 @@ export default function TransactionList({
     return () => controller.abort();
   }, [filtersKey, groupId, userId, type, pageSize]);
 
-  // догрузка
   const loadMore = async () => {
     if (loading || !hasMore) return;
     lockRef.current = true;
@@ -149,7 +148,7 @@ export default function TransactionList({
     }
   };
 
-  // IntersectionObserver
+  // догрузка по скроллу
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
@@ -164,6 +163,7 @@ export default function TransactionList({
       },
       { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 }
     );
+
     io.observe(el);
     ioRef.current = io;
 
