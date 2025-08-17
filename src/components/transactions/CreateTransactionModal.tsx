@@ -14,6 +14,7 @@ import CategoryPickerModal from "../category/CategoryPickerModal";
 import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
 import { useTransactionsStore } from "../../store/transactionsStore";
+import type { TransactionOut } from "../../types/transaction";
 
 export type TxType = "expense" | "transfer";
 
@@ -34,6 +35,8 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   groups: MinimalGroup[];
   defaultGroupId?: number;
+  /** опциональный колбэк для обратной связи (совместимость с GroupTransactionsTab) */
+  onCreated?: (tx: TransactionOut) => void;
 };
 
 function Row({
@@ -160,7 +163,7 @@ function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
   let h = input.trim().replace(/^#/, "");
   if (/^[0-9a-f]{3}$/i.test(h)) {
-    h = h.split("").map(ch => ch + ch).join(""); // abc -> aabbcc
+    h = h.split("").map(ch => ch + ch).join("");
   }
   if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`;
   return null;
@@ -176,7 +179,7 @@ function asRgbaFallback(color: string, alpha: number) {
     const [r, g, b] = nums;
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  return color; // var(--...), named — без альфы
+  return color;
 }
 function chipStyle(color?: string | null) {
   if (!color) return {};
@@ -198,13 +201,32 @@ function fillStyle(color?: string | null) {
   return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as React.CSSProperties;
 }
 
-export default function CreateTransactionModal({ open, onOpenChange, groups: groupsProp, defaultGroupId }: Props) {
+// нормализация Split: убираем null у avatar_url
+function normalizeSplit(sel: SplitSelection | null | undefined): SplitSelection | null {
+  if (!sel) return null;
+  if (sel.type === "equal") {
+    return {
+      type: "equal",
+      participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined })),
+    };
+  }
+  if (sel.type === "shares") {
+    return {
+      type: "shares",
+      participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined, share: p.share || 0 })),
+    };
+  }
+  return {
+    type: "custom",
+    participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined, amount: p.amount || 0 })),
+  };
+}
+
+export default function CreateTransactionModal({ open, onOpenChange, groups: groupsProp, defaultGroupId, onCreated }: Props) {
   const { t, i18n } = useTranslation();
   const user = useUserStore((s) => s.user);
   const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
-
-  const addExpense = useTransactionsStore((s) => s.addExpense);
-  const addTransfer = useTransactionsStore((s) => s.addTransfer);
+  const txStore = useTransactionsStore();
 
   const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
@@ -259,6 +281,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const [amountTouched, setAmountTouched] = useState(false);
   const [commentTouched, setCommentTouched] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // сброс при закрытии
   useEffect(() => {
@@ -288,6 +311,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     setPayerOpen(false);
     setRecipientOpen(false);
     setSplitOpen(false);
+    setSaving(false);
   }, [open, defaultGroupId]);
 
   const selectedGroup = useMemo(
@@ -322,7 +346,11 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     const errs: Record<string, string> = {};
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
     if (!amount || amountNumber <= 0) errs.amount = locale === "ru" ? "Введите сумму больше 0" : locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
-    if (!comment.trim()) errs.comment = locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Enter a comment";
+
+    // Комментарий обязателен ТОЛЬКО для expense
+    if (type === "expense" && !comment.trim()) {
+      errs.comment = locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Enter a comment";
+    }
 
     if (type === "expense" && !categoryId) {
       errs.category = locale === "ru" ? "Выберите категорию" : locale === "es" ? "Elige una categoría" : "Choose a category";
@@ -354,6 +382,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   }, [selectedGroupId, amount, amountNumber, comment, locale, type, categoryId, splitData, customMismatch, t, paidBy, toUser]);
 
   const hasErrors = Object.keys(errors).length > 0;
+  const canSubmit = !saving && !hasErrors && !!selectedGroupId && amountNumber > 0 && !!currency.code;
 
   const handleAmountChange = (v: string) => setAmount(parseAmountInput(v));
   const handleAmountBlur = () => { setAmountTouched(true); setAmount((prev) => toFixedSafe(prev, currency.decimals)); };
@@ -390,60 +419,56 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     setCommentTouched(false);
   };
 
-  // НОРМАЛИЗАЦИЯ СПЛИТА: avatar_url: null -> undefined (чтобы совпало с типами стора)
-  const normalizedSplit = useMemo(() => {
-    if (!splitData) return null;
-    return {
-      ...splitData,
-      participants: splitData.participants.map((p: any) => ({
-        ...p,
-        avatar_url: p?.avatar_url ?? undefined,
-      })),
-    };
-  }, [splitData]);
-
-  const doCreate = (mode: "close" | "again") => {
+  const doCreate = async (mode: "close" | "again") => {
     setShowErrors(true);
     setAmountTouched(true);
-    setCommentTouched(true);
-    if (hasErrors) return;
+    if (type === "expense") setCommentTouched(true);
+    if (!canSubmit) return;
 
-    const common = {
-      group_id: selectedGroupId as number,
-      amount: Number(toFixedSafe(amount, currency.decimals)),
-      currency: (currency.code || "RUB") as string,
-      comment: comment.trim(),
-      date,
-    };
+    try {
+      setSaving(true);
+      const gid = selectedGroupId as number;
+      const money = Number(toFixedSafe(amount, currency.decimals));
 
-    if (type === "expense") {
-      addExpense({
-        ...common,
-        type: "expense",
-        category: categoryId
-          ? { id: categoryId, name: categoryName || "", color: categoryColor || null, icon: categoryIcon || null }
-          : undefined,
-        paid_by: paidBy,
-        paid_by_name: paidByName || undefined,
-        paid_by_avatar: paidByAvatar || undefined,
-        // кастим к any, потому что типы SplitSelection в модалке и сторе отличаются null-ностью avatar_url
-        split: (normalizedSplit ?? null) as any,
-      });
-    } else {
-      addTransfer({
-        ...common,
-        type: "transfer",
-        from_user_id: paidBy,
-        from_name: paidByName || undefined,
-        from_avatar: paidByAvatar || undefined,
-        to_user_id: toUser,
-        to_name: toUserName || undefined,
-        to_avatar: toUserAvatar || undefined,
-      });
+      if (type === "expense") {
+        const normalizedSplit = normalizeSplit(splitData);
+        const created: any = await txStore.createExpense({
+          group_id: gid,
+          amount: money,
+          currency: currency.code!,
+          date,
+          comment: comment.trim(),
+          category: categoryId
+            ? { id: categoryId, name: categoryName || "", color: categoryColor, icon: categoryIcon || undefined }
+            : undefined,
+          paid_by: paidBy as number,
+          split: normalizedSplit,
+        });
+        onCreated?.(created as TransactionOut);
+      } else {
+        const created: any = await txStore.createTransfer({
+          group_id: gid,
+          amount: money,
+          currency: currency.code!,
+          date,
+          from_user_id: paidBy as number,
+          to_user_id: toUser as number,
+          from_name: paidByName,
+          to_name: toUserName,
+          from_avatar: paidByAvatar,
+          to_avatar: toUserAvatar,
+        });
+        onCreated?.(created as TransactionOut);
+      }
+
+      if (mode === "close") onOpenChange(false);
+      else resetForNew();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[CreateTransactionModal] create error", e);
+    } finally {
+      setSaving(false);
     }
-
-    if (mode === "close") onOpenChange(false);
-    else resetForNew();
   };
 
   if (!open) return null;
@@ -457,7 +482,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  // Открыватели модалок с явным закрытием остальных
+  // Открыватели модалок — чтобы To точно открывался
   const openPayerPicker = () => { setGroupModal(false); setRecipientOpen(false); setSplitOpen(false); setPayerOpen(true); };
   const openRecipientPicker = () => { setGroupModal(false); setPayerOpen(false); setSplitOpen(false); setRecipientOpen(true); };
 
@@ -478,6 +503,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
               onClick={() => onOpenChange(false)}
               className="p-1.5 rounded-lg hover:bg-[var(--tg-accent-color)]/10 transition"
               aria-label={t("close")}
+              disabled={saving}
             >
               <X className="w-5 h-5 text-[var(--tg-hint-color)]" />
             </button>
@@ -527,6 +553,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           type="button"
                           onClick={() => setType("expense")}
                           className={`px-3 h-9 text-[13px] flex items-center ${type === "expense" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                          disabled={saving}
                         >
                           <Receipt size={14} className="mr-1.5" />
                           {t("tx_modal.expense")}
@@ -535,6 +562,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           type="button"
                           onClick={() => setType("transfer")}
                           className={`px-3 h-9 text-[13px] flex items-center ${type === "transfer" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                          disabled={saving}
                         >
                           {t("tx_modal.transfer")}
                           <Send size={14} className="ml-1.5" />
@@ -563,6 +591,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           value={amount}
                           onChange={(e) => handleAmountChange(e.target.value)}
                           onBlur={handleAmountBlur}
+                          disabled={saving}
                           className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
                         />
                       </div>
@@ -586,6 +615,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             onClick={() => setCategoryModal(true)}
                             className="min-w-0 flex items-center gap-2 h-9 rounded-lg border px-2 overflow-hidden"
                             style={categoryColor ? chipStyle(categoryColor) : {}}
+                            disabled={saving}
                           >
                             <span className="inline-flex w-6 h-6 items-center justify-center rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shrink-0">
                               <span style={{ fontSize: 14 }} aria-hidden>
@@ -605,6 +635,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                               onChange={(e) => setComment(e.target.value)}
                               onBlur={handleCommentBlur}
                               placeholder={t("tx_modal.comment")}
+                              disabled={saving}
                               className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1 text-[14px]"
                             />
                           </div>
@@ -613,9 +644,9 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         {(showErrors && errors.category) && (
                           <div className="px-3 pb-0.5 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
                         )}
-                        {(showErrors || commentTouched) && !comment.trim() && (
+                        {(showErrors || commentTouched) && errors.comment && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                            {locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Please enter a comment"}
+                            {errors.comment}
                           </div>
                         )}
                       </CardSection>
@@ -630,6 +661,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             type="button"
                             onClick={openPayerPicker}
                             className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            disabled={saving}
                           >
                             {paidBy ? (
                               <>
@@ -661,6 +693,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             type="button"
                             onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
                             className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                            disabled={saving}
                           >
                             <span className="truncate">{t("tx_modal.split")}</span>
                             <strong className="truncate">
@@ -736,7 +769,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                 {/* TRANSFER */}
                 {type === "transfer" ? (
                   <>
-                    {/* From / To — 50/50; у обоих есть «очистить» */}
+                    {/* From / To — 50/50, без комментария вовсе */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
@@ -745,6 +778,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             type="button"
                             onClick={openPayerPicker}
                             className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            disabled={saving}
                           >
                             {paidBy ? (
                               <>
@@ -775,6 +809,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                             type="button"
                             onClick={openRecipientPicker}
                             className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            disabled={saving}
                           >
                             {toUser ? (
                               <>
@@ -799,20 +834,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                               <span className="opacity-70 truncate">{toLabel}</span>
                             )}
                           </button>
-                        </div>
-
-                        {/* Комментарий */}
-                        <div className="px-3 pt-1 pb-1">
-                          <div className="min-w-0 flex items-center gap-2">
-                            <FileText size={16} className="opacity-80 shrink-0" />
-                            <input
-                              value={comment}
-                              onChange={(e) => setComment(e.target.value)}
-                              onBlur={handleCommentBlur}
-                              placeholder={t("tx_modal.comment")}
-                              className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1 text-[14px]"
-                            />
-                          </div>
                         </div>
 
                         {/* Превью перевода */}
@@ -846,11 +867,6 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         {(showErrors && errors.transfer) && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.transfer}</div>
                         )}
-                        {(showErrors || commentTouched) && !comment.trim() && (
-                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                            {locale === "ru" ? "Заполните комментарий" : locale === "es" ? "Introduce un comentario" : "Please enter a comment"}
-                          </div>
-                        )}
                       </CardSection>
                     </div>
                   </>
@@ -866,6 +882,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                           type="date"
                           value={date}
                           onChange={(e) => setDate(e.target.value)}
+                          disabled={saving}
                           className="w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
                         />
                         <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
@@ -881,6 +898,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                     onClick={() => onOpenChange(false)}
                     style={{ color: "#000" }}
                     className="w-1/2 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
+                    disabled={saving}
                   >
                     {t("cancel")}
                   </button>
@@ -891,30 +909,30 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                         type="button"
                         onClick={() => doCreate("close")}
                         className="flex-1 h-10 rounded-l-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
-                        disabled={hasErrors}
+                        disabled={!canSubmit}
                       >
-                        {t("tx_modal.create")}
+                        {saving ? t("saving") : t("tx_modal.create")}
                       </button>
                       <button
                         type="button"
                         onClick={() => setMoreOpen((v) => !v)}
                         className="px-3 h-10 rounded-r-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
                         aria-label="More actions"
-                        disabled={hasErrors}
+                        disabled={!canSubmit}
                       >
                         <ChevronDown size={16} />
                       </button>
                     </div>
 
-                    {moreOpen && !hasErrors && (
+                    {moreOpen && canSubmit && (
                       <div
                         className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-10"
                         onMouseLeave={() => setMoreOpen(false)}
                       >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-                          onClick={() => { setMoreOpen(false); doCreate("again"); }}
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
+                          onClick={() => { setMoreOpen(false); void doCreate("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
                         </button>
@@ -955,7 +973,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onSelect={(u) => {
           setPaidBy(u.id);
           setPaidByName(u.name || "");
-          setPaidByAvatar((u as any)?.avatar_url || (u as any)?.photo_url || undefined);
+          // @ts-ignore
+          setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />
@@ -969,7 +988,8 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onSelect={(u) => {
           setToUser(u.id);
           setToUserName(u.name || "");
-          setToUserAvatar((u as any)?.avatar_url || (u as any)?.photo_url || undefined);
+          // @ts-ignore
+          setToUserAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />

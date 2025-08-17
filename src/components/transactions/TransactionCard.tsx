@@ -1,114 +1,49 @@
-import { Layers, Send } from "lucide-react";
-import React from "react";
+// src/components/transactions/TransactionCard.tsx
+import { ArrowRightLeft, Layers } from "lucide-react";
 
-type Props = { tx: any };
-
-const SYMBOL_BY_CODE: Record<string, string> = {
-  USD: "$", EUR: "€", RUB: "₽", GBP: "£", UAH: "₴", KZT: "₸",
-  TRY: "₺", JPY: "¥", CNY: "¥", PLN: "zł", CZK: "Kč", INR: "₹", AED: "د.إ"
+type Props = {
+  tx: any; // LocalTx
 };
-const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-function money(n: number, code: string, locale = "ru") {
-  const d = DECIMALS_BY_CODE[code] ?? 2;
-  const s = SYMBOL_BY_CODE[code] ?? code;
-  try {
-    return `${new Intl.NumberFormat(locale, { minimumFractionDigits: d, maximumFractionDigits: d }).format(n)} ${s}`;
-  } catch {
-    return `${n.toFixed(d)} ${s}`;
-  }
+function CategoryAvatar({ name, color, icon }: { name?: string; color?: string | null; icon?: string }) {
+  const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
+  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
+  return (
+    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: bg }}>
+      <span style={{ fontSize: 16 }} aria-hidden>{icon || ch}</span>
+    </div>
+  );
 }
-
-function toneBg(color?: string | null) {
-  if (!color || typeof color !== "string") return undefined;
-  const hex = color.replace("#", "");
-  const h = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-  if (!/^[0-9a-f]{6}$/i.test(h)) return undefined;
-  return `#${h}22`; // мягкая подложка
-}
-
-function toneBorder(color?: string | null) {
-  if (!color || typeof color !== "string") return undefined;
-  const hex = color.replace("#", "");
-  const h = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-  if (!/^[0-9a-f]{6}$/i.test(h)) return undefined;
-  return `1px solid #${h}44`;
-}
-
-const Avatar = ({ tx }: { tx: any }) => {
-  if (tx.type === "transfer") {
-    return (
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-           style={{ background: "var(--tg-accent-color, #40A7E3)10", border: "1px solid var(--tg-accent-color, #40A7E3)33" }}>
-        <Send className="text-[var(--tg-accent-color,#40A7E3)]" size={18} />
-      </div>
-    );
-  }
-  const color = tx.category?.color ?? null;
-  const icon = tx.category?.icon ?? null;
-  return (
-    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-         style={{ background: toneBg(color) ?? "var(--tg-secondary-bg-color,#e7e7e7)33", border: toneBorder(color) }}>
-      <span style={{ fontSize: 16, lineHeight: 1 }}>
-        {icon || <Layers size={16} className="opacity-80" />}
-      </span>
-    </div>
-  );
-};
-
-const TitleRow = ({ tx }: { tx: any }) => {
-  if (tx.type === "transfer") {
-    const from = tx.from_name || "—";
-    const to = tx.to_name || "—";
-    return (
-      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-        {from} → {to}
-      </div>
-    );
-  }
-  const name = tx.comment?.trim() || tx.category?.name || "Expense";
-  return (
-    <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-      {name}
-    </div>
-  );
-};
-
-const SubRow = ({ tx }: { tx: any }) => {
-  const sub =
-    tx.type === "transfer"
-      ? (tx.comment?.trim() || "Transfer")
-      : (tx.category?.name || "Expense");
-  const date = tx.date;
-  return (
-    <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-      {sub}{date ? ` • ${date}` : ""}
-    </div>
-  );
-};
-
-const Amount = ({ tx }: { tx: any }) => {
-  const code = tx.currency || "RUB";
-  return (
-    <div className="text-right">
-      <div className="text-[14px] font-bold text-[var(--tg-text-color)]">
-        {money(tx.amount || 0, code)}
-      </div>
-    </div>
-  );
-};
 
 export default function TransactionCard({ tx }: Props) {
+  const isExpense = tx.type === "expense";
+  const title = isExpense ? (tx.category?.name || "Expense") : `${tx.from_name || "From"} → ${tx.to_name || "To"}`;
+  const sub = new Date(tx.date || tx.created_at || Date.now()).toLocaleDateString();
+  const amount = `${(tx.amount ?? 0).toFixed(2)} ${tx.currency || ""}`;
+
   return (
-    <div className="relative px-3">
-      <div className="w-full rounded-2xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] p-3 flex items-center gap-3">
-        <Avatar tx={tx} />
+    <div className="relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
+      <div className="flex items-center gap-3">
+        {isExpense ? (
+          <CategoryAvatar name={tx.category?.name} color={tx.category?.color} icon={tx.category?.icon} />
+        ) : (
+          <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center shrink-0">
+            <ArrowRightLeft size={18} className="opacity-80" />
+          </div>
+        )}
+
         <div className="min-w-0 flex-1">
-          <TitleRow tx={tx} />
-          <SubRow tx={tx} />
+          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">{title}</div>
+          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+            {isExpense ? (tx.comment || "") : ""}
+            {!isExpense && <span className="opacity-70">{sub}</span>}
+          </div>
         </div>
-        <Amount tx={tx} />
+
+        <div className="text-[14px] font-semibold shrink-0">{amount}</div>
       </div>
+
+      {/* разделитель снизу для списков, если нужен, можно оставить внешний */}
     </div>
   );
 }

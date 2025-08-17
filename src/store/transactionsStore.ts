@@ -1,114 +1,171 @@
+// src/store/transactionsStore.ts
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import type { SplitSelection } from "../components/transactions/SplitPickerModal";
+import { createExpenseAPI, createTransferAPI } from "../services/transactions";
 
-export type TxType = "expense" | "transfer";
+type CategoryLite = { id: number; name: string; color?: string | null; icon?: string | undefined };
 
-export type SplitParticipant = {
-  user_id: number;
-  name?: string;
-  avatar_url?: string;
-  share?: number;
-  amount?: number;
-};
-
-export type SplitSelection =
-  | { type: "equal"; participants: SplitParticipant[] }
-  | { type: "shares"; participants: SplitParticipant[] }
-  | { type: "custom"; participants: SplitParticipant[] };
-
-export type LocalExpense = {
-  id: string;
-  group_id: number;
-  type: "expense";
-  amount: number;
-  currency: string;
-  comment: string;
-  date: string; // YYYY-MM-DD
-  category?: { id: number; name: string; color?: string | null; icon?: string | null };
-  paid_by?: number;
-  paid_by_name?: string;
-  paid_by_avatar?: string;
-  split?: SplitSelection | null;
-  created_at: number;
-};
-
-export type LocalTransfer = {
-  id: string;
-  group_id: number;
-  type: "transfer";
-  amount: number;
-  currency: string;
-  comment: string;
+export type LocalBaseTx = {
+  id?: string | number;
+  created_at?: string;
   date: string;
-  from_user_id?: number;
+  group_id: number;
+  type: "expense" | "transfer";
+  amount: number;
+  currency: string;
+  comment?: string;
+};
+
+export type LocalExpenseTx = LocalBaseTx & {
+  type: "expense";
+  category?: CategoryLite;
+  paid_by?: number;
+  split?: SplitSelection | null;
+};
+
+export type LocalTransferTx = LocalBaseTx & {
+  type: "transfer";
+  from_user_id: number;
+  to_user_id: number;
   from_name?: string;
-  from_avatar?: string;
-  to_user_id?: number;
   to_name?: string;
+  from_avatar?: string;
   to_avatar?: string;
-  created_at: number;
 };
 
-export type LocalTx = LocalExpense | LocalTransfer;
+export type LocalTx = LocalExpenseTx | LocalTransferTx;
 
-// ---- inputs (без id/created_at) ----
-export type LocalExpenseInput = Omit<LocalExpense, "id" | "created_at">;
-export type LocalTransferInput = Omit<LocalTransfer, "id" | "created_at">;
-
-type State = {
-  byGroup: Record<number, LocalTx[]>;
-  addExpense: (tx: LocalExpenseInput) => LocalExpense;
-  addTransfer: (tx: LocalTransferInput) => LocalTransfer;
-  getByGroup: (groupId: number | undefined) => LocalTx[];
-  clearAll: () => void;
+type LocalExpenseInput = {
+  group_id: number;
+  amount: number;
+  currency: string;
+  date: string;
+  comment: string;
+  category?: CategoryLite;
+  paid_by?: number;
+  split?: SplitSelection | null;
 };
 
-const genId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+type LocalTransferInput = {
+  group_id: number;
+  amount: number;
+  currency: string;
+  date: string;
+  from_user_id: number;
+  to_user_id: number;
+  from_name?: string;
+  to_name?: string;
+  from_avatar?: string;
+  to_avatar?: string;
+};
 
-export const useTransactionsStore = create<State>()(
-  persist(
-    (set, get) => ({
-      byGroup: {},
+type TxState = {
+  itemsByGroup: Record<number, LocalTx[]>;
+  getByGroup: (gid?: number) => LocalTx[];
+  _addLocal: (tx: LocalTx) => void;
+  _replaceLocal: (gid: number, tempId: string | number, real: LocalTx) => void;
+  _removeLocal: (gid: number, tempId: string | number) => void;
+  createExpense: (input: LocalExpenseInput) => Promise<void>;
+  createTransfer: (input: LocalTransferInput) => Promise<void>;
+};
 
-      addExpense: (txInput) => {
-        const tx: LocalExpense = {
-          ...(txInput as LocalExpenseInput),
-          id: genId(),
-          created_at: Date.now(),
-        };
-        set((s) => {
-          const g = tx.group_id;
-          const list = s.byGroup[g] ? [tx, ...s.byGroup[g]] : [tx];
-          return { byGroup: { ...s.byGroup, [g]: list } };
-        });
-        return tx;
-      },
+export const useTransactionsStore = create<TxState>((set, get) => ({
+  itemsByGroup: {},
 
-      addTransfer: (txInput) => {
-        const tx: LocalTransfer = {
-          ...(txInput as LocalTransferInput),
-          id: genId(),
-          created_at: Date.now(),
-        };
-        set((s) => {
-          const g = tx.group_id;
-          const list = s.byGroup[g] ? [tx, ...s.byGroup[g]] : [tx];
-          return { byGroup: { ...s.byGroup, [g]: list } };
-        });
-        return tx;
-      },
+  getByGroup: (gid?: number) => {
+    if (!gid) return [];
+    return get().itemsByGroup[gid] || [];
+  },
 
-      getByGroup: (groupId) => {
-        if (!groupId) return [];
-        return get().byGroup[groupId] ?? [];
-      },
+  _addLocal: (tx: LocalTx) => {
+    set(s => {
+      const arr = s.itemsByGroup[tx.group_id] ? [...s.itemsByGroup[tx.group_id]] : [];
+      arr.unshift(tx);
+      return { itemsByGroup: { ...s.itemsByGroup, [tx.group_id]: arr } };
+    });
+  },
 
-      clearAll: () => set({ byGroup: {} }),
-    }),
-    {
-      name: "splitto-txs",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ byGroup: s.byGroup }),
+  _replaceLocal: (gid: number, tempId: string | number, real: LocalTx) => {
+    set(s => {
+      const arr = (s.itemsByGroup[gid] || []).map(x => (x.id === tempId ? real : x));
+      return { itemsByGroup: { ...s.itemsByGroup, [gid]: arr } };
+    });
+  },
+
+  _removeLocal: (gid: number, tempId: string | number) => {
+    set(s => {
+      const arr = (s.itemsByGroup[gid] || []).filter(x => x.id !== tempId);
+      return { itemsByGroup: { ...s.itemsByGroup, [gid]: arr } };
+    });
+  },
+
+  async createExpense(input) {
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const localTx: LocalExpenseTx = {
+      id: tempId,
+      created_at: new Date().toISOString(),
+      type: "expense",
+      group_id: input.group_id,
+      date: input.date,
+      amount: input.amount,
+      currency: input.currency,
+      comment: input.comment,
+      category: input.category,
+      paid_by: input.paid_by,
+      split: input.split ?? null,
+    };
+
+    get()._addLocal(localTx);
+
+    try {
+      const serverTx = await createExpenseAPI(input);
+      const real: LocalExpenseTx = {
+        ...localTx,
+        id: serverTx.id ?? localTx.id,
+        created_at: serverTx.created_at ?? localTx.created_at,
+        // возможно, бэкенд вернёт нормализованные поля категории/сплита — аккуратно подставляем
+        category: serverTx.category ?? localTx.category,
+        split: serverTx.split ?? localTx.split,
+      };
+      get()._replaceLocal(input.group_id, tempId, real);
+    } catch (e) {
+      // откат при ошибке
+      get()._removeLocal(input.group_id, tempId);
+      throw e;
     }
-  )
-);
+  },
+
+  async createTransfer(input) {
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const localTx: LocalTransferTx = {
+      id: tempId,
+      created_at: new Date().toISOString(),
+      type: "transfer",
+      group_id: input.group_id,
+      date: input.date,
+      amount: input.amount,
+      currency: input.currency,
+      from_user_id: input.from_user_id,
+      to_user_id: input.to_user_id,
+      from_name: input.from_name,
+      to_name: input.to_name,
+      from_avatar: input.from_avatar,
+      to_avatar: input.to_avatar,
+    };
+
+    get()._addLocal(localTx);
+
+    try {
+      const serverTx = await createTransferAPI(input);
+      const real: LocalTransferTx = {
+        ...localTx,
+        id: serverTx.id ?? localTx.id,
+        created_at: serverTx.created_at ?? localTx.created_at,
+      };
+      get()._replaceLocal(input.group_id, tempId, real);
+    } catch (e) {
+      get()._removeLocal(input.group_id, tempId);
+      throw e;
+    }
+  },
+}));
