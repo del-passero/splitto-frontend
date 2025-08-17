@@ -2,7 +2,7 @@
 import React, { useMemo } from "react";
 import { ArrowRightLeft, Layers } from "lucide-react";
 
-/** Упрощённые типы, чтобы не тянуть весь проект в импорты (структурно совместимы) */
+/** Упрощённые типы, структурно совместимые с твоими */
 type TGUser = {
   id: number;
   first_name?: string | null;
@@ -19,11 +19,11 @@ type TFunc = (k: string, vars?: Record<string, any>) => string;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Совместимо и с Record<number, GroupMember>, и с Map<number, GroupMember> */
-  membersById?: Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
-  /** Количество участников в группе (если не передано — посчитаем из membersById) */
+  /** Принимаем любой источник участников: Map, Record, массив, объект с byId, кастомную map с get() */
+  membersById?: any;
+  /** Если есть — используем как количество участников; иначе посчитаем из membersById */
   groupMembersCount?: number;
-  /** Локализация — можно не передавать */
+  /** Локализация опциональна */
   t?: TFunc;
   className?: string;
 };
@@ -36,7 +36,7 @@ const fullName = (u?: TGUser | null) => {
   const fn = safeStr(u.first_name).trim();
   const ln = safeStr(u.last_name).trim();
   const name = [fn, ln].filter(Boolean).join(" ").trim();
-  return name || (u.username ? `@${u.username}` : `id${u.id}`);
+  return name || (u?.username ? `@${u.username}` : `id${u?.id ?? ""}`);
 };
 
 function UserAvatar({ user, size = 18 }: { user?: TGUser | null; size?: number }) {
@@ -89,7 +89,6 @@ export default function TransactionCard({
   t,
   className,
 }: Props) {
-  // Локализация с запасным русским текстом
   const tKey = (k: string, fb: string) => {
     try {
       const v = t?.(k);
@@ -100,11 +99,61 @@ export default function TransactionCard({
   };
 
   const getMember = (id?: number | null): GroupMemberLike | undefined => {
-    if (id == null) return undefined;
-    if (!membersById) return undefined;
-    if (membersById instanceof Map) return membersById.get(Number(id));
-    return (membersById as Record<number, GroupMemberLike>)[Number(id)];
+    if (id == null || membersById == null) return undefined;
+    const src = membersById;
+    const numId = Number(id);
+
+    // 1) Нормальный Map
+    try {
+      if (src instanceof Map) return src.get(numId);
+    } catch {}
+
+    // 2) Любой объект с методом get
+    if (typeof src.get === "function") {
+      const v = src.get(numId);
+      if (v) return v;
+    }
+
+    // 3) Объект с byId
+    if (src && typeof src === "object" && !Array.isArray(src) && src.byId && typeof src.byId === "object") {
+      const v = src.byId[numId];
+      if (v) return v;
+    }
+
+    // 4) Обычный Record<number, ...>
+    if (src && typeof src === "object" && !Array.isArray(src) && numId in src) {
+      const v = (src as Record<number, GroupMemberLike>)[numId];
+      if (v) return v;
+    }
+
+    // 5) Массив участников
+    if (Array.isArray(src)) {
+      return src.find(
+        (m: any) => Number(m?.user?.id) === numId || Number(m?.id) === numId
+      );
+    }
+
+    return undefined;
   };
+
+  const countMembers = useMemo(() => {
+    if (typeof groupMembersCount === "number") return groupMembersCount;
+    const src = membersById;
+    if (src == null) return 0;
+
+    try {
+      if (src instanceof Map) return src.size;
+    } catch {}
+
+    if (typeof src?.size === "number") return src.size; // кастомные map
+    if (Array.isArray(src)) return src.length;
+
+    if (src && typeof src === "object") {
+      if (src.byId && typeof src.byId === "object") return Object.keys(src.byId).length;
+      return Object.keys(src).length;
+    }
+    return 0;
+  }, [membersById, groupMembersCount]);
 
   const getUser = (id?: number | null): TGUser | undefined => getMember(id)?.user;
 
@@ -113,10 +162,10 @@ export default function TransactionCard({
   // Заголовок
   let title = "";
   if (isExpense) {
-    // Требование: вместо слова Expense — comment; если пусто, можно упасть на имя категории
+    // Вместо “Expense” — comment (если пусто, падаем на название категории)
     title = safeStr(tx.comment).trim() || safeStr(tx.category?.name).trim() || "—";
   } else {
-    // Требование: вместо "From → To" — реальные имена
+    // Перевод: From КТО → To КТО (имя первого получателя + счётчик)
     const fromU = getUser(tx.transfer_from);
     const rawTo = Array.isArray(tx.transfer_to)
       ? (tx.transfer_to as any[]).map(Number)
@@ -142,7 +191,7 @@ export default function TransactionCard({
   // Плательщик
   const payer: TGUser | undefined = isExpense ? getUser(tx.paid_by) : undefined;
 
-  // Участники (по shares, иначе — если split_type='equal' и shares нет — считаем «ВСЕ»)
+  // Участники
   const { participantUsers, isAll } = useMemo(() => {
     const uniq = new Map<number, TGUser>();
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
@@ -160,17 +209,8 @@ export default function TransactionCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx.shares, tx.split_type, isExpense, membersById]);
 
-  const totalMembers =
-    typeof groupMembersCount === "number"
-      ? groupMembersCount
-      : membersById
-      ? membersById instanceof Map
-        ? membersById.size
-        : Object.keys(membersById).length
-      : 0;
-
   const participantsTitle = isAll
-    ? `${tKey("tx_modal.all", "ВСЕ")} (${totalMembers})`
+    ? `${tKey("tx_modal.all", "ВСЕ")} (${countMembers})`
     : participantUsers.length
     ? participantUsers.map(fullName).join(", ")
     : "—";
@@ -228,7 +268,6 @@ export default function TransactionCard({
               <div className="flex items-center gap-1 shrink-0">
                 {isAll ? (
                   <>
-                    {/* просто иконки 3-х «людей» как заглушка, имён нет — ниже титл */}
                     <div className="w-4 h-4 rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)]" />
                     <div className="w-4 h-4 rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)]" />
                     <div className="w-4 h-4 rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)]" />
