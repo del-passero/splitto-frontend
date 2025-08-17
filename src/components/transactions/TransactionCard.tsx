@@ -7,7 +7,7 @@ import type { GroupMember } from "../../types/group_member";
 
 type Props = {
   tx: TransactionOut | any;
-  /** Участники группы, чтобы получить имена и аватары по user_id */
+  /** Участники группы для маппинга user_id -> имя/аватар */
   members?: GroupMember[];
   className?: string;
 };
@@ -92,7 +92,7 @@ export default function TransactionCard({ tx, members, className }: Props) {
 
   const isExpense = tx.type === "expense";
 
-  // Title
+  // Заголовок
   let title = "";
   if (isExpense) {
     title = safeStr(tx.comment).trim() || safeStr(tx.category?.name).trim() || "—";
@@ -111,18 +111,18 @@ export default function TransactionCard({ tx, members, className }: Props) {
     title = `From ${fullName(fromU)} → To ${toTitle}`;
   }
 
-  // Date
+  // Дата
   const d = new Date(tx.date || tx.created_at || Date.now());
   const dateStr = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 
-  // Amount/Currency
+  // Сумма/валюта
   const amountNum = Number(tx.amount ?? 0);
   const amount = `${amountNum.toFixed(2)} ${safeStr(tx.currency).toUpperCase()}`;
 
-  // Payer
+  // Плательщик
   const payer: TGUser | undefined = isExpense ? userMap.get(Number(tx.paid_by)) : undefined;
 
-  // Participants
+  // Участники
   const participantUsers: TGUser[] = useMemo(() => {
     const uniq = new Map<number, TGUser>();
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
