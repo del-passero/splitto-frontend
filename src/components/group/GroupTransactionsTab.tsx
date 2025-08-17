@@ -1,5 +1,4 @@
 // src/components/group/GroupTransactionsTab.tsx
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
@@ -64,38 +63,30 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     if (!groupId) return;
 
     const controller = new AbortController();
-
-    const loadMembers = async () => {
+    (async () => {
       try {
-        // Берём побольше, чтобы захватить всех
         const resp = await fetch(`/api/group-members/group/${groupId}?offset=0&limit=200`, {
           method: "GET",
           signal: controller.signal,
           headers: { "Content-Type": "application/json" },
         });
-        if (!resp.ok) {
-          // не падаем интерфейсом — просто оставим без имён
-          return;
-        }
-        const list = await resp.json(); // ожидаем массив { user: {...} }
+        if (!resp.ok) return;
+        const list = await resp.json();
         const map = new Map<number, any>();
         if (Array.isArray(list)) {
           for (const m of list) {
             const u = (m && m.user) ? m.user : m;
             const id = Number(u?.id);
-            if (Number.isFinite(id)) {
-              map.set(id, m); // храним memberLike (совместимо с TransactionCard)
-            }
+            if (Number.isFinite(id)) map.set(id, m);
           }
           setMembersCount(list.length);
         }
         setMembersMap(map);
       } catch {
-        // игнор: без участников просто покажем id-фоллбек внутри карточки (если он там есть)
+        // без участников просто будут фоллбеки внутри карточки
       }
-    };
+    })();
 
-    void loadMembers();
     return () => controller.abort();
   }, [groupId]);
 
@@ -206,8 +197,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       const hay = [
         tx.comment,
         (tx as any).category?.name, // для expense
-        (tx as any).from_name,      // для transfer (если есть на фронте)
-        (tx as any).to_name,        // для transfer (если есть на фронте)
+        (tx as any).from_name,      // если есть
+        (tx as any).to_name,        // если есть
         tx.currency,
         tx.amount?.toString(),
       ]
@@ -218,17 +209,13 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     });
   }, [items, search]);
 
-  const handleAddClick = () => {
-    setOpenCreate(true);
-  };
+  const handleAddClick = () => setOpenCreate(true);
 
-  // при успешном создании — сразу добавим в выдачу без полного рефетча
-  const handleCreated = (tx: TransactionOut) => {
-    setItems(prev => [tx, ...prev]);
-  };
+  // при успешном создании — добавить в начало
+  const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
 
   return (
-    <div className="relative w-full h-full min-h=[320px]">
+    <div className="relative w-full h-full min-h-[320px]">
       <FiltersRow search={search} setSearch={setSearch} />
 
       {error ? (

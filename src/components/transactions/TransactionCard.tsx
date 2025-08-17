@@ -1,201 +1,197 @@
-import React, { useMemo } from "react";
+// src/components/transactions/TransactionCard.tsx
 import { ArrowRightLeft, Layers } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/** Пользователь */
-type TGUser = {
+/** Типы участника (минимально достаточные) */
+type UserLike = {
   id: number;
   first_name?: string | null;
   last_name?: string | null;
   username?: string | null;
-  photo_url?: string | null;
-  avatar_url?: string | null;
-  name?: string | null;
+  photo_url?: string | null;     // у нас часто так
+  avatar_url?: string | null;    // иногда так
+  name?: string | null;          // иногда склеенное имя
 };
 
-/** Участник в списке может быть { user } или сразу TGUser */
-type GroupMemberLike = { user: TGUser } | TGUser;
+type GroupMemberLike = { user?: UserLike } | UserLike;
 
-type TFunc = (k: string, vars?: Record<string, any>) => string;
+type MembersMap = Map<number, GroupMemberLike> | Record<number, GroupMemberLike>;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** карта участников группы: id -> {user}|user */
-  membersById?: Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
-  /** кол-во участников группы (для "ВСЕ (N)") */
+  /** Карта участников: id -> member/user. Можно не передавать — карточка сама подтянет */
+  membersById?: MembersMap;
+  /** Кол-во участников в группе (для "Все (N)"). Можно не передавать. */
   groupMembersCount?: number;
-  t?: TFunc;
-  className?: string;
+  /** Локализация (опционально), используем tx_modal.all при наличии */
+  t?: (k: string, vars?: Record<string, any>) => string;
 };
 
-// --- utils
-const s = (x: any) => (typeof x === "string" ? x : "");
-const upper = (x: any) => s(x).toUpperCase();
-const userFromLike = (v?: GroupMemberLike | null): TGUser | undefined =>
-  !v ? undefined : (v as any).user ? ((v as any).user as TGUser) : (v as TGUser);
+/** Локальный cache: groupId -> Map<userId, member> */
+const groupMembersCache = new Map<number, Map<number, GroupMemberLike>>();
 
-const makeName = (u?: TGUser): string => {
-  if (!u) return "";
-  if (u.name) return u.name;
-  const fn = s(u.first_name).trim();
-  const ln = s(u.last_name).trim();
-  if (fn || ln) return [fn, ln].filter(Boolean).join(" ");
-  if (u.username) return `@${u.username}`;
-  return "";
-};
-
-const firstLetter = (v: string) => (v || "").trim().charAt(0).toUpperCase() || "•";
-
-function UserAvatar({ user, size = 18 }: { user?: TGUser; size?: number }) {
-  const url = s(user?.photo_url || user?.avatar_url).trim();
-  const name = makeName(user);
-  return (
-    <div
-      className="rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden flex items-center justify-center"
-      style={{ width: size, height: size }}
-      title={name || undefined}
-      aria-label={name || undefined}
-    >
-      {url ? (
-        <img src={url} alt={name || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      ) : (
-        <span className="text-[10px] opacity-80">{firstLetter(name)}</span>
-      )}
-    </div>
-  );
+function pickUser(entity?: GroupMemberLike | null): UserLike | null {
+  if (!entity) return null;
+  if ((entity as any).user) return (entity as any).user as UserLike;
+  return entity as UserLike;
 }
 
-function CategoryAvatar({
-  name,
-  color,
-  icon,
-}: {
-  name?: string;
-  color?: string | null;
-  icon?: string | null;
-}) {
+function getDisplayName(u?: UserLike | null): string {
+  if (!u) return "";
+  const parts = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+  if (parts) return parts;
+  if (u.name && u.name.trim()) return u.name.trim();
+  if (u.username && u.username.trim()) return u.username.trim();
+  return `#${u.id}`;
+}
+
+function getAvatar(u?: UserLike | null): string | undefined {
+  return (u?.avatar_url || u?.photo_url || undefined) || undefined;
+}
+
+function initialsFromName(name: string): string {
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return "•";
+  if (tokens.length === 1) return tokens[0].charAt(0).toUpperCase();
+  return (tokens[0].charAt(0) + tokens[1].charAt(0)).toUpperCase();
+}
+
+function asMap(m?: MembersMap): Map<number, GroupMemberLike> | null {
+  if (!m) return null;
+  if (m instanceof Map) return m;
+  const map = new Map<number, GroupMemberLike>();
+  Object.keys(m).forEach((k) => {
+    const id = Number(k);
+    if (Number.isFinite(id)) map.set(id, (m as Record<number, GroupMemberLike>)[id]);
+  });
+  return map;
+}
+
+function CategoryAvatar({ name, color, icon }: { name?: string; color?: string | null; icon?: string }) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
+  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
     <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: bg }}>
-      <span style={{ fontSize: 16 }} aria-hidden>
-        {icon || firstLetter(name || "")}
-      </span>
+      <span style={{ fontSize: 16 }} aria-hidden>{icon || ch}</span>
     </div>
   );
 }
 
-export default function TransactionCard({
-  tx,
-  membersById,
-  groupMembersCount,
-  t,
-  className,
-}: Props) {
-  const tKey = (k: string, fb: string) => {
-    try {
-      const v = t?.(k);
-      return v && v !== k ? v : fb;
-    } catch {
-      return fb;
+export default function TransactionCard({ tx, membersById, groupMembersCount, t }: Props) {
+  // --- 1) Участники группы: берём из props или подтягиваем сами и кешируем ---
+  const passedMap = asMap(membersById);
+  const [localMap, setLocalMap] = useState<Map<number, GroupMemberLike> | null>(null);
+  const groupId = Number(tx?.group_id) || undefined;
+  const didFetchRef = useRef(false);
+
+  useEffect(() => {
+    if (passedMap) {
+      setLocalMap(null); // используем переданный
+      return;
     }
+    if (!groupId) return;
+
+    // Если уже есть кеш — используем
+    const cached = groupMembersCache.get(groupId);
+    if (cached) {
+      setLocalMap(new Map(cached));
+      return;
+    }
+    // Защитимся от повторных fetch
+    if (didFetchRef.current) return;
+    didFetchRef.current = true;
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const resp = await fetch(`/api/group-members/group/${groupId}?offset=0&limit=200`, {
+          method: "GET",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!resp.ok) return;
+        const list = await resp.json();
+        const map = new Map<number, GroupMemberLike>();
+        if (Array.isArray(list)) {
+          for (const m of list) {
+            const u = (m && m.user) ? m.user : m;
+            const uid = Number(u?.id);
+            if (Number.isFinite(uid)) map.set(uid, m);
+          }
+        }
+        groupMembersCache.set(groupId, map);
+        setLocalMap(new Map(map));
+      } catch {
+        // игнор — будут фоллбеки по ID
+      }
+    })();
+
+    return () => controller.abort();
+  }, [passedMap, groupId]);
+
+  const mapToUse = passedMap || localMap;
+
+  const resolveUser = (id?: number | null): UserLike | null => {
+    if (!id && id !== 0) return null;
+    const fromMap = mapToUse?.get ? mapToUse.get(id as number) : undefined;
+    const user = pickUser(fromMap);
+    if (user) return user;
+    // фоллбек: возможно бэкенд прислал инлайн-поля на tx (from_name/…)
+    return { id: id as number } as UserLike;
   };
 
-  const getById = (id?: number | null): TGUser | undefined => {
-    if (id == null || !membersById) return undefined;
-    const key = Number(id);
-    const raw =
-      membersById instanceof Map
-        ? (membersById as Map<number, GroupMemberLike>).get(key)
-        : (membersById as Record<number, GroupMemberLike>)[key];
-    const u = userFromLike(raw);
-    if (!u) {
-      // eslint-disable-next-line no-console
-      console.warn("[TransactionCard] Member not found in membersById by id=", key, tx);
-    }
-    return u;
-  };
+  // --- 2) Основные вычисления ---
+  const isExpense = tx.type === "expense";
+  const dt = new Date(tx.date || tx.created_at || Date.now());
+  const dateStr = dt.toLocaleDateString();
 
-  const isExpense = tx?.type === "expense";
+  const amountNum = Number(tx.amount ?? 0);
+  const amount = `${amountNum.toFixed(2)} ${tx.currency || ""}`;
 
-  // payer / transfer participants
-  const paidById: number | undefined = tx?.paid_by ?? tx?.payer_id ?? tx?.payer ?? undefined;
-  const payer = getById(paidById);
-
-  const fromId: number | undefined = tx?.transfer_from ?? tx?.from_user_id ?? tx?.from_id ?? undefined;
-  const fromUser = getById(fromId);
-
-  const toListRaw =
-    (Array.isArray(tx?.transfer_to) ? tx.transfer_to : undefined) ||
-    (typeof tx?.to_user_id === "number" ? [tx.to_user_id] : undefined) ||
-    (Array.isArray(tx?.to_user_ids) ? tx.to_user_ids : undefined) ||
+  // Заголовок
+  const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? tx.from_id);
+  const toListRaw: any[] =
+    Array.isArray(tx.transfer_to) ? tx.transfer_to :
+    typeof tx.transfer_to === "string" ? (tx.transfer_to.split(",").map((s: string) => s.trim())) :
+    tx.to_user_id ? [tx.to_user_id] :
     [];
-  const toIds: number[] = toListRaw.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n));
-  const toUsers: TGUser[] = toIds.map((id) => getById(id)).filter(Boolean) as TGUser[];
 
-  // участники расхода из shares
-  const participantsFromShares: TGUser[] = Array.isArray(tx?.shares)
-    ? (tx.shares as any[])
-        .map((s) => getById(Number(s?.user_id ?? s?.user?.id)))
-        .filter(Boolean) as TGUser[]
+  const toIds: number[] = toListRaw.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n));
+
+  const fromUser = resolveUser(Number.isFinite(fromId) ? fromId : undefined);
+  const toUsers = toIds.map((id) => resolveUser(id));
+
+  const title = isExpense
+    ? (tx.comment || "—")
+    : `${getDisplayName(fromUser)} → ${toUsers.length ? getDisplayName(toUsers[0]) : "—"}`;
+
+  // Плательщик
+  const payerId = Number(tx.paid_by ?? tx.payer_id ?? fromId);
+  const payer = resolveUser(Number.isFinite(payerId) ? payerId : undefined);
+
+  // Участники (для расхода — из shares; для transfer — получатели)
+  const shareIds: number[] = Array.isArray(tx.shares)
+    ? Array.from(new Set(tx.shares.map((s: any) => Number(s.user_id)).filter((x: number) => Number.isFinite(x))))
     : [];
 
-  const looksLikeAll =
-    isExpense &&
-    (tx?.split_type === "equal" ||
-      (!tx?.split_type && (!tx?.shares || tx?.shares?.length === 0)));
+  const participants: UserLike[] = isExpense
+    ? (shareIds.length
+        ? shareIds.map((id) => resolveUser(id)!).filter(Boolean) as UserLike[]
+        : (tx.split_type === "equal" && Number(groupMembersCount) > 0
+            ? [] // "Все (N)" — ниже отрендерим текстом
+            : []))
+    : (toUsers.filter(Boolean) as UserLike[]);
 
-  // заголовок
-  const title = useMemo(() => {
-    if (isExpense) {
-      const c = s(tx?.comment).trim();
-      if (c) return c; // "название" = comment
-      const cat = s(tx?.category?.name).trim();
-      return cat || "";
-    }
-    const fromName = makeName(fromUser);
-    const toName =
-      toUsers.length > 1 ? `${makeName(toUsers[0])} +${toUsers.length - 1}` : makeName(toUsers[0]);
-    return `${fromName} → ${toName}`;
-  }, [isExpense, tx, fromUser, toUsers]);
+  const allLabel = t ? t("tx_modal.all") : "ВСЕ";
+  const groupCount = Number(groupMembersCount || 0);
+  const showAll = isExpense && !shareIds.length && tx.split_type === "equal" && groupCount > 0;
 
-  const date = new Date(tx?.date || tx?.created_at || Date.now());
-  const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
-
-  const amountNum = Number(tx?.amount ?? 0);
-  const amountStr = `${isFinite(amountNum) ? amountNum.toFixed(2) : "0.00"} ${upper(tx?.currency)}`;
-
-  const splitLabel =
-    tx?.split_type === "equal"
-      ? tKey("tx_modal.split_equal", "Поровну")
-      : tx?.split_type === "shares"
-      ? tKey("tx_modal.split_shares", "По долям")
-      : tx?.split_type === "custom"
-      ? tKey("tx_modal.split_custom", "Вручную")
-      : null;
-
-  const participantsTitle = looksLikeAll
-    ? `${tKey("tx_modal.all", "ВСЕ")}${groupMembersCount ? ` (${groupMembersCount})` : ""}`
-    : participantsFromShares.map(makeName).filter(Boolean).join(", ");
-
-  const paidByLabel = tKey("tx_modal.paid_by_label", "Заплатил");
-
+  // --- 3) UI ---
   return (
-    <div
-      className={
-        "relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] " +
-        (className || "")
-      }
-    >
-      {/* Верхняя строка */}
+    <div className="relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
       <div className="flex items-center gap-3">
         {isExpense ? (
-          <CategoryAvatar
-            name={tx?.category?.name}
-            color={tx?.category?.color}
-            icon={tx?.category?.icon}
-          />
+          <CategoryAvatar name={tx.category?.name} color={tx.category?.color} icon={tx.category?.icon} />
         ) : (
           <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center shrink-0">
             <ArrowRightLeft size={18} className="opacity-80" />
@@ -203,58 +199,73 @@ export default function TransactionCard({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-            {title}
-          </div>
-          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{dateStr}</div>
-        </div>
+          {/* Заголовок */}
+          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">{title}</div>
 
-        <div className="text-[14px] font-semibold shrink-0">{amountStr}</div>
-      </div>
-
-      {/* Нижняя строка (только для расходов) */}
-      {isExpense && (
-        <div className="mt-2 pl-12 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">{paidByLabel}:</span>
-
-            {/* Плательщик по ID */}
-            <div className="flex items-center gap-2 min-w-0">
-              <UserAvatar user={payer} />
-              <span className="text-[12px] text-[var(--tg-text-color)] truncate">
-                {makeName(payer)}
-              </span>
-            </div>
-
-            <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0 mx-1">за</span>
-
-            {/* Участники */}
-            {looksLikeAll ? (
-              <span className="text-[12px] text-[var(--tg-text-color)] whitespace-nowrap">
-                {participantsTitle}
-              </span>
-            ) : (
+          {/* Подзаголовок и детали */}
+          <div className="text-[12px] text-[var(--tg-hint-color)] flex flex-col gap-0.5">
+            {/* Для расхода: "Заплатил <payer> за <участники|Все(N)>" */}
+            {isExpense ? (
               <div className="flex items-center gap-1 min-w-0">
-                <div className="flex items-center gap-1">
-                  {participantsFromShares.slice(0, 3).map((u) => (
-                    <UserAvatar key={u.id} user={u} />
-                  ))}
-                </div>
-                <span className="text-[12px] text-[var(--tg-text-color)] truncate max-w-[60vw]">
-                  {participantsTitle}
+                <span className="opacity-80">Заплатил</span>
+                {/* payer chip */}
+                <span className="inline-flex items-center gap-1 px-1 py-[2px] rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] max-w-[40%]">
+                  {getAvatar(payer) ? (
+                    <img src={getAvatar(payer)} alt="" className="w-4 h-4 rounded-full object-cover" />
+                  ) : (
+                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-flex items-center justify-center text-[9px] text-white">
+                      {initialsFromName(getDisplayName(payer))}
+                    </span>
+                  )}
+                  <span className="truncate">{getDisplayName(payer)}</span>
                 </span>
-              </div>
-            )}
-          </div>
 
-          {splitLabel && (
-            <div className="ml-2 shrink-0 px-2 h-7 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] text-[12px] flex items-center gap-2">
-              <Layers size={14} className="opacity-80" />
-              <span>{splitLabel}</span>
-            </div>
-          )}
+                <span className="opacity-80">за</span>
+
+                {showAll ? (
+                  <span className="inline-flex items-center gap-1 px-1 py-[2px] rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
+                    {allLabel} ({groupCount})
+                  </span>
+                ) : participants.length ? (
+                  <span className="inline-flex items-center gap-1 flex-wrap">
+                    {/* аватарки участников (до 3) */}
+                    <span className="inline-flex -space-x-2 mr-1">
+                      {participants.slice(0, 3).map((u) =>
+                        getAvatar(u) ? (
+                          <img key={u.id} src={getAvatar(u)} alt="" className="w-4 h-4 rounded-full object-cover ring-2 ring-[var(--tg-card-bg)]" />
+                        ) : (
+                          <span key={u.id} className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-flex items-center justify-center text-[9px] text-white ring-2 ring-[var(--tg-card-bg)]">
+                            {initialsFromName(getDisplayName(u))}
+                          </span>
+                        )
+                      )}
+                    </span>
+                    <span className="truncate">
+                      {participants.length <= 3
+                        ? participants.map(getDisplayName).join(", ")
+                        : `${participants.slice(0, 3).map(getDisplayName).join(", ")} и ещё ${participants.length - 3}`}
+                      {groupCount > 0 ? ` (${participants.length})` : ""}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="opacity-70">—</span>
+                )}
+              </div>
+            ) : (
+              // Для перевода: from → to (уже в title), здесь показываем дату
+              <span className="opacity-70">{dateStr}</span>
+            )}
+
+            {/* Для расхода — дата отдельно */}
+            {isExpense && <span className="opacity-70">{dateStr}</span>}
+          </div>
         </div>
-      )}
+
+        {/* Сумма */}
+        <div className="text-[14px] font-semibold shrink-0 text-right leading-5">
+          {amount}
+        </div>
+      </div>
     </div>
   );
 }
