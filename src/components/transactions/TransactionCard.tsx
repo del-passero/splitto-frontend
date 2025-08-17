@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRightLeft, Layers } from "lucide-react";
 
-/** Бэкендовые упрощённые типы (структурно совместимы) */
+/** Мини-тип юзера телеги */
 type TGUser = {
   id: number;
   first_name?: string | null;
@@ -17,15 +17,14 @@ type TFunc = (k: string, vars?: Record<string, any>) => string;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Можно передать любую структуру: Map, Record, массив, объект с byId, кастомную map с get(). Необязательно. */
-  membersById?: any;
-  /** Если знаешь точное кол-во участников группы — можно передать. */
+  /** Можно передать мапу участников; если не передали — карточка подгрузит сама */
+  membersById?: Record<number, GroupMemberLike> | Map<number, GroupMemberLike> | any[];
+  /** Кол-во участников группы (для "ВСЕ (N)"); если не передали — оценим сами */
   groupMembersCount?: number;
   t?: TFunc;
   className?: string;
 };
 
-/* --- Утилиты --- */
 const safeStr = (x: unknown) => (typeof x === "string" ? x : "");
 const uc = (s: string) => safeStr(s).toUpperCase();
 
@@ -34,7 +33,7 @@ const fullName = (u?: TGUser | null) => {
   const fn = safeStr(u.first_name).trim();
   const ln = safeStr(u.last_name).trim();
   const name = [fn, ln].filter(Boolean).join(" ").trim();
-  return name || (u?.username ? `@${u.username}` : (u?.id != null ? String(u.id) : ""));
+  return name || (u.username ? `@${u.username}` : String(u.id ?? ""));
 };
 
 function UserAvatar({ user, size = 18 }: { user?: TGUser | null; size?: number }) {
@@ -80,10 +79,9 @@ function CategoryAvatar({
   );
 }
 
-/* --- Глобальный кэш участников по group_id --- */
+/** Глобальный кэш участников по group_id (чтобы не бомбить API) */
 const groupMembersCache = new Map<number, Map<number, TGUser>>();
 
-/* --- Карточка --- */
 export default function TransactionCard({
   tx,
   membersById,
@@ -100,14 +98,14 @@ export default function TransactionCard({
     }
   };
 
-  /* локальная мапа участников, если внешняя не пришла — лениво подтянем */
+  /** Локальная мапа, если внешней нет */
   const [localMap, setLocalMap] = useState<Map<number, TGUser> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // если не дали membersById — грузим сами 1 раз на группу
+  // Если наружу не передали словарь участников — подгружаем сами (1 раз на группу)
   useEffect(() => {
     const gid = Number(tx?.group_id);
-    if (!gid || membersById) return; // внешний источник есть — не грузим
+    if (!gid || membersById) return;
 
     const cached = groupMembersCache.get(gid);
     if (cached) {
@@ -122,30 +120,28 @@ export default function TransactionCard({
       try {
         const res = await fetch(`/api/group-members/group/${gid}?offset=0&limit=200`, {
           signal: controller.signal,
-          headers: { "Accept": "application/json" },
+          headers: { Accept: "application/json" },
         });
-        if (!res.ok) throw new Error(`members ${res.status}`);
+        if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
         const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         const map = new Map<number, TGUser>();
         for (const it of items) {
-          // ожидаем структуру { user: {...} }
-          const u = it?.user;
-          const id = Number(u?.id ?? it?.id);
-          if (id) {
-            map.set(id, {
-              id,
-              first_name: u?.first_name,
-              last_name: u?.last_name,
-              username: u?.username,
-              photo_url: u?.photo_url,
-            });
-          }
+          const u = it?.user ?? it; // на всякий
+          const id = Number(u?.id);
+          if (!id) continue;
+          map.set(id, {
+            id,
+            first_name: u?.first_name,
+            last_name: u?.last_name,
+            username: u?.username,
+            photo_url: u?.photo_url,
+          });
         }
         groupMembersCache.set(gid, map);
         setLocalMap(map);
-      } catch (_e) {
-        // молча — будут фолбэки (ID/плейсхолдеры)
+      } catch {
+        // оставим фолбэки по ID/строкам
       }
     })();
 
@@ -155,47 +151,33 @@ export default function TransactionCard({
     };
   }, [tx?.group_id, membersById]);
 
-  /* Универсальный резолвер участника */
+  /** Достаём участника по ID из любого формата словаря */
   const getMember = (id?: number | null): GroupMemberLike | undefined => {
     if (id == null) return undefined;
     const numId = Number(id);
-    const src = membersById;
 
-    // 1) внешний Map
-    try {
-      if (src instanceof Map) {
-        const v = src.get(numId);
-        if (v) return v;
-      }
-    } catch {}
+    const src: any = membersById;
 
-    // 2) внешний объект с get()
+    // Map
+    if (src instanceof Map) {
+      const v = src.get(numId);
+      if (v) return v;
+    }
+    // объект с get()
     if (src && typeof src.get === "function") {
       const v = src.get(numId);
       if (v) return v;
     }
-
-    // 3) внешний { byId: { [id]: member } }
-    if (src && typeof src === "object" && !Array.isArray(src) && src.byId && typeof src.byId === "object") {
-      const v = src.byId[numId];
-      if (v) return v;
-    }
-
-    // 4) внешний Record<number, ...>
+    // Record<number, ...>
     if (src && typeof src === "object" && !Array.isArray(src) && numId in src) {
-      const v = (src as Record<number, GroupMemberLike>)[numId];
-      if (v) return v;
+      return src[numId] as GroupMemberLike;
     }
-
-    // 5) внешний массив
+    // массив
     if (Array.isArray(src)) {
-      const v = src.find(
-        (m: any) => Number(m?.user?.id) === numId || Number(m?.id) === numId
-      );
+      const v = src.find((m: any) => Number(m?.user?.id) === numId || Number(m?.id) === numId);
       if (v) return v;
     }
-
-    // 6) локальный кэш
+    // локальный кэш
     if (localMap && localMap.size) {
       const u = localMap.get(numId);
       if (u) return { user: u };
@@ -204,47 +186,40 @@ export default function TransactionCard({
     return undefined;
   };
 
+  const getUser = (id?: number | null): TGUser | undefined => getMember(id)?.user;
+
+  /** Сколько всего участников (для "ВСЕ (N)") */
   const countMembers = useMemo(() => {
-    if (typeof groupMembersCount === "number") return groupMembersCount;
+    if (typeof groupMembersCount === "number" && groupMembersCount > 0) return groupMembersCount;
 
-    // попытка посчитать по внешнему источнику
-    const src = membersById;
-    try {
-      if (src instanceof Map) return src.size;
-    } catch {}
-
+    const src: any = membersById;
+    if (src instanceof Map) return src.size;
     if (typeof src?.size === "number") return src.size;
     if (Array.isArray(src)) return src.length;
     if (src && typeof src === "object") {
       if (src.byId && typeof src.byId === "object") return Object.keys(src.byId).length;
       return Object.keys(src).length;
     }
-
-    // иначе — по локальному кэшу
     if (localMap) return localMap.size;
     return 0;
   }, [membersById, groupMembersCount, localMap]);
 
-  const getUser = (id?: number | null): TGUser | undefined => getMember(id)?.user;
-
   const isExpense = tx.type === "expense";
 
-  /* Заголовок */
+  /** Заголовок */
   let title = "";
   if (isExpense) {
-    // вместо "Expense" — комментарий; если пуст, то категория
-    title =
-      safeStr(tx.comment).trim() ||
-      safeStr(tx.category?.name).trim() ||
-      "—";
+    // (1) Всегда берём комментарий как название (твое требование)
+    title = safeStr(tx.comment).trim();
+    if (!title) {
+      // если комментарий пуст — хотя бы категория/плейсхолдер
+      title = safeStr(tx.category?.name).trim() || "—";
+    }
   } else {
-    // Перевод: From КТО → To КТО
-    // пробуем имена из членов; если нет — фолбэк на from_name/to_name/ID
-    const fromU = getUser(tx.transfer_from);
-    const fromTitle =
-      fullName(fromU) ||
-      safeStr(tx.from_name).trim() ||
-      (tx.transfer_from != null ? String(tx.transfer_from) : "—");
+    // Перевод: "From КТО → To КТО" + маленькие аватарки рядом с именами
+    const fromU: TGUser | undefined =
+      getUser(tx.transfer_from) ||
+      (tx.transfer_from_user as TGUser | undefined);
 
     const toIds: number[] = Array.isArray(tx.transfer_to)
       ? (tx.transfer_to as any[]).map(Number)
@@ -252,7 +227,16 @@ export default function TransactionCard({
       ? [Number(tx.transfer_to)]
       : [];
 
-    const toUsers = toIds.map((id) => getUser(id)).filter(Boolean) as TGUser[];
+    const toUsers: TGUser[] =
+      (toIds
+        .map((id) => getUser(id) || null)
+        .filter(Boolean) as TGUser[]) ||
+      [];
+
+    const fromTitle =
+      fullName(fromU) ||
+      safeStr(tx.from_name).trim() ||
+      (tx.transfer_from != null ? String(tx.transfer_from) : "—");
 
     let toTitle = "";
     if (toUsers.length > 0) {
@@ -268,22 +252,22 @@ export default function TransactionCard({
     title = `From ${fromTitle} → To ${toTitle}`;
   }
 
-  /* Дата */
+  /** Дата */
   const d = new Date(tx.date || tx.created_at || Date.now());
   const dateStr = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 
-  /* Сумма/валюта */
+  /** Сумма и валюта */
   const amountNum = Number(tx.amount ?? 0);
   const amount = `${amountNum.toFixed(2)} ${uc(tx.currency || "")}`;
 
-  /* Плательщик (для расхода) */
+  /** Плательщик (для расхода) */
   const payer: TGUser | undefined = isExpense ? getUser(tx.paid_by) : undefined;
   const payerTitle =
     fullName(payer) ||
     safeStr(tx.paid_by_name).trim() ||
     (tx.paid_by != null ? String(tx.paid_by) : "—");
 
-  /* Участники */
+  /** Участники */
   const { participantUsers, isAll } = useMemo(() => {
     const uniq = new Map<number, TGUser>();
 
@@ -297,8 +281,8 @@ export default function TransactionCard({
       return { participantUsers: Array.from(uniq.values()), isAll: false };
     }
 
-    // equal без shares → все участники
     if (isExpense && tx.split_type === "equal") {
+      // equal без shares => все участники
       return { participantUsers: [], isAll: true };
     }
 
@@ -307,7 +291,7 @@ export default function TransactionCard({
   }, [tx.shares, tx.split_type, isExpense, membersById, localMap]);
 
   const participantsTitle = isAll
-    ? `${tKey("tx_modal.all", "ВСЕ")} (${countMembers})`
+    ? `${tKey("tx_modal.all", "ВСЕ")}${countMembers ? ` (${countMembers})` : ""}`
     : participantUsers.length
     ? participantUsers.map(fullName).join(", ")
     : "—";
@@ -346,7 +330,7 @@ export default function TransactionCard({
         <div className="text-[14px] font-semibold shrink-0">{amount}</div>
       </div>
 
-      {/* footer (для расхода: "Заплатил payer за Участников", + режим деления) */}
+      {/* footer для расхода: "Заплатил <payer> за <участники>" + режим деления */}
       {isExpense && (
         <div className="mt-2 pl-12 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
