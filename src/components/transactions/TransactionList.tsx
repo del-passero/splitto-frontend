@@ -31,7 +31,6 @@ export default function TransactionList({
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // для отмены запроса и IO
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
@@ -42,9 +41,7 @@ export default function TransactionList({
     [groupId, userId, type, pageSize, refreshKey]
   );
 
-  // первичная загрузка / сброс при смене фильтров
   useEffect(() => {
-    // отменяем предыдущий запрос
     abortRef.current?.abort();
     abortRef.current = null;
 
@@ -80,18 +77,15 @@ export default function TransactionList({
 
     void run();
 
-    // cleanup: если фильтры сменились, отменяем этот запрос
     return () => {
       controller.abort();
     };
   }, [filtersKey, groupId, userId, type, pageSize]);
 
-  // догрузка следующей страницы
   const loadMore = async () => {
     if (loading || !hasMore) return;
     lockRef.current = true;
 
-    // Отмена предыдущего "more" не обязательна, но бережёмся
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -109,7 +103,6 @@ export default function TransactionList({
 
       setTotal(newTotal);
 
-      // дедуп по id
       const byId = new Map<number | string, TransactionOut>();
       for (const it of items) byId.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
       for (const it of chunk) byId.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
@@ -124,17 +117,14 @@ export default function TransactionList({
       }
     } finally {
       setLoading(false);
-      // небольшая задержка чтобы не дёргать под поток
       setTimeout(() => { lockRef.current = false; }, 120);
     }
   };
 
-  // Подключаем IntersectionObserver под сентинел
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
 
-    // на каждый «сеанс фильтров» создаём свой IO, старый чистим
     ioRef.current?.disconnect();
     const io = new IntersectionObserver((entries) => {
       const e = entries[0];
@@ -179,7 +169,8 @@ export default function TransactionList({
         <div key={tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
           <TransactionCard tx={tx} />
           {idx !== items.length - 1 && (
-            <div className="absolute left-14 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+            // выравнивание разделителя под аватар (как в списке участников)
+            <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
           )}
         </div>
       ))}
