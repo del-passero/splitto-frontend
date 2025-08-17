@@ -119,9 +119,17 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
+      // Отправляем на бек только допустимые поля для expense
       const payload: TransactionCreateRequest = {
         type: "expense",
-        ...input,
+        group_id: input.group_id,
+        amount: input.amount,
+        currency: input.currency,
+        date: input.date,
+        comment: input.comment,
+        ...(input.category ? { category: input.category } : {}),
+        ...(input.paid_by ? { paid_by: input.paid_by } : {}),
+        ...(input.split ? { split: input.split } : {}),
       } as unknown as TransactionCreateRequest;
 
       const serverTx = await createTransaction(payload);
@@ -134,7 +142,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
         category: (serverTx as any).category ?? localTx.category,
         split: (serverTx as any).split ?? localTx.split,
         comment: serverTx.comment ?? localTx.comment,
-        amount: Number((serverTx as any).amount ?? localTx.amount), // ВАЖНО: Decimal(string) -> number
+        amount: Number((serverTx as any).amount ?? localTx.amount),
         currency: serverTx.currency ?? localTx.currency,
         date: serverTx.date ?? localTx.date,
       };
@@ -167,18 +175,26 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
     get()._addLocal(localTx);
 
     try {
+      // ВАЖНО: на бек отправляем ТОЛЬКО допустимые поля (id-шники и базовые поля)
       const payload: TransactionCreateRequest = {
         type: "transfer",
-        ...input,
+        group_id: input.group_id,
+        amount: input.amount,
+        currency: input.currency,
+        date: input.date,
+        from_user_id: input.from_user_id,
+        to_user_id: input.to_user_id,
+        // если у тебя на беке коммент обязателен для transfer — можно добавить:
+        // comment: input.comment ?? ""
       } as unknown as TransactionCreateRequest;
 
       const serverTx = await createTransaction(payload);
 
       const real: LocalTransferTx = {
-        ...localTx,
+        ...localTx, // оставляем локальные name/avatar для UI
         id: serverTx.id ?? localTx.id,
         created_at: serverTx.created_at ?? localTx.created_at,
-        amount: Number((serverTx as any).amount ?? localTx.amount), // ВАЖНО: Decimal(string) -> number
+        amount: Number((serverTx as any).amount ?? localTx.amount),
         currency: serverTx.currency ?? localTx.currency,
         date: serverTx.date ?? localTx.date,
       };
