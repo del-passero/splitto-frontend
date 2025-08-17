@@ -8,7 +8,23 @@ import type {
   TxType,
 } from "../types/transaction"
 
-const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+const RAW_API_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://splitto-backend-prod-ugraf.amvera.io/api"
+
+// Нормализуем базовый URL:
+// 1) форсим https (важно для Telegram Web / HTTPS);
+// 2) срезаем хвостовые слэши.
+const API_BASE = RAW_API_URL.replace(/^http:/, "https:").replace(/\/+$/, "")
+
+// Склейка пути и query без двойных слэшей и без "/?".
+function makeUrl(path: string, qs?: string) {
+  const p = path.startsWith("/") ? path : `/${path}`
+  if (qs && qs.length) {
+    return `${API_BASE}${p}?${qs}`
+  }
+  return `${API_BASE}${p}`
+}
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -42,7 +58,7 @@ export async function getTransactions(params: {
     limit: params.limit ?? 20,
   })
 
-  const res = await fetch(`${API_URL}/transactions?${qs}`, {
+  const res = await fetch(makeUrl("/transactions", qs), {
     method: "GET",
     credentials: "include",
     headers: {
@@ -60,7 +76,7 @@ export async function getTransactions(params: {
 
 /** Создать транзакцию */
 export async function createTransaction(payload: TransactionCreateRequest): Promise<TransactionOut> {
-  const res = await fetch(`${API_URL}/transactions`, {
+  const res = await fetch(makeUrl("/transactions"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -75,7 +91,7 @@ export async function createTransaction(payload: TransactionCreateRequest): Prom
 
 /** Удалить транзакцию (soft delete на бэке) */
 export async function removeTransaction(transactionId: number): Promise<void> {
-  const res = await fetch(`${API_URL}/transactions/${transactionId}`, {
+  const res = await fetch(makeUrl(`/transactions/${transactionId}`), {
     method: "DELETE",
     credentials: "include",
     headers: {
