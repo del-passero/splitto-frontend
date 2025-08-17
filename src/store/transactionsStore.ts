@@ -1,131 +1,114 @@
-// src/store/transactionsStore.ts
-// Zustand-стор транзакций по образцу groupMembersStore.ts:
-//  • setFilters({ groupId, userId, type })
-//  • fetchTransactions(offset?, limit?)
-//  • addTransaction(payload) — оптимистично добавляем в начало
-//  • removeTransaction(id) — удаляем из списка
-//  • clearTransactions()
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
-import { create } from "zustand"
-import type { TransactionOut, TxType, TransactionCreateRequest } from "../types/transaction"
-import {
-  getTransactions,
-  createTransaction as createTransactionApi,
-  removeTransaction as removeTransactionApi,
-} from "../api/transactionsApi"
+export type TxType = "expense" | "transfer";
 
-interface TransactionsStore {
-  // Фильтры
-  groupId: number | null
-  userId: number | null
-  type: TxType | null
+export type SplitParticipant = {
+  user_id: number;
+  name?: string;
+  avatar_url?: string;
+  share?: number;
+  amount?: number;
+};
 
-  items: TransactionOut[]
-  total: number
+export type SplitSelection =
+  | { type: "equal"; participants: SplitParticipant[] }
+  | { type: "shares"; participants: SplitParticipant[] }
+  | { type: "custom"; participants: SplitParticipant[] };
 
-  loading: boolean
-  error: string | null
+export type LocalExpense = {
+  id: string;
+  group_id: number;
+  type: "expense";
+  amount: number;
+  currency: string;
+  comment: string;
+  date: string; // YYYY-MM-DD
+  category?: { id: number; name: string; color?: string | null; icon?: string | null };
+  paid_by?: number;
+  paid_by_name?: string;
+  paid_by_avatar?: string;
+  split?: SplitSelection | null;
+  created_at: number;
+};
 
-  page: number
-  hasMore: boolean
+export type LocalTransfer = {
+  id: string;
+  group_id: number;
+  type: "transfer";
+  amount: number;
+  currency: string;
+  comment: string;
+  date: string;
+  from_user_id?: number;
+  from_name?: string;
+  from_avatar?: string;
+  to_user_id?: number;
+  to_name?: string;
+  to_avatar?: string;
+  created_at: number;
+};
 
-  setFilters: (f: { groupId?: number | null; userId?: number | null; type?: TxType | null }) => void
-  setPage: (p: number) => void
+export type LocalTx = LocalExpense | LocalTransfer;
 
-  fetchTransactions: (offset?: number, limit?: number) => Promise<void>
-  addTransaction: (payload: TransactionCreateRequest) => Promise<void>
-  removeTransaction: (id: number) => Promise<void>
+// ---- inputs (без id/created_at) ----
+export type LocalExpenseInput = Omit<LocalExpense, "id" | "created_at">;
+export type LocalTransferInput = Omit<LocalTransfer, "id" | "created_at">;
 
-  clearTransactions: () => void
-}
+type State = {
+  byGroup: Record<number, LocalTx[]>;
+  addExpense: (tx: LocalExpenseInput) => LocalExpense;
+  addTransfer: (tx: LocalTransferInput) => LocalTransfer;
+  getByGroup: (groupId: number | undefined) => LocalTx[];
+  clearAll: () => void;
+};
 
-const PAGE_SIZE = 20
+const genId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
-  groupId: null,
-  userId: null,
-  type: null,
+export const useTransactionsStore = create<State>()(
+  persist(
+    (set, get) => ({
+      byGroup: {},
 
-  items: [],
-  total: 0,
+      addExpense: (txInput) => {
+        const tx: LocalExpense = {
+          ...(txInput as LocalExpenseInput),
+          id: genId(),
+          created_at: Date.now(),
+        };
+        set((s) => {
+          const g = tx.group_id;
+          const list = s.byGroup[g] ? [tx, ...s.byGroup[g]] : [tx];
+          return { byGroup: { ...s.byGroup, [g]: list } };
+        });
+        return tx;
+      },
 
-  loading: false,
-  error: null,
+      addTransfer: (txInput) => {
+        const tx: LocalTransfer = {
+          ...(txInput as LocalTransferInput),
+          id: genId(),
+          created_at: Date.now(),
+        };
+        set((s) => {
+          const g = tx.group_id;
+          const list = s.byGroup[g] ? [tx, ...s.byGroup[g]] : [tx];
+          return { byGroup: { ...s.byGroup, [g]: list } };
+        });
+        return tx;
+      },
 
-  page: 0,
-  hasMore: true,
+      getByGroup: (groupId) => {
+        if (!groupId) return [];
+        return get().byGroup[groupId] ?? [];
+      },
 
-  setFilters({ groupId, userId, type }) {
-    set((s) => ({
-      groupId: groupId === undefined ? s.groupId : groupId,
-      userId: userId === undefined ? s.userId : userId,
-      type: type === undefined ? s.type : type,
-      // сбрасываем пагинацию и текущие данные
-      items: [],
-      total: 0,
-      page: 0,
-      hasMore: true,
-      error: null,
-    }))
-  },
-
-  setPage(p) {
-    set({ page: p })
-  },
-
-  async fetchTransactions(offset = 0, limit = PAGE_SIZE) {
-    set({ loading: true, error: null })
-    try {
-      const { groupId, userId, type, items } = get()
-      const { total, items: newItems } = await getTransactions({
-        groupId: groupId ?? undefined,
-        userId: userId ?? undefined,
-        type: type ?? undefined,
-        offset,
-        limit,
-      })
-      set({
-        items: offset === 0 ? newItems : [...items, ...newItems],
-        total,
-        loading: false,
-        hasMore: offset + (newItems?.length || 0) < total,
-      })
-    } catch (e: any) {
-      set({ error: e.message || "Ошибка загрузки транзакций", loading: false })
+      clearAll: () => set({ byGroup: {} }),
+    }),
+    {
+      name: "splitto-txs",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ byGroup: s.byGroup }),
     }
-  },
-
-  async addTransaction(payload) {
-    set({ error: null })
-    try {
-      const created = await createTransactionApi(payload)
-      const { items, total } = get()
-      set({
-        items: [created, ...items],
-        total: total + 1,
-      })
-    } catch (e: any) {
-      set({ error: e.message || "Не удалось создать транзакцию" })
-      throw e
-    }
-  },
-
-  async removeTransaction(id: number) {
-    set({ error: null })
-    try {
-      await removeTransactionApi(id)
-      const { items, total } = get()
-      set({
-        items: items.filter((t) => t.id !== id),
-        total: Math.max(0, total - 1),
-      })
-    } catch (e: any) {
-      set({ error: e.message || "Не удалось удалить транзакцию" })
-      throw e
-    }
-  },
-
-  clearTransactions() {
-    set({ items: [], total: 0, page: 0, hasMore: true, error: null })
-  },
-}))
+  )
+);

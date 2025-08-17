@@ -1,4 +1,5 @@
 // src/components/transactions/CreateTransactionModal.tsx
+import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,6 +13,7 @@ import { useGroupsStore } from "../../store/groupsStore";
 import CategoryPickerModal from "../category/CategoryPickerModal";
 import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
+import { useTransactionsStore } from "../../store/transactionsStore";
 
 export type TxType = "expense" | "transfer";
 
@@ -201,6 +203,9 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
   const user = useUserStore((s) => s.user);
   const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
 
+  const addExpense = useTransactionsStore((s) => s.addExpense);
+  const addTransfer = useTransactionsStore((s) => s.addTransfer);
+
   const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
     setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
@@ -385,32 +390,57 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     setCommentTouched(false);
   };
 
+  // НОРМАЛИЗАЦИЯ СПЛИТА: avatar_url: null -> undefined (чтобы совпало с типами стора)
+  const normalizedSplit = useMemo(() => {
+    if (!splitData) return null;
+    return {
+      ...splitData,
+      participants: splitData.participants.map((p: any) => ({
+        ...p,
+        avatar_url: p?.avatar_url ?? undefined,
+      })),
+    };
+  }, [splitData]);
+
   const doCreate = (mode: "close" | "again") => {
     setShowErrors(true);
     setAmountTouched(true);
     setCommentTouched(true);
     if (hasErrors) return;
 
-    const base: any = {
-      group_id: selectedGroupId,
-      type,
+    const common = {
+      group_id: selectedGroupId as number,
       amount: Number(toFixedSafe(amount, currency.decimals)),
-      currency: currency.code,
+      currency: (currency.code || "RUB") as string,
       comment: comment.trim(),
       date,
     };
 
     if (type === "expense") {
-      base.category_id = categoryId;
-      base.paid_by = paidBy;
-      base.split = splitData || { type: "equal", participants: [] as any[] };
+      addExpense({
+        ...common,
+        type: "expense",
+        category: categoryId
+          ? { id: categoryId, name: categoryName || "", color: categoryColor || null, icon: categoryIcon || null }
+          : undefined,
+        paid_by: paidBy,
+        paid_by_name: paidByName || undefined,
+        paid_by_avatar: paidByAvatar || undefined,
+        // кастим к any, потому что типы SplitSelection в модалке и сторе отличаются null-ностью avatar_url
+        split: (normalizedSplit ?? null) as any,
+      });
     } else {
-      base.from_user_id = paidBy;
-      base.to_user_id = toUser;
+      addTransfer({
+        ...common,
+        type: "transfer",
+        from_user_id: paidBy,
+        from_name: paidByName || undefined,
+        from_avatar: paidByAvatar || undefined,
+        to_user_id: toUser,
+        to_name: toUserName || undefined,
+        to_avatar: toUserAvatar || undefined,
+      });
     }
-
-    // eslint-disable-next-line no-console
-    console.log("[CreateTransactionModal] draft", base);
 
     if (mode === "close") onOpenChange(false);
     else resetForNew();
@@ -427,7 +457,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
     return tok[0] || "";
   };
 
-  // Открыватели модалок с явным закрытием остальных — чтобы "To" точно открывался
+  // Открыватели модалок с явным закрытием остальных
   const openPayerPicker = () => { setGroupModal(false); setRecipientOpen(false); setSplitOpen(false); setPayerOpen(true); };
   const openRecipientPicker = () => { setGroupModal(false); setPayerOpen(false); setSplitOpen(false); setRecipientOpen(true); };
 
@@ -883,7 +913,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
                       >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
                           onClick={() => { setMoreOpen(false); doCreate("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
@@ -925,8 +955,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onSelect={(u) => {
           setPaidBy(u.id);
           setPaidByName(u.name || "");
-          // @ts-ignore
-          setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
+          setPaidByAvatar((u as any)?.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />
@@ -940,8 +969,7 @@ export default function CreateTransactionModal({ open, onOpenChange, groups: gro
         onSelect={(u) => {
           setToUser(u.id);
           setToUserName(u.name || "");
-          // @ts-ignore
-          setToUserAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
+          setToUserAvatar((u as any)?.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />
