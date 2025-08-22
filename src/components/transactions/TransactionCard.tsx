@@ -141,7 +141,7 @@ export default function TransactionCard({
 }: Props) {
   const isExpense = tx.type === "expense";
 
-  // Тек. пользователь
+  // Текущий пользователь
   const currentUserId =
     typeof currentUserIdProp === "number"
       ? currentUserIdProp
@@ -249,25 +249,26 @@ export default function TransactionCard({
   /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, отдельной строкой) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number") {
-    // Если есть shares — считаем точно по ним.
+    const iAmPayer = Number(payerId) === Number(currentUserId);
+
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
-      let myShare = 0;
-      let payerShare = 0;
+      // Суммируем "мои доли" и "что должны плательщику" независимо от погрешностей
+      let myShare = 0;      // сколько я должен плательщику
+      let owedToPayer = 0;  // сколько ВСЕ остальные должны плательщику
 
       for (const s of tx.shares as any[]) {
         const uid = Number(s?.user_id);
-        const val = Number(s?.amount ?? 0);
+        const valRaw = s?.amount;
+        const val = Number(typeof valRaw === "string" ? valRaw : valRaw ?? 0);
         if (!Number.isFinite(val)) continue;
+
         if (uid === Number(currentUserId)) myShare += val;
-        if (uid === Number(payerId)) payerShare += val;
+        if (uid !== Number(payerId)) owedToPayer += val;
       }
 
-      const iAmPayer = Number(payerId) === Number(currentUserId);
       if (iAmPayer) {
-        // Сколько ИТОГО должны плательщику: total - его собственная доля
-        const lent = Math.max(0, amountNum - payerShare);
-        if (lent > 0) {
-          const sumStr = fmtNumberOnly(lent, tx.currency);
+        if (owedToPayer > 0) {
+          const sumStr = fmtNumberOnly(owedToPayer, tx.currency);
           statusText =
             (t && t("group_participant_owes_you", { sum: sumStr })) ||
             `Вам должны: ${sumStr}`;
@@ -282,14 +283,14 @@ export default function TransactionCard({
             (t && t("group_participant_you_owe", { sum: sumStr })) ||
             `Вы должны: ${sumStr}`;
         } else {
-          // нет доли — не участвовал
           statusText =
             (t && t("group_participant_no_debt")) || "Нет долга";
         }
       }
     } else {
-      // Shares нет — НИКОГО не обвиняем. Показываем долг только плательщику (ему должны вся сумма).
-      const iAmPayer = Number(payerId) === Number(currentUserId);
+      // Shares нет:
+      //  - если я плательщик — мне должны вся сумма
+      //  - иначе — «нет долга» (нет данных, что я участвовал)
       if (iAmPayer) {
         const sumStr = fmtNumberOnly(amountNum, tx.currency);
         statusText =
@@ -362,7 +363,7 @@ export default function TransactionCard({
             )}
           </div>
         ) : (
-          // Для переводов статус ДОЛГОВ НЕ показываем
+          // Для переводов статус ДОЛГОВ НЕ показываем.
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
