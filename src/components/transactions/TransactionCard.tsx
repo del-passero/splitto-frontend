@@ -1,262 +1,291 @@
 // src/components/transactions/TransactionCard.tsx
 import { ArrowRightLeft, Layers } from "lucide-react";
 
-/** Базовые типы участника (достаточно этих полей) */
-type UserCore = {
+/** Минимальный тип участника, который нам нужен для имени и аватара */
+export type GroupMemberLike = {
   id: number;
-  first_name?: string | null;
-  last_name?: string | null;
-  username?: string | null;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  avatar_url?: string | null;
   photo_url?: string | null;
 };
 
-export type GroupMemberLike = {
-  user: UserCore;
-  name?: string | null;        // кастомное имя, если есть
-  avatar_url?: string | null;  // кастомный аватар, если есть
-};
+type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
 
 type Props = {
-  tx: any; // TransactionOut
-  /** соответствие user_id -> участник группы */
-  membersById: Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
-  /** всего участников в группе (для кейса "все") */
-  groupMembersCount: number;
-  /** опциональный локализатор */
+  /** Транзакция из API (TransactionOut) или локальная */
+  tx: any;
+  /** Участники группы по id — Object или Map */
+  membersById?: MembersMap;
+  /** Сколько всего участников в группе (для “+N”) */
+  groupMembersCount?: number;
+  /** i18n, если прокинут */
   t?: (k: string, vars?: Record<string, any>) => string;
 };
 
-/* -------------------- helpers -------------------- */
+/* ------------------------- helpers ------------------------- */
 
-function pickMember(
-  id?: number | null,
-  map?: Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
-): GroupMemberLike | undefined {
-  if (!id || !map) return undefined;
-  if (map instanceof Map) return map.get(id);
-  return (map as Record<number, GroupMemberLike>)[id];
+function getMember(membersById: MembersMap | undefined, id?: number | null): GroupMemberLike | undefined {
+  if (!membersById || id == null) return undefined;
+  if (membersById instanceof Map) return membersById.get(Number(id));
+  return (membersById as Record<number, GroupMemberLike>)[Number(id)];
 }
 
-function fullName(u?: UserCore | null, fallback?: string | null) {
-  if (!u) return (fallback || "").trim();
-  const first = (u.first_name || "").trim();
-  const last = (u.last_name || "").trim();
-  const composed = `${first} ${last}`.trim();
-  if (composed) return composed;
-  if (u.username) return u.username;
-  return (fallback || "").trim();
+function onlyFirstName(m?: GroupMemberLike): string {
+  if (!m) return "";
+  const raw =
+    (m.name ?? "").trim() ||
+    `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() ||
+    (m.username ? String(m.username) : "");
+  const token = raw.split(/\s+/).filter(Boolean)[0];
+  return token || (m.username ? String(m.username) : "");
 }
 
-/** Только имя (первое слово) */
-function firstNameFrom(full: string) {
-  const tok = (full || "").trim().split(/\s+/).filter(Boolean);
-  return tok[0] || full || "";
+function avatarUrl(m?: GroupMemberLike): string | undefined {
+  return (m?.avatar_url || m?.photo_url || undefined) ?? undefined;
 }
 
-function avatarUrl(m?: GroupMemberLike) {
-  return m?.avatar_url || m?.user?.photo_url || undefined;
-}
-
-function fmtDate(input?: string | number | Date) {
-  const d = input ? new Date(input) : new Date();
+function fmtAmount(nLike: any, currency?: string, locale?: string) {
+  const n = Number(nLike);
+  const val = Number.isFinite(n) ? n : 0;
   try {
-    return d.toLocaleDateString();
+    const nf = new Intl.NumberFormat(locale || undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${nf.format(val)} ${currency ?? ""}`.trim();
   } catch {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return `${val.toFixed(2)} ${currency ?? ""}`.trim();
   }
 }
 
-function moneyToString(amount: unknown, currency?: string | null) {
-  const n = Number(amount ?? 0);
-  const v = Number.isFinite(n) ? n : 0;
-  try {
-    const s = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
-    return currency ? `${s} ${currency}` : s;
-  } catch {
-    return currency ? `${v.toFixed(2)} ${currency}` : v.toFixed(2);
-  }
+function fmtDateISO(dateLike?: string) {
+  const d = dateLike ? new Date(dateLike) : new Date();
+  // ДД.ММ.ГГГГ — универсально и коротко
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
 }
 
-/* -------------------- UI atoms -------------------- */
-
-function CategoryAvatar({ name, color, icon }: { name?: string; color?: string | null; icon?: string }) {
-  const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
-  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
-  return (
-    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: bg }}>
-      <span style={{ fontSize: 16 }} aria-hidden>{icon || ch}</span>
-    </div>
-  );
+function takeFirst<T>(arr: T[] | undefined, n: number) {
+  if (!arr || arr.length <= n) return { head: arr ?? [], rest: 0 };
+  return { head: arr.slice(0, n), rest: arr.length - n };
 }
 
-function PersonAvatar({ src, name, size = 16 }: { src?: string; name?: string; size?: number }) {
-  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
-  const cls = size <= 16 ? "text-[10px]" : "text-[12px]";
-  return src ? (
-    <img src={src} alt="" className="rounded-full object-cover" style={{ width: size, height: size }} />
-  ) : (
-    <div
-      className={`rounded-full bg-[var(--tg-link-color)] text-white flex items-center justify-center ${cls}`}
+/* ------------------------- UI bits ------------------------- */
+
+function CircleAvatar({
+  url,
+  label,
+  size = 18,
+}: {
+  url?: string;
+  label?: string;
+  size?: number;
+}) {
+  const fallback = (label || "•").charAt(0).toUpperCase();
+  return url ? (
+    <img
+      src={url}
+      alt=""
+      className="rounded-full object-cover shrink-0"
       style={{ width: size, height: size }}
-    >
-      {ch}
-    </div>
-  );
-}
-
-function SplitChip({ type, t }: { type?: string | null; t?: Props["t"] }) {
-  if (!type) return null;
-  const text =
-    type === "equal"
-      ? (t?.("tx_modal.split_equal") || "Поровну")
-      : type === "shares"
-      ? (t?.("tx_modal.split_shares") || "По долям")
-      : (t?.("tx_modal.split_custom") || "Вручную");
-
-  return (
-    <span className="inline-flex items-center gap-1 px-2 h-6 rounded-lg text-[12px]"
+    />
+  ) : (
+    <span
+      className="rounded-full text-[11px] flex items-center justify-center shrink-0"
       style={{
-        background: "color-mix(in srgb, var(--tg-link-color) 12%, transparent)",
-        border: "1px solid color-mix(in srgb, var(--tg-link-color) 35%, transparent)"
-      }}>
-      <Layers size={14} />
-      {text}
+        width: size,
+        height: size,
+        color: "var(--tg-theme-button-text-color)",
+        background: "var(--tg-theme-button-color)",
+      }}
+      aria-hidden
+    >
+      {fallback}
     </span>
   );
 }
 
-/* -------------------- Card -------------------- */
+function CategoryAvatar({
+  name,
+  color,
+  icon,
+}: {
+  name?: string;
+  color?: string | null;
+  icon?: string | null;
+}) {
+  const bg =
+    typeof color === "string" && color.trim().length
+      ? color!
+      : "color-mix(in srgb, var(--tg-theme-link-color) 14%, transparent)";
+  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
+  return (
+    <div
+      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+      style={{ background: bg, color: "var(--tg-theme-button-text-color)" }}
+      aria-hidden
+    >
+      <span style={{ fontSize: 16 }}>{icon || ch}</span>
+    </div>
+  );
+}
+
+/* ------------------------- Card ------------------------- */
 
 export default function TransactionCard({ tx, membersById, groupMembersCount, t }: Props) {
-  const isExpense = tx.type === "expense";
+  const isExpense = tx?.type === "expense";
 
-  // payer / sender
-  const payer = isExpense
-    ? pickMember(Number(tx.paid_by), membersById)
-    : pickMember(Number(tx.transfer_from), membersById);
-  const payerFull = fullName(payer?.user, payer?.name || undefined);
-  const payerName = firstNameFrom(payerFull);
-  const payerAvatar = avatarUrl(payer);
+  // ----- title -----
+  const fromId: number | undefined =
+    Number(tx?.transfer_from ?? tx?.from_user_id ?? NaN) || undefined;
+  const toListRaw: any[] =
+    (Array.isArray(tx?.transfer_to) && tx.transfer_to) ||
+    (typeof tx?.to_user_id === "number" ? [tx.to_user_id] : []) ||
+    [];
+  const toIds: number[] = toListRaw.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n));
 
-  // recipients (transfer)
-  const toRaw = tx.transfer_to ?? [];
-  const toIds: number[] = Array.isArray(toRaw)
-    ? toRaw.map((x: unknown) => Number(x)).filter((n: number) => Number.isFinite(n))
-    : String(toRaw)
-        .split(/[,\s]+/)
-        .map((x: string) => Number(x))
-        .filter((n: number) => Number.isFinite(n));
+  const fromMember = getMember(membersById, fromId);
+  const toMembers = toIds.map((id) => getMember(membersById, id)).filter(Boolean) as GroupMemberLike[];
 
-  const recipients = toIds
-    .map((id) => pickMember(id, membersById))
-    .filter((m): m is GroupMemberLike => Boolean(m));
+  const paidByMember = getMember(membersById, Number(tx?.paid_by));
+  const paidByName = onlyFirstName(paidByMember);
 
-  // expense participants from shares
-  const shareUserIds: number[] = Array.isArray(tx.shares)
-    ? Array.from(
-        new Set(
-          (tx.shares as any[])
-            .map((s) => Number(s?.user_id))
-            .filter((n: number) => Number.isFinite(n))
-        )
-      )
+  let title = "";
+  if (isExpense) {
+    title = (tx?.comment ?? "").trim() || (tx?.category?.name ?? "");
+    if (!title) title = ""; // оставляем пустым — чтобы не плодить “Expense”
+  } else {
+    const fromName = onlyFirstName(fromMember) || "—";
+    if (toMembers.length === 1) {
+      title = `${fromName} → ${onlyFirstName(toMembers[0]) || "—"}`;
+    } else if (toMembers.length > 1) {
+      const first = onlyFirstName(toMembers[0]) || "—";
+      title = `${fromName} → ${first} +${toMembers.length - 1}`;
+    } else {
+      title = `${fromName} → —`;
+    }
+  }
+
+  // ----- money / date -----
+  const amount = fmtAmount(tx?.amount, tx?.currency);
+  const dateStr = fmtDateISO(tx?.date || tx?.created_at);
+
+  // ----- participants (только аватарки) -----
+  // Для расхода: из shares; Для перевода: получатели
+  const shareUserIds: number[] = Array.isArray(tx?.shares)
+    ? (tx.shares as any[])
+        .map((s) => Number((s as any)?.user_id))
+        .filter((n) => Number.isFinite(n))
     : [];
 
-  const participants = shareUserIds
-    .map((id) => pickMember(id, membersById))
-    .filter((m): m is GroupMemberLike => Boolean(m));
+  const participantIds = isExpense ? shareUserIds : toIds;
+  const participantMembers = participantIds
+    .map((id) => getMember(membersById, id))
+    .filter(Boolean) as GroupMemberLike[];
 
-  const allCount = groupMembersCount || 0;
-  const isAll =
-    tx.split_type === "equal" &&
-    allCount > 0 &&
-    participants.length > 0 &&
-    participants.length >= allCount;
+  // показываем до 6 аватаров
+  const { head: show, rest: restCount } = takeFirst(participantMembers, 6);
 
-  // title
-  const title = isExpense
-    ? (tx.comment?.toString().trim() || tx.category?.name || "—")
-    : (() => {
-        const fromN = payerName || "—";
-        if (recipients.length === 0) return `${fromN} → ?`;
-        if (recipients.length === 1) {
-          const rFull = fullName(recipients[0].user, recipients[0].name || undefined);
-          return `${fromN} → ${firstNameFrom(rFull)}`;
-        }
-        const first = firstNameFrom(fullName(recipients[0].user, recipients[0].name || undefined));
-        return `${fromN} → ${first} +${recipients.length - 1}`;
-      })();
-
-  const dateText = fmtDate(tx.date || tx.created_at);
-  const amount = moneyToString(tx.amount, tx.currency);
-
-  // participants text (имена только первые слова)
-  const participantsText = isAll
-    ? `${t?.("tx_modal.all") || "все"}, ${allCount}`
-    : participants
-        .slice(0, 2)
-        .map((m) => firstNameFrom(fullName(m.user, m.name || undefined)))
-        .join(", ") + (participants.length > 2 ? ` +${participants.length - 2}` : "");
-
-  const paidByLabel = t?.("tx_modal.paid_by_label") || "Заплатил";
+  // “Paid by” лейбл
+  const paidByLabel =
+    (t && t("tx_modal.paid_by_label")) ||
+    (t && t("tx_modal.paid_by")) ||
+    "Paid by";
 
   return (
-    <div className="relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)]">
+    <div
+      className="relative px-3 py-2 rounded-2xl border bg-[var(--tg-theme-bg-color)]"
+      style={{ borderColor: "var(--tg-theme-secondary-bg-color)" }}
+    >
       <div className="flex items-center gap-3">
         {isExpense ? (
-          <CategoryAvatar name={tx.category?.name} color={tx.category?.color} icon={tx.category?.icon} />
+          <CategoryAvatar
+            name={tx?.category?.name}
+            color={tx?.category?.color}
+            icon={tx?.category?.icon}
+          />
         ) : (
-          <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center shrink-0">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+            style={{ borderColor: "var(--tg-theme-secondary-bg-color)" }}
+          >
             <ArrowRightLeft size={18} className="opacity-80" />
           </div>
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">{title}</div>
-          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{dateText}</div>
+          {/* title */}
+          <div className="text-[14px] font-semibold truncate" style={{ color: "var(--tg-theme-text-color)" }}>
+            {title || "\u00A0"}
+          </div>
 
-          {/* Детали для расхода: Заплатил + участники + чип сплита */}
-          {isExpense && (
-            <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
-              <span className="opacity-70">{paidByLabel}:</span>
+          {/* date */}
+          <div className="text-[12px] truncate" style={{ color: "var(--tg-theme-hint-color)" }}>
+            {dateStr}
+          </div>
 
-              {/* payer */}
-              {payer && (
-                <span className="inline-flex items-center gap-1 min-w-0">
-                  <PersonAvatar src={payerAvatar} name={payerName} size={18} />
-                  <span className="truncate font-medium">{payerName}</span>
+          {/* paid by + participants */}
+          <div className="mt-1.5 flex items-center gap-2 min-w-0">
+            {/* Paid by */}
+            {isExpense ? (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[12px]" style={{ color: "var(--tg-theme-hint-color)" }}>
+                  {paidByLabel}:
                 </span>
-              )}
+                <CircleAvatar url={avatarUrl(paidByMember)} label={paidByName} size={16} />
+                <span className="text-[12px] truncate" style={{ color: "var(--tg-theme-text-color)" }}>
+                  {paidByName || "—"}
+                </span>
+              </div>
+            ) : (
+              // Для перевода — кратко покажем участников-получателей аватарками (имена и так в заголовке)
+              <div className="flex items-center gap-1.5 min-w-0">
+                <CircleAvatar url={avatarUrl(fromMember)} label={onlyFirstName(fromMember)} size={16} />
+                <span className="opacity-60">→</span>
+              </div>
+            )}
 
-              {/* разделитель */}
-              {participants.length > 0 && <span className="opacity-40">·</span>}
-
-              {/* участники: маленькие аватарки + только имена */}
-              {participants.length > 0 && (
-                <span className="inline-flex items-center gap-1 min-w-0">
-                  <span className="inline-flex items-center gap-[2px]">
-                    {participants.slice(0, 3).map((m) => (
-                      <PersonAvatar
-                        key={m.user.id}
-                        src={avatarUrl(m)}
-                        name={firstNameFrom(fullName(m.user, m.name || undefined))}
-                        size={16}
-                      />
-                    ))}
+            {/* participants avatars (только аватарки) */}
+            {show.length > 0 && (
+              <div className="flex items-center gap-[-4px] ml-1">
+                {show.map((m) => (
+                  <div
+                    key={m.id}
+                    className="ring-1 rounded-full"
+                    style={{
+                      marginLeft: "-4px",
+                      ringColor: "var(--tg-theme-bg-color)",
+                    } as React.CSSProperties}
+                    title={onlyFirstName(m)}
+                  >
+                    <CircleAvatar url={avatarUrl(m)} label={onlyFirstName(m)} size={16} />
+                  </div>
+                ))}
+                {restCount > 0 && (
+                  <span
+                    className="ml-1 rounded-full px-1 text-[10px]"
+                    style={{
+                      color: "var(--tg-theme-link-color)",
+                      border: "1px solid var(--tg-theme-secondary-bg-color)",
+                      background:
+                        "color-mix(in srgb, var(--tg-theme-link-color) 12%, transparent)",
+                    }}
+                  >
+                    +{restCount}
                   </span>
-                  <span className="truncate opacity-80">за {participantsText}</span>
-                </span>
-              )}
-
-              {/* чип типа деления справа */}
-              <span className="ml-auto">
-                <SplitChip type={tx.split_type} t={t} />
-              </span>
-            </div>
-          )}
+                )}
+              </div>
+            )}
+            {/* Если хотим “все X” — считаем по groupMembersCount, но текстов не просили */}
+          </div>
         </div>
 
-        <div className="text-[14px] font-semibold shrink-0">{amount}</div>
+        {/* amount */}
+        <div className="shrink-0 text-[14px] font-semibold" style={{ color: "var(--tg-theme-text-color)" }}>
+          {fmtAmount(tx?.amount, tx?.currency)}
+        </div>
       </div>
     </div>
   );
