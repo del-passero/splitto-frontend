@@ -1,6 +1,7 @@
 // src/components/transactions/TransactionCard.tsx
 import { ArrowRightLeft } from "lucide-react";
 
+/** Короткая инфа о пользователе в группе */
 export type GroupMemberLike = {
   id: number;
   name?: string;
@@ -17,10 +18,12 @@ type Props = {
   tx: any; // TransactionOut | LocalTx
   /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (чтобы определить «ВСЕ») */
+  /** Сколько всего участников в группе (чтобы понять «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t(), можно не передавать */
+  /** i18n t() — используем существующие ключи, без добавлений */
   t?: (k: string, vars?: Record<string, any>) => string;
+  /** Текущий пользователь (если не передали — попытаемся взять из Telegram WebApp) */
+  currentUserId?: number;
 };
 
 /* ---------- utils ---------- */
@@ -29,22 +32,41 @@ const getFromMap = (m?: MembersMap, id?: number | null) => {
   if (m instanceof Map) return m.get(Number(id));
   return (m as Record<number, GroupMemberLike>)[Number(id)];
 };
+
 const firstName = (full?: string) => {
   const s = (full || "").trim();
   if (!s) return "";
   return s.split(/\s+/)[0] || s;
 };
+
+const ZERO_CCY_DEC = new Set(["JPY", "KRW", "VND"]);
+const decimalsByCode = (code?: string) => (code && ZERO_CCY_DEC.has(code) ? 0 : 2);
+
 const fmtAmount = (n: number, code?: string) => {
   if (!isFinite(n)) n = 0;
   try {
-    const decimals = code && ["JPY", "KRW", "VND"].includes(code) ? 0 : 2;
+    const decimals = decimalsByCode(code);
     const nf = new Intl.NumberFormat(undefined, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
     return `${nf.format(n)} ${code || ""}`.trim();
   } catch {
-    return `${n.toFixed(2)} ${code || ""}`.trim();
+    return `${n.toFixed(decimalsByCode(code))} ${code || ""}`.trim();
+  }
+};
+
+const fmtNumberOnly = (n: number, code?: string) => {
+  // Число БЕЗ символа валюты — для строк локализации вида "Вы должны: {{sum}} ₽"
+  if (!isFinite(n)) n = 0;
+  try {
+    const decimals = decimalsByCode(code);
+    return new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(n);
+  } catch {
+    return n.toFixed(decimalsByCode(code));
   }
 };
 
@@ -113,8 +135,23 @@ export default function TransactionCard({
   membersById,
   groupMembersCount,
   t,
+  currentUserId: currentUserIdProp,
 }: Props) {
   const isExpense = tx.type === "expense";
+
+  // тек. пользователь
+  const currentUserId =
+    typeof currentUserIdProp === "number"
+      ? currentUserIdProp
+      : (() => {
+          try {
+            const id = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+            return Number.isFinite(Number(id)) ? Number(id) : undefined;
+          } catch {
+            return undefined;
+          }
+        })();
+
   const dateStr = (() => {
     const d = new Date(tx.date || tx.created_at || Date.now());
     try {
@@ -180,35 +217,90 @@ export default function TransactionCard({
   const toAvatar =
     tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
-  // participants summary (expense only, без аватаров)
+  // participants summary (expense only — текст «ВСЕ» или количество; БЕЗ аватаров)
   let participantsText = "";
   if (isExpense) {
     const shareIds: number[] = Array.isArray(tx.shares)
       ? (tx.shares as any[])
           .map((s: any) => Number(s?.user_id))
-          .filter((n: number) => Number.isFinite(n)) // <-- тип для n
+          .filter((n: number) => Number.isFinite(n))
       : [];
     const uniq = Array.from(new Set(shareIds));
     if (uniq.length) {
-      if (
-        groupMembersCount &&
-        uniq.length === Number(groupMembersCount)
-      ) {
-        participantsText =
-          (t && t("tx_modal.all")) || "ВСЕ";
+      if (groupMembersCount && uniq.length === Number(groupMembersCount)) {
+        participantsText = (t && t("tx_modal.all")) || "ВСЕ";
       } else {
         participantsText = `${uniq.length}`;
       }
     } else if (tx.split_type === "equal" && groupMembersCount) {
-      participantsText =
-        (t && t("tx_modal.all")) || "ВСЕ";
+      participantsText = (t && t("tx_modal.all")) || "ВСЕ";
     }
   }
 
-  /* --- title --- */
+  /* --- заголовок --- */
+  // Для расхода: если комментария нет — показываем имя категории.
+  // Для перевода: не дублируем «кто → кому» в заголовке (оно ниже во второй строке).
   const title = isExpense
-    ? (tx.comment && String(tx.comment)) || "—"
-    : `${payerName || "From"} → ${toName || "To"}`;
+    ? (tx.comment && String(tx.comment).trim()) ||
+      (tx.category?.name ? String(tx.category.name) : "—")
+    : (tx.comment && String(tx.comment).trim()) || "";
+
+  /* --- статус для текущего пользователя (you borrowed / you lent / not involved) --- */
+  let statusText = "";
+  if (typeof currentUserId === "number") {
+    if (isExpense) {
+      // Моя доля (если есть в shares)
+      let myShare = 0;
+      if (Array.isArray(tx.shares)) {
+        for (const s of tx.shares as any[]) {
+          if (Number(s?.user_id) === Number(currentUserId)) {
+            const v = Number(s?.amount ?? 0);
+            if (Number.isFinite(v)) myShare += v;
+          }
+        }
+      }
+      const iAmPayer = Number(payerId) === Number(currentUserId);
+      if (iAmPayer) {
+        const lent = Math.max(0, amountNum - myShare);
+        if (lent > 0) {
+          const sumStr = fmtNumberOnly(lent, tx.currency);
+          // используем имеющиеся ключи
+          statusText =
+            (t && t("group_participant_owes_you", { sum: sumStr })) ||
+            `Вам должны: ${sumStr}`;
+        } else {
+          statusText =
+            (t && t("group_participant_no_debt")) || "Нет долга";
+        }
+      } else if (myShare > 0) {
+        const sumStr = fmtNumberOnly(myShare, tx.currency);
+        statusText =
+          (t && t("group_participant_you_owe", { sum: sumStr })) ||
+          `Вы должны: ${sumStr}`;
+      } else {
+        statusText =
+          (t && t("group_participant_no_debt")) || "Нет долга";
+      }
+    } else {
+      // transfer
+      const meIsFrom = Number(payerId) === Number(currentUserId);
+      const meIsTo = Number(toId) === Number(currentUserId);
+      if (meIsFrom) {
+        const sumStr = fmtNumberOnly(amountNum, tx.currency);
+        statusText =
+          (t && t("group_participant_owes_you", { sum: sumStr })) ||
+          `Вам должны: ${sumStr}`;
+      } else if (meIsTo) {
+        const sumStr = fmtNumberOnly(amountNum, tx.currency);
+        statusText =
+          (t && t("group_participant_you_owe", { sum: sumStr })) ||
+          `Вы должны: ${sumStr}`;
+      } else {
+        statusText =
+          (t && t("group_participant_no_debt")) || "Нет долга";
+      }
+    }
+  }
 
   return (
     <div
@@ -233,9 +325,11 @@ export default function TransactionCard({
 
         {/* center */}
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-            {title}
-          </div>
+          {title ? (
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+              {title}
+            </div>
+          ) : null}
           <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
             {dateStr}
           </div>
@@ -243,15 +337,15 @@ export default function TransactionCard({
 
         {/* amount */}
         <div className="text-[14px] font-semibold shrink-0">
-          {amount}
+          {fmtAmount(Number(tx.amount ?? 0), tx.currency)}
         </div>
       </div>
 
       {/* second row: details */}
       <div className="mt-2 ml-12 min-w-0">
         {isExpense ? (
-          <div className="flex items-center gap-2 text-[12px] text-[var(--tg-hint-color)]">
-            <span className="opacity-80">
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="opacity-70 text-[var(--tg-hint-color)]">
               {(t && t("tx_modal.paid_by_label")) || "Заплатил"}
             </span>
             <RoundAvatar src={payerAvatar} alt={payerName} />
@@ -260,21 +354,37 @@ export default function TransactionCard({
             </span>
             {participantsText && (
               <>
-                <span className="opacity-60">—</span>
-                <span className="truncate">
-                  {(t && t("tx_modal.participants")) || "за"}{" "}
-                  {participantsText}
+                <span className="opacity-60 text-[var(--tg-hint-color)]">—</span>
+                <span className="truncate text-[var(--tg-text-color)]">
+                  {(t && t("tx_modal.participants")) || "Участники"}: {participantsText}
+                </span>
+              </>
+            )}
+            {statusText && (
+              <>
+                <span className="opacity-60 text-[var(--tg-hint-color)]">•</span>
+                <span className="truncate text-[var(--tg-hint-color)]">
+                  {statusText}
                 </span>
               </>
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+            {/* Только здесь показываем кто → кому, чтобы не было дубля в заголовке */}
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
             <span className="opacity-60">→</span>
             <RoundAvatar src={toAvatar} alt={toName} />
             <span className="font-medium truncate">{toName}</span>
+            {statusText && (
+              <>
+                <span className="opacity-60 text-[var(--tg-hint-color)]">•</span>
+                <span className="truncate text-[var(--tg-hint-color)]">
+                  {statusText}
+                </span>
+              </>
+            )}
           </div>
         )}
       </div>
