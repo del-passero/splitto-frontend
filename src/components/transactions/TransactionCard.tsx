@@ -69,6 +69,9 @@ const fmtNumberOnly = (n: number, code?: string) => {
   }
 };
 
+const isFiniteNumber = (x: unknown): x is number =>
+  typeof x === "number" && Number.isFinite(x);
+
 /* ---------- UI bits ---------- */
 
 function CategoryAvatar({
@@ -151,6 +154,8 @@ export default function TransactionCard({
           }
         })();
 
+  const amountNum = Number(tx.amount ?? 0);
+
   const dateStr = (() => {
     const d = new Date(tx.date || tx.created_at || Date.now());
     try {
@@ -163,8 +168,6 @@ export default function TransactionCard({
       return d.toLocaleDateString();
     }
   })();
-
-  const amountNum = Number(tx.amount ?? 0);
 
   /* --- resolve people --- */
   // payer (expense) or sender (transfer)
@@ -220,7 +223,7 @@ export default function TransactionCard({
     const shareIds: number[] = Array.isArray(tx.shares)
       ? (tx.shares as any[])
           .map((s: any) => Number(s?.user_id))
-          .filter((n: number) => Number.isFinite(n))
+          .filter(isFiniteNumber)
       : [];
     const uniq = Array.from(new Set(shareIds));
     if (uniq.length) {
@@ -243,14 +246,14 @@ export default function TransactionCard({
       (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ) --- */
+  /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, отдельной строкой) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number") {
-    // 1) Пытаемся взять доли из shares
-    let myShare = 0;
-    let payerShare = 0;
-
+    // Если есть shares — считаем точно по ним.
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
+      let myShare = 0;
+      let payerShare = 0;
+
       for (const s of tx.shares as any[]) {
         const uid = Number(s?.user_id);
         const val = Number(s?.amount ?? 0);
@@ -258,8 +261,10 @@ export default function TransactionCard({
         if (uid === Number(currentUserId)) myShare += val;
         if (uid === Number(payerId)) payerShare += val;
       }
+
       const iAmPayer = Number(payerId) === Number(currentUserId);
       if (iAmPayer) {
+        // Сколько ИТОГО должны плательщику: total - его собственная доля
         const lent = Math.max(0, amountNum - payerShare);
         if (lent > 0) {
           const sumStr = fmtNumberOnly(lent, tx.currency);
@@ -270,17 +275,20 @@ export default function TransactionCard({
           statusText =
             (t && t("group_participant_no_debt")) || "Нет долга";
         }
-      } else if (myShare > 0) {
-        const sumStr = fmtNumberOnly(myShare, tx.currency);
-        statusText =
-          (t && t("group_participant_you_owe", { sum: sumStr })) ||
-          `Вы должны: ${sumStr}`;
       } else {
-        statusText =
-          (t && t("group_participant_no_debt")) || "Нет долга";
+        if (myShare > 0) {
+          const sumStr = fmtNumberOnly(myShare, tx.currency);
+          statusText =
+            (t && t("group_participant_you_owe", { sum: sumStr })) ||
+            `Вы должны: ${sumStr}`;
+        } else {
+          // нет доли — не участвовал
+          statusText =
+            (t && t("group_participant_no_debt")) || "Нет долга";
+        }
       }
     } else {
-      // 2) Shares отсутствуют (частый случай для split_type='equal')
+      // Shares нет — НИКОГО не обвиняем. Показываем долг только плательщику (ему должны вся сумма).
       const iAmPayer = Number(payerId) === Number(currentUserId);
       if (iAmPayer) {
         const sumStr = fmtNumberOnly(amountNum, tx.currency);
@@ -288,11 +296,8 @@ export default function TransactionCard({
           (t && t("group_participant_owes_you", { sum: sumStr })) ||
           `Вам должны: ${sumStr}`;
       } else {
-        // Предположение для equal без shares: все остальные — участники.
-        const sumStr = fmtNumberOnly(amountNum, tx.currency);
         statusText =
-          (t && t("group_participant_you_owe", { sum: sumStr })) ||
-          `Вы должны: ${sumStr}`;
+          (t && t("group_participant_no_debt")) || "Нет долга";
       }
     }
   }
@@ -326,11 +331,7 @@ export default function TransactionCard({
             </div>
           ) : null}
           <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-            {new Intl.DateTimeFormat(undefined, {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-            }).format(new Date(tx.date || tx.created_at || Date.now()))}
+            {dateStr}
           </div>
         </div>
 
@@ -340,7 +341,7 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* second row */}
+      {/* second row (кто платил / участники или стрелка перевода) */}
       <div className="mt-2 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
@@ -359,14 +360,6 @@ export default function TransactionCard({
                 </span>
               </>
             )}
-            {statusText && (
-              <>
-                <span className="opacity-60 text-[var(--tg-hint-color)]">•</span>
-                <span className="truncate text-[var(--tg-hint-color)]">
-                  {statusText}
-                </span>
-              </>
-            )}
           </div>
         ) : (
           // Для переводов статус ДОЛГОВ НЕ показываем.
@@ -376,6 +369,13 @@ export default function TransactionCard({
             <span className="opacity-60">→</span>
             <RoundAvatar src={toAvatar} alt={toName} />
             <span className="font-medium truncate">{toName}</span>
+          </div>
+        )}
+
+        {/* Строка статуса долгов — ВСЕГДА С НОВОЙ СТРОКИ и ТОЛЬКО ДЛЯ РАСХОДОВ */}
+        {isExpense && statusText && (
+          <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
+            {statusText}
           </div>
         )}
       </div>
