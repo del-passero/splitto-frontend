@@ -1,5 +1,7 @@
+// src/components/transactions/TransactionCard.tsx
 import { useMemo } from "react";
 import { ArrowRightLeft } from "lucide-react";
+import { useUserStore } from "../../store/userStore";
 
 /** Короткая инфа о пользователе в группе */
 export type GroupMemberLike = {
@@ -22,7 +24,7 @@ type Props = {
   groupMembersCount?: number;
   /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** ВНУТРЕННИЙ ID пользователя приложения (не Telegram ID!) */
+  /** Если хотите — можно явно передать app user id; иначе возьмём из стора */
   currentUserId?: number;
 };
 
@@ -130,9 +132,13 @@ export default function TransactionCard({
   membersById,
   groupMembersCount,
   t,
-  currentUserId,
+  currentUserId: currentUserIdProp,
 }: Props) {
   const isExpense = tx.type === "expense";
+
+  // Текущий пользователь — ВСЕГДА из вашего стора (внутренний app user id).
+  const storeUserId = useUserStore((s: any) => s.user?.id);
+  const currentUserId = typeof currentUserIdProp === "number" ? currentUserIdProp : storeUserId;
 
   const amountNum = Number(tx.amount ?? 0);
 
@@ -161,9 +167,7 @@ export default function TransactionCard({
   const payerName =
     firstName(tx.paid_by_name || tx.from_name) ||
     firstName(payerMember?.name) ||
-    firstName(
-      `${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()
-    ) ||
+    firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
 
@@ -187,13 +191,10 @@ export default function TransactionCard({
   const toName =
     firstName(tx.to_name) ||
     firstName(toMember?.name) ||
-    firstName(
-      `${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()
-    ) ||
+    firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toAvatar =
-    tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
+  const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants summary (expense only — БЕЗ аватаров)
   let participantsText = "";
@@ -223,16 +224,17 @@ export default function TransactionCard({
     : (tx.comment && String(tx.comment).trim()) || "";
 
   /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, отдельной строкой) --- */
-  let statusText = "";
-  // ВАЖНО: используем ВНУТРЕННИЙ currentUserId — он должен прийти из родителя!
+  let statusText: string | null = null;
+
   if (isExpense && Number.isFinite(Number(currentUserId))) {
     const me = Number(currentUserId);
     const payer = Number(payerId);
 
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
-      // суммируем устойчиво: «моя доля» и «все кроме плательщика»
+      // Точная арифметика по долям: «моя доля» и «все кроме плательщика»
       let myShare = 0;
-      let sumOthersToPayer = 0;
+      let totalShares = 0;
+      let payerShare = 0;
 
       for (const s of tx.shares as any[]) {
         const uid = Number(s?.user_id);
@@ -240,13 +242,17 @@ export default function TransactionCard({
         const val = Number(typeof raw === "string" ? raw : raw ?? 0);
         if (!Number.isFinite(val)) continue;
 
+        totalShares += val;
         if (uid === me) myShare += val;
-        if (uid !== payer) sumOthersToPayer += val;
+        if (uid === payer) payerShare += val;
       }
 
+      // Бывает, что totalShares == 0 (на бэке пустые доли) — подстрахуемся
+      const othersOweToPayer = Math.max(0, totalShares - payerShare);
+
       if (me === payer) {
-        if (sumOthersToPayer > 0) {
-          const sumStr = fmtNumberOnly(sumOthersToPayer, tx.currency);
+        if (othersOweToPayer > 0) {
+          const sumStr = fmtNumberOnly(othersOweToPayer, tx.currency);
           statusText =
             (t && t("group_participant_owes_you", { sum: sumStr })) ||
             `Вам должны: ${sumStr}`;
@@ -267,7 +273,7 @@ export default function TransactionCard({
       }
     } else {
       // Shares нет: показываем долг только плательщику (ему должны вся сумма),
-      // остальным — «нет долга», чтобы не наврать.
+      // остальным — «нет долга».
       if (me === payer) {
         const sumStr = fmtNumberOnly(amountNum, tx.currency);
         statusText =
@@ -350,8 +356,8 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* Строка статуса долгов — ВСЕГДА С НОВОЙ СТРОКИ и ТОЛЬКО ДЛЯ РАСХОДОВ */}
-        {isExpense && statusText && (
+        {/* Строка статуса долгов — ВСЕГДА!!! С НОВОЙ СТРОКОЙ и ТОЛЬКО ДЛЯ РАСХОДОВ (когда есть currentUserId) */}
+        {isExpense && Number.isFinite(Number(currentUserId)) && (
           <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
             {statusText}
           </div>
