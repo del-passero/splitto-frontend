@@ -1,4 +1,3 @@
-// src/components/group/GroupTransactionsTab.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
@@ -7,14 +6,15 @@ import FiltersRow from "../FiltersRow";
 import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
-import TransactionCard from "../transactions/TransactionCard";
+import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
 
-// стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
 
 // API
 import { getTransactions } from "../../api/transactionsApi";
+import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
+import type { GroupMember } from "../../types/group_member";
 
 type Props = {
   loading: boolean;            // не используем — грузим сами
@@ -24,70 +24,82 @@ type Props = {
 
 const PAGE_SIZE = 20;
 
-const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd }: Props) => {
+const GroupTransactionsTab = (_props: Props) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [openCreate, setOpenCreate] = useState(false);
 
-  // groupId из урла — фильтрация выборки
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
 
-  // список групп (для модалки создания)
   const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? []);
 
-  // локальный стейт списка
   const [items, setItems] = useState<TransactionOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // участники группы (для имён/аватаров на карточках)
-  const [membersMap, setMembersMap] = useState<Map<number, any>>(new Map());
-  const [membersCount, setMembersCount] = useState<number>(0);
+  // --- участники группы ---
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const membersMap = useMemo(() => {
+    const m = new Map<number, GroupMemberLike>();
+    for (const gm of members || []) {
+      const uid = Number((gm as any)?.user?.id);
+      if (!Number.isFinite(uid)) continue;
+      const user = (gm as any).user || {};
+      const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.username || undefined;
+      m.set(uid, {
+        user: {
+          id: uid,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          username: user.username,
+          photo_url: user.photo_url,
+        },
+        name,
+        avatar_url: (gm as any).avatar_url ?? user.photo_url ?? undefined,
+      });
+    }
+    return m;
+  }, [members]);
 
-  // для отмены запросов/IO
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
   const lockRef = useRef(false);
 
-  // ключ пересборки при смене фильтров
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  // --- Загрузка участников группы (для отображения имён/аватаров) ---
+  // грузим ВСЕХ участников группы (пагинация твоего API)
   useEffect(() => {
-    setMembersMap(new Map());
-    setMembersCount(0);
     if (!groupId) return;
-
-    const controller = new AbortController();
+    let mounted = true;
     (async () => {
       try {
-        const resp = await fetch(`/api/group-members/group/${groupId}?offset=0&limit=200`, {
-          method: "GET",
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-        });
-        if (!resp.ok) return;
-        const list = await resp.json();
-        const map = new Map<number, any>();
-        if (Array.isArray(list)) {
-          for (const m of list) {
-            const u = (m && m.user) ? m.user : m;
-            const id = Number(u?.id);
-            if (Number.isFinite(id)) map.set(id, m);
-          }
-          setMembersCount(list.length);
+        const LIMIT = 200;
+        let offset = 0;
+        let all: GroupMember[] = [];
+        // первая страница
+        // твой API: getGroupMembers(groupId, offset?, limit?)
+        // возвращает { total, items }
+        // крутим до total
+        // (перестраховка на случай, если total отсутствует — выйдем по пустому items)
+        while (true) {
+          const { total, items } = await getGroupMembers(groupId, offset, LIMIT);
+          all = all.concat(items || []);
+          offset += (items?.length || 0);
+          if (!items?.length) break;
+          if (typeof total === "number" && all.length >= total) break;
         }
-        setMembersMap(map);
+        if (mounted) setMembers(all);
       } catch {
-        // без участников просто будут фоллбеки внутри карточки
+        if (mounted) setMembers([]);
       }
     })();
-
-    return () => controller.abort();
+    return () => {
+      mounted = false;
+    };
   }, [groupId]);
 
   // первичная загрузка / ресет при смене groupId
@@ -149,7 +161,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
       setTotal(newTotal);
 
-      // дедуп по id
       const map = new Map<number | string, TransactionOut>();
       for (const it of items) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
       for (const it of chunk) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
@@ -167,7 +178,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     }
   };
 
-  // IntersectionObserver: сентинел для инфинити-скролла
+  // IO: сентинел
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
@@ -196,9 +207,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     return items.filter((tx) => {
       const hay = [
         tx.comment,
-        (tx as any).category?.name, // для expense
-        (tx as any).from_name,      // если есть
-        (tx as any).to_name,        // если есть
+        (tx as any).category?.name,
+        (tx as any).from_name,
+        (tx as any).to_name,
         tx.currency,
         tx.amount?.toString(),
       ]
@@ -209,13 +220,12 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     });
   }, [items, search]);
 
-  const handleAddClick = () => setOpenCreate(true);
-
-  // при успешном создании — добавить в начало
-  const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
+  const handleCreated = (tx: TransactionOut) => {
+    setItems(prev => [tx, ...prev]);
+  };
 
   return (
-    <div className="relative w-full h-full min-h-[320px]">
+    <div className="relative w-full h-full min-h:[320px]">
       <FiltersRow search={search} setSearch={setSearch} />
 
       {error ? (
@@ -233,7 +243,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
               <TransactionCard
                 tx={tx}
                 membersById={membersMap}
-                groupMembersCount={membersCount}
+                groupMembersCount={members.length}
                 t={t}
               />
               {idx !== visible.length - 1 && (
@@ -241,7 +251,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
               )}
             </div>
           ))}
-          {/* сентинел */}
           <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
           {loading && items.length > 0 && (
             <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка…</div>
@@ -249,7 +258,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         </div>
       )}
 
-      <GroupFAB onClick={handleAddClick} />
+      <GroupFAB onClick={() => setOpenCreate(true)} />
 
       <CreateTransactionModal
         open={openCreate}
