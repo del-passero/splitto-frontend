@@ -18,13 +18,9 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** Если хотите — можно явно передать app user id; иначе возьмём из стора */
   currentUserId?: number;
 };
 
@@ -66,6 +62,26 @@ const fmtNumberOnly = (n: number, code?: string) => {
 
 const isFiniteNumber = (x: unknown): x is number =>
   typeof x === "number" && Number.isFinite(x);
+
+/** Символ для валюты (если не уверены в шрифте — вернём код) */
+const SYMBOL_BY_CODE: Record<string, string> = {
+  USD: "$", EUR: "€", RUB: "₽", GBP: "£", UAH: "₴", KZT: "₸", TRY: "₺",
+  JPY: "¥", CNY: "¥", PLN: "zł", CZK: "Kč", INR: "₹", AED: "د.إ",
+  KRW: "₩", VND: "₫", BRL: "R$", CAD: "C$", AUD: "A$", CHF: "Fr.", SEK: "kr", NOK: "kr", DKK: "kr", ZAR: "R",
+};
+const symbolOrCode = (code?: string) => {
+  const c = (code || "").trim().toUpperCase();
+  return c ? (SYMBOL_BY_CODE[c] || c) : "";
+};
+
+/** Нормализовать валютный знак в тексте, где в переводе прошит ₽ */
+const withCurrency = (text: string, code?: string) => {
+  const sym = symbolOrCode(code);
+  if (!text) return text;
+  if (text.includes("₽")) return text.replace(/₽/g, sym || "RUB");
+  // если в ключе не было символа — добавим в конец (пробел+символ/код)
+  return sym ? `${text} ${sym}` : text;
+};
 
 /* ---------- UI bits ---------- */
 
@@ -136,7 +152,7 @@ export default function TransactionCard({
 }: Props) {
   const isExpense = tx.type === "expense";
 
-  // Текущий пользователь — ВСЕГДА из вашего стора (внутренний app user id).
+  // Текущий пользователь — ВСЕГДА из стора
   const storeUserId = useUserStore((s: any) => s.user?.id);
   const currentUserId = typeof currentUserIdProp === "number" ? currentUserIdProp : storeUserId;
 
@@ -156,12 +172,9 @@ export default function TransactionCard({
   }, [tx.date, tx.created_at]);
 
   /* --- resolve people --- */
-  // payer (expense) or sender (transfer)
   const payerId: number | undefined = isExpense
     ? Number(tx.paid_by ?? tx.created_by ?? NaN)
-    : Number(
-        tx.transfer_from ?? tx.from_user_id ?? (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN)
-      );
+    : Number(tx.transfer_from ?? tx.from_user_id ?? (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN));
 
   const payerMember = getFromMap(membersById, payerId);
   const payerName =
@@ -212,7 +225,6 @@ export default function TransactionCard({
         participantsText = `${uniq.length}`;
       }
     } else if (tx.split_type === "equal" && groupMembersCount) {
-      // часто equal означает «все», если сервер не прислал shares
       participantsText = (t && t("tx_modal.all")) || "ВСЕ";
     }
   }
@@ -231,7 +243,6 @@ export default function TransactionCard({
     const payer = Number(payerId);
 
     if (Array.isArray(tx.shares) && tx.shares.length > 0) {
-      // Точная арифметика по долям: «моя доля» и «все кроме плательщика»
       let myShare = 0;
       let totalShares = 0;
       let payerShare = 0;
@@ -247,41 +258,26 @@ export default function TransactionCard({
         if (uid === payer) payerShare += val;
       }
 
-      // Бывает, что totalShares == 0 (на бэке пустые доли) — подстрахуемся
+      // сколько в сумме должны плательщику остальные участники
       const othersOweToPayer = Math.max(0, totalShares - payerShare);
 
       if (me === payer) {
-        if (othersOweToPayer > 0) {
-          const sumStr = fmtNumberOnly(othersOweToPayer, tx.currency);
-          statusText =
-            (t && t("group_participant_owes_you", { sum: sumStr })) ||
-            `Вам должны: ${sumStr}`;
-        } else {
-          statusText =
-            (t && t("group_participant_no_debt")) || "Нет долга";
-        }
+        const sumStr = fmtNumberOnly(othersOweToPayer, tx.currency); // только число
+        const base = (t && t("group_participant_owes_you", { sum: sumStr })) || `Вам должны: ${sumStr}`;
+        statusText = withCurrency(base, tx.currency); // аккуратно подставим нужную валюту вместо ₽
       } else {
-        if (myShare > 0) {
-          const sumStr = fmtNumberOnly(myShare, tx.currency);
-          statusText =
-            (t && t("group_participant_you_owe", { sum: sumStr })) ||
-            `Вы должны: ${sumStr}`;
-        } else {
-          statusText =
-            (t && t("group_participant_no_debt")) || "Нет долга";
-        }
+        const sumStr = fmtNumberOnly(myShare, tx.currency);
+        const base = (t && t("group_participant_you_owe", { sum: sumStr })) || `Вы должны: ${sumStr}`;
+        statusText = withCurrency(base, tx.currency);
       }
     } else {
-      // Shares нет: показываем долг только плательщику (ему должны вся сумма),
-      // остальным — «нет долга».
+      // Shares нет: плательщику должны вся сумму
       if (me === payer) {
         const sumStr = fmtNumberOnly(amountNum, tx.currency);
-        statusText =
-          (t && t("group_participant_owes_you", { sum: sumStr })) ||
-          `Вам должны: ${sumStr}`;
+        const base = (t && t("group_participant_owes_you", { sum: sumStr })) || `Вам должны: ${sumStr}`;
+        statusText = withCurrency(base, tx.currency);
       } else {
-        statusText =
-          (t && t("group_participant_no_debt")) || "Нет долга";
+        statusText = (t && t("group_participant_no_debt")) || "Нет долга";
       }
     }
   }
@@ -325,7 +321,7 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* second row (кто платил / участники или стрелка перевода) */}
+      {/* second row */}
       <div className="mt-2 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
@@ -346,7 +342,7 @@ export default function TransactionCard({
             )}
           </div>
         ) : (
-          // Для переводов статус ДОЛГОВ НЕ показываем.
+          // Переводы — просто «кто → кому», без долгов
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
@@ -356,8 +352,8 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* Строка статуса долгов — ВСЕГДА!!! С НОВОЙ СТРОКОЙ и ТОЛЬКО ДЛЯ РАСХОДОВ (когда есть currentUserId) */}
-        {isExpense && Number.isFinite(Number(currentUserId)) && (
+        {/* Строка статуса долгов — ВСЕГДА С НОВОЙ СТРОКИ и ТОЛЬКО ДЛЯ РАСХОДОВ */}
+        {isExpense && statusText && (
           <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
             {statusText}
           </div>
