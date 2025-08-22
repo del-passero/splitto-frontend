@@ -362,7 +362,7 @@ export default function TransactionCard({
             )}
           </div>
         ) : (
-          // Для переводов статус ДОЛГОВ НЕ показываем.
+          // Для переводов статус ДОЛГОВ НЕ показываем
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
