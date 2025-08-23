@@ -90,11 +90,40 @@ export async function getTransactions(params: {
   return { total, items }
 }
 
+/** Получить одну транзакцию */
+export async function getTransaction(transactionId: number): Promise<TransactionOut> {
+  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return await res.json()
+}
+
 /** Создать транзакцию */
 export async function createTransaction(payload: TransactionCreateRequest): Promise<TransactionOut> {
   // ВАЖНО: /transactions/ со слэшем — иначе FastAPI отдаёт 307
   const res = await fetch(makeUrl("/transactions/"), {
     method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return await res.json()
+}
+
+/** Обновить транзакцию */
+export async function updateTransaction(transactionId: number, payload: any): Promise<TransactionOut> {
+  // ВАЖНО: trailing slash, чтобы не ловить 307 и 405
+  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
+    method: "PUT",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
