@@ -1,5 +1,5 @@
 // src/pages/TransactionEditPage.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -52,7 +52,12 @@ async function fetchJson<T = any>(
   };
   const res = await fetch(input, { ...init, headers });
   if (!res.ok) throw new Error(await res.text());
-  return await res.json();
+  // некоторые DELETE могут вернуть 204
+  try {
+    return await res.json();
+  } catch {
+    return undefined as unknown as T;
+  }
 }
 
 /* ====================== ТИПЫ (минимум) ====================== */
@@ -218,30 +223,30 @@ function asRgbaFallback(color: string, alpha: number) {
   }
   return color;
 }
-function chipStyle(color?: string | null) {
+function chipStyle(color?: string | null): CSSProperties {
   if (!color) return {};
   const hex6 = to6Hex(color);
   if (hex6) {
     return {
       backgroundColor: hexWithAlpha(hex6, 0.13),
       border: `1px solid ${hexWithAlpha(hex6, 0.33)}`,
-    } as React.CSSProperties;
+    };
   }
-  return { backgroundColor: asRgbaFallback(color, 0.13) } as React.CSSProperties;
+  return { backgroundColor: asRgbaFallback(color, 0.13) };
 }
-function fillStyle(color?: string | null) {
+function fillStyle(color?: string | null): CSSProperties {
   if (!color) return {};
   const hex6 = to6Hex(color);
   if (hex6) {
     return {
       backgroundColor: hexWithAlpha(hex6, 0.1),
       borderRadius: 12,
-    } as React.CSSProperties;
+    };
   }
   return {
     backgroundColor: asRgbaFallback(color, 0.1),
     borderRadius: 12,
-  } as React.CSSProperties;
+  };
 }
 
 /* ====================== UI helpers ====================== */
@@ -377,7 +382,7 @@ export default function TransactionEditPage() {
   );
 
   // Форма (как в модалке)
-  const [type, setType] = useState<TxType>("expense");
+  const [type, setType] = useState<TxType>("expense"); // визуальный стейт; фактически заблокирован
   const [amount, setAmount] = useState<string>("");
   const [date, setDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10)
@@ -429,6 +434,8 @@ export default function TransactionEditPage() {
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
 
+  const lockedType: TxType | null = tx?.type ?? null;
+
   /* ---------- 1) Загрузка самой транзакции ---------- */
   useEffect(() => {
     let alive = true;
@@ -441,6 +448,7 @@ export default function TransactionEditPage() {
         if (!alive) return;
 
         setTx(data);
+        setType(data.type); // только для отображения
 
         // Группа
         let g: MinimalGroup | null = null;
@@ -520,14 +528,14 @@ export default function TransactionEditPage() {
     };
   }, [group?.id]);
 
-  /* ---------- 3) Префилд формы как в CreateTransactionModal ---------- */
+  /* ---------- 3) Одноразовый префилл на основе tx/group (НЕ ждём membersMap) ---------- */
   const didPrefillRef = useRef(false);
   useEffect(() => {
     if (didPrefillRef.current) return;
     if (!tx || !group) return;
 
     try {
-      setType(tx.type);
+      // базовые поля
       setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
 
@@ -562,32 +570,17 @@ export default function TransactionEditPage() {
         const payerId = Number(tx.paid_by ?? NaN);
         setPaidBy(Number.isFinite(payerId) ? payerId : undefined);
 
-        // Имя/аватар: сначала из tx, иначе из справочника группы
-        const payerFromMap = Number.isFinite(payerId)
-          ? membersMap.get(payerId)
-          : undefined;
-        const computedPayerName =
-          tx.paid_by_name ||
-          (payerFromMap ? nameFromMember(payerFromMap) : "") ||
-          "";
-        const computedPayerAvatar =
-          tx.paid_by_avatar || payerFromMap?.photo_url || undefined;
+        setPaidByName(tx.paid_by_name || ""); // имена уточним после загрузки membersMap
+        setPaidByAvatar(tx.paid_by_avatar || undefined);
 
-        setPaidByName(computedPayerName);
-        setPaidByAvatar(computedPayerAvatar);
-
-        // Shares -> Split.custom c именами/аватарами участников
+        // Shares -> Split.custom (имена/аватарки дольём после загрузки membersMap)
         const parts: any[] = Array.isArray(tx.shares)
-          ? tx.shares.map((s) => {
-              const uid = Number(s.user_id);
-              const m = membersMap.get(uid);
-              return {
-                user_id: uid,
-                name: m ? firstNameOnly(nameFromMember(m)) : "",
-                avatar_url: m?.photo_url || undefined,
-                amount: Number(s.amount) || 0,
-              };
-            })
+          ? tx.shares.map((s) => ({
+              user_id: Number(s.user_id),
+              name: "",            // дополним позже
+              avatar_url: undefined, // дополним позже
+              amount: Number(s.amount) || 0,
+            }))
           : [];
 
         setSplitData({ type: "custom", participants: parts } as any);
@@ -599,27 +592,63 @@ export default function TransactionEditPage() {
         setPaidBy(Number.isFinite(fromId) ? fromId : undefined);
         setToUser(Number.isFinite(toId) ? toId : undefined);
 
-        const fromM = Number.isFinite(fromId) ? membersMap.get(fromId) : undefined;
-        const toM = Number.isFinite(toId) ? membersMap.get(toId) : undefined;
-
-        setPaidByName(
-          tx.from_name || (fromM ? nameFromMember(fromM) : "") || ""
-        );
-        setToUserName(tx.to_name || (toM ? nameFromMember(toM) : "") || "");
-        setPaidByAvatar(tx.from_avatar || fromM?.photo_url || undefined);
-        setToUserAvatar(tx.to_avatar || toM?.photo_url || undefined);
+        setPaidByName(tx.from_name || "");
+        setToUserName(tx.to_name || "");
+        setPaidByAvatar(tx.from_avatar || undefined);
+        setToUserAvatar(tx.to_avatar || undefined);
       }
 
       didPrefillRef.current = true;
     } catch {
       // ignore
     }
+    // важно: не зависим от membersMap, чтобы не «захлопнуть» префилл раньше времени
+  }, [tx, group]);
+
+  /* ---------- 4) Доливка имён/аватарок, когда подъехал membersMap ---------- */
+  useEffect(() => {
+    if (!tx) return;
+
+    // Плательщик / отправитель
+    if (paidBy) {
+      const m = membersMap.get(paidBy);
+      if (m) {
+        if (!paidByName) setPaidByName(nameFromMember(m));
+        if (!paidByAvatar && m.photo_url) setPaidByAvatar(m.photo_url);
+      }
+    }
+
+    // Получатель (перевод)
+    if (tx.type === "transfer" && toUser) {
+      const m = membersMap.get(toUser);
+      if (m) {
+        if (!toUserName) setToUserName(nameFromMember(m));
+        if (!toUserAvatar && m.photo_url) setToUserAvatar(m.photo_url);
+      }
+    }
+
+    // Участники сплита
+    if (tx.type === "expense" && splitData?.participants?.length) {
+      const updated = splitData.participants.map((p: any) => {
+        if (p.name && p.avatar_url) return p;
+        const m = membersMap.get(p.user_id);
+        if (!m) return p;
+        return {
+          ...p,
+          name: p.name || firstNameOnly(nameFromMember(m)),
+          avatar_url: p.avatar_url || m.photo_url,
+        };
+      });
+
+      // обновим только если что-то реально добавили
+      const needUpdate =
+        JSON.stringify(updated) !== JSON.stringify(splitData.participants);
+      if (needUpdate) setSplitData({ ...splitData, participants: updated });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tx, group, membersMap]);
+  }, [membersMap]);
 
-  /* ---------- ДЕЙСТВИЯ ---------- */
-
-  const goBack = () => navigate(-1);
+  /* ---------- ВСПОМОГАТЕЛЬНОЕ ---------- */
 
   const handleSelectCategory = (
     it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>
@@ -637,16 +666,35 @@ export default function TransactionEditPage() {
     setCategoryIcon((it as any).icon ?? null);
   };
 
+  function buildShares(sel: SplitSelection | null | undefined, total: number, decimals: number): Array<{ user_id: number; amount: number }> {
+    if (!sel) return [];
+    if (sel.type === "custom") {
+      return sel.participants.map((p: any) => ({
+        user_id: Number(p.user_id),
+        amount: Number(toFixedSafe(String(p.amount || 0), decimals)),
+      }));
+    }
+    // для equal/shares рассчитаем суммы через computePerPerson
+    const list = computePerPerson(sel, total, decimals);
+    return list.map((p) => ({
+      user_id: Number(p.user_id),
+      amount: Number(toFixedSafe(String(p.amount || 0), decimals)),
+    }));
+  }
+
+  const goBack = () => navigate(-1);
+
   // Сохранение (PUT)
   const doSave = async () => {
-    if (!tx) return;
-    if (!group?.id) return;
+    if (!tx || !group?.id) return;
 
     try {
       setSaving(true);
       const gid = group.id;
+      const amt = Number(toFixedSafe(amount || "0", currency.decimals));
+      const curr = currency.code || tx.currency || "";
 
-      if (type === "expense") {
+      if (tx.type === "expense") {
         const payerId = paidBy ?? user?.id;
         if (!payerId) {
           setPayerOpen(true);
@@ -657,20 +705,13 @@ export default function TransactionEditPage() {
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: Number(toFixedSafe(amount || "0", currency.decimals)),
-          currency: currency.code || tx.currency || "",
+          amount: amt,
+          currency: curr,
           date,
-          comment: (comment || "").trim(),
+          comment: (comment || "").trim() || null,
           paid_by: payerId,
-          category: categoryId
-            ? {
-                id: categoryId,
-                name: categoryName || "",
-                color: categoryColor,
-                icon: categoryIcon || undefined,
-              }
-            : undefined,
-          split: normalizeSplit(splitData),
+          category_id: categoryId ?? null,
+          shares: buildShares(splitData, amt, currency.decimals),
         };
 
         await fetchJson(`${API_URL}/transactions/${tx.id}`, {
@@ -682,20 +723,22 @@ export default function TransactionEditPage() {
         if (!paidBy || !toUser || paidBy === toUser) {
           if (!paidBy) setPayerOpen(true);
           else if (!toUser) setRecipientOpen(true);
-          return setSaving(false);
+          setSaving(false);
+          return;
         }
         const payload: any = {
           type: "transfer",
           group_id: gid,
-          amount: Number(toFixedSafe(amount || "0", currency.decimals)),
-          currency: currency.code || tx.currency || "",
+          amount: amt,
+          currency: curr,
           date,
+          comment: (comment || "").trim() || null,
           from_user_id: paidBy,
           to_user_id: toUser,
-          from_name: paidByName,
-          to_name: toUserName,
-          from_avatar: paidByAvatar,
-          to_avatar: toUserAvatar,
+          from_name: paidByName || null,
+          to_name: toUserName || null,
+          from_avatar: paidByAvatar || null,
+          to_avatar: toUserAvatar || null,
         };
         await fetchJson(`${API_URL}/transactions/${tx.id}`, {
           method: "PUT",
@@ -706,8 +749,32 @@ export default function TransactionEditPage() {
 
       goBack();
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("[TransactionEditPage] save error", e);
+      setError(t("save_failed") || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Удаление
+  const doDelete = async () => {
+    if (!tx) return;
+    const yes =
+      window.confirm(
+        (t("tx_modal.delete_confirm") as string) ||
+          "Удалить транзакцию? Это действие необратимо."
+      );
+    if (!yes) return;
+
+    try {
+      setSaving(true);
+      await fetchJson(`${API_URL}/transactions/${tx.id}`, {
+        method: "DELETE",
+      });
+      goBack();
+    } catch (e) {
+      console.error("[TransactionEditPage] delete error", e);
+      setError(t("delete_failed") || "Delete failed");
     } finally {
       setSaving(false);
     }
@@ -755,7 +822,7 @@ export default function TransactionEditPage() {
           <ArrowLeft className="w-5 h-5 text-[var(--tg-hint-color)]" />
         </button>
         <div className="text-[17px] font-bold text-[var(--tg-text-color)]">
-          {type === "expense" ? t("tx_modal.expense") : t("tx_modal.transfer")}
+          {lockedType === "expense" ? t("tx_modal.expense") : t("tx_modal.transfer")}
         </div>
         <div className="w-7" />
       </div>
@@ -777,16 +844,18 @@ export default function TransactionEditPage() {
           </CardSection>
         </div>
 
-        {/* Тип */}
+        {/* Тип — ЗАБЛОКИРОВАН (только отображение) */}
         <div className="-mx-3">
           <CardSection className="py-0.5">
             <div className="px-3 pb-0.5 flex justify-center">
-              <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
+              <div
+                className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden pointer-events-none opacity-70"
+                title={t("tx_modal.type_locked") || "Тип транзакции изменить нельзя"}
+              >
                 <button
                   type="button"
-                  onClick={() => setType("expense")}
                   className={`px-3 h-9 text-[13px] flex items-center ${
-                    type === "expense"
+                    lockedType === "expense"
                       ? "bg-[var(--tg-accent-color,#40A7E3)] text-white"
                       : "text-[var(--tg-text-color)] bg-transparent"
                   }`}
@@ -796,9 +865,8 @@ export default function TransactionEditPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType("transfer")}
                   className={`px-3 h-9 text-[13px] flex items-center ${
-                    type === "transfer"
+                    lockedType === "transfer"
                       ? "bg-[var(--tg-accent-color,#40A7E3)] text-white"
                       : "text-[var(--tg-text-color)] bg-transparent"
                   }`}
@@ -840,7 +908,7 @@ export default function TransactionEditPage() {
         </div>
 
         {/* EXPENSE */}
-        {type === "expense" ? (
+        {lockedType === "expense" ? (
           <>
             {/* Категория + Комментарий */}
             <div className="-mx-3">
@@ -1015,7 +1083,7 @@ export default function TransactionEditPage() {
         ) : null}
 
         {/* TRANSFER */}
-        {type === "transfer" ? (
+        {lockedType === "transfer" ? (
           <>
             <div className="-mx-3">
               <CardSection className="py-0">
@@ -1177,8 +1245,18 @@ export default function TransactionEditPage() {
                 className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-10"
                 onMouseLeave={() => setMoreOpen(false)}
               >
-                {/* сюда можно будет добавить «Удалить», если потребуется */}
-                <div className="px-3 py-2.5 text-[13px] text-[var(--tg-hint-color)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    void doDelete();
+                  }}
+                  className="w-full text-left px-3 py-2.5 text-[13px] hover:bg-black/5 dark:hover:bg-white/5 rounded-t-xl"
+                >
+                  {t("delete") || "Удалить"}
+                </button>
+
+                <div className="px-3 py-2.5 text-[13px] text-[var(--tg-hint-color)] border-t border-[var(--tg-secondary-bg-color,#e7e7e7)] rounded-b-xl">
                   {t("more_actions") || "Доп. действия"}
                 </div>
               </div>
@@ -1189,7 +1267,7 @@ export default function TransactionEditPage() {
 
       {/* Category picker */}
       <CategoryPickerModal
-        open={type === "expense" && categoryModal}
+        open={lockedType === "expense" && categoryModal}
         onClose={() => setCategoryModal(false)}
         groupId={group?.id || 0}
         selectedId={categoryId}
@@ -1237,7 +1315,7 @@ export default function TransactionEditPage() {
 
       {/* Split picker (expense) */}
       <SplitPickerModal
-        open={splitOpen && !!group?.id && type === "expense"}
+        open={splitOpen && !!group?.id && lockedType === "expense"}
         onClose={() => setSplitOpen(false)}
         groupId={group?.id || 0}
         amount={Number(toFixedSafe(amount || "0", currency.decimals))}
@@ -1255,36 +1333,4 @@ export default function TransactionEditPage() {
       />
     </div>
   );
-}
-
-/* ====================== ВСПОМОГАТЕЛЬНАЯ ====================== */
-function normalizeSplit(sel: SplitSelection | null | undefined): SplitSelection | null {
-  if (!sel) return null;
-  if (sel.type === "equal") {
-    return {
-      type: "equal",
-      participants: sel.participants.map((p) => ({
-        ...p,
-        avatar_url: p.avatar_url || undefined,
-      })),
-    };
-  }
-  if (sel.type === "shares") {
-    return {
-      type: "shares",
-      participants: sel.participants.map((p) => ({
-        ...p,
-        avatar_url: p.avatar_url || undefined,
-        share: (p as any).share || 0,
-      })),
-    };
-  }
-  return {
-    type: "custom",
-    participants: sel.participants.map((p) => ({
-      ...p,
-      avatar_url: p.avatar_url || undefined,
-      amount: (p as any).amount || 0,
-    })),
-  };
 }
