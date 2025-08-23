@@ -1,4 +1,7 @@
 // src/api/transactionsApi.ts
+// API транзакций: список/создание/удаление.
+// Везде подставляем x-telegram-initdata. Формат ответа для списка: читаем массив и заголовок X-Total-Count.
+
 import type {
   TransactionOut,
   TransactionCreateRequest,
@@ -9,6 +12,9 @@ const RAW_API_URL =
   import.meta.env.VITE_API_URL ||
   "https://splitto-backend-prod-ugraf.amvera.io/api"
 
+// Нормализуем базовый URL:
+// - всегда апгрейдим до HTTPS, кроме localhost/127.0.0.1
+// - срезаем хвостовые слэши
 const API_BASE = (() => {
   const raw = RAW_API_URL.replace(/\/+$/, "")
   try {
@@ -25,6 +31,7 @@ const API_BASE = (() => {
   }
 })()
 
+// Склейка пути и query без двойных слэшей и без "/?"
 function makeUrl(path: string, qs?: string) {
   const base = API_BASE.replace(/\/+$/, "")
   const p = path.startsWith("/") ? path : `/${path}`
@@ -33,41 +40,9 @@ function makeUrl(path: string, qs?: string) {
   return url
 }
 
-// НАДЁЖНО достаём initData из WebApp/URL, чтобы пережить сбои WebSocket у Telegram Web.
 function getTelegramInitData(): string {
-  // прямой доступ
   // @ts-ignore
-  const webApp = window?.Telegram?.WebApp
-  const direct = webApp?.initData
-  if (direct && typeof direct === "string" && direct.length > 0) return direct
-
-  // иногда доступно в initDataUnsafe
-  const unsafe = webApp?.initDataUnsafe as any
-  if (unsafe && typeof unsafe === "object" && typeof unsafe.query_id === "string") {
-    // initDataUnsafe не содержит полноценную строку initData — пропускаем
-  }
-
-  // из URL (hash/search) — web.telegram.org добавляет tgWebAppData
-  const tryExtract = (src: string) => {
-    const m1 = src.match(/(?:^|[?#&])tgWebAppData=([^&]+)/)
-    if (m1) return decodeURIComponent(m1[1])
-    const m2 = src.match(/(?:^|[?#&])tgWebAppDataUrlEncoded=([^&]+)/)
-    if (m2) return decodeURIComponent(m2[1])
-    return ""
-  }
-  const fromHash = tryExtract(location.hash)
-  if (fromHash) return fromHash
-  const fromSearch = tryExtract(location.search)
-  if (fromSearch) return fromSearch
-
-  try {
-    const spHash = new URLSearchParams(location.hash.replace(/^#/, ""))
-    const spSearch = new URLSearchParams(location.search)
-    const d = spHash.get("tgWebAppData") || spSearch.get("tgWebAppData")
-    if (d) return d
-  } catch { /* ignore */ }
-
-  return ""
+  return window?.Telegram?.WebApp?.initData || ""
 }
 
 function buildQuery(params: Record<string, unknown>) {
@@ -80,6 +55,7 @@ function buildQuery(params: Record<string, unknown>) {
   return sp.toString()
 }
 
+/** Получить транзакции с пагинацией и фильтрами. Возвращает { total, items } */
 export async function getTransactions(params: {
   groupId?: number
   userId?: number
@@ -96,6 +72,7 @@ export async function getTransactions(params: {
     limit: params.limit ?? 20,
   })
 
+  // ВАЖНО: список — со слэшем (роутер: @router.get("/"))
   const res = await fetch(makeUrl("/transactions/", qs), {
     method: "GET",
     credentials: "include",
@@ -112,8 +89,10 @@ export async function getTransactions(params: {
   return { total, items }
 }
 
+/** Получить одну транзакцию */
 export async function getTransaction(transactionId: number): Promise<TransactionOut> {
-  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
+  // ВАЖНО: item — БЕЗ конечного слэша (роутер: @router.get("/{transaction_id}"))
+  const res = await fetch(makeUrl(`/transactions/${transactionId}`), {
     method: "GET",
     credentials: "include",
     headers: {
@@ -124,7 +103,9 @@ export async function getTransaction(transactionId: number): Promise<Transaction
   return await res.json()
 }
 
+/** Создать транзакцию */
 export async function createTransaction(payload: TransactionCreateRequest): Promise<TransactionOut> {
+  // ВАЖНО: коллекция — со слэшем (роутер: @router.post("/"))
   const res = await fetch(makeUrl("/transactions/"), {
     method: "POST",
     credentials: "include",
@@ -138,8 +119,10 @@ export async function createTransaction(payload: TransactionCreateRequest): Prom
   return await res.json()
 }
 
+/** Обновить транзакцию */
 export async function updateTransaction(transactionId: number, payload: any): Promise<TransactionOut> {
-  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
+  // ВАЖНО: item — БЕЗ конечного слэша (роутер: @router.put("/{transaction_id}"))
+  const res = await fetch(makeUrl(`/transactions/${transactionId}`), {
     method: "PUT",
     credentials: "include",
     headers: {
@@ -152,8 +135,10 @@ export async function updateTransaction(transactionId: number, payload: any): Pr
   return await res.json()
 }
 
+/** Удалить транзакцию (soft delete на бэке) */
 export async function removeTransaction(transactionId: number): Promise<void> {
-  const res = await fetch(makeUrl(`/transactions/${transactionId}/`), {
+  // ВАЖНО: item — БЕЗ конечного слэша (роутер: @router.delete("/{transaction_id}"))
+  const res = await fetch(makeUrl(`/transactions/${transactionId}`), {
     method: "DELETE",
     credentials: "include",
     headers: {
