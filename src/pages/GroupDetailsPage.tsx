@@ -3,9 +3,11 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+
 import { getGroupDetails } from "../api/groupsApi"
 import { getGroupMembers } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
+
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
 
@@ -27,7 +29,7 @@ const GroupDetailsPage = () => {
   const { groupId } = useParams()
   const id = Number(groupId)
 
-  // Групповой стейт
+  // Группа
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,23 +41,21 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы — по умолчанию открыт "Баланс"
+  // Табы
   const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("balance")
 
-  // User
+  // Текущий пользователь
   const user = useUserStore(state => state.user)
   const currentUserId = user?.id ?? 0
 
-  // Модалка добавления участников
+  // Модалки
   const [addOpen, setAddOpen] = useState(false)
-
-  // Модалка создания транзакции (для этой группы — автоподстановка groupId)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Заглушки для ленты транзакций (баланс считает сам контейнер)
+  // Заглушка для списка транзакций (список здесь не грузим — грузит таб)
   const transactions: any[] = []
 
-  // Загрузка деталей группы
+  // Детали группы
   useEffect(() => {
     const fetchGroup = async () => {
       try {
@@ -72,7 +72,7 @@ const GroupDetailsPage = () => {
     if (id) fetchGroup()
   }, [id])
 
-  // Загрузка участников (с пагинацией)
+  // Подгрузка участников
   const loadMembers = useCallback(async () => {
     if (!id || membersLoading || !hasMore) return
     try {
@@ -80,6 +80,7 @@ const GroupDetailsPage = () => {
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
       const newItems = res.items || []
       setMembers(prev => [...prev, ...newItems])
+
       const currentCount = (page * PAGE_SIZE) + newItems.length
       setHasMore(currentCount < (res.total || 0))
       setPage(p => p + 1)
@@ -97,10 +98,10 @@ const GroupDetailsPage = () => {
     setHasMore(true)
   }, [id])
 
-  // Первичная загрузка
+  // Первичная загрузка участников
   useEffect(() => {
     loadMembers()
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   // Инфинити-скролл для участников
@@ -115,7 +116,7 @@ const GroupDetailsPage = () => {
     return () => observer.disconnect()
   }, [membersLoading, hasMore, loadMembers])
 
-  // Действия
+  // Навигация
   const handleSettingsClick = () => {
     if (!group) return
     navigate(`/groups/${group.id}/settings`)
@@ -162,7 +163,7 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки и содержимое */}
+      {/* Вкладки и контент */}
       <CardSection className="px-0 py-0 mb-2">
         <GroupTabs
           selected={selectedTab}
@@ -177,12 +178,17 @@ const GroupDetailsPage = () => {
               onAddTransaction={() => setCreateTxOpen(true)}
             />
           )}
-          {selectedTab === "balance" && <GroupBalanceTab />}
+
+          {selectedTab === "balance" && (
+            // Новый умный таб сам грузит транзакции и считает долги — без пропов.
+            <GroupBalanceTab />
+          )}
+
           {selectedTab === "analytics" && <GroupAnalyticsTab />}
         </div>
       </CardSection>
 
-      {/* Loader для инфинити-скролла */}
+      {/* Сентинел для участников */}
       {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
 
       {/* Модалка добавления участников */}
@@ -191,10 +197,10 @@ const GroupDetailsPage = () => {
         onClose={() => setAddOpen(false)}
         groupId={id}
         existingMemberIds={existingMemberIds}
-        onAdded={() => {/* reload внутри модалки */}}
+        onAdded={() => { /* перезагрузишь при необходимости */ }}
       />
 
-      {/* Модалка создания транзакции — для текущей группы автоподстановка */}
+      {/* Модалка создания транзакции — текущая группа передаётся в props */}
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}
@@ -202,7 +208,7 @@ const GroupDetailsPage = () => {
         groups={group ? [{
           id: group.id,
           name: group.name,
-          // @ts-ignore: необязательные поля, если есть в типе
+          // @ts-ignore — если есть в типе
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,
