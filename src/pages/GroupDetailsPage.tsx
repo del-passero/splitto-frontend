@@ -13,7 +13,8 @@ import GroupHeader from "../components/group/GroupHeader"
 import ParticipantsScroller from "../components/group/ParticipantsScroller"
 import GroupTabs from "../components/group/GroupTabs"
 import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
-import GroupBalanceTab from "../components/group/GroupBalanceTab"
+// ⛔ УБРАНО: import GroupBalanceTab from "../components/group/GroupBalanceTab"
+import GroupBalanceTabSmart from "../components/group/GroupBalanceTabSmart" // ✅ новая «умная» вкладка
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
@@ -144,6 +145,13 @@ const GroupDetailsPage = () => {
 
   const existingMemberIds = members.map(m => m.user.id)
 
+  // Аккуратно получаем валюту группы (как в других местах)
+  const groupCurrency =
+    (group as any)?.default_currency_code ||
+    (group as any)?.currency_code ||
+    (group as any)?.currency ||
+    null
+
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
       {/* Шапка группы */}
@@ -163,7 +171,7 @@ const GroupDetailsPage = () => {
         loadMore={loadMembers}
         hasMore={hasMore}
         loading={membersLoading}
-        ownerId={group.owner_id}   // ← НОВОЕ
+        ownerId={group.owner_id}
       />
 
       {/* Вкладки и содержимое — внутри одного CardSection */}
@@ -182,12 +190,13 @@ const GroupDetailsPage = () => {
             />
           )}
           {selectedTab === "balance" && (
-            <GroupBalanceTab
+            <GroupBalanceTabSmart
               myBalance={myBalance}
               myDebts={myDebts}
               allDebts={allDebts}
               loading={false}
               onFabClick={() => setCreateTxOpen(true)}
+              currency={groupCurrency}
             />
           )}
           {selectedTab === "analytics" && <GroupAnalyticsTab />}
@@ -218,6 +227,7 @@ const GroupDetailsPage = () => {
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,
+          // при желании можно прокинуть валюту, но модалка сама её резолвит
         }] : []}
       />
     </div>
