@@ -13,8 +13,7 @@ import GroupHeader from "../components/group/GroupHeader"
 import ParticipantsScroller from "../components/group/ParticipantsScroller"
 import GroupTabs from "../components/group/GroupTabs"
 import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
-// ⛔ УБРАНО: import GroupBalanceTab from "../components/group/GroupBalanceTab"
-import GroupBalanceTabSmart from "../components/group/GroupBalanceTabSmart" // ✅ новая «умная» вкладка
+import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
@@ -53,11 +52,8 @@ const GroupDetailsPage = () => {
   // Модалка создания транзакции (для этой группы — автоподстановка groupId)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Заглушки (долги/балансы/транзакции — подставишь реальные позже)
+  // Заглушки для ленты транзакций (баланс считает сам контейнер)
   const transactions: any[] = []
-  const myBalance = 0
-  const myDebts: any[] = []
-  const allDebts: any[] = []
 
   // Загрузка деталей группы
   useEffect(() => {
@@ -84,7 +80,6 @@ const GroupDetailsPage = () => {
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
       const newItems = res.items || []
       setMembers(prev => [...prev, ...newItems])
-      // есть ли ещё страницы: считаем по total
       const currentCount = (page * PAGE_SIZE) + newItems.length
       setHasMore(currentCount < (res.total || 0))
       setPage(p => p + 1)
@@ -145,13 +140,6 @@ const GroupDetailsPage = () => {
 
   const existingMemberIds = members.map(m => m.user.id)
 
-  // Аккуратно получаем валюту группы (как в других местах)
-  const groupCurrency =
-    (group as any)?.default_currency_code ||
-    (group as any)?.currency_code ||
-    (group as any)?.currency ||
-    null
-
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
       {/* Шапка группы */}
@@ -174,7 +162,7 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки и содержимое — внутри одного CardSection */}
+      {/* Вкладки и содержимое */}
       <CardSection className="px-0 py-0 mb-2">
         <GroupTabs
           selected={selectedTab}
@@ -189,16 +177,7 @@ const GroupDetailsPage = () => {
               onAddTransaction={() => setCreateTxOpen(true)}
             />
           )}
-          {selectedTab === "balance" && (
-            <GroupBalanceTabSmart
-              myBalance={myBalance}
-              myDebts={myDebts}
-              allDebts={allDebts}
-              loading={false}
-              onFabClick={() => setCreateTxOpen(true)}
-              currency={groupCurrency}
-            />
-          )}
+          {selectedTab === "balance" && <GroupBalanceTab />}
           {selectedTab === "analytics" && <GroupAnalyticsTab />}
         </div>
       </CardSection>
@@ -223,11 +202,10 @@ const GroupDetailsPage = () => {
         groups={group ? [{
           id: group.id,
           name: group.name,
-          // @ts-ignore: опциональные поля, если есть в типе
+          // @ts-ignore: необязательные поля, если есть в типе
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,
-          // при желании можно прокинуть валюту, но модалка сама её резолвит
         }] : []}
       />
     </div>
