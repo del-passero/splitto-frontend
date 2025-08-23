@@ -46,17 +46,11 @@ type TxOut = {
   paid_by?: number | null;
   shares?: TxShare[];
 
-  // transfer-only
-  from_user_id?: number | null;
-  to_user_id?: number | null;
-  from_name?: string | null;
-  to_name?: string | null;
-  from_avatar?: string | null;
-  to_avatar?: string | null;
+  // transfer-only (СОВПАДАЕТ С БЭКОМ)
+  transfer_from?: number | null;
+  transfer_to?: number[] | null;
 
   created_at?: string;
-  paid_by_name?: string | null;
-  paid_by_avatar?: string | null;
 };
 
 export interface MinimalGroup {
@@ -80,7 +74,7 @@ type MemberMini = {
 
 const SYMBOL_BY_CODE: Record<string, string> = {
   USD: "$", EUR: "€", RUB: "₽", GBP: "£", UAH: "₴", KZT: "₸", TRY: "₺",
-  JPY: "¥", CNY: "¥", PLN: "zł", CZK: "Kč", INR: "₹", AED: "د.إ",
+  JPY: "¥", CNY: "¥", PLN: "zł", CZK: "Kč", INR: "₹", AED: "د.إ", KRW: "₩", VND: "₫",
 };
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
@@ -105,8 +99,12 @@ function makeCurrency(g?: MinimalGroup | null, fallbackCode?: string | null) {
   };
 }
 
-function parseAmountInput(raw: string): string {
+function parseAmountInput(raw: string, decimalsLimit = 2): string {
   let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
+  if (decimalsLimit === 0) {
+    // для валют без копеек — только цифры
+    return s.replace(/\./g, "");
+  }
   const firstDot = s.indexOf(".");
   if (firstDot !== -1) {
     const head = s.slice(0, firstDot + 1);
@@ -115,14 +113,14 @@ function parseAmountInput(raw: string): string {
   }
   if (s.includes(".")) {
     const [int, dec] = s.split(".");
-    s = int + "." + dec.slice(0, 2);
+    s = int + "." + dec.slice(0, decimalsLimit);
   }
   return s;
 }
 function toFixedSafe(s: string, decimals = 2): string {
-  if (!s) return "";
+  if (!s) return decimals ? "" : "0";
   const n = Number(s);
-  if (!isFinite(n)) return "";
+  if (!isFinite(n)) return decimals ? "" : "0";
   return n.toFixed(decimals);
 }
 function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
@@ -289,7 +287,7 @@ export default function TransactionEditPage() {
           g = {
             id: data.group_id,
             name: `#${data.group_id}`,
-            default_currency_code: data.currency,
+            default_currency_code: (data as any).currency,
           } as any;
         }
         if (!alive) return;
@@ -346,7 +344,8 @@ export default function TransactionEditPage() {
     if (didPrefillRef.current) return;
     if (!tx || !group) return;
     try {
-      setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
+      setDate((tx.date || (tx as any).created_at || new Date().toISOString()).slice(0, 10));
+
       setComment(tx.comment || "");
 
       const dec = makeCurrency(group, tx.currency).decimals;
@@ -375,8 +374,6 @@ export default function TransactionEditPage() {
 
         const payerId = Number(tx.paid_by ?? NaN);
         setPaidBy(Number.isFinite(payerId) ? payerId : undefined);
-        setPaidByName(tx.paid_by_name || "");
-        setPaidByAvatar(tx.paid_by_avatar || undefined);
 
         const parts: any[] = Array.isArray(tx.shares)
           ? tx.shares.map((s) => ({
@@ -388,14 +385,19 @@ export default function TransactionEditPage() {
           : [];
         setSplitData({ type: "custom", participants: parts } as any);
       } else {
-        const fromId = Number(tx.from_user_id ?? NaN);
-        const toId = Number(tx.to_user_id ?? NaN);
+        // === TRANSFER ===  корректные поля с бэка
+        const fromId = Number((tx as any).transfer_from ?? NaN);
+        const toArr = (tx as any).transfer_to as number[] | null | undefined;
+        const toId = Number(toArr && toArr.length ? toArr[0] : NaN);
+
         setPaidBy(Number.isFinite(fromId) ? fromId : undefined);
         setToUser(Number.isFinite(toId) ? toId : undefined);
-        setPaidByName(tx.from_name || "");
-        setToUserName(tx.to_name || "");
-        setPaidByAvatar(tx.from_avatar || undefined);
-        setToUserAvatar(tx.to_avatar || undefined);
+
+        // имена/аватары подтянем после загрузки участников
+        setPaidByName("");
+        setToUserName("");
+        setPaidByAvatar(undefined);
+        setToUserAvatar(undefined);
       }
 
       didPrefillRef.current = true;
@@ -464,12 +466,12 @@ export default function TransactionEditPage() {
     sel: SplitSelection | null | undefined,
     total: number,
     decimals: number
-  ): Array<{ user_id: number; amount: number; shares?: number | null }> {
+  ): Array<{ user_id: number; amount: string; shares?: number | null }> {
     if (!sel) return [];
     if (sel.type === "custom") {
       return sel.participants.map((p: any) => ({
         user_id: Number(p.user_id),
-        amount: Number(toFixedSafe(String(p.amount || 0), decimals)),
+        amount: toFixedSafe(String(p.amount || 0), decimals),
         shares: null,
       }));
     }
@@ -481,14 +483,14 @@ export default function TransactionEditPage() {
       }
       return list.map((p) => ({
         user_id: Number(p.user_id),
-        amount: Number(toFixedSafe(String(p.amount || 0), decimals)),
+        amount: toFixedSafe(String(p.amount || 0), decimals),
         shares: sharesByUser.get(Number(p.user_id)) || null,
       }));
     }
     // equal
     return list.map((p) => ({
       user_id: Number(p.user_id),
-      amount: Number(toFixedSafe(String(p.amount || 0), decimals)),
+      amount: toFixedSafe(String(p.amount || 0), decimals),
       shares: null,
     }));
   }
@@ -619,7 +621,6 @@ export default function TransactionEditPage() {
             <ArrowLeft className="w-5 h-5 text-[var(--tg-hint-color)]" />
           </button>
           <div className="text-[17px] font-bold text-[var(--tg-text-color)]">
-            {/* без вывода типа/группы */}
             {t("edit") || "Edit"}
           </div>
           <div className="w-7" />
@@ -642,9 +643,9 @@ export default function TransactionEditPage() {
                   )}
                   <input
                     inputMode="decimal"
-                    placeholder="0.00"
+                    placeholder={currency.decimals ? "0.00" : "0"}
                     value={amount}
-                    onChange={(e) => setAmount(parseAmountInput(e.target.value))}
+                    onChange={(e) => setAmount(parseAmountInput(e.target.value, currency.decimals))}
                     onBlur={() =>
                       setAmount((prev) => toFixedSafe(prev, currency.decimals))
                     }

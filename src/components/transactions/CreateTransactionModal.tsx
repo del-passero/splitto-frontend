@@ -12,8 +12,8 @@ import { useGroupsStore } from "../../store/groupsStore";
 import CategoryPickerModal from "../category/CategoryPickerModal";
 import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
-import { useTransactionsStore } from "../../store/transactionsStore";
 import type { TransactionOut } from "../../types/transaction";
+import { createTransaction, updateTransaction } from "../../api/transactionsApi";
 
 export type TxType = "expense" | "transfer";
 
@@ -107,7 +107,10 @@ function SelectedGroupPill({
   );
 }
 
-const SYMBOL_BY_CODE: Record<string, string> = { USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺", JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ" };
+const SYMBOL_BY_CODE: Record<string, string> = {
+  USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺",
+  JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ"
+};
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
 function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string | null {
@@ -127,7 +130,8 @@ function makeCurrency(g?: MinimalGroup | null) {
   };
 }
 
-function parseAmountInput(raw: string): string {
+// Ввод суммы с ограничением дробной части по валюте
+function parseAmountInput(raw: string, decimals: number): string {
   let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
   const firstDot = s.indexOf(".");
   if (firstDot !== -1) {
@@ -135,9 +139,12 @@ function parseAmountInput(raw: string): string {
     const tail = s.slice(firstDot + 1).replace(/\./g, "");
     s = head + tail;
   }
-  if (s.includes(".")) {
+  if (decimals === 0) {
+    // валюты без копеек — только целые
+    s = s.replace(/\./g, "");
+  } else if (s.includes(".")) {
     const [int, dec] = s.split(".");
-    s = int + "." + dec.slice(0, 2);
+    s = int + "." + dec.slice(0, decimals);
   }
   return s;
 }
@@ -195,25 +202,6 @@ function fillStyle(color?: string | null) {
   }
   return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as React.CSSProperties;
 }
-function normalizeSplit(sel: SplitSelection | null | undefined): SplitSelection | null {
-  if (!sel) return null;
-  if (sel.type === "equal") {
-    return {
-      type: "equal",
-      participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined })),
-    };
-  }
-  if (sel.type === "shares") {
-    return {
-      type: "shares",
-      participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined, share: p.share || 0 })),
-    };
-  }
-  return {
-    type: "custom",
-    participants: sel.participants.map(p => ({ ...p, avatar_url: p.avatar_url || undefined, amount: p.amount || 0 })),
-  };
-}
 
 export default function CreateTransactionModal({
   open,
@@ -228,7 +216,6 @@ export default function CreateTransactionModal({
   const { t, i18n } = useTranslation();
   const user = useUserStore((s) => s.user);
   const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
-  const txStore = useTransactionsStore() as any;
 
   const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
@@ -326,7 +313,10 @@ export default function CreateTransactionModal({
         }
       } else {
         const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? 0) || undefined;
-        const toId = Number(tx.transfer_to ?? tx.to_user_id ?? 0) || undefined;
+        // если transfer_to — массив, берём первого получателя
+        const toId = Array.isArray(tx.transfer_to)
+          ? (Number(tx.transfer_to[0] ?? 0) || undefined)
+          : (Number(tx.to_user_id ?? 0) || undefined);
         setPaidBy(fromId);
         setToUser(toId);
         setPaidByName(String(tx.from_name || ""));
@@ -456,7 +446,7 @@ export default function CreateTransactionModal({
 
   const hasErrors = Object.keys(errors).length > 0;
 
-  const handleAmountChange = (v: string) => setAmount(parseAmountInput(v));
+  const handleAmountChange = (v: string) => setAmount(parseAmountInput(v, currency.decimals));
   const handleAmountBlur = () => { setAmountTouched(true); setAmount((prev) => toFixedSafe(prev, currency.decimals)); };
   const handleCommentBlur = () => setCommentTouched(true);
 
@@ -531,6 +521,41 @@ export default function CreateTransactionModal({
     return true;
   };
 
+  // Построение shares под бек-схему
+  function buildShares(
+    sel: SplitSelection | null | undefined,
+    total: number,
+    decimals: number
+  ): Array<{ user_id: number; amount: string; shares?: number | null }> {
+    if (!sel) return [];
+    const toFixed = (x: number) => toFixedSafe(String(x), decimals);
+    if (sel.type === "custom") {
+      return sel.participants.map((p: any) => ({
+        user_id: Number(p.user_id),
+        amount: toFixed(Number(p.amount || 0)),
+        shares: null,
+      }));
+    }
+    const list = computePerPerson(sel, total, decimals);
+    if (sel.type === "shares") {
+      const sharesByUser = new Map<number, number>();
+      for (const p of sel.participants as any[]) {
+        sharesByUser.set(Number(p.user_id), Number((p as any).share || 0));
+      }
+      return list.map((p) => ({
+        user_id: Number(p.user_id),
+        amount: toFixed(p.amount || 0),
+        shares: sharesByUser.get(Number(p.user_id)) || null,
+      }));
+    }
+    // equal
+    return list.map((p) => ({
+      user_id: Number(p.user_id),
+      amount: toFixed(p.amount || 0),
+      shares: null,
+    }));
+  }
+
   const doSubmit = async (modeAfter: "close" | "again") => {
     if (saving) return;
     const ok = ensureValidOrGuide();
@@ -539,11 +564,11 @@ export default function CreateTransactionModal({
     try {
       setSaving(true);
       const gid = selectedGroupId as number;
+      const amtStr = toFixedSafe(amount, currency.decimals);
 
       let saved: TransactionOut | undefined;
 
       if (type === "expense") {
-        const normalizedSplit = normalizeSplit(splitData);
         const payerId = paidBy ?? user?.id;
         if (!payerId) {
           setPayerOpen(true);
@@ -552,40 +577,40 @@ export default function CreateTransactionModal({
           return;
         }
 
-        const payload = {
+        const payload: any = {
+          type: "expense",
           group_id: gid,
-          amount: Number(toFixedSafe(amount, currency.decimals)),
+          amount: amtStr, // строка для Decimal на бэке
           currency: currency.code!,
           date,
-          comment: comment.trim(),
-          category: categoryId ? { id: categoryId, name: categoryName || "", color: categoryColor, icon: categoryIcon || undefined } : undefined,
+          comment: comment.trim() || null,
+          category_id: categoryId ?? null,
           paid_by: payerId,
-          split: normalizedSplit,
+          split_type: splitData?.type || "equal",
+          shares: buildShares(splitData, Number(amtStr), currency.decimals),
         };
 
-        if (mode === "edit" && initialTx?.id && typeof txStore.updateExpense === "function") {
-          saved = await txStore.updateExpense(initialTx.id, payload);
+        if (mode === "edit" && initialTx?.id) {
+          saved = await updateTransaction(initialTx.id, payload);
         } else {
-          saved = await txStore.createExpense(payload);
+          saved = await createTransaction(payload);
         }
       } else {
-        const payload = {
+        const payload: any = {
+          type: "transfer",
           group_id: gid,
-          amount: Number(toFixedSafe(amount, currency.decimals)),
+          amount: amtStr,
           currency: currency.code!,
           date,
-          from_user_id: paidBy as number,
-          to_user_id: toUser as number,
-          from_name: paidByName,
-          to_name: toUserName,
-          from_avatar: paidByAvatar,
-          to_avatar: toUserAvatar,
+          comment: comment.trim() || null,
+          transfer_from: paidBy as number,
+          transfer_to: [toUser as number],
         };
 
-        if (mode === "edit" && initialTx?.id && typeof txStore.updateTransfer === "function") {
-          saved = await txStore.updateTransfer(initialTx.id, payload);
+        if (mode === "edit" && initialTx?.id) {
+          saved = await updateTransaction(initialTx.id, payload);
         } else {
-          saved = await txStore.createTransfer(payload);
+          saved = await createTransaction(payload);
         }
       }
 
@@ -715,7 +740,7 @@ export default function CreateTransactionModal({
                         <input
                           ref={amountInputRef}
                           inputMode="decimal"
-                          placeholder="0.00"
+                          placeholder={currency.decimals === 0 ? "0" : "0.00"}
                           value={amount}
                           onChange={(e) => handleAmountChange(e.target.value)}
                           onBlur={handleAmountBlur}

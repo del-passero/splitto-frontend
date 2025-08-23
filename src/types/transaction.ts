@@ -1,6 +1,4 @@
 // src/types/transaction.ts
-// Типы для транзакций и долей
-
 import type { ExpenseCategoryOut } from "./expense_category"
 
 export type TxType = "expense" | "transfer"
