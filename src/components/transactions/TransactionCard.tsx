@@ -52,6 +52,12 @@ const ZERO = new Set(["JPY", "KRW", "VND"]);
 const decimalsBy = (code?: string) =>
   code && ZERO.has(code.toUpperCase()) ? 0 : 2;
 
+const roundByCcy = (n: number, code?: string) => {
+  const d = decimalsBy(code);
+  const k = Math.pow(10, d);
+  return Math.round(n * k) / k;
+};
+
 const fmtAmount = (n: number, code?: string) => {
   if (!Number.isFinite(n)) n = 0;
   const c = (code || "").toUpperCase();
@@ -94,7 +100,7 @@ const tKey = (
   }
 };
 
-/** 20 мая / May 20 — под аватаром. Ключи: date_card.pattern, date_card.months.* */
+/** 20 мая / May 20 — под аватаром */
 const formatDateHuman = (d: Date, t?: Props["t"]) => {
   const day = d.getDate();
   const monthIdx = d.getMonth(); // 0..11
@@ -107,31 +113,27 @@ const formatDateHuman = (d: Date, t?: Props["t"]) => {
     .replace("{{month}}", String(month));
 };
 
-/** Долг зрителя по транзакции. Если viewerId не задан — считаем со стороны плательщика. */
+/** Подсчёт долга. Если viewerId не задан — считаем со стороны плательщика. Есть фоллбэк для split_type=equal без shares. */
 function computeViewerDebt(
   tx: any,
-  viewerId?: number
+  viewerId?: number,
+  groupMembersCount?: number,
+  membersById?: MembersMap
 ): { kind: "owe" | "lent"; amount: number } | null {
-  if (!tx) return null;
+  if (!tx || tx.type !== "expense") return null;
+
   const total = Number(tx.amount ?? 0);
-  if (!Number.isFinite(total)) return null;
+  if (!Number.isFinite(total) || total <= 0) return null;
 
-  const payerId: number | undefined =
-    tx.type === "expense"
-      ? Number(tx.paid_by ?? tx.created_by ?? NaN)
-      : Number(
-          tx.transfer_from ??
-            tx.from_user_id ??
-            (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN)
-        );
-
+  const currency = trim(tx.currency).toUpperCase();
+  const payerId: number | undefined = Number(
+    tx.paid_by ?? tx.created_by ?? NaN
+  );
   const me = viewerId ?? payerId;
-  if (!me) return null;
+  if (!me || !Number.isFinite(payerId)) return null;
 
-  if (tx.type !== "expense") return null;
-
-  // shares → считаем
-  if (Array.isArray(tx.shares)) {
+  // 1) точный расчёт по shares, если есть
+  if (Array.isArray(tx.shares) && tx.shares.length > 0) {
     let myShare = 0;
     let payerShare = 0;
     for (const s of tx.shares as any[]) {
@@ -143,21 +145,44 @@ function computeViewerDebt(
     }
     const iAmPayer = Number(me) === Number(payerId);
     if (iAmPayer) {
-      const lent = Math.max(0, total - payerShare);
+      const lent = roundByCcy(Math.max(0, total - payerShare), currency);
       return lent > 0 ? { kind: "lent", amount: lent } : null;
     }
+    myShare = roundByCcy(myShare, currency);
     return myShare > 0 ? { kind: "owe", amount: myShare } : null;
   }
 
-  // фолбэк: персональные поля
-  const my = Number(tx.my_share ?? tx.my_amount ?? tx.my_part ?? tx.my_debt ?? NaN);
-  if (Number.isFinite(my) && my > 0) {
+  // 2) фоллбэк: split_type === "equal" и явных shares нет
+  const equal =
+    String(tx.split_type || "").toLowerCase() === "equal" ||
+    (!tx.split_type && (!tx.shares || tx.shares.length === 0));
+
+  if (equal) {
+    // пытаемся определить количество участников n
+    let n: number | undefined = Number(tx.participants_count);
+    if (!Number.isFinite(n) || n! <= 0) {
+      // попробуем по membersById
+      if (membersById instanceof Map) {
+        n = membersById.size;
+      } else if (membersById) {
+        n = Object.keys(membersById as Record<number, GroupMemberLike>).length;
+      }
+    }
+    // приоритет — явное количество из пропсов
+    if (groupMembersCount && (!n || n < groupMembersCount)) {
+      n = groupMembersCount;
+    }
+
+    if (!n || n <= 0) return null;
+
     const iAmPayer = Number(me) === Number(payerId);
     if (iAmPayer) {
-      const lent = Math.max(0, total - my);
+      const lent = roundByCcy(total * ((n - 1) / n), currency);
       return lent > 0 ? { kind: "lent", amount: lent } : null;
+    } else {
+      const owe = roundByCcy(total / n, currency);
+      return owe > 0 ? { kind: "owe", amount: owe } : null;
     }
-    return { kind: "owe", amount: my };
   }
 
   return null;
@@ -239,7 +264,7 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь (если нет — фолбэк на плательщика для показа долга)
+  // Тек. пользователь (если нет — фолбэк на плательщика)
   const currentUserId =
     typeof currentUserIdProp === "number"
       ? currentUserIdProp
@@ -290,13 +315,12 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = trim(tx?.to_avatar) || avatarFromMember(toMember);
 
-  // participants
+  // shares participants
   const shareUserIds: number[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
         .map((s: any) => Number(s?.user_id))
         .filter((n: number) => Number.isFinite(n))
     : [];
-
   const participantsUsers =
     shareUserIds
       .map((uid) => getFromMap(membersById, uid))
@@ -304,7 +328,7 @@ export default function TransactionCard({
 
   const looksLikeAll =
     isExpense &&
-    (tx?.split_type === "equal" ||
+    (String(tx?.split_type || "").toLowerCase() === "equal" ||
       (!tx?.split_type && (!tx?.shares || tx?.shares?.length === 0)));
 
   let participantsText = "";
@@ -334,7 +358,12 @@ export default function TransactionCard({
 
   // расчёт долга (если currentUserId нет — считаем как плательщик)
   const viewerId = currentUserId ?? payerId;
-  const viewerDebt = computeViewerDebt(tx, viewerId);
+  const viewerDebt = computeViewerDebt(
+    tx,
+    viewerId,
+    groupMembersCount,
+    membersById
+  );
 
   /* ====================== RENDER ====================== */
 
@@ -413,17 +442,15 @@ export default function TransactionCard({
       </div>
     ) : null;
 
-  // Нижний ряд: аватары всех участников расхода (сначала плательщик, затем участники из shares).
+  // Нижний ряд: аватары участников БЕЗ плательщика, выравнивание вправо
   const AvatarsRow =
     isExpense ? (
       <div className="mt-2 pl-12">
-        <div className="flex items-center gap-1">
-          {/* плательщик первым */}
-          <RoundAvatar src={payerAvatar} alt={payerName} size={20} />
-          {/* участники (если shares пусто, но это «ВСЕ» — попробуем взять первых из membersById) */}
+        <div className="flex items-center gap-1 justify-end">
           {(() => {
             let list: GroupMemberLike[] = participantsUsers;
 
+            // equal без shares → берём всех из membersById
             if ((!list || list.length === 0) && looksLikeAll && membersById) {
               const values: GroupMemberLike[] =
                 membersById instanceof Map
@@ -432,29 +459,22 @@ export default function TransactionCard({
               list = values;
             }
 
+            // исключаем плательщика и дубли
             const uniq = new Map<number, GroupMemberLike>();
             for (const u of list || []) {
               if (!u) continue;
               const id = Number((u as any).id);
               if (!Number.isFinite(id)) continue;
-              if (id === Number(payerId)) continue; // не дублируем плательщика
+              if (id === Number(payerId)) continue; // не показываем плательщика
               if (!uniq.has(id)) uniq.set(id, u);
             }
 
             const arr = Array.from(uniq.values());
-            const shown = arr.slice(0, 8);
+            const shown = arr.slice(-8); // последние 8 — чтобы крайними справа были «самые свежие»
             const rest = Math.max(0, arr.length - shown.length);
 
             return (
               <>
-                {shown.map((u) => (
-                  <RoundAvatar
-                    key={(u as any).id}
-                    src={avatarFromMember(u)}
-                    alt={nameFromMember(u)}
-                    size={20}
-                  />
-                ))}
                 {rest > 0 && (
                   <div
                     className="w-5 h-5 rounded-full bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[10px] flex items-center justify-center"
@@ -463,6 +483,14 @@ export default function TransactionCard({
                     +{rest}
                   </div>
                 )}
+                {shown.map((u) => (
+                  <RoundAvatar
+                    key={(u as any).id}
+                    src={avatarFromMember(u)}
+                    alt={nameFromMember(u)}
+                    size={20}
+                  />
+                ))}
               </>
             );
           })()}
@@ -473,20 +501,7 @@ export default function TransactionCard({
   const Body = (
     <div className="flex items-start px-3 py-3 gap-3">
       {/* левая колонка: аватар категории/перевода + дата ПОД ним */}
-      <div className="flex flex-col items-center w-10">
-        {isExpense ? (
-          <CategoryAvatar
-            name={tx?.category?.name}
-            color={tx?.category?.color}
-            icon={tx?.category?.icon}
-          />
-        ) : (
-          <TransferAvatarBox />
-        )}
-        <div className="text-[10px] text-[var(--tg-hint-color)] mt-1 text-center leading-none">
-          {dateStr}
-        </div>
-      </div>
+      {LeftCol}
 
       {/* контент */}
       <div className="min-w-0 flex-1">
