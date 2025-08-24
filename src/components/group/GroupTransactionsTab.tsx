@@ -1,3 +1,4 @@
+// src/components/group/GroupTransactionsTab.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -6,8 +7,7 @@ import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
-import ActionModal from "../ActionModal";
-import ConfirmModal from "../ConfirmModal";
+import CardSection from "../CardSection";
 
 // стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
@@ -31,12 +31,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
   const [openCreate, setOpenCreate] = useState(false);
 
-  // Action modal по long-press
+  // Action sheet по long-press
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
-
-  // Confirm delete
-  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // groupId из урла — фильтрация выборки
   const params = useParams();
@@ -75,7 +72,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
     let cancelled = false;
 
-    const run = async () => {
+    (async () => {
       try {
         const { total, items } = await getGroupMembers(groupId, 0, 200);
         if (cancelled) return;
@@ -103,12 +100,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         setMembersMap(null);
         setMembersCount(0);
       }
-    };
+    })();
 
-    run();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [groupId]);
 
   /* ---------- функция первичной загрузки (и перезагрузки после delete) ---------- */
@@ -228,19 +222,25 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     setActionsOpen(true);
   };
 
+  const closeActions = () => {
+    setActionsOpen(false);
+    setTimeout(() => setTxForActions(null), 160);
+  };
+
   const handleEdit = () => {
     if (!txForActions?.id) return;
-    setActionsOpen(false);
+    closeActions();
     navigate(`/transactions/${txForActions.id}`);
   };
 
-  const askDelete = () => {
-    setActionsOpen(false);
-    setConfirmOpen(true);
-  };
-
-  const doDelete = async () => {
+  const handleDelete = async () => {
     if (!txForActions?.id) return;
+    const ok = window.confirm(
+      (t("tx_modal.delete_confirm") as string) ||
+        "Удалить транзакцию? Это действие необратимо."
+    );
+    if (!ok) return;
+
     try {
       setLoading(true);
       await removeTransaction(txForActions.id);
@@ -250,16 +250,15 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       console.error("Failed to delete tx", e);
     } finally {
       setLoading(false);
-      setConfirmOpen(false);
-      setTxForActions(null);
+      closeActions();
     }
   };
 
-  // Видимые элементы (строки поиска больше нет)
+  // Видимые элементы
   const visible = items;
 
   return (
-    <div className="relative w-full h-full min-h-[320px]">
+    <div className="relative w-full h-full min-h=[320px]">
       {error ? (
         <div className="flex justify-center py-12 text-red-500">{error}</div>
       ) : loading && items.length === 0 ? (
@@ -267,7 +266,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : visible.length === 0 ? (
         <EmptyTransactions />
       ) : (
-        <div className="flex flex-col gap-2 py-3">
+        // стиль как в GroupMembersList: CardSection noPadding + разделители слева от 16
+        <CardSection noPadding>
           {visible.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
               <TransactionCard
@@ -276,18 +276,18 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
                 groupMembersCount={membersCount}
                 t={t}
                 onLongPress={handleLongPress}
+                listMode
               />
               {idx !== visible.length - 1 && (
-                <div className="absolute left-14 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               )}
             </div>
           ))}
-          {/* сентинел */}
-          <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+          {hasMore && !loading && <div ref={loaderRef} className="w-full h-2" />}
           {loading && items.length > 0 && (
             <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
           )}
-        </div>
+        </CardSection>
       )}
 
       <GroupFAB onClick={handleAddClick} />
@@ -309,25 +309,39 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         onCreated={handleCreated}
       />
 
-      {/* Действия по long-press — по центру */}
-      <ActionModal
-        open={actionsOpen}
-        onClose={() => { setActionsOpen(false); setTxForActions(null); }}
-        onEdit={handleEdit}
-        onDelete={askDelete}
-        t={t}
-      />
-
-      {/* Подтверждение удаления — по центру */}
-      <ConfirmModal
-        open={confirmOpen}
-        onCancel={() => { setConfirmOpen(false); setTxForActions(null); }}
-        onConfirm={doDelete}
-        title={t("delete") || "Удалить"}
-        message={(t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо."}
-        cancelText={t("common.no") || "Нет"}
-        confirmText={t("common.yes") || "Да"}
-      />
+      {/* Action Sheet снизу — как было */}
+      {actionsOpen && (
+        <div className="fixed inset-0 z-[1100] flex items-end justify-center" onClick={closeActions}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
+              onClick={handleEdit}
+            >
+              {t("edit")}
+            </button>
+            <button
+              type="button"
+              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
+              onClick={handleDelete}
+            >
+              {t("delete")}
+            </button>
+            <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
+            <button
+              type="button"
+              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+              onClick={closeActions}
+            >
+              {t("cancel")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

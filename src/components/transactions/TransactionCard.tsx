@@ -295,12 +295,89 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  // Контейнер
-  const containerCls = listMode
-    ? "relative px-3 py-3"
-    : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
+  // Контейнер списка в стиле UserCard (CardSection noPadding)
+  const containerCls = listMode ? "relative px-3 py-3" : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
   const containerStyle = listMode ? undefined : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
   const hoverCls = listMode ? "" : "transition hover:bg-black/5 dark:hover:bg-white/5";
+
+  const body = (
+    <div className="flex items-start gap-3">
+      {/* слева: аватар категории/перевода + дата под ним */}
+      {isExpense ? (
+        <CategoryAvatar
+          name={tx.category?.name}
+          color={tx.category?.color}
+          icon={tx.category?.icon}
+          dateStr={dateStr}
+        />
+      ) : (
+        <TransferAvatar dateStr={dateStr} />
+      )}
+
+      {/* справа: ДВЕ СТРОКИ — 1) заголовок+сумма  2) paid by/transfer + статус долга */}
+      <div className="min-w-0 flex-1">
+        {/* строка 1 */}
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1 text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+            {title}
+          </div>
+          <div className="text-[14px] font-semibold shrink-0">
+            {fmtAmount(Number(tx.amount ?? 0), tx.currency)}
+          </div>
+        </div>
+
+        {/* строка 2 — ПЛОТНО ПОД ЗАГОЛОВКОМ */}
+        {isExpense ? (
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
+              {(t && t("tx_modal.paid_by_label")) || "Заплатил"}
+            </span>
+            <RoundAvatar src={payerAvatar} alt={payerName} />
+            <span className="text-[12px] text-[var(--tg-text-color)] font-medium truncate">
+              {payerName}
+            </span>
+
+            {/* статус долга прижат к правому краю */}
+            <div className="ml-auto flex items-center gap-2 min-w-0">
+              <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+                {statusText}
+              </div>
+              <div className="shrink-0 flex items-center justify-end -space-x-2">
+                {participantsExceptPayer.slice(0, 16).map((m, i) => {
+                  const url = m.photo_url || m.avatar_url;
+                  return url ? (
+                    <img
+                      key={m.id}
+                      src={url}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
+                      style={{ marginLeft: i === 0 ? 0 : -8 }}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span
+                      key={m.id}
+                      className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
+                      style={{ marginLeft: i === 0 ? 0 : -8 }}
+                      aria-hidden
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-0.5 flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+            <RoundAvatar src={payerAvatar} alt={payerName} />
+            <span className="font-medium truncate">{payerName}</span>
+            <span className="opacity-60">→</span>
+            <RoundAvatar src={toAvatar} alt={toName} />
+            <span className="font-medium truncate">{toName}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const CardInner = (
     <div
@@ -313,85 +390,7 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      {/* Верхняя строка: иконка + заголовок + сумма */}
-      <div className="flex items-start gap-3">
-        {isExpense ? (
-          <CategoryAvatar
-            name={tx.category?.name}
-            color={tx.category?.color}
-            icon={tx.category?.icon}
-            dateStr={dateStr}
-          />
-        ) : (
-          <TransferAvatar dateStr={dateStr} />
-        )}
-
-        <div className="min-w-0 flex-1">
-          {title ? (
-            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-              {title}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="text-[14px] font-semibold shrink-0">
-          {fmtAmount(amountNum, tx.currency)}
-        </div>
-      </div>
-
-      {/* ПЛОТНО: сразу под “Paid by …” — ПОДНЯЛ БЛОК ЗА СЧЁТ ОТРИЦАТЕЛЬНОГО ОТСТУПА */}
-      <div className="-mt-3 ml-12 min-w-0">
-        {isExpense ? (
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            <span className="opacity-70 text-[var(--tg-hint-color)]">
-              {(t && t("tx_modal.paid_by_label")) || "Заплатил"}
-            </span>
-            <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="text-[var(--tg-text-color)] font-medium truncate">
-              {payerName}
-            </span>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
-            <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="font-medium truncate">{payerName}</span>
-            <span className="opacity-60">→</span>
-            <RoundAvatar src={toAvatar} alt={toName} />
-            <span className="font-medium truncate">{toName}</span>
-          </div>
-        )}
-
-        {/* Строка долга — вплотную (ещё чуть подтянул) */}
-        {isExpense && (
-          <div className="-mt-1 flex items-center gap-2">
-            <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
-              {statusText}
-            </div>
-            <div className="shrink-0 flex items-center justify-end -space-x-2">
-              {participantsExceptPayer.slice(0, 16).map((m, i) => {
-                const url = m.photo_url || m.avatar_url;
-                return url ? (
-                  <img
-                    key={m.id}
-                    src={url}
-                    alt=""
-                    className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
-                    style={{ marginLeft: i === 0 ? 0 : -8 }}
-                    loading="lazy"
-                  />
-                ) : (
-                  <span
-                    key={m.id}
-                    className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
-                    style={{ marginLeft: i === 0 ? 0 : -8 }}
-                    aria-hidden
-                  />
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      {body}
     </div>
   );
 
