@@ -23,7 +23,7 @@ type Props = {
   groupMembersCount?: number;
   t?: (k: string, vars?: Record<string, any>) => string;
   onLongPress?: (tx: any) => void;
-  /** В режиме списка (как UserCard) — без рамки, плотные отступы */
+  /** Режим списка (как UserCard): без рамки и с плотными отступами */
   listMode?: boolean;
 };
 
@@ -112,7 +112,6 @@ function CategoryAvatar({
           {icon || ch}
         </span>
       </div>
-      {/* дату НЕ двигаю — она под аватаркой */}
       <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
@@ -239,7 +238,7 @@ export default function TransactionCard({
     ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- строка долга (без валютного символа) — ПОДНЯЛ ВПЛОТНУЮ --- */
+  /* --- строка долга (без символа валюты) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
@@ -296,7 +295,7 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  // Контейнер: в списке — без рамки и с плотными отступами
+  // Контейнер
   const containerCls = listMode
     ? "relative px-3 py-3"
     : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
@@ -340,8 +339,8 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* ПЛОТНО: сразу под “Paid by …”, без лишних пустот */}
-      <div className="mt-0 ml-12 min-w-0">
+      {/* ПЛОТНО: сразу под “Paid by …” — ПОДНЯЛ БЛОК ЗА СЧЁТ ОТРИЦАТЕЛЬНОГО ОТСТУПА */}
+      <div className="-mt-3 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <span className="opacity-70 text-[var(--tg-hint-color)]">
@@ -362,9 +361,9 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* СТРОКУ ДОЛГА ПОДНЯЛ */}
+        {/* Строка долга — вплотную (ещё чуть подтянул) */}
         {isExpense && (
-          <div className="mt-0.5 flex items-center gap-2">
+          <div className="-mt-1 flex items-center gap-2">
             <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
               {statusText}
             </div>
