@@ -160,10 +160,8 @@ function computeViewerDebtAmount(
     (!tx.split_type && (!tx.shares || tx.shares.length === 0));
 
   if (equal) {
-    // попробуем определить число участников n
     let n: number | undefined = undefined;
 
-    // если сервер всё же прислал shares (пустые — не зайдём сюда), возьмём их
     if (Array.isArray(tx.shares) && tx.shares.length) {
       const uniq = new Set(
         (tx.shares as any[])
@@ -172,24 +170,14 @@ function computeViewerDebtAmount(
       );
       n = uniq.size;
     }
-
-    // кастомные поля, если вдруг есть
-    if (!n && Number.isFinite(Number(tx.participants_count))) {
-      n = Number(tx.participants_count);
-    }
-
-    // возьмём размер справочника участников
+    if (!n && Number.isFinite(Number(tx.participants_count))) n = Number(tx.participants_count);
     if (!n && membersById) {
       n =
         membersById instanceof Map
           ? membersById.size
           : Object.keys(membersById as Record<number, GroupMemberLike>).length;
     }
-
-    // последний шанс — общее число участников группы
-    if (!n && Number.isFinite(Number(groupMembersCount))) {
-      n = Number(groupMembersCount);
-    }
+    if (!n && Number.isFinite(Number(groupMembersCount))) n = Number(groupMembersCount);
 
     if (!n || n <= 0) return { type: "none", amount: 0 };
 
@@ -246,23 +234,27 @@ function RoundAvatar({
   src,
   alt,
   size = 18,
+  className,
+  style,
 }: {
   src?: string;
   alt?: string;
   size?: number;
+  className?: string;
+  style?: React.CSSProperties;
 }) {
   return src ? (
     <img
       src={src}
       alt={alt || ""}
-      className="rounded-full object-cover"
-      style={{ width: size, height: size }}
+      className={`rounded-full object-cover ${className || ""}`}
+      style={{ width: size, height: size, ...(style || {}) }}
       loading="lazy"
     />
   ) : (
     <span
-      className="rounded-full inline-block"
-      style={{ width: size, height: size, background: "var(--tg-link-color)" }}
+      className={`rounded-full inline-block ${className || ""}`}
+      style={{ width: size, height: size, background: "var(--tg-link-color)", ...(style || {}) }}
       aria-hidden
     />
   );
@@ -282,7 +274,7 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // ❶ Кто залогинен: store → проп → Telegram
+  // кто залогинен: store → проп → Telegram
   const storeUserId = useUserStore((s) => s.user?.id) as number | undefined;
   const currentUserId =
     (Number.isFinite(Number(storeUserId)) ? Number(storeUserId) : undefined) ??
@@ -334,12 +326,13 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = trim(tx?.to_avatar) || avatarFromMember(toMember);
 
-  // shares participants (для аватарок)
+  // participants из shares (для аватарок)
   const shareUserIds: number[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
         .map((s: any) => Number(s?.user_id))
         .filter((n: number) => Number.isFinite(n))
     : [];
+
   const participantsUsers =
     shareUserIds
       .map((uid) => getFromMap(membersById, uid))
@@ -375,9 +368,22 @@ export default function TransactionCard({
     return c || "";
   }, [isExpense, tx?.comment, tx?.category?.name]);
 
-  // расчёт долга для viewerId (store/prop/Telegram)
+  // расчёт долга
   const viewerId = currentUserId ?? payerId;
   const debt = computeViewerDebtAmount(tx, viewerId, groupMembersCount, membersById);
+
+  // локализация текстов долга (без валюты!)
+  const lang = (() => {
+    try {
+      const l = (navigator?.language || "en").split("-")[0].toLowerCase();
+      return l === "ru" || l === "es" ? l : "en";
+    } catch {
+      return "en";
+    }
+  })();
+  const debtYouOweLabel = lang === "ru" ? "Вы должны: " : lang === "es" ? "Debes: " : "You owe: ";
+  const debtOwesYouLabel = lang === "ru" ? "Вам должны: " : lang === "es" ? "Te deben: " : "They owe you: ";
+  const debtNoDebtLabel = tKey(t, "group_participant_no_debt", lang === "ru" ? "Нет долга" : lang === "es" ? "Sin deuda" : "No debt");
 
   /* ====================== RENDER ====================== */
 
@@ -421,9 +427,9 @@ export default function TransactionCard({
       {participantsText && (
         <>
           <span className="opacity-60 text-[var(--tg-hint-color)]">—</span>
-            <span className="truncate text-[var(--tg-text-color)]">
-              {tKey(t, "tx_modal.participants", "Участники")}: {participantsText}
-            </span>
+          <span className="truncate text-[var(--tg-text-color)]">
+            {tKey(t, "tx_modal.participants", "Участники")}: {participantsText}
+          </span>
         </>
       )}
     </div>
@@ -437,95 +443,96 @@ export default function TransactionCard({
     </div>
   );
 
-  // Аватары участников (без плательщика), ПОД «Заплатил …», выравнивание вправо
-  const AvatarsRow =
-    isExpense ? (
-      <div className="mt-1 pl-0">
-        <div className="flex items-center gap-1 justify-end">
-          {(() => {
-            let list: GroupMemberLike[] = participantsUsers;
+  // Аватарки участников (без плательщика) — в одну строку, с оверлапом вправо
+  const AvatarsStack = useMemo(() => {
+    if (!isExpense) return null;
 
-            // equal без shares → берём всех из membersById
-            if ((!list || list.length === 0) && looksLikeAll && membersById) {
-              const values: GroupMemberLike[] =
-                membersById instanceof Map
-                  ? Array.from(membersById.values())
-                  : Object.values(membersById as Record<number, GroupMemberLike>);
-              list = values;
-            }
+    // базовый список
+    let list: GroupMemberLike[] = participantsUsers;
 
-            // исключаем плательщика и дубли
-            const uniq = new Map<number, GroupMemberLike>();
-            for (const u of list || []) {
-              if (!u) continue;
-              const id = Number((u as any).id);
-              if (!Number.isFinite(id)) continue;
-              if (id === Number(payerId)) continue; // не показываем плательщика
-              if (!uniq.has(id)) uniq.set(id, u);
-            }
+    // equal без shares → берём всех из membersById
+    if ((!list || list.length === 0) && looksLikeAll && membersById) {
+      const values: GroupMemberLike[] =
+        membersById instanceof Map
+          ? Array.from(membersById.values())
+          : Object.values(membersById as Record<number, GroupMemberLike>);
+      list = values;
+    }
 
-            const arr = Array.from(uniq.values());
-            const shown = arr.slice(-8);
-            const rest = Math.max(0, arr.length - shown.length);
+    // исключаем плательщика и дубли
+    const uniq = new Map<number, GroupMemberLike>();
+    for (const u of list || []) {
+      if (!u) continue;
+      const id = Number((u as any).id);
+      if (!Number.isFinite(id)) continue;
+      if (id === Number(payerId)) continue; // не показываем плательщика
+      if (!uniq.has(id)) uniq.set(id, u);
+    }
 
-            return (
-              <>
-                {rest > 0 && (
-                  <div
-                    className="w-5 h-5 rounded-full bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[10px] flex items-center justify-center"
-                    title={`+${rest}`}
-                  >
-                    +{rest}
-                  </div>
-                )}
-                {shown.map((u) => (
-                  <RoundAvatar
-                    key={(u as any).id}
-                    src={avatarFromMember(u)}
-                    alt={nameFromMember(u)}
-                    size={20}
-                  />
-                ))}
-              </>
-            );
-          })()}
-        </div>
+    const arr = Array.from(uniq.values());
+    if (!arr.length) return null;
+
+    // динамический шаг оверлапа
+    const n = arr.length;
+    // чем больше элементов — тем сильнее оверлап (число отрицательное)
+    const overlap = n <= 8 ? -6 : n <= 12 ? -10 : -14;
+
+    return (
+      <div className="flex items-center justify-end flex-nowrap whitespace-nowrap overflow-visible shrink-0">
+        {arr.map((u, i) => (
+          <RoundAvatar
+            key={(u as any).id}
+            src={avatarFromMember(u)}
+            alt={nameFromMember(u)}
+            size={20}
+            className={i === 0 ? "" : "ml-[-6px]"} // базовый класс, реальный шаг зададим стилем
+            style={{ marginLeft: i === 0 ? 0 : overlap }}
+          />
+        ))}
       </div>
-    ) : null;
+    );
+  }, [isExpense, participantsUsers, looksLikeAll, membersById, payerId]);
 
-  // Строка долга — ВСЕГДА показываем: либо сумма, либо «Нет долга»
-  const DebtRow =
+  // Строка «долг + аватарки» — одна линия
+  const BottomRow =
     isExpense ? (
-      <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
-        {debt.type === "owe"
-          ? tKey(
-              t,
-              "group_participant_you_owe",
-              `Вы должны: ${fmtNumberOnly(debt.amount, currency)}`,
-              { sum: fmtNumberOnly(debt.amount, currency) }
-            )
-          : debt.type === "lent"
-          ? tKey(
-              t,
-              "group_participant_owes_you",
-              `Вам должны: ${fmtNumberOnly(debt.amount, currency)}`,
-              { sum: fmtNumberOnly(debt.amount, currency) }
-            )
-          : tKey(t, "group_participant_no_debt", "Нет долга")}
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+          {debt.type === "owe"
+            ? `${debtYouOweLabel}${fmtNumberOnly(debt.amount, currency)}`
+            : debt.type === "lent"
+            ? `${debtOwesYouLabel}${fmtNumberOnly(debt.amount, currency)}`
+            : debtNoDebtLabel}
+        </div>
+        {AvatarsStack}
       </div>
     ) : null;
 
   const Body = (
     <div className="flex items-start px-3 py-3 gap-3">
       {/* левая колонка: аватар категории/перевода + дата ПОД ним */}
-      <div className="pt-[2px]">{LeftCol}</div>
+      <div className="pt-[2px]">
+        <div className="flex flex-col items-center w-10">
+          {isExpense ? (
+            <CategoryAvatar
+              name={tx?.category?.name}
+              color={tx?.category?.color}
+              icon={tx?.category?.icon}
+            />
+          ) : (
+            <TransferAvatarBox />
+          )}
+          <div className="text-[10px] text-[var(--tg-hint-color)] mt-1 text-center leading-none">
+            {dateStr}
+          </div>
+        </div>
+      </div>
 
       {/* контент */}
       <div className="min-w-0 flex-1">
         {TopRow}
         <div className="mt-1">{DetailsRow}</div>
-        {AvatarsRow}
-        {DebtRow}
+        {BottomRow}
       </div>
     </div>
   );
