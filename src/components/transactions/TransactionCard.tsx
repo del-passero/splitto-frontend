@@ -1,86 +1,114 @@
+// src/components/transactions/TransactionCard.tsx
 import React, { useMemo } from "react";
+import { ArrowRightLeft, Layers } from "lucide-react";
 import { Link } from "react-router-dom";
-import { ArrowRightLeft } from "lucide-react";
 
 /** Короткая инфа о пользователе в группе */
 export type GroupMemberLike = {
   id: number;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  avatar_url?: string;
-  photo_url?: string;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+  photo_url?: string | null;
 };
-
 type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
+
+type TFunc = (k: string, vars?: Record<string, any>) => string;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
   membersById?: MembersMap;
   groupMembersCount?: number;
-  t?: (k: string, vars?: Record<string, any>) => string;
+  t?: TFunc;
   currentUserId?: number;
   className?: string;
 };
 
 /* ---------- utils ---------- */
+const s = (x: any) => (typeof x === "string" ? x : "");
+const up = (x?: string | null) => (x ? String(x).toUpperCase() : "");
+
 const getFromMap = (m?: MembersMap, id?: number | null) => {
   if (!m || id == null) return undefined;
-  if (m instanceof Map) return m.get(Number(id));
-  return (m as Record<number, GroupMemberLike>)[Number(id)];
-};
-const s = (x: any) => (typeof x === "string" ? x : "");
-const firstName = (full?: string) => {
-  const v = s(full).trim();
-  if (!v) return "";
-  return v.split(/\s+/)[0] || v;
-};
-const ZERO_CCY_DEC = new Set(["JPY", "KRW", "VND"]);
-const decimalsByCode = (code?: string) => (code && ZERO_CCY_DEC.has(code) ? 0 : 2);
-const fmtNumberOnly = (n: number, code?: string) => {
-  if (!isFinite(n)) n = 0;
-  try {
-    const decimals = decimalsByCode(code);
-    return new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(n);
-  } catch {
-    return n.toFixed(decimalsByCode(code));
-  }
-};
-const fmtAmountCode = (n: number, code?: string) => {
-  const num = fmtNumberOnly(Number(n), code);
-  const c = s(code).toUpperCase();
-  return c ? `${num} ${c}` : num;
+  const key = Number(id);
+  return m instanceof Map ? (m as Map<number, GroupMemberLike>).get(key) : (m as Record<number, GroupMemberLike>)[key];
 };
 
+const makeName = (u?: GroupMemberLike | null): string => {
+  if (!u) return "";
+  if (s(u.name)) return s(u.name).trim();
+  const fn = s(u.first_name).trim();
+  const ln = s(u.last_name).trim();
+  if (fn || ln) return [fn, ln].filter(Boolean).join(" ");
+  if (s(u.username)) return `@${s(u.username)}`;
+  if (Number.isFinite(Number((u as any).id))) return `#${(u as any).id}`;
+  return "";
+};
+
+const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
+const ccyDecimals = (code?: string | null) => (code && ZERO_DEC.has(code.toUpperCase()) ? 0 : 2);
+
+const fmtAmount = (n: number, code?: string | null) => {
+  const c = up(code);
+  const dec = ccyDecimals(c);
+  if (!Number.isFinite(n)) n = 0;
+  try {
+    const nf = new Intl.NumberFormat(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    return `${nf.format(n)} ${c}`.trim();
+  } catch {
+    return `${n.toFixed(dec)} ${c}`.trim();
+  }
+};
+
+const fmtNumberOnly = (n: number, code?: string | null) => {
+  const dec = ccyDecimals(code || undefined);
+  if (!Number.isFinite(n)) n = 0;
+  try {
+    return new Intl.NumberFormat(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(n);
+  } catch {
+    return n.toFixed(dec);
+  }
+};
+
+const firstLetter = (v: string) => (v || "").trim().charAt(0).toUpperCase() || "•";
+
+/** Локализованный “20 мая” / “May 20” / “20 de mayo” через ключи */
+const formatCardDate = (t?: TFunc, date?: string | number | Date) => {
+  const d = new Date(date || Date.now());
+  const day = d.getDate();
+  // достаём массив месяцев через returnObjects
+  let months: any = t?.("date_card.months", { returnObjects: true as any });
+  if (!Array.isArray(months) || months.length !== 12) {
+    // страховка: англ. месяцы по умолчанию
+    months = [
+      "January","February","March","April","May","June",
+      "July","August","September","October","November","December",
+    ];
+  }
+  const month = months[d.getMonth()] || "";
+  const pat = t?.("date_card.pattern", { day, month });
+  // если i18n вернул исходный ключ — соберём сами как “day month”
+  if (!pat || pat.includes("date_card.pattern")) return `${day} ${month}`.trim();
+  return pat;
+};
+
+/* ---------- UI bits ---------- */
 function CategoryAvatar({
   name,
   color,
   icon,
-  size = 48,
 }: {
-  name?: string;
+  name?: string | null;
   color?: string | null;
-  icon?: string;
-  size?: number;
+  icon?: string | null;
 }) {
-  const bg =
-    typeof color === "string" && color.trim()
-      ? color
-      : "var(--tg-link-color)";
-  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
+  const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   return (
-    <div
-      className="rounded-xl flex items-center justify-center text-white shrink-0"
-      style={{ width: size, height: size, background: bg }}
-      aria-label={name || undefined}
-      title={name || undefined}
-    >
-      <span style={{ fontSize: 18 }} aria-hidden>
-        {icon || ch}
+    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: bg }}>
+      <span style={{ fontSize: 16 }} aria-hidden>
+        {icon || firstLetter(s(name))}
       </span>
     </div>
   );
@@ -91,52 +119,18 @@ function RoundAvatar({
   alt,
   size = 18,
 }: {
-  src?: string;
+  src?: string | null;
   alt?: string;
   size?: number;
 }) {
-  return src ? (
-    <img
-      src={src}
-      alt={alt || ""}
-      className="rounded-full object-cover"
-      style={{ width: size, height: size }}
-      loading="lazy"
-    />
+  const url = s(src).trim();
+  return url ? (
+    <img src={url} alt={alt || ""} className="rounded-full object-cover" style={{ width: size, height: size }} loading="lazy" />
   ) : (
-    <span
-      className="rounded-full inline-block"
-      style={{
-        width: size,
-        height: size,
-        background: "var(--tg-link-color)",
-      }}
-      aria-hidden
-    />
-  );
-}
-
-// формат "20 мая" / "May 20" / "20 de mayo" через ключи локали
-function formatMonthDay(d: Date, t?: Props["t"]) {
-  const day = d.getDate();
-  const monthIdx = d.getMonth() + 1; // 1..12
-  const monthName =
-    t?.(`date_short.months.${monthIdx}`) ||
-    // запасной вариант на случай отсутствия ключей
-    d.toLocaleString(undefined, { month: "long" });
-  const pattern = t?.("date_short.md") || "{{day}} {{month}}";
-  return pattern
-    .replace("{{day}}", String(day))
-    .replace("{{month}}", String(monthName));
-}
-
-// safest category name fallback
-function resolveCategoryName(tx: any): string {
-  return (
-    s(tx?.category?.name) ||
-    s(tx?.category_name) ||
-    s(tx?.category?.title) ||
-    ""
+    <span className="rounded-full inline-flex items-center justify-center bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[10px] opacity-80"
+          style={{ width: size, height: size }}>
+      {firstLetter(alt || "")}
+    </span>
   );
 }
 
@@ -144,15 +138,15 @@ function resolveCategoryName(tx: any): string {
 export default function TransactionCard({
   tx,
   membersById,
+  groupMembersCount,
   t,
   currentUserId: currentUserIdProp,
   className,
 }: Props) {
-  const isExpense = tx?.type === "expense";
+  const isExpense = s(tx?.type).toLowerCase() === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // текущий пользователь
   const currentUserId =
     typeof currentUserIdProp === "number"
       ? currentUserIdProp
@@ -165,160 +159,213 @@ export default function TransactionCard({
           }
         })();
 
-  // payer / transfer members
-  const payerId: number | undefined = isExpense
-    ? Number(tx?.paid_by ?? tx?.created_by ?? NaN)
-    : Number(
-        tx?.transfer_from ??
-          tx?.from_user_id ??
-          (Array.isArray(tx?.transfer) ? tx.transfer[0] : NaN)
+  /* --- участники --- */
+  // payer/sender
+  const payerId: number | undefined =
+    (Number.isFinite(Number(tx?.paid_by)) ? Number(tx.paid_by) : undefined) ??
+    (Number.isFinite(Number(tx?.created_by)) ? Number(tx.created_by) : undefined) ??
+    (Number.isFinite(Number(tx?.payer_id)) ? Number(tx.payer_id) : undefined) ??
+    (Number.isFinite(Number(tx?.from_user_id)) ? Number(tx.from_user_id) : undefined) ??
+    (Number.isFinite(Number(tx?.transfer_from)) ? Number(tx.transfer_from) : undefined);
+
+  const payerFromMap = getFromMap(membersById, payerId);
+  const payer: GroupMemberLike = {
+    id: Number(payerId ?? tx?.paid_by?.id ?? tx?.payer?.id ?? 0),
+    name: s(tx?.paid_by_name || tx?.from_name) || makeName(payerFromMap),
+    first_name: payerFromMap?.first_name,
+    last_name: payerFromMap?.last_name,
+    username: payerFromMap?.username,
+    avatar_url: s(tx?.paid_by_avatar || tx?.from_avatar || payerFromMap?.avatar_url),
+    photo_url: s(payerFromMap?.photo_url),
+  };
+
+  // recipient (transfer)
+  let toId: number | undefined;
+  const toRaw = Array.isArray(tx?.transfer_to) ? tx.transfer_to[0] : tx?.to_user_id ?? tx?.to;
+  if (toRaw != null) toId = Number(toRaw);
+  const toFromMap = getFromMap(membersById, toId);
+  const to: GroupMemberLike | undefined = !isExpense
+    ? {
+        id: Number(toId ?? 0),
+        name: s(tx?.to_name) || makeName(toFromMap),
+        first_name: toFromMap?.first_name,
+        last_name: toFromMap?.last_name,
+        username: toFromMap?.username,
+        avatar_url: s(tx?.to_avatar || toFromMap?.avatar_url),
+        photo_url: s(toFromMap?.photo_url),
+      }
+    : undefined;
+
+  // участники расхода из shares (для отображения + расчёта долгов)
+  const shares: Array<{ user_id: number; amount: number; name?: string; avatar_url?: string | null }> = Array.isArray(tx?.shares)
+    ? (tx.shares as any[]).map((s: any) => ({
+        user_id: Number(s?.user_id ?? s?.user?.id),
+        amount: Number(s?.amount ?? 0),
+        name: s(s?.name),
+        avatar_url: s?.avatar_url ?? null,
+      }))
+    : [];
+
+  const participantsUsers: GroupMemberLike[] = shares
+    .map((sh) => {
+      const m = getFromMap(membersById, sh.user_id);
+      return (
+        m || {
+          id: sh.user_id,
+          name: sh.name,
+          avatar_url: sh.avatar_url || null,
+        }
       );
+    })
+    .filter(Boolean) as GroupMemberLike[];
 
-  const payerMember = getFromMap(membersById, payerId);
-  const payerName =
-    firstName(tx?.paid_by_name || tx?.from_name) ||
-    firstName(payerMember?.name) ||
-    firstName(
-      `${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()
-    ) ||
-    payerMember?.username ||
-    (payerId != null ? `#${payerId}` : "");
-  const payerAvatar =
-    tx?.paid_by_avatar ||
-    tx?.from_avatar ||
-    payerMember?.avatar_url ||
-    payerMember?.photo_url;
+  const looksLikeAll =
+    isExpense &&
+    ((s(tx?.split_type) === "equal" && (!shares || !shares.length)) ||
+      (!tx?.split_type && (!shares || shares.length === 0)));
 
-  // transfer recipient (для Fallback заголовка)
-  let toId: number | undefined = undefined;
-  if (!isExpense) {
-    const raw = tx?.transfer_to ?? tx?.to_user_id ?? tx?.to;
-    if (Array.isArray(raw) && raw.length > 0) toId = Number(raw[0]);
-    else if (raw != null) toId = Number(raw);
-  }
-  const toMember = getFromMap(membersById, toId);
-  const toName =
-    firstName(tx?.to_name) ||
-    firstName(toMember?.name) ||
-    firstName(
-      `${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()
-    ) ||
-    toMember?.username ||
-    (toId != null ? `#${toId}` : "");
-
-  const dateObj = new Date(tx?.date || tx?.created_at || Date.now());
-  const dateStr = formatMonthDay(dateObj, t);
-
-  const amountStr = fmtAmountCode(Number(tx?.amount ?? 0), tx?.currency);
-
-  // ---- Заголовок: Comment || Category name (для расходов) || "A → B" (для переводов)
+  /* --- заголовок и дата --- */
   const title = useMemo(() => {
-    const comment = s(tx?.comment).trim();
-    if (comment) return comment;
     if (isExpense) {
-      const cat = resolveCategoryName(tx);
-      if (cat) return cat;
-      return "";
+      const c = s(tx?.comment).trim();
+      if (c) return c;
+      const cat = s(tx?.category?.name).trim();
+      return cat || "—";
     }
-    // transfer fallback
-    if (payerName || toName) return `${payerName} → ${toName}`.trim();
-    return "";
-  }, [isExpense, tx, payerName, toName]);
+    // Для перевода заголовок не дублируем “кто→кому”, если comment есть
+    const c = s(tx?.comment).trim();
+    if (c) return c;
+    return `${makeName(payer)} → ${makeName(to)}`.trim();
+  }, [isExpense, tx, payer, to]);
 
-  // ---- Статус долга (ТОЛЬКО ДЛЯ РАСХОДОВ). Показываем ТОЛЬКО если пользователь участвовал или он плательщик.
-  const statusText = useMemo(() => {
-    if (!isExpense || typeof currentUserId !== "number") return "";
+  const dateStr = formatCardDate(t, tx?.date || tx?.created_at);
 
-    const shares = Array.isArray(tx?.shares) ? (tx.shares as any[]) : [];
-    const iAmPayer = Number(payerId) === Number(currentUserId);
-    const myEntry = shares.find(
-      (s) => Number(s?.user_id) === Number(currentUserId)
-    );
+  /* --- суммы/валюта --- */
+  const amountNum = Number(tx?.amount ?? 0);
+  const amountStr = fmtAmount(amountNum, up(tx?.currency));
 
-    // Если я не плательщик и меня нет в shares — не выводим строку статуса вовсе.
-    if (!iAmPayer && !myEntry) return "";
+  /* --- подпись про сплит (иконка Layers) --- */
+  const splitLabel =
+    s(tx?.split_type) === "equal"
+      ? t?.("tx_modal.split_equal")
+      : s(tx?.split_type) === "shares"
+      ? t?.("tx_modal.split_shares")
+      : s(tx?.split_type) === "custom"
+      ? t?.("tx_modal.split_custom")
+      : null;
 
+  /* --- текст по участникам (ALL / список имён) --- */
+  const participantsTitle = looksLikeAll
+    ? `${t?.("tx_modal.all") || "ALL"}${groupMembersCount ? ` (${groupMembersCount})` : ""}`
+    : participantsUsers.map(makeName).filter(Boolean).join(", ");
+
+  /* --- расчёт долга текущего пользователя (только расходы) --- */
+  let statusText = "";
+  if (isExpense && typeof currentUserId === "number" && Array.isArray(shares) && shares.length) {
     let myShare = 0;
     let payerShare = 0;
-    for (const s of shares) {
-      const uid = Number(s?.user_id);
-      const val = Number(s?.amount ?? 0);
-      if (!Number.isFinite(val)) continue;
+    shares.forEach((s) => {
+      const uid = Number(s.user_id);
+      const val = Number(s.amount) || 0;
       if (uid === Number(currentUserId)) myShare += val;
       if (uid === Number(payerId)) payerShare += val;
-    }
+    });
 
+    const iAmPayer = Number(payerId) === Number(currentUserId);
     if (iAmPayer) {
-      const lent = Math.max(0, Number(tx?.amount ?? 0) - payerShare);
-      if (lent > 0) {
-        // оставляем как раньше, ключи уже есть (сумма без кода/символа — как и было)
-        const sumStr = fmtNumberOnly(lent, tx?.currency);
-        return (t && t("group_participant_owes_you", { sum: sumStr })) || `Вам должны: ${sumStr}`;
-      }
-      return (t && t("group_participant_no_debt")) || "Нет долга";
+      const lent = Math.max(0, amountNum - payerShare);
+      statusText = lent > 0 ? (t?.("group_participant_owes_you", { sum: fmtNumberOnly(lent, tx?.currency) }) || "") : (t?.("group_participant_no_debt") || "");
     } else {
-      if (myShare > 0) {
-        const sumStr = fmtNumberOnly(myShare, tx?.currency);
-        return (t && t("group_participant_you_owe", { sum: sumStr })) || `Вы должны: ${sumStr}`;
-      }
-      return (t && t("group_participant_no_debt")) || "Нет долга";
+      statusText = myShare > 0 ? (t?.("group_participant_you_owe", { sum: fmtNumberOnly(myShare, tx?.currency) }) || "") : (t?.("group_participant_no_debt") || "");
     }
-  }, [isExpense, currentUserId, tx, payerId, t]);
+  }
 
-  // ---- UI в стиле UserCard
-  const Body = (
-    <div className={"flex items-center px-3 py-3 gap-4 " + (className || "")}>
-      {/* Левая колонка: аватар категории/перевода + дата ПОД аватаром */}
-      <div className="flex flex-col items-center w-12 shrink-0">
-        {isExpense ? (
-          <CategoryAvatar
-            name={tx?.category?.name}
-            color={tx?.category?.color}
-            icon={tx?.category?.icon}
-            size={48}
-          />
-        ) : (
-          <div
-            className="w-12 h-12 rounded-xl border flex items-center justify-center"
-            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-            title="Transfer"
-            aria-label="Transfer"
-          >
-            <ArrowRightLeft size={20} className="opacity-80" />
-          </div>
-        )}
-        <div className="mt-1 text-[10px] text-[var(--tg-hint-color)] leading-none text-center truncate w-full">
-          {dateStr}
-        </div>
-      </div>
-
-      {/* Центр: заголовок (comment|category) и статус долга ниже мелким */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <div className="font-semibold text-base truncate text-[var(--tg-text-color)]">
-            {title || "—"}
-          </div>
-          <div className="font-semibold text-base tabular-nums shrink-0 text-[var(--tg-text-color)]">
-            {amountStr}
-          </div>
-        </div>
-
-        {/* Доп.строка — для переводов покажем от кого к кому, для расходов — статус долга */}
-        {isExpense ? (
-          statusText ? (
-            <div className="text-xs text-[var(--tg-hint-color)] mt-0.5 truncate">
-              {statusText}
+  /* ---------- UI ---------- */
+  const Card = (
+    <div
+      className={
+        "relative px-3 py-3 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] " +
+        (className || "")
+      }
+    >
+      <div className="flex items-start gap-3">
+        {/* Левая колонка: аватар категории/перевода + дата под ним */}
+        <div className="flex flex-col items-center w-10 shrink-0">
+          {isExpense ? (
+            <CategoryAvatar name={tx?.category?.name} color={tx?.category?.color} icon={tx?.category?.icon} />
+          ) : (
+            <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center">
+              <ArrowRightLeft size={18} className="opacity-80" />
             </div>
-          ) : null
-        ) : (
-          <div className="text-xs text-[var(--tg-text-color)] mt-0.5 flex items-center gap-1 min-w-0">
-            <RoundAvatar src={payerMember?.avatar_url || payerMember?.photo_url} alt={payerName} />
-            <span className="truncate">{payerName}</span>
-            <span className="opacity-60">→</span>
-            <RoundAvatar src={toMember?.avatar_url || toMember?.photo_url} alt={toName} />
-            <span className="truncate">{toName}</span>
+          )}
+          <div className="mt-1 text-[10px] text-[var(--tg-hint-color)] leading-none text-center max-w-[40px] truncate">
+            {dateStr}
           </div>
-        )}
+        </div>
+
+        {/* Правая часть */}
+        <div className="min-w-0 flex-1">
+          {/* Верхняя строка: заголовок + сумма справа */}
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1 text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+              {title}
+            </div>
+            <div className="text-[14px] font-semibold shrink-0">{amountStr}</div>
+          </div>
+
+          {/* Вторая строка: кто платил / участники ИЛИ стрелка перевода */}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            {isExpense ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
+                  {t?.("tx_modal.paid_by_label") || "Paid by"}:
+                </span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <RoundAvatar src={payer.avatar_url || payer.photo_url} alt={makeName(payer)} />
+                  <span className="text-[12px] text-[var(--tg-text-color)] truncate">{makeName(payer)}</span>
+                </div>
+
+                <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0 mx-1">—</span>
+
+                {looksLikeAll ? (
+                  <span className="text-[12px] text-[var(--tg-text-color)] whitespace-nowrap">{participantsTitle}</span>
+                ) : (
+                  <div className="flex items-center gap-1 min-w-0">
+                    {/* аватарки первых трёх участников */}
+                    <div className="flex items-center gap-1">
+                      {participantsUsers.slice(0, 3).map((u) => (
+                        <RoundAvatar key={u.id} src={u.avatar_url || u.photo_url} alt={makeName(u)} size={16} />
+                      ))}
+                    </div>
+                    <span className="text-[12px] text-[var(--tg-text-color)] truncate">
+                      {participantsTitle || (t?.("participants") || "Participants")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)] min-w-0">
+                <RoundAvatar src={payer.avatar_url || payer.photo_url} alt={makeName(payer)} />
+                <span className="font-medium truncate">{makeName(payer)}</span>
+                <span className="opacity-60">→</span>
+                <RoundAvatar src={to?.avatar_url || to?.photo_url} alt={makeName(to)} />
+                <span className="font-medium truncate">{makeName(to)}</span>
+              </div>
+            )}
+
+            {isExpense && splitLabel && (
+              <div className="ml-2 shrink-0 px-2 h-7 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] text-[12px] inline-flex items-center gap-1">
+                <Layers size={14} className="opacity-80" />
+                <span className="truncate">{splitLabel}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Третья строка: статус долга (если смогли посчитать) */}
+          {isExpense && statusText && (
+            <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">{statusText}</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -328,9 +375,9 @@ export default function TransactionCard({
       to={`/transactions/${txId}`}
       className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl"
     >
-      {Body}
+      {Card}
     </Link>
   ) : (
-    Body
+    Card
   );
 }
