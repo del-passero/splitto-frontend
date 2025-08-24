@@ -18,15 +18,11 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
-  /** Новый: режим списка (как в GroupMembersList) — без рамки, с плотными отступами */
+  /** Режим списка как у GroupMembersList (без рамки, плотные отступы) */
   listMode?: boolean;
 };
 
@@ -115,6 +111,7 @@ function CategoryAvatar({
           {icon || ch}
         </span>
       </div>
+      {/* ДАТУ НЕ ТРОГАЕМ — остаётся под аватаркой */}
       <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
@@ -178,7 +175,7 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь: store -> Telegram fallback
+  // Тек. пользователь
   const storeUserId = useUserStore((s: any) => s.user?.id) as number | undefined;
   const currentUserId =
     typeof storeUserId === "number"
@@ -241,7 +238,7 @@ export default function TransactionCard({
     ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, без валюты) --- */
+  /* --- строка долга (без валютного символа) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
@@ -256,13 +253,17 @@ export default function TransactionCard({
     const iAmPayer = Number(payerId) === Number(currentUserId);
     if (iAmPayer) {
       const lent = Math.max(0, amountNum - payerShare);
-      statusText = lent > 0
-        ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) || `Вам должны: ${fmtNumberOnly(lent)}`)
-        : ((t && t("group_participant_no_debt")) || "Нет долга");
+      statusText =
+        lent > 0
+          ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) ||
+             `Вам должны: ${fmtNumberOnly(lent)}`)
+          : ((t && t("group_participant_no_debt")) || "Нет долга");
     } else {
-      statusText = myShare > 0
-        ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) || `Вы должны: ${fmtNumberOnly(myShare)}`)
-        : ((t && t("group_participant_no_debt")) || "Нет долга");
+      statusText =
+        myShare > 0
+          ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) ||
+             `Вы должны: ${fmtNumberOnly(myShare)}`)
+          : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   }
 
@@ -294,12 +295,9 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  const containerCls = listMode
-    ? "relative px-3 py-3"
-    : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
-  const containerStyle = listMode
-    ? undefined
-    : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
+  // Листовой вариант (как UserCard в списках)
+  const containerCls = listMode ? "relative px-3 py-3" : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
+  const containerStyle = listMode ? undefined : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
   const hoverCls = listMode ? "" : "transition hover:bg-black/5 dark:hover:bg-white/5";
 
   const CardInner = (
@@ -326,7 +324,6 @@ export default function TransactionCard({
           <TransferAvatar dateStr={dateStr} />
         )}
 
-        {/* center */}
         <div className="min-w-0 flex-1">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
@@ -335,14 +332,13 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* amount */}
         <div className="text-[14px] font-semibold shrink-0">
           {fmtAmount(amountNum, tx.currency)}
         </div>
       </div>
 
-      {/* Paid by / A→B + статус долгов */}
-      <div className="mt-0.5 ml-12 min-w-0">
+      {/* ПЛОТНО: сразу под “Paid by …”, без лишних пустот */}
+      <div className="mt-0 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <span className="opacity-70 text-[var(--tg-hint-color)]">
@@ -363,7 +359,7 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* ВАЖНО: строку долга ПОДНЯЛ — убрал лишний вертикальный зазор */}
+        {/* СТРОКУ ДОЛГА ПОДНЯЛ — прямо под “Paid by …” */}
         {isExpense && (
           <div className="mt-0.5 flex items-center gap-2">
             <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
@@ -397,7 +393,6 @@ export default function TransactionCard({
     </div>
   );
 
-  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
