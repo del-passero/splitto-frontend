@@ -18,15 +18,10 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (для «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t() — можно не передавать, будут фолбэки */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** Текущий пользователь (если не передали — попробуем из Telegram WebApp) */
   currentUserId?: number;
-  /** Опционально: обёрточные классы */
   className?: string;
 };
 
@@ -99,7 +94,7 @@ const tKey = (
   }
 };
 
-/** 20 мая / May 20 — под аватаром. Ключи: date_card.pattern, date_card.months. */
+/** 20 мая / May 20 — под аватаром. Ключи: date_card.pattern, date_card.months.* */
 const formatDateHuman = (d: Date, t?: Props["t"]) => {
   const day = d.getDate();
   const monthIdx = d.getMonth(); // 0..11
@@ -112,21 +107,15 @@ const formatDateHuman = (d: Date, t?: Props["t"]) => {
     .replace("{{month}}", String(month));
 };
 
-/** Считаем долг пользователя по транзакции.
- * Возвращаем:
- *  - {kind:"owe", amount} — «Вы должны …»
- *  - {kind:"lent", amount} — «Вам должны …»
- *  - null — нет долга/не участвует/недостаточно данных
- */
-function computeMyDebt(
+/** Долг зрителя по транзакции. Если viewerId не задан — считаем со стороны плательщика. */
+function computeViewerDebt(
   tx: any,
-  userId?: number
+  viewerId?: number
 ): { kind: "owe" | "lent"; amount: number } | null {
-  if (!userId || !tx) return null;
+  if (!tx) return null;
   const total = Number(tx.amount ?? 0);
   if (!Number.isFinite(total)) return null;
 
-  // payer
   const payerId: number | undefined =
     tx.type === "expense"
       ? Number(tx.paid_by ?? tx.created_by ?? NaN)
@@ -136,37 +125,41 @@ function computeMyDebt(
             (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN)
         );
 
-  // 1) идеальный случай — есть shares
-  if (Array.isArray(tx.shares) && tx.type === "expense") {
+  const me = viewerId ?? payerId;
+  if (!me) return null;
+
+  if (tx.type !== "expense") return null;
+
+  // shares → считаем
+  if (Array.isArray(tx.shares)) {
     let myShare = 0;
     let payerShare = 0;
     for (const s of tx.shares as any[]) {
       const uid = Number(s?.user_id);
       const val = Number(s?.amount ?? 0);
       if (!Number.isFinite(val)) continue;
-      if (uid === Number(userId)) myShare += val;
+      if (uid === Number(me)) myShare += val;
       if (uid === Number(payerId)) payerShare += val;
     }
-    if (Number(userId) === Number(payerId)) {
+    const iAmPayer = Number(me) === Number(payerId);
+    if (iAmPayer) {
       const lent = Math.max(0, total - payerShare);
       return lent > 0 ? { kind: "lent", amount: lent } : null;
     }
     return myShare > 0 ? { kind: "owe", amount: myShare } : null;
   }
 
-  // 2) фолбэки если shares нет, но бэк прислал персональные поля
-  // поддержим разные возможные имена:
-  const my =
-    Number(tx.my_share ?? tx.my_amount ?? tx.my_part ?? tx.my_debt ?? NaN);
-  if (Number.isFinite(my) && my > 0 && tx.type === "expense") {
-    if (Number(userId) === Number(payerId)) {
+  // фолбэк: персональные поля
+  const my = Number(tx.my_share ?? tx.my_amount ?? tx.my_part ?? tx.my_debt ?? NaN);
+  if (Number.isFinite(my) && my > 0) {
+    const iAmPayer = Number(me) === Number(payerId);
+    if (iAmPayer) {
       const lent = Math.max(0, total - my);
       return lent > 0 ? { kind: "lent", amount: lent } : null;
     }
     return { kind: "owe", amount: my };
   }
 
-  // 3) ничего не смогли определить
   return null;
 }
 
@@ -246,7 +239,7 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь
+  // Тек. пользователь (если нет — фолбэк на плательщика для показа долга)
   const currentUserId =
     typeof currentUserIdProp === "number"
       ? currentUserIdProp
@@ -297,21 +290,32 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = trim(tx?.to_avatar) || avatarFromMember(toMember);
 
-  // сумма участников (для подписи «Участники»)
+  // participants
+  const shareUserIds: number[] = Array.isArray(tx?.shares)
+    ? (tx.shares as any[])
+        .map((s: any) => Number(s?.user_id))
+        .filter((n: number) => Number.isFinite(n))
+    : [];
+
+  const participantsUsers =
+    shareUserIds
+      .map((uid) => getFromMap(membersById, uid))
+      .filter(Boolean) as GroupMemberLike[];
+
+  const looksLikeAll =
+    isExpense &&
+    (tx?.split_type === "equal" ||
+      (!tx?.split_type && (!tx?.shares || tx?.shares?.length === 0)));
+
   let participantsText = "";
   if (isExpense) {
-    const ids: number[] = Array.isArray(tx?.shares)
-      ? (tx.shares as any[])
-          .map((s: any) => Number(s?.user_id))
-          .filter((n: number) => Number.isFinite(n))
-      : [];
-    const uniq = Array.from(new Set(ids));
+    const uniq = Array.from(new Set(shareUserIds));
     if (uniq.length) {
       participantsText =
         groupMembersCount && uniq.length === Number(groupMembersCount)
           ? tKey(t, "tx_modal.all", "ВСЕ")
           : String(uniq.length);
-    } else if (tx?.split_type === "equal" && groupMembersCount) {
+    } else if (looksLikeAll && groupMembersCount) {
       participantsText = tKey(t, "tx_modal.all", "ВСЕ");
     }
   }
@@ -328,8 +332,9 @@ export default function TransactionCard({
     return c || "";
   }, [isExpense, tx?.comment, tx?.category?.name]);
 
-  // расчёт долга
-  const myDebt = computeMyDebt(tx, currentUserId);
+  // расчёт долга (если currentUserId нет — считаем как плательщик)
+  const viewerId = currentUserId ?? payerId;
+  const viewerDebt = computeViewerDebt(tx, viewerId);
 
   /* ====================== RENDER ====================== */
 
@@ -390,31 +395,105 @@ export default function TransactionCard({
   );
 
   const DebtRow =
-    isExpense && myDebt ? (
+    isExpense && viewerDebt ? (
       <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
-        {myDebt.kind === "owe"
+        {viewerDebt.kind === "owe"
           ? tKey(
               t,
               "group_participant_you_owe",
-              `Вы должны: ${fmtNumberOnly(myDebt.amount, currency)}`,
-              { sum: fmtNumberOnly(myDebt.amount, currency) }
+              `Вы должны: ${fmtNumberOnly(viewerDebt.amount, currency)}`,
+              { sum: fmtNumberOnly(viewerDebt.amount, currency) }
             )
           : tKey(
               t,
               "group_participant_owes_you",
-              `Вам должны: ${fmtNumberOnly(myDebt.amount, currency)}`,
-              { sum: fmtNumberOnly(myDebt.amount, currency) }
+              `Вам должны: ${fmtNumberOnly(viewerDebt.amount, currency)}`,
+              { sum: fmtNumberOnly(viewerDebt.amount, currency) }
             )}
+      </div>
+    ) : null;
+
+  // Нижний ряд: аватары всех участников расхода (сначала плательщик, затем участники из shares).
+  const AvatarsRow =
+    isExpense ? (
+      <div className="mt-2 pl-12">
+        <div className="flex items-center gap-1">
+          {/* плательщик первым */}
+          <RoundAvatar src={payerAvatar} alt={payerName} size={20} />
+          {/* участники (если shares пусто, но это «ВСЕ» — попробуем взять первых из membersById) */}
+          {(() => {
+            let list: GroupMemberLike[] = participantsUsers;
+
+            if ((!list || list.length === 0) && looksLikeAll && membersById) {
+              const values: GroupMemberLike[] =
+                membersById instanceof Map
+                  ? Array.from(membersById.values())
+                  : Object.values(membersById as Record<number, GroupMemberLike>);
+              list = values;
+            }
+
+            const uniq = new Map<number, GroupMemberLike>();
+            for (const u of list || []) {
+              if (!u) continue;
+              const id = Number((u as any).id);
+              if (!Number.isFinite(id)) continue;
+              if (id === Number(payerId)) continue; // не дублируем плательщика
+              if (!uniq.has(id)) uniq.set(id, u);
+            }
+
+            const arr = Array.from(uniq.values());
+            const shown = arr.slice(0, 8);
+            const rest = Math.max(0, arr.length - shown.length);
+
+            return (
+              <>
+                {shown.map((u) => (
+                  <RoundAvatar
+                    key={(u as any).id}
+                    src={avatarFromMember(u)}
+                    alt={nameFromMember(u)}
+                    size={20}
+                  />
+                ))}
+                {rest > 0 && (
+                  <div
+                    className="w-5 h-5 rounded-full bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[10px] flex items-center justify-center"
+                    title={`+${rest}`}
+                  >
+                    +{rest}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
       </div>
     ) : null;
 
   const Body = (
     <div className="flex items-start px-3 py-3 gap-3">
-      {LeftCol}
+      {/* левая колонка: аватар категории/перевода + дата ПОД ним */}
+      <div className="flex flex-col items-center w-10">
+        {isExpense ? (
+          <CategoryAvatar
+            name={tx?.category?.name}
+            color={tx?.category?.color}
+            icon={tx?.category?.icon}
+          />
+        ) : (
+          <TransferAvatarBox />
+        )}
+        <div className="text-[10px] text-[var(--tg-hint-color)] mt-1 text-center leading-none">
+          {dateStr}
+        </div>
+      </div>
+
+      {/* контент */}
       <div className="min-w-0 flex-1">
         {TopRow}
         <div className="mt-1">{DetailsRow}</div>
         {DebtRow}
+        {AvatarsRow}
       </div>
     </div>
   );
