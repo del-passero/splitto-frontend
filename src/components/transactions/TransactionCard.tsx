@@ -1,4 +1,3 @@
-// src/components/transactions/TransactionCard.tsx
 import React, { useRef } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,11 +18,15 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
+  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
+  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
+  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
+  /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
-  /** Режим списка (как UserCard): без рамки и с плотными отступами */
+  /** Доп. флаг для рендеринга внутри списков (можно не использовать) */
   listMode?: boolean;
 };
 
@@ -93,44 +96,32 @@ function CategoryAvatar({
   name,
   color,
   icon,
-  dateStr,
 }: {
   name?: string;
   color?: string | null;
   icon?: string;
-  dateStr: string;
 }) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
-    <div className="w-10 shrink-0 flex flex-col items-center">
-      <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
-        style={{ background: bg }}
-      >
-        <span style={{ fontSize: 16 }} aria-hidden>
-          {icon || ch}
-        </span>
-      </div>
-      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
-        {dateStr}
-      </div>
+    <div
+      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0"
+      style={{ background: bg }}
+    >
+      <span style={{ fontSize: 16 }} aria-hidden>
+        {icon || ch}
+      </span>
     </div>
   );
 }
 
-function TransferAvatar({ dateStr }: { dateStr: string }) {
+function TransferAvatar() {
   return (
-    <div className="w-10 shrink-0 flex flex-col items-center">
-      <div
-        className="w-10 h-10 rounded-xl border flex items-center justify-center"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-      >
-        <ArrowRightLeft size={18} className="opacity-80" />
-      </div>
-      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
-        {dateStr}
-      </div>
+    <div
+      className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+    >
+      <ArrowRightLeft size={18} className="opacity-80" />
     </div>
   );
 }
@@ -167,9 +158,9 @@ function RoundAvatar({
 export default function TransactionCard({
   tx,
   membersById,
+  groupMembersCount, // оставляем на будущее
   t,
   onLongPress,
-  listMode = false,
 }: Props) {
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
@@ -238,32 +229,33 @@ export default function TransactionCard({
     ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- строка долга (без символа валюты) --- */
+  /* --- статус участия (без символа валюты) --- */
   let statusText = "";
-  if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
-    let myShare = 0;
-    let payerShare = 0;
-    for (const s of tx.shares as any[]) {
-      const uid = Number(s?.user_id);
-      const val = Number(s?.amount ?? 0);
-      if (!Number.isFinite(val)) continue;
-      if (uid === Number(currentUserId)) myShare += val;
-      if (uid === Number(payerId)) payerShare += val;
-    }
-    const iAmPayer = Number(payerId) === Number(currentUserId);
-    if (iAmPayer) {
-      const lent = Math.max(0, amountNum - payerShare);
-      statusText =
-        lent > 0
-          ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) ||
-             `Вам должны: ${fmtNumberOnly(lent)}`)
+  if (typeof currentUserId === "number") {
+    if (isExpense && Array.isArray(tx.shares)) {
+      let myShare = 0;
+      let payerShare = 0;
+      for (const s of tx.shares as any[]) {
+        const uid = Number(s?.user_id);
+        const val = Number(s?.amount ?? 0);
+        if (!Number.isFinite(val)) continue;
+        if (uid === Number(currentUserId)) myShare += val;
+        if (uid === Number(payerId)) payerShare += val;
+      }
+      const iAmPayer = Number(payerId) === Number(currentUserId);
+      if (iAmPayer) {
+        const lent = Math.max(0, amountNum - payerShare);
+        statusText = lent > 0
+          ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) || `Вам должны: ${fmtNumberOnly(lent)}`)
           : ((t && t("group_participant_no_debt")) || "Нет долга");
+      } else {
+        statusText = myShare > 0
+          ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) || `Вы должны: ${fmtNumberOnly(myShare)}`)
+          : ((t && t("group_participant_no_debt")) || "Нет долга");
+      }
     } else {
-      statusText =
-        myShare > 0
-          ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) ||
-             `Вы должны: ${fmtNumberOnly(myShare)}`)
-          : ((t && t("group_participant_no_debt")) || "Нет долга");
+      // Для переводов тоже показываем строку статуса (минимально: «Нет долга»)
+      statusText = (t && t("group_participant_no_debt")) || "Нет долга";
     }
   }
 
@@ -295,79 +287,50 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  // Контейнер списка в стиле UserCard (CardSection noPadding)
-  const containerCls = listMode ? "relative px-3 py-3" : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
-  const containerStyle = listMode ? undefined : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
-  const hoverCls = listMode ? "" : "transition hover:bg-black/5 dark:hover:bg-white/5";
+  const CardInner = (
+    <div
+      className={`relative px-3 py-2 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
+      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      role="button"
+    >
+      {/* ВЕРХ: иконка + заголовок + сумма */}
+      <div className="flex items-start gap-3">
+        {isExpense ? <CategoryAvatar name={tx.category?.name} color={tx.category?.color} icon={tx.category?.icon} /> : <TransferAvatar />}
 
-  const body = (
-    <div className="flex items-start gap-3">
-      {/* слева: аватар категории/перевода + дата под ним */}
-      {isExpense ? (
-        <CategoryAvatar
-          name={tx.category?.name}
-          color={tx.category?.color}
-          icon={tx.category?.icon}
-          dateStr={dateStr}
-        />
-      ) : (
-        <TransferAvatar dateStr={dateStr} />
-      )}
-
-      {/* справа: ДВЕ СТРОКИ — 1) заголовок+сумма  2) paid by/transfer + статус долга */}
-      <div className="min-w-0 flex-1">
-        {/* строка 1 */}
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1 text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-            {title}
-          </div>
-          <div className="text-[14px] font-semibold shrink-0">
-            {fmtAmount(Number(tx.amount ?? 0), tx.currency)}
-          </div>
+        {/* center */}
+        <div className="min-w-0 flex-1">
+          {title ? (
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+              {title}
+            </div>
+          ) : null}
         </div>
 
-        {/* строка 2 — ПЛОТНО ПОД ЗАГОЛОВКОМ */}
+        {/* amount */}
+        <div className="text-[14px] font-semibold shrink-0">
+          {fmtAmount(amountNum, tx.currency)}
+        </div>
+      </div>
+
+      {/* СРЕДНЯЯ СТРОКА: «Заплатил …» или «A → B» */}
+      <div className="mt-1 ml-12 min-w-0">
         {isExpense ? (
-          <div className="mt-0.5 flex items-center gap-2">
-            <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="opacity-70 text-[var(--tg-hint-color)]">
               {(t && t("tx_modal.paid_by_label")) || "Заплатил"}
             </span>
             <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="text-[12px] text-[var(--tg-text-color)] font-medium truncate">
+            <span className="text-[var(--tg-text-color)] font-medium truncate">
               {payerName}
             </span>
-
-            {/* статус долга прижат к правому краю */}
-            <div className="ml-auto flex items-center gap-2 min-w-0">
-              <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-                {statusText}
-              </div>
-              <div className="shrink-0 flex items-center justify-end -space-x-2">
-                {participantsExceptPayer.slice(0, 16).map((m, i) => {
-                  const url = m.photo_url || m.avatar_url;
-                  return url ? (
-                    <img
-                      key={m.id}
-                      src={url}
-                      alt=""
-                      className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
-                      style={{ marginLeft: i === 0 ? 0 : -8 }}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span
-                      key={m.id}
-                      className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
-                      style={{ marginLeft: i === 0 ? 0 : -8 }}
-                      aria-hidden
-                    />
-                  );
-                })}
-              </div>
-            </div>
           </div>
         ) : (
-          <div className="mt-0.5 flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
             <span className="opacity-60">→</span>
@@ -376,24 +339,48 @@ export default function TransactionCard({
           </div>
         )}
       </div>
+
+      {/* НИЖНЯЯ СТРОКА: СЛЕВА дата, СПРАВА долг + (для расходов) аватарки участников */}
+      <div className="mt-1 ml-12 flex items-center justify-between">
+        <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">
+          {dateStr}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+            {statusText}
+          </div>
+
+          {isExpense && (
+            <div className="shrink-0 flex items-center justify-end -space-x-2">
+              {participantsExceptPayer.slice(0, 16).map((m, i) => {
+                const url = m.photo_url || m.avatar_url;
+                return url ? (
+                  <img
+                    key={m.id}
+                    src={url}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
+                    style={{ marginLeft: i === 0 ? 0 : -8 }}
+                    loading="lazy"
+                  />
+                ) : (
+                  <span
+                    key={m.id}
+                    className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
+                    style={{ marginLeft: i === 0 ? 0 : -8 }}
+                    aria-hidden
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 
-  const CardInner = (
-    <div
-      className={`${containerCls} ${hoverCls}`}
-      style={containerStyle}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerLeave}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      role="button"
-    >
-      {body}
-    </div>
-  );
-
+  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
