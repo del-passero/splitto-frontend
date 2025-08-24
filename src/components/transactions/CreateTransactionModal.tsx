@@ -15,6 +15,7 @@ import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from ".
 import type { TransactionOut } from "../../types/transaction";
 import { createTransaction, updateTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
+import { getGroupDetails } from "../../api/groupsApi";
 
 export type TxType = "expense" | "transfer";
 
@@ -23,7 +24,6 @@ export interface MinimalGroup {
   name: string;
   color?: string | null;
   icon?: string | null;
-
   default_currency_code?: string | null;
   currency_code?: string | null;
   currency?: string | null;
@@ -38,7 +38,7 @@ type MemberMini = {
   name?: string;
 };
 
-/* ---------- utils ---------- */
+/* ---------- helpers / small UI ---------- */
 function Row({
   icon, label, value, onClick, right, isLast
 }: {
@@ -107,61 +107,14 @@ function SelectedGroupPill({
 
 const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
-function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string | null {
+const resolveCurrencyCodeFromGroup = (g?: MinimalGroup | null): string | null => {
   const raw =
     (g as any)?.default_currency_code ||
     (g as any)?.currency_code ||
     (g as any)?.currency ||
     null;
   return (typeof raw === "string" && raw.trim()) ? raw.trim().toUpperCase() : null;
-}
-
-// Возвращаем код валюты + символ (символ нужен только для SplitPickerModal), но в UI показываем именно код.
-function makeCurrency(g?: MinimalGroup | null, fallbackCode?: string | null) {
-  const code = resolveCurrencyCodeFromGroup(g) || (fallbackCode ? fallbackCode.toUpperCase() : null);
-  const SYMBOL_BY_CODE: Record<string, string> = {
-    USD:"$", EUR:"€", RUB:"₽", GBP:"£", UAH:"₴", KZT:"₸", TRY:"₺",
-    JPY:"¥", CNY:"¥", PLN:"zł", CZK:"Kč", INR:"₹", AED:"د.إ", KRW:"₩", VND:"₫"
-  };
-  return {
-    code,
-    symbol: code ? (SYMBOL_BY_CODE[code] ?? code) : "",
-    decimals: code ? (DECIMALS_BY_CODE[code] ?? 2) : 2,
-  };
-}
-
-// Ввод суммы с ограничением дробной части по валюте
-function parseAmountInput(raw: string, decimals: number): string {
-  let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
-  const firstDot = s.indexOf(".");
-  if (firstDot !== -1) {
-    const head = s.slice(0, firstDot + 1);
-    const tail = s.slice(firstDot + 1).replace(/\./g, "");
-    s = head + tail;
-  }
-  if (decimals === 0) {
-    s = s.replace(/\./g, "");
-  } else if (s.includes(".")) {
-    const [int, dec] = s.split(".");
-    s = int + "." + dec.slice(0, decimals);
-  }
-  return s;
-}
-function toFixedSafe(s: string, decimals = 2): string {
-  if (!s) return "";
-  const n = Number(s);
-  if (!isFinite(n)) return "";
-  return n.toFixed(decimals);
-}
-// Используем код валюты, а не символ.
-function fmtMoney(n: number, decimals: number, code: string | null, locale: string) {
-  try {
-    const nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    return `${nf.format(n)} ${code ?? ""}`;
-  } catch {
-    return `${n.toFixed(decimals)} ${code ?? ""}`;
-  }
-}
+};
 
 function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
@@ -234,12 +187,13 @@ export default function CreateTransactionModal({
   const user = useUserStore((s) => s.user);
   const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
 
+  /* ===== GROUPS ===== */
   const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
     setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
   }, [groupsProp, groupsStoreItems]);
 
-  // ===== ФОРМА (объявляем ДО эффектов, где используется selectedGroupId) =====
+  /* ===== FORM STATE (объявляем ДО эффектов) ===== */
   const [groupModal, setGroupModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
   const [type, setType] = useState<TxType>("expense");
@@ -277,7 +231,7 @@ export default function CreateTransactionModal({
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
-  // автоподгрузка групп
+  /* ===== AUTOLOAD GROUPS ===== */
   const didLoadRef = useRef(false);
   useEffect(() => {
     if (!open) return;
@@ -289,13 +243,12 @@ export default function CreateTransactionModal({
     }
   }, [open, groupsProp, groupsStoreItems, user, fetchGroups]);
 
-  // участники группы (использует selectedGroupId — он выше)
+  /* ===== MEMBERS (для автосплита и аватарок) ===== */
   const [membersMap, setMembersMap] = useState<Map<number, MemberMini>>(() => new Map());
   useEffect(() => {
     let abort = false;
     (async () => {
-      if (!open || !localGroups || localGroups.length === 0) return;
-      if (!selectedGroupId) return;
+      if (!open || !selectedGroupId) return;
       const map = new Map<number, MemberMini>();
       let offset = 0;
       const limit = 100;
@@ -323,106 +276,52 @@ export default function CreateTransactionModal({
       if (!abort) setMembersMap(map);
     })();
     return () => { abort = true; };
-  }, [open, selectedGroupId, localGroups]);
+  }, [open, selectedGroupId]);
 
-  // NEW: заполняем из initialTx при открытии edit
-  useEffect(() => {
-    if (!open || !initialTx) return;
-    try {
-      const tx = initialTx;
-      setSelectedGroupId(tx.group_id ?? defaultGroupId);
-      setType(tx.type === "transfer" ? "transfer" : "expense");
-      setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
-      setComment(String(tx.comment || ""));
-
-      const dec = 2;
-      setAmount(String(Number(tx.amount ?? 0).toFixed(dec)));
-
-      if (tx.type === "expense") {
-        if (tx.category) {
-          setCategoryId(Number(tx.category.id));
-          setCategoryName(tx.category.name || null);
-          setCategoryColor((tx.category.color as string) || null);
-          setCategoryIcon((tx.category.icon as string) || null);
-        }
-        setPaidBy(Number(tx.paid_by ?? tx.created_by ?? 0) || undefined);
-        setPaidByName(String(tx.paid_by_name || ""));
-        setPaidByAvatar(tx.paid_by_avatar || undefined);
-
-        if (Array.isArray(tx.shares) && tx.shares.length) {
-          setSplitType("custom");
-          setSplitData({
-            type: "custom",
-            participants: tx.shares.map((s: any) => ({
-              user_id: Number(s.user_id),
-              name: String(s.name || ""),
-              avatar_url: s.avatar_url || undefined,
-              amount: Number(s.amount || 0),
-            })),
-          } as any);
-        } else {
-          setSplitType("equal");
-          setSplitData(null);
-        }
-      } else {
-        const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? 0) || undefined;
-        const toId = Array.isArray(tx.transfer_to)
-          ? (Number(tx.transfer_to[0] ?? 0) || undefined)
-          : (Number(tx.to_user_id ?? 0) || undefined);
-        setPaidBy(fromId);
-        setToUser(toId);
-        setPaidByName(String(tx.from_name || ""));
-        setToUserName(String(tx.to_name || ""));
-        setPaidByAvatar(tx.from_avatar || undefined);
-        setToUserAvatar(tx.to_avatar || undefined);
-      }
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialTx]);
-
-  // сброс при закрытии
-  useEffect(() => {
-    if (open) return;
-    setSelectedGroupId(defaultGroupId);
-    setType("expense");
-    setCategoryModal(false);
-    setCategoryId(undefined);
-    setCategoryName(null);
-    setCategoryColor(null);
-    setCategoryIcon(null);
-    setAmount("");
-    setSplitType("equal");
-    setSplitData(null);
-    setPaidBy(undefined);
-    setPaidByName("");
-    setPaidByAvatar(undefined);
-    setToUser(undefined);
-    setToUserName("");
-    setToUserAvatar(undefined);
-    setDate(new Date().toISOString().slice(0, 10));
-    setComment("");
-    setShowErrors(false);
-    setAmountTouched(false);
-    setCommentTouched(false);
-    setMoreOpen(false);
-    setPayerOpen(false);
-    setRecipientOpen(false);
-    setSplitOpen(false);
-    setSaving(false);
-  }, [open, defaultGroupId]);
-
+  /* ===== CURRENCY: всегда показываем КОД; если в списке групп кода нет — дотягиваем деталку ===== */
   const selectedGroup = useMemo(
     () => localGroups.find((g) => g.id === selectedGroupId) || null,
     [localGroups, selectedGroupId]
   );
 
-  // возвращаем и код, и символ (символ нужен для SplitPickerModal), но везде в этом компоненте показываем именно КОД
-  const currency = useMemo(
-    () => makeCurrency(selectedGroup, (selectedGroup as any)?.currency || null),
-    [selectedGroup]
-  );
+  const [currencyCode, setCurrencyCode] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const code = resolveCurrencyCodeFromGroup(selectedGroup);
+      if (code) {
+        if (!cancelled) setCurrencyCode(code);
+        return;
+      }
+      // подтягиваем деталку группы — там точно есть валюта
+      if (selectedGroupId) {
+        try {
+          const gd = await getGroupDetails(selectedGroupId);
+          const raw =
+            (gd as any)?.default_currency_code ||
+            (gd as any)?.currency_code ||
+            (gd as any)?.currency || null;
+          const detCode = typeof raw === "string" && raw.trim() ? raw.trim().toUpperCase() : null;
+          if (!cancelled) setCurrencyCode(detCode || "USD");
+        } catch {
+          if (!cancelled) setCurrencyCode("USD");
+        }
+      } else {
+        if (!cancelled) setCurrencyCode(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedGroup, selectedGroupId]);
+
+  const currency = useMemo(() => {
+    const code = currencyCode || null;
+    return {
+      code,
+      // важный момент: символ нигде не выводим; для SplitPickerModal передадим symbol=code
+      symbol: code || "",
+      decimals: code ? (DECIMALS_BY_CODE[code] ?? 2) : 2,
+    };
+  }, [currencyCode]);
 
   const COMMENT_MAX = 32;
   const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v);
@@ -433,6 +332,16 @@ export default function CreateTransactionModal({
     const n = Number(amount);
     return isFinite(n) ? n : 0;
   }, [amount]);
+
+  // форматируем с КОДОМ валюты
+  const fmtMoney = (n: number, decimals: number, code: string | null, loc: string) => {
+    try {
+      const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return `${nf.format(n)} ${code ?? ""}`;
+    } catch {
+      return `${n.toFixed(decimals)} ${code ?? ""}`;
+    }
+  };
 
   const perPerson: PerPerson[] = useMemo(() => {
     if (!splitData || amountNumber <= 0) return [];
@@ -447,14 +356,15 @@ export default function CreateTransactionModal({
     return Math.abs(totalParts - total) > eps ? { sumParts: totalParts, total } : null;
   }, [splitData, perPerson, amountNumber, currency.decimals]);
 
-  // ошибки
+  /* ===== VALIDATION ===== */
   const errors = useMemo(() => {
     const errs: Record<string, string> = {};
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
-    if (!amount || amountNumber <= 0) errs.amount =
-      locale === "ru" ? "Введите сумму больше 0" :
-      locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
-
+    if (!amount || amountNumber <= 0) {
+      errs.amount =
+        locale === "ru" ? "Введите сумму больше 0" :
+        locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
+    }
     if (type === "expense" && !comment.trim()) {
       errs.comment =
         locale === "ru" ? "Заполните комментарий" :
@@ -504,8 +414,29 @@ export default function CreateTransactionModal({
     return errs;
   }, [selectedGroupId, amount, amountNumber, comment, locale, type, categoryId, splitData, customMismatch, t, paidBy, toUser]);
 
-  const handleAmountChange = (v: string) => setAmount(parseAmountInput(v, currency.decimals));
-  const handleAmountBlur = () => { setAmountTouched(true); setAmount((prev) => toFixedSafe(prev, currency.decimals)); };
+  const handleAmountChange = (v: string) => {
+    const decimals = currency.decimals;
+    let s = v.replace(",", ".").replace(/[^\d.]/g, "");
+    const firstDot = s.indexOf(".");
+    if (firstDot !== -1) {
+      const head = s.slice(0, firstDot + 1);
+      const tail = s.slice(firstDot + 1).replace(/\./g, "");
+      s = head + tail;
+    }
+    if (decimals === 0) s = s.replace(/\./g, "");
+    else if (s.includes(".")) {
+      const [int, dec] = s.split(".");
+      s = int + "." + dec.slice(0, decimals);
+    }
+    setAmount(s);
+  };
+  const handleAmountBlur = () => {
+    setAmountTouched(true);
+    if (!amount) return;
+    const n = Number(amount);
+    if (!isFinite(n)) return;
+    setAmount(n.toFixed(currency.decimals));
+  };
   const handleCommentBlur = () => setCommentTouched(true);
 
   const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
@@ -552,41 +483,28 @@ export default function CreateTransactionModal({
       amountInputRef.current?.focus();
       return false;
     }
-
     if (type === "expense") {
-      if (!categoryId) {
-        setCategoryModal(true);
-        return false;
-      }
-      if (errors.split) {
-        setSplitOpen(true);
-        return false;
-      }
+      if (!categoryId) { setCategoryModal(true); return false; }
+      if (errors.split) { setSplitOpen(true); return false; }
       return true;
     }
-
-    if (!paidBy) {
-      setPayerOpen(true);
-      return false;
-    }
-    if (!toUser) {
-      setRecipientOpen(true);
-      return false;
-    }
-    if (paidBy === toUser) {
-      return false;
-    }
+    if (!paidBy) { setPayerOpen(true); return false; }
+    if (!toUser) { setRecipientOpen(true); return false; }
+    if (paidBy === toUser) return false;
     return true;
   };
 
-  // Построение shares под бек-схему
+  // shares для бэка
   function buildShares(
     sel: SplitSelection | null | undefined,
     total: number,
     decimals: number
   ): Array<{ user_id: number; amount: string; shares?: number | null }> {
     if (!sel) return [];
-    const toFixed = (x: number) => toFixedSafe(String(x), decimals);
+    const toFixed = (x: number) => {
+      const n = Number(x);
+      return isFinite(n) ? n.toFixed(decimals) : (0).toFixed(decimals);
+    };
     if (sel.type === "custom") {
       return sel.participants.map((p: any) => ({
         user_id: Number(p.user_id),
@@ -622,23 +540,18 @@ export default function CreateTransactionModal({
     try {
       setSaving(true);
       const gid = selectedGroupId as number;
-      const amtStr = toFixedSafe(amount, currency.decimals);
+      const amtStr = isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0";
 
       let saved: TransactionOut | undefined;
 
       if (type === "expense") {
         const payerId = paidBy ?? user?.id;
-        if (!payerId) {
-          setPayerOpen(true);
-          setShowErrors(true);
-          setSaving(false);
-          return;
-        }
+        if (!payerId) { setPayerOpen(true); setShowErrors(true); setSaving(false); return; }
 
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: amtStr,
+          amount: amtStr,             // строка для Decimal
           currency: currency.code || "USD",
           date,
           comment: comment.trim() || null,
@@ -648,11 +561,8 @@ export default function CreateTransactionModal({
           shares: buildShares(splitData, Number(amtStr), currency.decimals),
         };
 
-        if (mode === "edit" && initialTx?.id) {
-          saved = await updateTransaction(initialTx.id, payload);
-        } else {
-          saved = await createTransaction(payload);
-        }
+        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload);
+        else saved = await createTransaction(payload);
       } else {
         const payload: any = {
           type: "transfer",
@@ -665,15 +575,13 @@ export default function CreateTransactionModal({
           transfer_to: [toUser as number],
         };
 
-        if (mode === "edit" && initialTx?.id) {
-          saved = await updateTransaction(initialTx.id, payload);
-        } else {
-          saved = await createTransaction(payload);
-        }
+        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload);
+        else saved = await createTransaction(saved = payload);
+        // ^ если ваш createTransaction возвращает сущность — всё ок;
+        //   если нет, можно убрать присваивание.
       }
 
       if (!initialTx && saved && onCreated) onCreated(saved);
-
       if (modeAfter === "close") onOpenChange(false);
       else resetForNew();
     } catch (e) {
@@ -683,6 +591,38 @@ export default function CreateTransactionModal({
       setSaving(false);
     }
   };
+
+  /* ===== reset при закрытии ===== */
+  useEffect(() => {
+    if (open) return;
+    setSelectedGroupId(defaultGroupId);
+    setType("expense");
+    setCategoryModal(false);
+    setCategoryId(undefined);
+    setCategoryName(null);
+    setCategoryColor(null);
+    setCategoryIcon(null);
+    setAmount("");
+    setSplitType("equal");
+    setSplitData(null);
+    setPaidBy(undefined);
+    setPaidByName("");
+    setPaidByAvatar(undefined);
+    setToUser(undefined);
+    setToUserName("");
+    setToUserAvatar(undefined);
+    setDate(new Date().toISOString().slice(0, 10));
+    setComment("");
+    setShowErrors(false);
+    setAmountTouched(false);
+    setCommentTouched(false);
+    setMoreOpen(false);
+    setPayerOpen(false);
+    setRecipientOpen(false);
+    setSplitOpen(false);
+    setSaving(false);
+    setCurrencyCode(null);
+  }, [open, defaultGroupId]);
 
   if (!open) return null;
 
@@ -777,7 +717,7 @@ export default function CreateTransactionModal({
                   </CardSection>
                 </div>
 
-                {/* Сумма */}
+                {/* Сумма (слева — КОД валюты) */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
@@ -813,7 +753,7 @@ export default function CreateTransactionModal({
                 {/* EXPENSE */}
                 {type === "expense" ? (
                   <>
-                    {/* Категория + Комментарий */}
+                    {/* Категория + Комментарий (ограничение 32 символа + счётчик) */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div
@@ -850,7 +790,6 @@ export default function CreateTransactionModal({
                           </div>
                         </div>
 
-                        {/* индикатор оставшихся символов */}
                         <div className={`px-3 pb-0.5 -mt-0.5 text-[12px] ${commentLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
                           {
                             (i18n.language || "en").startsWith("ru")
@@ -989,7 +928,7 @@ export default function CreateTransactionModal({
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
-                          {/* From (sender) */}
+                          {/* From */}
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -1019,7 +958,7 @@ export default function CreateTransactionModal({
                             )}
                           </button>
 
-                          {/* To (recipient) */}
+                          {/* To */}
                           <button
                             type="button"
                             onClick={openRecipientPicker}
@@ -1141,12 +1080,12 @@ export default function CreateTransactionModal({
 
                     {moreOpen && !saving && mode !== "edit" && (
                       <div
-                        className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-10"
+                        className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-20"
                         onMouseLeave={() => setMoreOpen(false)}
                       >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
                           onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
@@ -1202,8 +1141,7 @@ export default function CreateTransactionModal({
           setPaidByName(u.name || "");
           // @ts-ignore
           setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
-
-          // Автосплит: если ещё не задан — включаем equal со всеми участниками группы
+          // Автосплит «equal» со всеми участниками — сразу после выбора плательщика
           setSplitData((prev) => {
             const alreadySet = !!prev && prev.participants && prev.participants.length > 0;
             if (alreadySet) return prev;
@@ -1233,13 +1171,14 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
-      {/* Деление (только для expense) */}
+      {/* Деление */}
       <SplitPickerModal
         open={splitOpen && !!selectedGroupId}
         onClose={() => setSplitOpen(false)}
         groupId={selectedGroupId || 0}
-        amount={Number(toFixedSafe(amount || "0", currency.decimals))}
-        currency={{ code: currency.code || "", symbol: currency.symbol, decimals: currency.decimals }}
+        amount={Number((isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0"))}
+        // передаём symbol = КОД, чтобы нигде не всплывали $/€/₽
+        currency={{ code: currency.code || "", symbol: currency.code || "", decimals: currency.decimals }}
         initial={splitData || { type: splitType, participants: [] as any[] }}
         paidById={paidBy}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
