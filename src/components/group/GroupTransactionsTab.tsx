@@ -1,8 +1,8 @@
+// src/components/group/GroupTransactionsTab.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
-import FiltersRow from "../FiltersRow";
 import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
@@ -26,7 +26,6 @@ const PAGE_SIZE = 20;
 
 const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd }: Props) => {
   const { t } = useTranslation();
-  const [search, setSearch] = useState("");
   const [openCreate, setOpenCreate] = useState(false);
 
   // groupId из урла — фильтрация выборки
@@ -209,52 +208,34 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length, hasMore, loading, filtersKey]);
 
-  /* ---------- клиентский поиск ---------- */
-  const visible = useMemo(() => {
-    if (!search.trim()) return items;
-    const q = search.toLowerCase();
-    return items.filter((tx) => {
-      const hay = [
-        tx.comment,
-        (tx as any).category?.name, // для expense
-        (tx as any).from_name,      // для transfer
-        (tx as any).to_name,        // для transfer
-        tx.currency,
-        tx.amount?.toString(),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [items, search]);
-
   const handleAddClick = () => setOpenCreate(true);
 
   // при успешном создании — сразу добавим в выдачу без полного рефетча
   const handleCreated = (tx: TransactionOut) => setItems((prev) => [tx, ...prev]);
 
   return (
-    <div className="relative w-full h-full min-h-[320px]">
-      <FiltersRow search={search} setSearch={setSearch} />
+    <div className="relative w-full h-full min-h[320px]">
+      {/* Строку поиска (FiltersRow) убрали по запросу */}
 
       {error ? (
         <div className="flex justify-center py-12 text-red-500">{error}</div>
       ) : loading && items.length === 0 ? (
         <div className="flex justify-center py-12 text-[var(--tg-hint-color)]">{t("loading")}</div>
-      ) : visible.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyTransactions />
       ) : (
         <div className="flex flex-col gap-2 py-3">
-          {visible.map((tx: any, idx: number) => (
+          {items.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
               <TransactionCard
                 tx={tx}
                 membersById={membersMap ?? undefined}
                 groupMembersCount={membersCount}
                 t={t}
+                // пример: хук для «долгого тапа» — см. добавку в TransactionCard ниже
+                // onLongPress={(txPressed) => setActionTx(txPressed)}
               />
-              {idx !== visible.length - 1 && (
+              {idx !== items.length - 1 && (
                 <div className="absolute left-14 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               )}
             </div>

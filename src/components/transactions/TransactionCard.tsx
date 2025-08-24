@@ -1,200 +1,94 @@
 // src/components/transactions/TransactionCard.tsx
-import React, { useMemo } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import React, { useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
+import { ArrowRightLeft } from "lucide-react";
 import { useUserStore } from "../../store/userStore";
 
-/** Короткая инфа о пользователе в группе */
-export type GroupMemberLike = {
+/** Пользователь */
+type TGUser = {
   id: number;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  avatar_url?: string;
-  photo_url?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  photo_url?: string | null;
+  avatar_url?: string | null;
+  name?: string | null;
 };
 
+/** Участник в списке может быть { user } или сразу TGUser */
+export type GroupMemberLike = { user: TGUser } | TGUser;
 type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
+
+type TFunc = (k: string, vars?: Record<string, any>) => string;
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
+  /** карта участников группы: id -> {user}|user */
   membersById?: MembersMap;
+  /** кол-во участников группы (для "ВСЕ (N)") */
   groupMembersCount?: number;
-  t?: (k: string, vars?: Record<string, any>) => string;
-  currentUserId?: number;
+  t?: TFunc;
   className?: string;
+
+  /** NEW: long-press колбэк (для ActionSheet) */
+  onLongPress?: (tx: any, e?: React.SyntheticEvent) => void;
 };
 
-/* ====================== helpers ====================== */
+/* ---------- utils ---------- */
+const s = (x: any) => (typeof x === "string" ? x : "");
+const upper = (x: any) => s(x).toUpperCase();
 
-const getFromMap = (m?: MembersMap, id?: number | null) => {
-  if (!m || id == null) return undefined;
-  const key = Number(id);
-  if (m instanceof Map) return m.get(key);
-  return (m as Record<number, GroupMemberLike>)[key];
-};
-const trim = (s?: unknown) =>
-  typeof s === "string" ? s.trim() : typeof s === "number" ? String(s) : "";
-const firstName = (full?: string) => {
-  const s = trim(full);
-  if (!s) return "";
-  return s.split(/\s+/)[0] || s;
-};
-const nameFromMember = (m?: GroupMemberLike) => {
-  if (!m) return "";
-  const composed = `${trim(m.first_name)} ${trim(m.last_name)}`.trim();
-  return composed || m.name || (m.username ? `@${m.username}` : `#${m.id}`);
-};
-const avatarFromMember = (m?: GroupMemberLike) =>
-  trim(m?.avatar_url || m?.photo_url) || undefined;
+const userFromLike = (v?: GroupMemberLike | null): TGUser | undefined =>
+  !v ? undefined : (v as any).user ? ((v as any).user as TGUser) : (v as TGUser);
 
-const ZERO = new Set(["JPY", "KRW", "VND"]);
-const decimalsBy = (code?: string) =>
-  code && ZERO.has(code.toUpperCase()) ? 0 : 2;
-
-const roundByCcy = (n: number, code?: string) => {
-  const d = decimalsBy(code);
-  const k = Math.pow(10, d);
-  return Math.round(n * k) / k;
+const makeName = (u?: TGUser): string => {
+  if (!u) return "";
+  if (u.name) return u.name;
+  const fn = s(u.first_name).trim();
+  const ln = s(u.last_name).trim();
+  if (fn || ln) return [fn, ln].filter(Boolean).join(" ");
+  if (u.username) return `@${u.username}`;
+  return "";
 };
 
-const fmtAmount = (n: number, code?: string) => {
-  if (!Number.isFinite(n)) n = 0;
-  const c = (code || "").toUpperCase();
-  const d = decimalsBy(c);
-  try {
-    const nf = new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: d,
-      maximumFractionDigits: d,
-    });
-    return `${nf.format(n)} ${c}`.trim();
-  } catch {
-    return `${n.toFixed(d)} ${c}`.trim();
-  }
-};
-const fmtNumberOnly = (n: number, code?: string) => {
-  if (!Number.isFinite(n)) n = 0;
-  const d = decimalsBy(code);
-  try {
-    return new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: d,
-      maximumFractionDigits: d,
-    }).format(n);
-  } catch {
-    return n.toFixed(d);
-  }
-};
+const firstLetter = (v: string) =>
+  (v || "").trim().charAt(0).toUpperCase() || "•";
 
-const tKey = (
-  t?: (k: string, vars?: Record<string, any>) => string,
-  key?: string,
-  fb?: string,
-  vars?: Record<string, any>
-) => {
-  if (!key) return fb || "";
-  try {
-    const v = t?.(key, vars);
-    return v && v !== key ? v : fb || "";
-  } catch {
-    return fb || "";
-  }
-};
-
-/** 20 мая / May 20 — под аватаром */
-const formatDateHuman = (d: Date, t?: Props["t"]) => {
-  const day = d.getDate();
-  const monthIdx = d.getMonth(); // 0..11
-  const month =
-    tKey(t, `date_card.months.${monthIdx}`, undefined) ||
-    d.toLocaleString(undefined, { month: "short" });
-  const pattern = tKey(t, "date_card.pattern", "{{day}} {{month}}");
-  return pattern
-    .replace("{{day}}", String(day))
-    .replace("{{month}}", String(month));
-};
-
-/** Подсчёт долга для viewerId */
-function computeViewerDebtAmount(
-  tx: any,
-  viewerId?: number,
-  groupMembersCount?: number,
-  membersById?: MembersMap
-): { type: "owe" | "lent" | "none"; amount: number } {
-  if (!tx || tx.type !== "expense") return { type: "none", amount: 0 };
-
-  const total = Number(tx.amount ?? 0);
-  const currency = trim(tx.currency).toUpperCase();
-  if (!Number.isFinite(total) || total <= 0) return { type: "none", amount: 0 };
-
-  const payerId: number | undefined = Number(
-    tx.paid_by ?? tx.created_by ?? NaN
+function UserAvatar({
+  user,
+  size = 18,
+  className = "",
+  style,
+}: {
+  user?: TGUser;
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const url = s(user?.photo_url || user?.avatar_url).trim();
+  const name = makeName(user);
+  return (
+    <div
+      className={
+        "rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden flex items-center justify-center " +
+        className
+      }
+      style={{ width: size, height: size, ...style }}
+      title={name || undefined}
+      aria-label={name || undefined}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={name || ""}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <span className="text-[10px] opacity-80">{firstLetter(name)}</span>
+      )}
+    </div>
   );
-  const me = viewerId ?? payerId;
-  if (!me || !Number.isFinite(payerId)) return { type: "none", amount: 0 };
-
-  // 1) точный расчёт по shares
-  if (Array.isArray(tx.shares) && tx.shares.length > 0) {
-    let myShare = 0;
-    let payerShare = 0;
-    for (const s of tx.shares as any[]) {
-      const uid = Number(s?.user_id);
-      const val = Number(s?.amount ?? 0);
-      if (!Number.isFinite(val)) continue;
-      if (uid === Number(me)) myShare += val;
-      if (uid === Number(payerId)) payerShare += val;
-    }
-    const iAmPayer = Number(me) === Number(payerId);
-    if (iAmPayer) {
-      const lent = roundByCcy(Math.max(0, total - payerShare), currency);
-      return lent > 0 ? { type: "lent", amount: lent } : { type: "none", amount: 0 };
-    } else {
-      myShare = roundByCcy(myShare, currency);
-      return myShare > 0 ? { type: "owe", amount: myShare } : { type: "none", amount: 0 };
-    }
-  }
-
-  // 2) фоллбэк: split_type == equal (или shares пусты)
-  const equal =
-    String(tx.split_type || "").toLowerCase() === "equal" ||
-    (!tx.split_type && (!tx.shares || tx.shares.length === 0));
-
-  if (equal) {
-    let n: number | undefined = undefined;
-
-    if (Array.isArray(tx.shares) && tx.shares.length) {
-      const uniq = new Set(
-        (tx.shares as any[])
-          .map((s: any) => Number(s?.user_id))
-          .filter((x: number) => Number.isFinite(x))
-      );
-      n = uniq.size;
-    }
-    if (!n && Number.isFinite(Number(tx.participants_count))) n = Number(tx.participants_count);
-    if (!n && membersById) {
-      n =
-        membersById instanceof Map
-          ? membersById.size
-          : Object.keys(membersById as Record<number, GroupMemberLike>).length;
-    }
-    if (!n && Number.isFinite(Number(groupMembersCount))) n = Number(groupMembersCount);
-
-    if (!n || n <= 0) return { type: "none", amount: 0 };
-
-    const iAmPayer = Number(me) === Number(payerId);
-    if (iAmPayer) {
-      const lent = roundByCcy(total * ((n - 1) / n), currency);
-      return lent > 0 ? { type: "lent", amount: lent } : { type: "none", amount: 0 };
-    } else {
-      const owe = roundByCcy(total / n, currency);
-      return owe > 0 ? { type: "owe", amount: owe } : { type: "none", amount: 0 };
-    }
-  }
-
-  return { type: "none", amount: 0 };
 }
-
-/* ====================== UI bits ====================== */
 
 function CategoryAvatar({
   name,
@@ -207,312 +101,334 @@ function CategoryAvatar({
 }) {
   const bg =
     typeof color === "string" && color.trim()
-      ? (color as string)
+      ? color
       : "var(--tg-link-color)";
-  const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
     <div
       className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0"
       style={{ background: bg }}
     >
       <span style={{ fontSize: 16 }} aria-hidden>
-        {icon || ch}
+        {icon || firstLetter(name || "")}
       </span>
     </div>
   );
 }
 
-function TransferAvatarBox() {
-  return (
-    <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center shrink-0">
-      <ArrowRightLeft size={18} className="opacity-80" />
-    </div>
-  );
-}
+const ZERO_CCY_DEC = new Set(["JPY", "KRW", "VND"]);
+const decimalsByCode = (code?: string) =>
+  code && ZERO_CCY_DEC.has(code) ? 0 : 2;
 
-function RoundAvatar({
-  src,
-  alt,
-  size = 18,
-  className,
-  style,
-}: {
-  src?: string;
-  alt?: string;
-  size?: number;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  return src ? (
-    <img
-      src={src}
-      alt={alt || ""}
-      className={`rounded-full object-cover ${className || ""}`}
-      style={{ width: size, height: size, ...(style || {}) }}
-      loading="lazy"
-    />
-  ) : (
-    <span
-      className={`rounded-full inline-block ${className || ""}`}
-      style={{ width: size, height: size, background: "var(--tg-link-color)", ...(style || {}) }}
-      aria-hidden
-    />
-  );
-}
+const fmtAmount = (n: number, code?: string) => {
+  if (!isFinite(n)) n = 0;
+  const decimals = decimalsByCode(code);
+  try {
+    const nf = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+    return `${nf.format(n)} ${upper(code)}`.trim();
+  } catch {
+    return `${n.toFixed(decimals)} ${upper(code)}`.trim();
+  }
+};
 
-/* ====================== main ====================== */
+const fmtNumberOnly = (n: number, code?: string) => {
+  if (!isFinite(n)) n = 0;
+  const decimals = decimalsByCode(code);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(n);
+  } catch {
+    return n.toFixed(decimals);
+  }
+};
 
+const getFromMap = (m?: MembersMap, id?: number | null) => {
+  if (!m || id == null) return undefined;
+  if (m instanceof Map) return userFromLike(m.get(Number(id)));
+  return userFromLike((m as Record<number, GroupMemberLike>)[Number(id)]);
+};
+
+const monthNameByT = (t?: TFunc, idx?: number): string => {
+  const i = typeof idx === "number" ? idx : 0;
+  try {
+    const arr = (t?.("date_card.months", { returnObjects: true }) ??
+      []) as unknown as string[];
+    const v = Array.isArray(arr) ? arr[i] : undefined;
+    return s(v) || new Date(2000, i, 1).toLocaleString(undefined, { month: "long" });
+  } catch {
+    return new Date(2000, i, 1).toLocaleString(undefined, { month: "long" });
+  }
+};
+
+const formatDateCard = (t?: TFunc, d?: Date): string => {
+  const date = d ?? new Date();
+  const day = String(date.getDate());
+  const month = monthNameByT(t, date.getMonth());
+  try {
+    const txt = t?.("date_card.pattern", { day, month });
+    if (txt && txt !== "date_card.pattern") return txt;
+  } catch {}
+  // fallback: "20 May"
+  return `${day} ${month}`;
+};
+
+/* ---------- main ---------- */
 export default function TransactionCard({
   tx,
   membersById,
   groupMembersCount,
   t,
-  currentUserId: currentUserIdProp,
   className,
+  onLongPress,
 }: Props) {
   const isExpense = tx?.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // кто залогинен: store → проп → Telegram
-  const storeUserId = useUserStore((s) => s.user?.id) as number | undefined;
-  const currentUserId =
-    (Number.isFinite(Number(storeUserId)) ? Number(storeUserId) : undefined) ??
-    (Number.isFinite(Number(currentUserIdProp)) ? Number(currentUserIdProp) : undefined) ??
-    (() => {
-      try {
-        const id = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-        return Number.isFinite(Number(id)) ? Number(id) : undefined;
-      } catch {
-        return undefined;
-      }
-    })();
+  // Текущий юзер: store -> Telegram -> undefined
+  const storeUserId = useUserStore((s: any) => s?.user?.id);
+  const currentUserId: number | undefined = useMemo(() => {
+    if (Number.isFinite(Number(storeUserId))) return Number(storeUserId);
+    try {
+      const tgId = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+      if (Number.isFinite(Number(tgId))) return Number(tgId);
+    } catch {}
+    return undefined;
+  }, [storeUserId]);
 
-  const amountNum = Number(tx?.amount ?? 0);
-  const currency = trim(tx?.currency).toUpperCase();
+  // payer / transfer participants
+  const paidById: number | undefined =
+    tx?.paid_by ?? tx?.payer_id ?? tx?.payer ?? tx?.created_by ?? undefined;
+  const payer = getFromMap(membersById, paidById);
 
-  const dateObj = useMemo(
-    () => new Date(tx?.date || tx?.created_at || Date.now()),
-    [tx?.date, tx?.created_at]
-  );
-  const dateStr = formatDateHuman(dateObj, t);
+  const fromId: number | undefined =
+    tx?.transfer_from ?? tx?.from_user_id ?? tx?.from_id ?? undefined;
+  const fromUser = getFromMap(membersById, fromId);
 
-  // payer / recipient / names / avatars
-  const payerId: number | undefined = isExpense
-    ? Number(tx?.paid_by ?? tx?.created_by ?? NaN)
-    : Number(
-        tx?.transfer_from ??
-          tx?.from_user_id ??
-          (Array.isArray(tx?.transfer) ? tx.transfer[0] : NaN)
-      );
-  const payerMember = getFromMap(membersById, payerId);
-  const payerName =
-    firstName(tx?.paid_by_name || tx?.from_name) ||
-    firstName(nameFromMember(payerMember)) ||
-    (payerId != null ? `#${payerId}` : "");
-  const payerAvatar =
-    trim(tx?.paid_by_avatar || tx?.from_avatar) || avatarFromMember(payerMember);
+  const toListRaw =
+    (Array.isArray(tx?.transfer_to) ? tx.transfer_to : undefined) ||
+    (typeof tx?.to_user_id === "number" ? [tx.to_user_id] : undefined) ||
+    (Array.isArray(tx?.to_user_ids) ? tx.to_user_ids : undefined) ||
+    [];
+  const toIds: number[] = toListRaw
+    .map((x: any) => Number(x))
+    .filter((n: number) => Number.isFinite(n));
+  const toUsers: TGUser[] = toIds
+    .map((id) => getFromMap(membersById, id))
+    .filter(Boolean) as TGUser[];
 
-  let toId: number | undefined = undefined;
-  if (!isExpense) {
-    const raw = tx?.transfer_to ?? tx?.to_user_id ?? tx?.to;
-    if (Array.isArray(raw) && raw.length > 0) toId = Number(raw[0]);
-    else if (raw != null) toId = Number(raw);
-  }
-  const toMember = getFromMap(membersById, toId);
-  const toName =
-    firstName(tx?.to_name) ||
-    firstName(nameFromMember(toMember)) ||
-    (toId != null ? `#${toId}` : "");
-  const toAvatar = trim(tx?.to_avatar) || avatarFromMember(toMember);
-
-  // participants из shares (для аватарок)
-  const shareUserIds: number[] = Array.isArray(tx?.shares)
+  // участники расхода из shares
+  const participantsFromShares: TGUser[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
-        .map((s: any) => Number(s?.user_id))
-        .filter((n: number) => Number.isFinite(n))
+        .map((s) =>
+          getFromMap(
+            membersById,
+            Number((s as any)?.user_id ?? (s as any)?.user?.id)
+          )
+        )
+        .filter(Boolean) as TGUser[]
     : [];
-
-  const participantsUsers =
-    shareUserIds
-      .map((uid) => getFromMap(membersById, uid))
-      .filter(Boolean) as GroupMemberLike[];
 
   const looksLikeAll =
     isExpense &&
-    (String(tx?.split_type || "").toLowerCase() === "equal" ||
+    (tx?.split_type === "equal" ||
       (!tx?.split_type && (!tx?.shares || tx?.shares?.length === 0)));
 
-  let participantsText = "";
-  if (isExpense) {
-    const uniq = Array.from(new Set(shareUserIds));
-    if (uniq.length) {
-      participantsText =
-        groupMembersCount && uniq.length === Number(groupMembersCount)
-          ? tKey(t, "tx_modal.all", "ВСЕ")
-          : String(uniq.length);
-    } else if (looksLikeAll && groupMembersCount) {
-      participantsText = tKey(t, "tx_modal.all", "ВСЕ");
-    }
-  }
-
-  // заголовок: comment || category.name
+  // заголовок
   const title = useMemo(() => {
     if (isExpense) {
-      const c = trim(tx?.comment);
-      if (c) return c;
-      const cat = trim(tx?.category?.name);
-      return cat || "—";
+      const c = s(tx?.comment).trim();
+      if (c) return c; // "название" = comment
+      const cat = s(tx?.category?.name).trim();
+      return cat || "";
     }
-    const c = trim(tx?.comment);
-    return c || "";
-  }, [isExpense, tx?.comment, tx?.category?.name]);
+    const fromName = makeName(fromUser);
+    const toName =
+      toUsers.length > 1
+        ? `${makeName(toUsers[0])} +${toUsers.length - 1}`
+        : makeName(toUsers[0]);
+    return `${fromName} → ${toName}`;
+  }, [isExpense, tx, fromUser, toUsers]);
 
-  // расчёт долга
-  const viewerId = currentUserId ?? payerId;
-  const debt = computeViewerDebtAmount(tx, viewerId, groupMembersCount, membersById);
+  // Дата под аватаркой
+  const dateObj = new Date(tx?.date || tx?.created_at || Date.now());
+  const dateStr = formatDateCard(t, dateObj);
 
-  // локализация текстов долга (без валюты!)
-  const lang = (() => {
-    try {
-      const l = (navigator?.language || "en").split("-")[0].toLowerCase();
-      return l === "ru" || l === "es" ? l : "en";
-    } catch {
-      return "en";
+  const amountNum = Number(tx?.amount ?? 0);
+  const amountStr = fmtAmount(amountNum, tx?.currency);
+
+  // --- ДОЛГ: только для расходов ---
+  const debtLine: string | null = useMemo(() => {
+    if (!isExpense) return null;
+    if (!Array.isArray(tx?.shares) || typeof amountNum !== "number") return null;
+
+    let myShare = 0;
+    let payerShare = 0;
+
+    for (const s of tx.shares as any[]) {
+      const uid = Number((s as any)?.user_id);
+      const val = Number((s as any)?.amount ?? 0);
+      if (!Number.isFinite(val) || !Number.isFinite(uid)) continue;
+      if (Number(currentUserId) === uid) myShare += val;
+      if (Number(paidById) === uid) payerShare += val;
     }
-  })();
-  const debtYouOweLabel = lang === "ru" ? "Вы должны: " : lang === "es" ? "Debes: " : "You owe: ";
-  const debtOwesYouLabel = lang === "ru" ? "Вам должны: " : lang === "es" ? "Te deben: " : "They owe you: ";
-  const debtNoDebtLabel = tKey(t, "group_participant_no_debt", lang === "ru" ? "Нет долга" : lang === "es" ? "Sin deuda" : "No debt");
 
-  /* ====================== RENDER ====================== */
+    const iAmPayer = Number(paidById) === Number(currentUserId);
+    const debt = iAmPayer
+      ? Math.max(0, amountNum - payerShare) // вам должны
+      : Math.max(0, myShare); // вы должны
 
-  const LeftCol = (
-    <div className="flex flex-col items-center w-10">
-      {isExpense ? (
-        <CategoryAvatar
-          name={tx?.category?.name}
-          color={tx?.category?.color}
-          icon={tx?.category?.icon}
-        />
-      ) : (
-        <TransferAvatarBox />
-      )}
-      <div className="text-[10px] text-[var(--tg-hint-color)] mt-1 text-center leading-none">
-        {dateStr}
-      </div>
-    </div>
-  );
+    if (debt > 0) {
+      const num = fmtNumberOnly(debt, tx?.currency); // БЕЗ валюты!
+      if (iAmPayer) {
+        // «Вам должны: 123»
+        const txt =
+          t?.("group_participant_owes_you", { sum: num }) ??
+          `Вам должны: ${num}`;
+        // Но в шаблоне у тебя валюта "₽" — уберём её из строки, оставим число
+        return txt.replace(/(\s?[^\d\s.,]+)$/u, "").replace(/[^\d.,\s]+/g, "");
+      } else {
+        // «Вы должны: 123»
+        const txt =
+          t?.("group_participant_you_owe", { sum: num }) ??
+          `Вы должны: ${num}`;
+        return txt.replace(/(\s?[^\d\s.,]+)$/u, "").replace(/[^\d.,\s]+/g, "");
+      }
+    }
+    // нет долга
+    return t?.("group_participant_no_debt") || "Нет долга";
+  }, [isExpense, tx?.shares, amountNum, tx?.currency, paidById, currentUserId, t]);
 
-  const TopRow = (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate flex-1">
-        {title}
-      </div>
-      <div className="text-[14px] font-semibold shrink-0">
-        {fmtAmount(amountNum, currency)}
-      </div>
-    </div>
-  );
+  // --- список участников для аватарок под строкой долга (без плательщика) ---
+  const participantsNoPayer: TGUser[] = useMemo(() => {
+    const excludeId = Number(paidById);
+    const isAll = looksLikeAll && membersById;
+    let src: TGUser[] = [];
 
-  const DetailsRow = isExpense ? (
-    <div className="flex flex-wrap items-center gap-2 text-[12px]">
-      <span className="opacity-70 text-[var(--tg-hint-color)]">
-        {tKey(t, "tx_modal.paid_by_label", "Заплатил")}
+    if (Array.isArray(participantsFromShares) && participantsFromShares.length) {
+      src = participantsFromShares;
+    } else if (isAll) {
+      // если equal и shares пусто — считаем "все из группы"
+      const arr: TGUser[] = [];
+      if (membersById instanceof Map) {
+        membersById.forEach((v) => {
+          const u = userFromLike(v);
+          if (u) arr.push(u);
+        });
+      } else if (membersById) {
+        Object.values(membersById).forEach((v) => {
+          const u = userFromLike(v);
+          if (u) arr.push(u);
+        });
+      }
+      src = arr;
+    }
+
+    // исключаем плательщика
+    const filtered = src.filter((u) => Number(u?.id) !== excludeId);
+    // уникализируем по id
+    const uniqMap = new Map<number, TGUser>();
+    for (const u of filtered) {
+      const id = Number(u?.id);
+      if (Number.isFinite(id) && !uniqMap.has(id)) uniqMap.set(id, u);
+    }
+    return Array.from(uniqMap.values());
+  }, [participantsFromShares, looksLikeAll, membersById, paidById]);
+
+  /* ---------- long-press ---------- */
+  const pressTimer = useRef<number | null>(null);
+  const longFiredRef = useRef(false);
+
+  const startPress = (e: React.PointerEvent | React.MouseEvent) => {
+    if (!onLongPress) return;
+    longFiredRef.current = false;
+    pressTimer.current = window.setTimeout(() => {
+      longFiredRef.current = true;
+      onLongPress(tx, e as any);
+    }, 450);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+  const handleClick = (e: React.MouseEvent) => {
+    if (longFiredRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!onLongPress) return;
+    e.preventDefault();
+    onLongPress(tx, e);
+  };
+
+  /* ---------- UI ---------- */
+  const PaidByRow = isExpense ? (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className="text-[var(--tg-hint-color)]">
+        {t?.("tx_modal.paid_by_label") || "Заплатил"}:
       </span>
-      <RoundAvatar src={payerAvatar} alt={payerName} />
+      <UserAvatar user={payer} />
       <span className="text-[var(--tg-text-color)] font-medium truncate">
-        {payerName}
+        {makeName(payer)}
       </span>
-      {participantsText && (
-        <>
-          <span className="opacity-60 text-[var(--tg-hint-color)]">—</span>
-          <span className="truncate text-[var(--tg-text-color)]">
-            {tKey(t, "tx_modal.participants", "Участники")}: {participantsText}
-          </span>
-        </>
-      )}
     </div>
   ) : (
-    <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
-      <RoundAvatar src={payerAvatar} alt={payerName} />
-      <span className="font-medium truncate">{payerName}</span>
+    <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+      <UserAvatar user={fromUser} />
+      <span className="font-medium truncate">{makeName(fromUser)}</span>
       <span className="opacity-60">→</span>
-      <RoundAvatar src={toAvatar} alt={toName} />
-      <span className="font-medium truncate">{toName}</span>
+      <UserAvatar user={toUsers[0]} />
+      <span className="font-medium truncate">{makeName(toUsers[0])}</span>
     </div>
   );
 
-  // Аватарки участников (без плательщика) — в одну строку, с оверлапом вправо
-  const AvatarsStack = useMemo(() => {
-    if (!isExpense) return null;
-
-    // базовый список
-    let list: GroupMemberLike[] = participantsUsers;
-
-    // equal без shares → берём всех из membersById
-    if ((!list || list.length === 0) && looksLikeAll && membersById) {
-      const values: GroupMemberLike[] =
-        membersById instanceof Map
-          ? Array.from(membersById.values())
-          : Object.values(membersById as Record<number, GroupMemberLike>);
-      list = values;
-    }
-
-    // исключаем плательщика и дубли
-    const uniq = new Map<number, GroupMemberLike>();
-    for (const u of list || []) {
-      if (!u) continue;
-      const id = Number((u as any).id);
-      if (!Number.isFinite(id)) continue;
-      if (id === Number(payerId)) continue; // не показываем плательщика
-      if (!uniq.has(id)) uniq.set(id, u);
-    }
-
-    const arr = Array.from(uniq.values());
-    if (!arr.length) return null;
-
-    // динамический шаг оверлапа
-    const n = arr.length;
-    // чем больше элементов — тем сильнее оверлап (число отрицательное)
-    const overlap = n <= 8 ? -6 : n <= 12 ? -10 : -14;
-
-    return (
-      <div className="flex items-center justify-end flex-nowrap whitespace-nowrap overflow-visible shrink-0">
-        {arr.map((u, i) => (
-          <RoundAvatar
-            key={(u as any).id}
-            src={avatarFromMember(u)}
-            alt={nameFromMember(u)}
-            size={20}
-            className={i === 0 ? "" : "ml-[-6px]"} // базовый класс, реальный шаг зададим стилем
-            style={{ marginLeft: i === 0 ? 0 : overlap }}
-          />
-        ))}
-      </div>
-    );
-  }, [isExpense, participantsUsers, looksLikeAll, membersById, payerId]);
-
-  // Строка «долг + аватарки» — одна линия
-  const BottomRow =
-    isExpense ? (
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-          {debt.type === "owe"
-            ? `${debtYouOweLabel}${fmtNumberOnly(debt.amount, currency)}`
-            : debt.type === "lent"
-            ? `${debtOwesYouLabel}${fmtNumberOnly(debt.amount, currency)}`
-            : debtNoDebtLabel}
+  // Перекрывающиеся аватарки участников (справа)
+  const OverlappedParticipants = (
+    <div className="flex items-center justify-end flex-nowrap relative" style={{ minHeight: 20 }}>
+      {participantsNoPayer.slice(0, 12).map((u, idx) => (
+        <UserAvatar
+          key={u.id}
+          user={u}
+          size={18}
+          className="border border-[var(--tg-card-bg)]"
+          style={{ marginLeft: idx === 0 ? 0 : -10, zIndex: 100 - idx }}
+        />
+      ))}
+      {participantsNoPayer.length > 12 && (
+        <div
+          className="rounded-full bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[10px] px-1 ml-1"
+          style={{ marginLeft: -10 }}
+        >
+          +{participantsNoPayer.length - 12}
         </div>
-        {AvatarsStack}
-      </div>
-    ) : null;
+      )}
+    </div>
+  );
 
   const Body = (
-    <div className="flex items-start px-3 py-3 gap-3">
-      {/* левая колонка: аватар категории/перевода + дата ПОД ним */}
-      <div className="pt-[2px]">
-        <div className="flex flex-col items-center w-10">
+    <div
+      className={
+        "relative px-3 py-2 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] " +
+        (className || "")
+      }
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onContextMenu={handleContextMenu}
+      onClick={handleClick}
+    >
+      {/* Верхняя зона */}
+      <div className="flex items-start gap-3">
+        {/* Левая колонка: иконка + дата под ней */}
+        <div className="flex flex-col items-center shrink-0">
           {isExpense ? (
             <CategoryAvatar
               name={tx?.category?.name}
@@ -520,34 +436,57 @@ export default function TransactionCard({
               icon={tx?.category?.icon}
             />
           ) : (
-            <TransferAvatarBox />
+            <div className="w-10 h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center">
+              <ArrowRightLeft size={18} className="opacity-80" />
+            </div>
           )}
-          <div className="text-[10px] text-[var(--tg-hint-color)] mt-1 text-center leading-none">
+          <div className="mt-1 text-[11px] text-[var(--tg-hint-color)] text-center leading-none">
             {dateStr}
           </div>
         </div>
-      </div>
 
-      {/* контент */}
-      <div className="min-w-0 flex-1">
-        {TopRow}
-        <div className="mt-1">{DetailsRow}</div>
-        {BottomRow}
+        {/* Центр + сумма справа */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+              {title}
+            </div>
+            <div className="ml-auto text-[14px] font-semibold shrink-0">
+              {fmtAmount(amountNum, tx?.currency)}
+            </div>
+          </div>
+
+          {/* Строка "кто платил" / "перевод" */}
+          <div className="mt-1">{PaidByRow}</div>
+
+          {/* Строка долга + аватарки участников (на одной линии) — только для расходов */}
+          {isExpense && (
+            <div className="mt-1 flex items-center gap-2">
+              <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+                {debtLine}
+              </div>
+              <div className="ml-auto">{OverlappedParticipants}</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 
+  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
-      className={
-        "block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl " +
-        (className || "")
-      }
+      className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl"
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
     >
       {Body}
     </Link>
   ) : (
-    <div className={className || ""}>{Body}</div>
+    Body
   );
 }
