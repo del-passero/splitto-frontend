@@ -10,6 +10,8 @@ export default {
   no_groups: "No groups",
   contacts: "Contacts",
   profile: "Profile",
+  delete: "Delete",
+
 
   // --- Groups & members ---
   participants: "Participants",

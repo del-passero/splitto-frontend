@@ -1,4 +1,3 @@
-// src/pages/TransactionEditPage.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -26,7 +25,6 @@ import {
 } from "lucide-react";
 
 /* ====================== ВАЛЮТА/ФОРМАТЫ ====================== */
-
 type TxType = "expense" | "transfer";
 type TxShare = { user_id: number; amount: number | string };
 
@@ -101,10 +99,7 @@ function makeCurrency(g?: MinimalGroup | null, fallbackCode?: string | null) {
 
 function parseAmountInput(raw: string, decimalsLimit = 2): string {
   let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
-  if (decimalsLimit === 0) {
-    // для валют без копеек — только цифры
-    return s.replace(/\./g, "");
-  }
+  if (decimalsLimit === 0) return s.replace(/\./g, "");
   const firstDot = s.indexOf(".");
   if (firstDot !== -1) {
     const head = s.slice(0, firstDot + 1);
@@ -136,7 +131,6 @@ function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
 }
 
 /* ====================== ЦВЕТА КАТЕГОРИИ ====================== */
-
 function to6Hex(input?: unknown): string | null {
   if (!input || typeof input !== "string") return null;
   let h = input.trim().replace(/^#/, "");
@@ -183,7 +177,6 @@ function fillStyle(color?: string | null): CSSProperties {
 }
 
 /* ====================== HELPERS ====================== */
-
 const firstNameOnly = (s?: string) => {
   const tok = (s || "").trim().split(/\s+/).filter(Boolean);
   return tok[0] || "";
@@ -195,7 +188,6 @@ const nameFromMember = (m?: MemberMini) => {
 };
 
 /* ====================== КОМПОНЕНТ ====================== */
-
 export default function TransactionEditPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -385,7 +377,7 @@ export default function TransactionEditPage() {
           : [];
         setSplitData({ type: "custom", participants: parts } as any);
       } else {
-        // === TRANSFER ===  корректные поля с бэка
+        // === TRANSFER ===
         const fromId = Number((tx as any).transfer_from ?? NaN);
         const toArr = (tx as any).transfer_to as number[] | null | undefined;
         const toId = Number(toArr && toArr.length ? toArr[0] : NaN);
@@ -393,7 +385,6 @@ export default function TransactionEditPage() {
         setPaidBy(Number.isFinite(fromId) ? fromId : undefined);
         setToUser(Number.isFinite(toId) ? toId : undefined);
 
-        // имена/аватары подтянем после загрузки участников
         setPaidByName("");
         setToUserName("");
         setPaidByAvatar(undefined);
@@ -404,7 +395,7 @@ export default function TransactionEditPage() {
     } catch { /* ignore */ }
   }, [tx, group]);
 
-  /* ---------- 4) обогащаем имена/аватарки после загрузки участников ---------- */
+  /* ---------- 4) имена/аватарки после загрузки участников ---------- */
   useEffect(() => {
     if (!tx) return;
 
@@ -443,7 +434,6 @@ export default function TransactionEditPage() {
   }, [membersMap]);
 
   /* ---------- HELPERS ---------- */
-
   const goBack = () => navigate(-1);
 
   const handleSelectCategory = (
@@ -495,7 +485,7 @@ export default function TransactionEditPage() {
     }));
   }
 
-  // SAVE (PUT /transactions/{id}/)
+  // SAVE (PUT /transactions/{id})
   const doSave = async () => {
     if (!tx || !group?.id) return;
 
@@ -579,7 +569,7 @@ export default function TransactionEditPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40">
         <div className="rounded-2xl bg-[var(--tg-card-bg)] px-4 py-6 text-[var(--tg-hint-color)] shadow-xl">
           {t("loading")}
         </div>
@@ -588,24 +578,25 @@ export default function TransactionEditPage() {
   }
   if (error || !tx) {
     return (
-      <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40" onClick={goBack}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
         <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
             onClick={goBack}
-            className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white w-full"
+            style={{ color: "#000" }}
+            className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
-            ← {t("close")}
+            ← {t("cancel")}
           </button>
         </div>
       </div>
     );
   }
 
-  // МОДАЛЬНОЕ ПОЛНОЭКРАННОЕ ОКНО — секции группы/типа удалены
+  // ПОЛНОЭКРАННАЯ МОДАЛКА ПОВЕРХ ВСЕГО (Navbar под ней)
   return (
-    <div className="fixed inset-0 z-30 bg-black/40" onClick={goBack}>
+    <div className="fixed inset-0 z-[1000] bg-black/40" onClick={goBack}>
       <div
         className="absolute inset-0 sm:inset-y-6 sm:inset-x-6 sm:rounded-2xl bg-[var(--tg-bg-color,#111)] shadow-2xl overflow-auto"
         onClick={(e) => e.stopPropagation()}
@@ -808,7 +799,15 @@ export default function TransactionEditPage() {
                               key={p.user_id}
                               className="flex items-center gap-2 text-[13px]"
                             >
-                              <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                              {p.avatar_url ? (
+                                <img
+                                  src={p.avatar_url}
+                                  alt=""
+                                  className="w-5 h-5 rounded-full object-cover"
+                                />
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                              )}
                               <span className="truncate flex-1">
                                 {t("tx_modal.owes_label")}: {p.name}
                               </span>
@@ -965,17 +964,18 @@ export default function TransactionEditPage() {
               className="w-full sm:w-1/3 h-10 rounded-xl font-bold text-[14px] border border-red-500/40 text-red-600 hover:bg-red-500/10 active:scale-95 transition disabled:opacity-60"
               disabled={saving}
             >
-              {t("delete") || "Удалить"}
+              {t("delete")}
             </button>
 
             <div className="flex gap-2 w-full sm:w-2/3">
               <button
                 type="button"
                 onClick={goBack}
+                style={{ color: "#000" }}
                 className="flex-1 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition disabled:opacity-60"
                 disabled={saving}
               >
-                {t("close")}
+                {t("cancel")}
               </button>
               <button
                 type="button"
