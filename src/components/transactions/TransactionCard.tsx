@@ -18,10 +18,16 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
+  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
+  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
+  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
+  /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
+  /** Новый: режим списка (как в GroupMembersList) — без рамки, с плотными отступами */
+  listMode?: boolean;
 };
 
 /* ---------- utils ---------- */
@@ -166,12 +172,13 @@ export default function TransactionCard({
   membersById,
   t,
   onLongPress,
+  listMode = false,
 }: Props) {
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь
+  // Тек. пользователь: store -> Telegram fallback
   const storeUserId = useUserStore((s: any) => s.user?.id) as number | undefined;
   const currentUserId =
     typeof storeUserId === "number"
@@ -287,10 +294,18 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
+  const containerCls = listMode
+    ? "relative px-3 py-3"
+    : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
+  const containerStyle = listMode
+    ? undefined
+    : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
+  const hoverCls = listMode ? "" : "transition hover:bg-black/5 dark:hover:bg-white/5";
+
   const CardInner = (
     <div
-      className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
-      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      className={`${containerCls} ${hoverCls}`}
+      style={containerStyle}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -311,6 +326,7 @@ export default function TransactionCard({
           <TransferAvatar dateStr={dateStr} />
         )}
 
+        {/* center */}
         <div className="min-w-0 flex-1">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
@@ -319,13 +335,14 @@ export default function TransactionCard({
           ) : null}
         </div>
 
+        {/* amount */}
         <div className="text-[14px] font-semibold shrink-0">
           {fmtAmount(amountNum, tx.currency)}
         </div>
       </div>
 
-      {/* Paid by / A→B */}
-      <div className="mt-1 ml-12 min-w-0">
+      {/* Paid by / A→B + статус долгов */}
+      <div className="mt-0.5 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <span className="opacity-70 text-[var(--tg-hint-color)]">
@@ -346,9 +363,9 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* Статус долгов + аватары участников (без плательщика) */}
+        {/* ВАЖНО: строку долга ПОДНЯЛ — убрал лишний вертикальный зазор */}
         {isExpense && (
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-0.5 flex items-center gap-2">
             <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
               {statusText}
             </div>
@@ -380,6 +397,7 @@ export default function TransactionCard({
     </div>
   );
 
+  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
