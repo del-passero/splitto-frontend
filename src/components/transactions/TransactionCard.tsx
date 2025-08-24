@@ -2,6 +2,7 @@
 import React, { useMemo } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useUserStore } from "../../store/userStore";
 
 /** Короткая инфа о пользователе в группе */
 export type GroupMemberLike = {
@@ -113,7 +114,7 @@ const formatDateHuman = (d: Date, t?: Props["t"]) => {
     .replace("{{month}}", String(month));
 };
 
-/** Подсчёт долга. Возвращает положительную сумму или 0, если долга нет/невозможно посчитать. */
+/** Подсчёт долга для viewerId */
 function computeViewerDebtAmount(
   tx: any,
   viewerId?: number,
@@ -153,19 +154,42 @@ function computeViewerDebtAmount(
     }
   }
 
-  // 2) фоллбэк: split_type === equal (или вообще не задан)
+  // 2) фоллбэк: split_type == equal (или shares пусты)
   const equal =
     String(tx.split_type || "").toLowerCase() === "equal" ||
     (!tx.split_type && (!tx.shares || tx.shares.length === 0));
 
   if (equal) {
-    // определить n участников
-    let n: number | undefined = Number(tx.participants_count);
-    if (!Number.isFinite(n) || n! <= 0) {
-      if (membersById instanceof Map) n = membersById.size;
-      else if (membersById) n = Object.keys(membersById as Record<number, GroupMemberLike>).length;
+    // попробуем определить число участников n
+    let n: number | undefined = undefined;
+
+    // если сервер всё же прислал shares (пустые — не зайдём сюда), возьмём их
+    if (Array.isArray(tx.shares) && tx.shares.length) {
+      const uniq = new Set(
+        (tx.shares as any[])
+          .map((s: any) => Number(s?.user_id))
+          .filter((x: number) => Number.isFinite(x))
+      );
+      n = uniq.size;
     }
-    if (groupMembersCount && (!n || n < groupMembersCount)) n = groupMembersCount;
+
+    // кастомные поля, если вдруг есть
+    if (!n && Number.isFinite(Number(tx.participants_count))) {
+      n = Number(tx.participants_count);
+    }
+
+    // возьмём размер справочника участников
+    if (!n && membersById) {
+      n =
+        membersById instanceof Map
+          ? membersById.size
+          : Object.keys(membersById as Record<number, GroupMemberLike>).length;
+    }
+
+    // последний шанс — общее число участников группы
+    if (!n && Number.isFinite(Number(groupMembersCount))) {
+      n = Number(groupMembersCount);
+    }
 
     if (!n || n <= 0) return { type: "none", amount: 0 };
 
@@ -258,18 +282,19 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь (если нет — фолбэк на плательщика)
+  // ❶ Кто залогинен: store → проп → Telegram
+  const storeUserId = useUserStore((s) => s.user?.id) as number | undefined;
   const currentUserId =
-    typeof currentUserIdProp === "number"
-      ? currentUserIdProp
-      : (() => {
-          try {
-            const id = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-            return Number.isFinite(Number(id)) ? Number(id) : undefined;
-          } catch {
-            return undefined;
-          }
-        })();
+    (Number.isFinite(Number(storeUserId)) ? Number(storeUserId) : undefined) ??
+    (Number.isFinite(Number(currentUserIdProp)) ? Number(currentUserIdProp) : undefined) ??
+    (() => {
+      try {
+        const id = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+        return Number.isFinite(Number(id)) ? Number(id) : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
 
   const amountNum = Number(tx?.amount ?? 0);
   const currency = trim(tx?.currency).toUpperCase();
@@ -309,7 +334,7 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = trim(tx?.to_avatar) || avatarFromMember(toMember);
 
-  // shares participants
+  // shares participants (для аватарок)
   const shareUserIds: number[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
         .map((s: any) => Number(s?.user_id))
@@ -350,7 +375,7 @@ export default function TransactionCard({
     return c || "";
   }, [isExpense, tx?.comment, tx?.category?.name]);
 
-  // расчёт долга (если currentUserId нет — считаем как плательщик)
+  // расчёт долга для viewerId (store/prop/Telegram)
   const viewerId = currentUserId ?? payerId;
   const debt = computeViewerDebtAmount(tx, viewerId, groupMembersCount, membersById);
 
@@ -396,9 +421,9 @@ export default function TransactionCard({
       {participantsText && (
         <>
           <span className="opacity-60 text-[var(--tg-hint-color)]">—</span>
-          <span className="truncate text-[var(--tg-text-color)]">
-            {tKey(t, "tx_modal.participants", "Участники")}: {participantsText}
-          </span>
+            <span className="truncate text-[var(--tg-text-color)]">
+              {tKey(t, "tx_modal.participants", "Участники")}: {participantsText}
+            </span>
         </>
       )}
     </div>
@@ -412,32 +437,10 @@ export default function TransactionCard({
     </div>
   );
 
-  // ВАЖНО: показываем строку ВСЕГДА. Если долга нет/не посчитался — "Нет долга".
-  const DebtRow =
-    isExpense ? (
-      <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
-        {debt.type === "owe"
-          ? tKey(
-              t,
-              "group_participant_you_owe",
-              `Вы должны: ${fmtNumberOnly(debt.amount, currency)}`,
-              { sum: fmtNumberOnly(debt.amount, currency) }
-            )
-          : debt.type === "lent"
-          ? tKey(
-              t,
-              "group_participant_owes_you",
-              `Вам должны: ${fmtNumberOnly(debt.amount, currency)}`,
-              { sum: fmtNumberOnly(debt.amount, currency) }
-            )
-          : tKey(t, "group_participant_no_debt", "Нет долга")}
-      </div>
-    ) : null;
-
-  // Нижний ряд: аватары участников БЕЗ плательщика, выравнивание вправо
+  // Аватары участников (без плательщика), ПОД «Заплатил …», выравнивание вправо
   const AvatarsRow =
     isExpense ? (
-      <div className="mt-2 pl-12">
+      <div className="mt-1 pl-0">
         <div className="flex items-center gap-1 justify-end">
           {(() => {
             let list: GroupMemberLike[] = participantsUsers;
@@ -462,7 +465,7 @@ export default function TransactionCard({
             }
 
             const arr = Array.from(uniq.values());
-            const shown = arr.slice(-8); // последние 8 — справа
+            const shown = arr.slice(-8);
             const rest = Math.max(0, arr.length - shown.length);
 
             return (
@@ -490,17 +493,39 @@ export default function TransactionCard({
       </div>
     ) : null;
 
+  // Строка долга — ВСЕГДА показываем: либо сумма, либо «Нет долга»
+  const DebtRow =
+    isExpense ? (
+      <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
+        {debt.type === "owe"
+          ? tKey(
+              t,
+              "group_participant_you_owe",
+              `Вы должны: ${fmtNumberOnly(debt.amount, currency)}`,
+              { sum: fmtNumberOnly(debt.amount, currency) }
+            )
+          : debt.type === "lent"
+          ? tKey(
+              t,
+              "group_participant_owes_you",
+              `Вам должны: ${fmtNumberOnly(debt.amount, currency)}`,
+              { sum: fmtNumberOnly(debt.amount, currency) }
+            )
+          : tKey(t, "group_participant_no_debt", "Нет долга")}
+      </div>
+    ) : null;
+
   const Body = (
     <div className="flex items-start px-3 py-3 gap-3">
       {/* левая колонка: аватар категории/перевода + дата ПОД ним */}
-      {LeftCol}
+      <div className="pt-[2px]">{LeftCol}</div>
 
       {/* контент */}
       <div className="min-w-0 flex-1">
         {TopRow}
         <div className="mt-1">{DetailsRow}</div>
-        {DebtRow}
         {AvatarsRow}
+        {DebtRow}
       </div>
     </div>
   );
