@@ -72,7 +72,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
     let cancelled = false;
 
-    (async () => {
+    const run = async () => {
       try {
         const { total, items } = await getGroupMembers(groupId, 0, 200);
         if (cancelled) return;
@@ -100,9 +100,12 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         setMembersMap(null);
         setMembersCount(0);
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [groupId]);
 
   /* ---------- функция первичной загрузки (и перезагрузки после delete) ---------- */
@@ -258,7 +261,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const visible = items;
 
   return (
-    <div className="relative w-full h-full min-h=[320px]">
+    <div className="relative w-full h-full min-h-[320px]">
       {error ? (
         <div className="flex justify-center py-12 text-red-500">{error}</div>
       ) : loading && items.length === 0 ? (
@@ -266,7 +269,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : visible.length === 0 ? (
         <EmptyTransactions />
       ) : (
-        // стиль как в GroupMembersList: CardSection noPadding + разделители слева от 16
+        // ======= СТИЛЬ КАК В СПИСКЕ УЧАСТНИКОВ =======
         <CardSection noPadding>
           {visible.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
@@ -283,6 +286,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
               )}
             </div>
           ))}
+          {/* сентинел/лоадер */}
           {hasMore && !loading && <div ref={loaderRef} className="w-full h-2" />}
           {loading && items.length > 0 && (
             <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
@@ -309,9 +313,12 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         onCreated={handleCreated}
       />
 
-      {/* Action Sheet снизу — как было */}
+      {/* Action Sheet по long-press (как было) */}
       {actionsOpen && (
-        <div className="fixed inset-0 z-[1100] flex items-end justify-center" onClick={closeActions}>
+        <div
+          className="fixed inset-0 z-[1100] flex items-end justify-center"
+          onClick={closeActions}
+        >
           <div className="absolute inset-0 bg-black/50" />
           <div
             className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
