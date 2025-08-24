@@ -1,3 +1,4 @@
+// src/components/transactions/TransactionCard.tsx
 import React, { useRef } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -22,7 +23,7 @@ type Props = {
   groupMembersCount?: number;
   t?: (k: string, vars?: Record<string, any>) => string;
   onLongPress?: (tx: any) => void;
-  /** Режим списка как у GroupMembersList (без рамки, плотные отступы) */
+  /** В режиме списка (как UserCard) — без рамки, плотные отступы */
   listMode?: boolean;
 };
 
@@ -111,7 +112,7 @@ function CategoryAvatar({
           {icon || ch}
         </span>
       </div>
-      {/* ДАТУ НЕ ТРОГАЕМ — остаётся под аватаркой */}
+      {/* дату НЕ двигаю — она под аватаркой */}
       <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
@@ -238,7 +239,7 @@ export default function TransactionCard({
     ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- строка долга (без валютного символа) --- */
+  /* --- строка долга (без валютного символа) — ПОДНЯЛ ВПЛОТНУЮ --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
@@ -295,8 +296,10 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  // Листовой вариант (как UserCard в списках)
-  const containerCls = listMode ? "relative px-3 py-3" : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
+  // Контейнер: в списке — без рамки и с плотными отступами
+  const containerCls = listMode
+    ? "relative px-3 py-3"
+    : "relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)]";
   const containerStyle = listMode ? undefined : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
   const hoverCls = listMode ? "" : "transition hover:bg-black/5 dark:hover:bg-white/5";
 
@@ -359,7 +362,7 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* СТРОКУ ДОЛГА ПОДНЯЛ — прямо под “Paid by …” */}
+        {/* СТРОКУ ДОЛГА ПОДНЯЛ */}
         {isExpense && (
           <div className="mt-0.5 flex items-center gap-2">
             <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
