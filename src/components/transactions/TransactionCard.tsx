@@ -246,7 +246,7 @@ export default function TransactionCard({
     (isExpense && tx.category?.name ? String(tx.category.name) : "") ||
     "";
 
-  /* --- статус участия (без символа валюты), использовать и для переводов --- */
+  /* --- статус участия (без символа валюты) — и для переводов тоже показываем строку --- */
   let statusText = "";
   if (typeof currentUserId === "number") {
     if (isExpense && Array.isArray(tx.shares)) {
@@ -275,7 +275,7 @@ export default function TransactionCard({
             : ((t && t("group_participant_no_debt")) || "Нет долга");
       }
     } else {
-      // Для переводов: показываем статусную строку (минимум — «Нет долга»)
+      // Для переводов тоже выводим строку статуса (минимум — «Нет долга»)
       statusText = (t && t("group_participant_no_debt")) || "Нет долга";
     }
   }
@@ -353,7 +353,7 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* 2 СТРОКА: Paid by / A→B  |  (справа) участники */}
+      {/* 2 СТРОКА: слева — Paid by / A→B, справа — участники */}
       <div className="mt-1 ml-12 flex items-center justify-between min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px] min-w-0">
@@ -404,8 +404,8 @@ export default function TransactionCard({
         )}
       </div>
 
-      {/* 3 СТРОКА: слева — ДАТА уже под аватаром; справа — ИНФО О ДОЛГЕ */}
-      <div className="mt-1 ml-12 flex items-center justify-end">
+      {/* 3 СТРОКА: слева под paid by — ИНФО О ДОЛГЕ (дата уже под аватаром) */}
+      <div className="mt-0.5 ml-12">
         <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
           {statusText}
         </div>
