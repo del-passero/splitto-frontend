@@ -27,8 +27,6 @@ type Props = {
   t?: (k: string, vars?: Record<string, any>) => string;
   /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
-  /** Режим «как список участников» (плоские строки без рамки) */
-  listMode?: boolean;
 };
 
 /* ---------- utils ---------- */
@@ -74,7 +72,7 @@ const fmtNumberOnly = (n: number) => {
   }
 };
 
-/* ---------- date via locales ---------- */
+/* ---------- date via locales (дата под иконкой) ---------- */
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
     const months = (t && (t("date_card.months") as unknown as string[])) || null;
@@ -116,7 +114,6 @@ function CategoryAvatar({
           {icon || ch}
         </span>
       </div>
-      {/* ДАТА ПОД АВАТАРОМ */}
       <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
@@ -133,7 +130,6 @@ function TransferAvatar({ dateStr }: { dateStr: string }) {
       >
         <ArrowRightLeft size={18} className="opacity-80" />
       </div>
-      {/* ДАТА ПОД АВАТАРОМ */}
       <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
@@ -173,10 +169,8 @@ function RoundAvatar({
 export default function TransactionCard({
   tx,
   membersById,
-  groupMembersCount, // не используем здесь
   t,
   onLongPress,
-  listMode = false,
 }: Props) {
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
@@ -232,7 +226,7 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
-  // participants (expense only)
+  // participants (expense only) — для правой стороны второй строки
   const participantsFromShares: GroupMemberLike[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
         .map((s: any) => getFromMap(membersById, Number(s?.user_id ?? s?.user?.id)))
@@ -240,44 +234,41 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  /* --- заголовок --- (1-я строка: Comment | Amount) */
-  const title =
-    (tx.comment && String(tx.comment).trim()) ||
-    (isExpense && tx.category?.name ? String(tx.category.name) : "") ||
-    "";
+  /* --- заголовок --- */
+  const title = isExpense
+    ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
+    : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- статус участия (без символа валюты) — и для переводов тоже показываем строку --- */
+  /* --- статус участия (и для переводов тоже РЕНДЕРИМ строку) --- */
   let statusText = "";
-  if (typeof currentUserId === "number") {
-    if (isExpense && Array.isArray(tx.shares)) {
-      let myShare = 0;
-      let payerShare = 0;
-      for (const s of tx.shares as any[]) {
-        const uid = Number(s?.user_id);
-        const val = Number(s?.amount ?? 0);
-        if (!Number.isFinite(val)) continue;
-        if (uid === Number(currentUserId)) myShare += val;
-        if (uid === Number(payerId)) payerShare += val;
-      }
-      const iAmPayer = Number(payerId) === Number(currentUserId);
-      if (iAmPayer) {
-        const lent = Math.max(0, amountNum - payerShare);
-        statusText =
-          lent > 0
-            ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) ||
-               `Вам должны: ${fmtNumberOnly(lent)}`)
-            : ((t && t("group_participant_no_debt")) || "Нет долга");
-      } else {
-        statusText =
-          myShare > 0
-            ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) ||
-               `Вы должны: ${fmtNumberOnly(myShare)}`)
-            : ((t && t("group_participant_no_debt")) || "Нет долга");
-      }
-    } else {
-      // Для переводов тоже выводим строку статуса (минимум — «Нет долга»)
-      statusText = (t && t("group_participant_no_debt")) || "Нет долга";
+  if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
+    let myShare = 0;
+    let payerShare = 0;
+    for (const s of tx.shares as any[]) {
+      const uid = Number(s?.user_id);
+      const val = Number(s?.amount ?? 0);
+      if (!Number.isFinite(val)) continue;
+      if (uid === Number(currentUserId)) myShare += val;
+      if (uid === Number(payerId)) payerShare += val;
     }
+    const iAmPayer = Number(payerId) === Number(currentUserId);
+    if (iAmPayer) {
+      const lent = Math.max(0, amountNum - payerShare);
+      statusText =
+        lent > 0
+          ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) ||
+            `Вам должны: ${fmtNumberOnly(lent)}`)
+          : ((t && t("group_participant_no_debt")) || "Нет долга");
+    } else {
+      statusText =
+        myShare > 0
+          ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) ||
+            `Вы должны: ${fmtNumberOnly(myShare)}`)
+          : ((t && t("group_participant_no_debt")) || "Нет долга");
+    }
+  } else {
+    // Для переводов — всегда показываем строку статуса, минимум "Нет долга"
+    statusText = (t && t("group_participant_no_debt")) || "Нет долга";
   }
 
   /* ---------- long press handling ---------- */
@@ -308,16 +299,11 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  const wrapper = listMode
-    ? "px-3 py-3"
-    : "px-3 py-2 rounded-xl border bg-[var(--tg-card-bg)]";
-
-  const wrapperStyle = listMode ? {} : { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" };
-
-  const Inner = (
+  /* ---------- layout ---------- */
+  const CardInner = (
     <div
-      className={`relative ${wrapper} ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
-      style={wrapperStyle}
+      className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
+      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -325,7 +311,7 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      {/* 1 СТРОКА: Коммент/Категория | Сумма */}
+      {/* Ряд 1: иконка/трансфер + Комментарий | Сумма */}
       <div className="flex items-start gap-3">
         {isExpense ? (
           <CategoryAvatar
@@ -338,35 +324,32 @@ export default function TransactionCard({
           <TransferAvatar dateStr={dateStr} />
         )}
 
-        {/* центр: заголовок */}
         <div className="min-w-0 flex-1">
-          {title ? (
-            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-              {title}
-            </div>
-          ) : null}
+          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+            {title}
+          </div>
         </div>
 
-        {/* справа: сумма */}
         <div className="text-[14px] font-semibold shrink-0">
           {fmtAmount(amountNum, tx.currency)}
         </div>
       </div>
 
-      {/* 2 СТРОКА: слева — Paid by / A→B, справа — участники */}
+      {/* Ряд 2: слева Paid by (или A→B для переводов), справа — аватары участников */}
       <div className="mt-1 ml-12 flex items-center justify-between min-w-0">
+        {/* left */}
         {isExpense ? (
-          <div className="flex flex-wrap items-center gap-2 text-[12px] min-w-0">
-            <span className="opacity-70 text-[var(--tg-hint-color)]">
-              {(t && t("tx_modal.paid_by_label")) || "Заплатил"}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
+              {(t && t("tx_modal.paid_by_label")) || "Заплатил"}:
             </span>
             <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="text-[var(--tg-text-color)] font-medium truncate">
+            <span className="text-[12px] text-[var(--tg-text-color)] font-medium truncate">
               {payerName}
             </span>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--tg-text-color)] min-w-0">
+          <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)] min-w-0">
             <RoundAvatar src={payerAvatar} alt={payerName} />
             <span className="font-medium truncate">{payerName}</span>
             <span className="opacity-60">→</span>
@@ -375,7 +358,7 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* справа: аватары участников (без плательщика) */}
+        {/* right: участники (только для расходов) */}
         {isExpense ? (
           <div className="shrink-0 flex items-center justify-end -space-x-2">
             {participantsExceptPayer.slice(0, 16).map((m, i) => {
@@ -404,15 +387,16 @@ export default function TransactionCard({
         )}
       </div>
 
-      {/* 3 СТРОКА: слева под paid by — ИНФО О ДОЛГЕ (дата уже под аватаром) */}
+      {/* Ряд 3: слева — ( дата уже под иконкой ), под блоком Paid by — строка долга */}
       <div className="mt-0.5 ml-12">
         <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-          {statusText}
+          {statusText /* БЕЗ символа валюты — только число */}
         </div>
       </div>
     </div>
   );
 
+  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
@@ -423,9 +407,9 @@ export default function TransactionCard({
       onPointerLeave={onPointerLeave}
       onContextMenu={onContextMenu}
     >
-      {Inner}
+      {CardInner}
     </Link>
   ) : (
-    Inner
+    CardInner
   );
 }

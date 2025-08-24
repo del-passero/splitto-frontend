@@ -1,5 +1,4 @@
 // src/components/group/GroupTransactionsTab.tsx
-// (без изменений по логике, уже в стиле списка: CardSection + вертикальные разделители, и передаём listMode)
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -10,15 +9,18 @@ import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
 import CardSection from "../CardSection";
 
+// стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
+
+// API
 import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
 
 type Props = {
-  loading: boolean;
-  transactions: any[];
-  onAddTransaction: () => void;
+  loading: boolean;            // не используем — грузим сами
+  transactions: any[];         // не используем — грузим сами
+  onAddTransaction: () => void;// не используем
 };
 
 const PAGE_SIZE = 20;
@@ -28,46 +30,59 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const navigate = useNavigate();
 
   const [openCreate, setOpenCreate] = useState(false);
+
+  // Action sheet по long-press
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
+  // groupId из урла — фильтрация выборки
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
 
+  // список групп (для модалки создания)
   const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? []);
 
+  // локальный стейт списка транзакций
   const [items, setItems] = useState<TransactionOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
+  // участники группы -> Map<userId, GroupMemberLike>
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
 
+  // для отмены запросов/IO
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
   const lockRef = useRef(false);
 
+  // ключ пересборки при смене фильтров
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
+  /* ---------- загрузка участников группы (для имён/аватаров) ---------- */
   useEffect(() => {
     if (!groupId) {
       setMembersMap(null);
       setMembersCount(0);
       return;
     }
+
     let cancelled = false;
-    (async () => {
+
+    const run = async () => {
       try {
         const { total, items } = await getGroupMembers(groupId, 0, 200);
         if (cancelled) return;
+
         const map = new Map<number, GroupMemberLike>();
         for (const m of items) {
           const u = (m as any).user || {};
           const id = Number(u.id);
           if (!Number.isFinite(id)) continue;
+
           const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
           map.set(id, {
             id,
@@ -85,12 +100,15 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         setMembersMap(null);
         setMembersCount(0);
       }
-    })();
+    };
+
+    run();
     return () => {
       cancelled = true;
     };
   }, [groupId]);
 
+  /* ---------- функция первичной загрузки (и перезагрузки после delete) ---------- */
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -127,6 +145,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     void reloadFirstPage();
   }, [filtersKey, reloadFirstPage]);
 
+  /* ---------- догрузка следующей страницы ---------- */
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
     lockRef.current = true;
@@ -146,6 +165,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
       setTotal(newTotal);
 
+      // дедуп по id
       const map = new Map<number | string, TransactionOut>();
       for (const it of items)
         map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
@@ -167,6 +187,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     }
   }, [groupId, items, hasMore, loading]);
 
+  /* ---------- IntersectionObserver: сентинел для инфинити-скролла ---------- */
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
@@ -192,10 +213,13 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length, hasMore, loading, filtersKey]);
 
+  /* ---------- обработчики ---------- */
   const handleAddClick = () => setOpenCreate(true);
 
+  // при успешном создании — сразу добавим в выдачу без полного рефетча
   const handleCreated = (tx: TransactionOut) => setItems((prev) => [tx, ...prev]);
 
+  // long-press из карточки
   const handleLongPress = (tx: TransactionOut) => {
     setTxForActions(tx);
     setActionsOpen(true);
@@ -206,7 +230,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     setTimeout(() => setTxForActions(null), 160);
   };
 
-  const navigateToEdit = () => {
+  const handleEdit = () => {
     if (!txForActions?.id) return;
     closeActions();
     navigate(`/transactions/${txForActions.id}`);
@@ -233,6 +257,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     }
   };
 
+  // Видимые элементы
   const visible = items;
 
   return (
@@ -247,20 +272,22 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         <CardSection noPadding>
           {visible.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
-              <TransactionCard
-                tx={tx}
-                membersById={membersMap ?? undefined}
-                groupMembersCount={membersCount}
-                t={t}
-                onLongPress={handleLongPress}
-                listMode
-              />
+              <div className="px-3 py-2">
+                <TransactionCard
+                  tx={tx}
+                  membersById={membersMap ?? undefined}
+                  groupMembersCount={membersCount}
+                  t={t}
+                  onLongPress={handleLongPress}
+                />
+              </div>
               {idx !== visible.length - 1 && (
                 <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               )}
             </div>
           ))}
-          {hasMore && !loading && <div ref={loaderRef} className="w-full h-2" />}
+          {/* сентинел */}
+          <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
           {loading && items.length > 0 && (
             <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
           )}
@@ -269,6 +296,24 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
       <GroupFAB onClick={handleAddClick} />
 
+      {/* Модалка создания */}
+      <CreateTransactionModal
+        open={openCreate}
+        onOpenChange={setOpenCreate}
+        groups={groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          color: g.color,
+          default_currency_code: (g as any).default_currency_code,
+          currency_code: (g as any).currency_code,
+          currency: (g as any).currency,
+        }))}
+        defaultGroupId={groupId}
+        onCreated={handleCreated}
+      />
+
+      {/* Мини action sheet (как было) */}
       {actionsOpen && (
         <div
           className="fixed inset-0 z-[1100] flex items-end justify-center"
@@ -281,8 +326,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           >
             <button
               type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-              onClick={navigateToEdit}
+              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg:white/5 transition"
+              onClick={handleEdit}
             >
               {t("edit")}
             </button>
