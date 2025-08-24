@@ -1,5 +1,5 @@
 export default {
-  // --- Navigation ---
+  // --- Navigation & main ---
   main: "Home",
   groups: "Groups",
   group: "Group",
@@ -18,16 +18,16 @@ export default {
   contacts_not_found: "No contacts found",
   groups_not_found: "No groups found",
   group_name_placeholder: "Group name",
-  group_description_placeholder: "Group description",
+  group_description_placeholder: "Description",
   group_name_required: "Enter a group name",
-  error_create_group: "Failed to create group",
-  error_edit_group: "Failed to edit group",
+  error_create_group: "Error creating group",
+  error_edit_group: "Error editing group",
   saving: "Saving...",
   add_participants: "Add participants",
   empty_members: "No members",
   groups_count: "Total groups: {{count}}",
   groups_top_info: "You have {{count}} active groups",
-  empty_groups: "You don’t have any groups yet",
+  empty_groups: "You don't have any groups yet",
   empty_groups_hint:
     "Create your first group to manage shared expenses!",
   search_group_placeholder: "Search group...",
@@ -38,15 +38,16 @@ export default {
   leave_group: "Leave group",
   delete_group: "Delete group",
 
-  // --- Balances ---
+  // --- Balances & debts ---
   group_balance_you_get: "You are owed {{sum}} ?",
   group_balance_you_owe: "You owe {{sum}} ?",
   group_balance_zero: "All settled",
   group_header_settings: "Settings",
   group_header_my_balance: "My balance",
   group_participant_no_debt: "No debt",
-  group_participant_you_owe: "You owe: {{sum}} ?",
-  group_participant_owes_you: "Owes you: {{sum}} ?",
+  // no currency symbol here:
+  group_participant_you_owe: "You owe: {{sum}}",
+  group_participant_owes_you: "They owe you: {{sum}}",
 
   // --- Members scroller ---
   group_invite: "Invite",
@@ -61,10 +62,10 @@ export default {
   group_fab_add_transaction: "Add transaction",
 
   // --- Transactions ---
-  group_transactions_empty: "No expenses in this group yet — add the first one!",
-  group_transactions_not_found: "Expenses not found",
+  group_transactions_empty: "No expenses yet — add the first one!",
+  group_transactions_not_found: "No expenses found",
   group_transactions_placeholder:
-    "Placeholder for the transactions list. Your group expenses will appear here.",
+    "Placeholder for group transactions. Your group's transactions will appear here.",
 
   // --- Balance tab ---
   group_balance_microtab_mine: "My balance",
@@ -76,7 +77,7 @@ export default {
   group_balance_no_debts_all: "Nobody owes anyone in this group",
 
   // --- Analytics tab ---
-  group_analytics_coming_soon: "Analytics is coming soon",
+  group_analytics_coming_soon: "Analytics coming soon",
 
   // --- Group settings page ---
   group_settings_tab_settings: "Settings",
@@ -85,26 +86,26 @@ export default {
   group_settings_delete_group: "Delete group",
   group_members_invite: "Invite",
   group_members_add: "Add",
-  group_members_empty: "There are no members in the group yet",
+  group_members_empty: "No members in this group yet",
   group_settings_close: "Close",
-  group_settings_save_and_exit: "Save and close",
+  group_settings_save_and_exit: "Save & close",
 
   // --- Invites ---
   create_invite_link: "Create invite link",
-  invite_by_link: "Invite via link",
+  invite_by_link: "Invite by link",
   copy_link: "Copy link",
   copied: "Copied!",
-  share_link: "Share (via Telegram)",
+  share_link: "Share (in Telegram)",
   share: "Share",
-  shared: "The link is ready to paste!",
+  shared: "Link ready to paste!",
   invite_friend: "Invite a friend",
-  invite_error: "Could not create the link. Try again later.",
+  invite_error: "Failed to create link. Try again later.",
   invite_message:
-    "Join me on Splitto — a handy way to manage shared expenses right in Telegram.\nHere’s your invite link:\n{{link}}",
+    "Join me on Splitto — an easy way to manage shared expenses right in Telegram.\nHere is your invite link:\n{{link}}",
   error_invite_link: "Failed to get the link",
 
   // --- Contacts ---
-  empty_contacts: "You don’t have any contacts yet...",
+  empty_contacts: "You don't have any contacts yet...",
   contacts_count: "Total contacts: {{count}}",
   search_placeholder: "Search contact...",
   filter: "Filter",
@@ -116,9 +117,9 @@ export default {
   settings: "Settings",
   about: "About",
   theme: "Theme",
-  choose_theme: "Choose theme",
+  choose_theme: "Choose a theme",
   language: "Language",
-  choose_language: "Choose language",
+  choose_language: "Choose a language",
   not_specified: "Not specified",
   theme_auto: "System",
   theme_light: "Light",
@@ -136,13 +137,15 @@ export default {
   close: "Close",
   delete: "Delete",
   loading: "Loading...",
+  save_failed: "Failed to save",
+  delete_failed: "Failed to delete",
 
   // --- Errors & system ---
   error: "Error",
   group_settings_cannot_leave_due_debt:
-    "You can’t leave this group right now because you have outstanding debts to other members. Please settle your debts and try again.",
+    "You can't leave this group right now because you have outstanding debts to other members. Please settle your debts and try again.",
 
-  // --- Currency ---
+  // --- Currencies ---
   currency: {
     select_title: "Choose currency",
     search_placeholder: "Search currency",
@@ -159,15 +162,15 @@ export default {
   },
   errors: {
     group_name_required: "Enter a group name",
-    group_trip_date_required: "Specify a trip date",
+    group_trip_date_required: "Provide a trip date",
     create_group_failed: "Failed to create group",
   },
   group_form: {
     name_placeholder: "Group name",
     description_placeholder: "Description",
-    is_trip: "Is this a trip group?",
+    is_trip: "Trip group?",
     trip_date:
-      "Set a date after which the group (if no debts remain) will automatically move to archive",
+      "Enter a date after which the group (if there are no debts) will be moved to archive automatically",
     name_hint_initial: "Enter a group name (up to {{max}} characters)",
     name_hint_remaining: "{{n}} characters left",
     desc_hint_initial: "Enter a description (up to {{max}} characters)",
@@ -201,7 +204,7 @@ export default {
     paid_by: "Paid by",
     participants: "Participants",
     split: "Split",
-    split_equal: "Equally",
+    split_equal: "Evenly",
     split_shares: "By shares",
     split_custom: "Custom",
     transfer_from: "Sender",
@@ -212,22 +215,26 @@ export default {
     back: "Back",
     choose_group_first: "Choose a group first",
 
-    amount_required: "Enter amount",
-    comment_required: "Enter comment",
+    // Validation/preview
+    amount_required: "Enter an amount",
+    comment_required: "Enter a comment",
     category_required: "Choose a category",
     split_no_participants: "Choose participants",
-    split_no_shares: "Shares not set",
-    split_custom_mismatch: "Participants’ sum doesn’t equal total",
-    per_share: "Per 1 share",
+    split_no_shares: "Shares are not set",
+    split_custom_mismatch: "Per-person total does not match the overall amount",
+    per_share: "Per share",
     custom_amounts_set: "Custom amounts set",
-    totals_mismatch: "Totals don’t match",
+    totals_mismatch: "Totals don't match",
     each: "each:",
     create_and_new: "Create and new",
 
-    // NEW
+    // New
     all: "ALL",
     paid_by_label: "Paid by",
     owes_label: "Owes",
+
+    // Delete confirm
+    delete_confirm: "Delete the transaction? This action cannot be undone.",
   },
 
   // --- Category ---
@@ -237,9 +244,9 @@ export default {
     not_found: "Nothing found",
   },
 
-  // --- Date for cards (via keys) ---
+  // --- Date format for cards ---
   date_card: {
-    pattern: "{{month}} {{day}}",
+    pattern: "{{day}} {{month}}",
     months: [
       "January",
       "February",
@@ -255,4 +262,7 @@ export default {
       "December",
     ],
   },
+
+  // ActionModal title
+  actions: "Actions",
 };

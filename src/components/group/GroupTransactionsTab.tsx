@@ -6,6 +6,8 @@ import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
+import ActionModal from "../ActionModal";
+import ConfirmModal from "../ConfirmModal";
 
 // стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
@@ -29,9 +31,12 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
   const [openCreate, setOpenCreate] = useState(false);
 
-  // Action sheet по long-press
+  // Action modal по long-press
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
+
+  // Confirm delete
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // groupId из урла — фильтрация выборки
   const params = useParams();
@@ -223,25 +228,19 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     setActionsOpen(true);
   };
 
-  const closeActions = () => {
-    setActionsOpen(false);
-    setTimeout(() => setTxForActions(null), 160);
-  };
-
   const handleEdit = () => {
     if (!txForActions?.id) return;
-    closeActions();
+    setActionsOpen(false);
     navigate(`/transactions/${txForActions.id}`);
   };
 
-  const handleDelete = async () => {
-    if (!txForActions?.id) return;
-    const ok = window.confirm(
-      (t("tx_modal.delete_confirm") as string) ||
-        "Удалить транзакцию? Это действие необратимо."
-    );
-    if (!ok) return;
+  const askDelete = () => {
+    setActionsOpen(false);
+    setConfirmOpen(true);
+  };
 
+  const doDelete = async () => {
+    if (!txForActions?.id) return;
     try {
       setLoading(true);
       await removeTransaction(txForActions.id);
@@ -251,7 +250,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       console.error("Failed to delete tx", e);
     } finally {
       setLoading(false);
-      closeActions();
+      setConfirmOpen(false);
+      setTxForActions(null);
     }
   };
 
@@ -309,42 +309,25 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         onCreated={handleCreated}
       />
 
-      {/* Action Sheet по long-press */}
-      {actionsOpen && (
-        <div
-          className="fixed inset-0 z-[1100] flex items-end justify-center"
-          onClick={closeActions}
-        >
-          <div className="absolute inset-0 bg-black/50" />
-          <div
-            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-              onClick={handleEdit}
-            >
-              {t("edit")}
-            </button>
-            <button
-              type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
-              onClick={handleDelete}
-            >
-              {t("delete")}
-            </button>
-            <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
-            <button
-              type="button"
-              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
-              onClick={closeActions}
-            >
-              {t("cancel")}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Действия по long-press — по центру */}
+      <ActionModal
+        open={actionsOpen}
+        onClose={() => { setActionsOpen(false); setTxForActions(null); }}
+        onEdit={handleEdit}
+        onDelete={askDelete}
+        t={t}
+      />
+
+      {/* Подтверждение удаления — по центру */}
+      <ConfirmModal
+        open={confirmOpen}
+        onCancel={() => { setConfirmOpen(false); setTxForActions(null); }}
+        onConfirm={doDelete}
+        title={t("delete") || "Удалить"}
+        message={(t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо."}
+        cancelText={t("common.no") || "Нет"}
+        confirmText={t("common.yes") || "Да"}
+      />
     </div>
   );
 };

@@ -45,8 +45,9 @@ export default {
   group_header_settings: "Настройки",
   group_header_my_balance: "Мой баланс",
   group_participant_no_debt: "Нет долга",
-  group_participant_you_owe: "Вы должны: {{sum}} ₽",
-  group_participant_owes_you: "Вам должны: {{sum}} ₽",
+  // ⬇️ УБРАЛ символ валюты — остаётся только сумма
+  group_participant_you_owe: "Вы должны: {{sum}}",
+  group_participant_owes_you: "Вам должны: {{sum}}",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",
@@ -136,6 +137,9 @@ export default {
   close: "Закрыть",
   delete: "Удалить",
   loading: "Загрузка...",
+  // Доп. статусы ошибок сохранения/удаления
+  save_failed: "Не удалось сохранить",
+  delete_failed: "Не удалось удалить",
 
   // --- Ошибки и системные статусы ---
   error: "Ошибка",
@@ -212,7 +216,7 @@ export default {
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
 
-    // добавлено для валидации/превью
+    // Валидация/превью
     amount_required: "Введите сумму",
     comment_required: "Введите комментарий",
     category_required: "Выберите категорию",
@@ -225,10 +229,13 @@ export default {
     each: "с каждого:",
     create_and_new: "Создать и новую",
 
-    // НОВОЕ
+    // Новое
     all: "ВСЕ",
     paid_by_label: "Заплатил",
     owes_label: "Должен",
+
+    // ⬇️ ДОБАВИЛОСЬ: текст подтверждения удаления
+    delete_confirm: "Удалить транзакцию? Это действие необратимо.",
   },
 
   // --- Категории ---
@@ -256,4 +263,7 @@ export default {
       "декабря",
     ],
   },
+
+  // Опционально: заголовок для ActionModal
+  actions: "Действия",
 };

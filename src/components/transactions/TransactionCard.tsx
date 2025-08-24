@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useRef } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
@@ -18,13 +18,9 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
 };
 
@@ -71,9 +67,6 @@ const fmtNumberOnly = (n: number) => {
   }
 };
 
-const isFiniteNumber = (x: unknown): x is number =>
-  typeof x === "number" && Number.isFinite(x);
-
 /* ---------- date via locales ---------- */
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
@@ -84,10 +77,7 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
       const month = months[d.getMonth()];
       return pattern.replace("{{day}}", day).replace("{{month}}", month);
     }
-  } catch {
-    // ignore
-  }
-  // fallback
+  } catch { /* ignore */ }
   try {
     return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
   } catch {
@@ -96,7 +86,6 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
 };
 
 /* ---------- UI bits ---------- */
-
 function CategoryAvatar({
   name,
   color,
@@ -108,10 +97,7 @@ function CategoryAvatar({
   icon?: string;
   dateStr: string;
 }) {
-  const bg =
-    typeof color === "string" && color.trim()
-      ? color
-      : "var(--tg-link-color)";
+  const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
     <div className="w-10 shrink-0 flex flex-col items-center">
@@ -123,7 +109,7 @@ function CategoryAvatar({
           {icon || ch}
         </span>
       </div>
-      <div className="mt-1 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
+      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
     </div>
@@ -139,7 +125,7 @@ function TransferAvatar({ dateStr }: { dateStr: string }) {
       >
         <ArrowRightLeft size={18} className="opacity-80" />
       </div>
-      <div className="mt-1 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
+      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
         {dateStr}
       </div>
     </div>
@@ -168,22 +154,16 @@ function RoundAvatar({
   ) : (
     <span
       className={`rounded-full inline-block ${className}`}
-      style={{
-        width: size,
-        height: size,
-        background: "var(--tg-link-color)",
-      }}
+      style={{ width: size, height: size, background: "var(--tg-link-color)" }}
       aria-hidden
     />
   );
 }
 
 /* ---------- main ---------- */
-
 export default function TransactionCard({
   tx,
   membersById,
-  groupMembersCount,
   t,
   onLongPress,
 }: Props) {
@@ -191,7 +171,7 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь: store -> Telegram fallback
+  // Тек. пользователь
   const storeUserId = useUserStore((s: any) => s.user?.id) as number | undefined;
   const currentUserId =
     typeof storeUserId === "number"
@@ -210,79 +190,55 @@ export default function TransactionCard({
   const dateStr = formatCardDate(dateObj, t);
 
   /* --- resolve people --- */
-  // payer (expense) or sender (transfer)
   const payerId: number | undefined = isExpense
     ? Number(tx.paid_by ?? tx.created_by ?? NaN)
-    : Number(
-        tx.transfer_from ??
-          tx.from_user_id ??
-          (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN)
-      );
+    : Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
 
   const payerMember = getFromMap(membersById, payerId);
   const payerName =
     firstName(tx.paid_by_name || tx.from_name) ||
     firstName(payerMember?.name) ||
-    firstName(
-      `${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()
-    ) ||
+    firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
 
   const payerAvatar =
-    tx.paid_by_avatar ||
-    tx.from_avatar ||
-    payerMember?.avatar_url ||
-    payerMember?.photo_url;
+    tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
 
   // recipient (transfer only)
   let toId: number | undefined = undefined;
   if (!isExpense) {
     const raw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
-    if (Array.isArray(raw) && raw.length > 0) {
-      toId = Number(raw[0]);
-    } else if (raw != null) {
-      toId = Number(raw);
-    }
+    if (Array.isArray(raw) && raw.length > 0) toId = Number(raw[0]);
+    else if (raw != null) toId = Number(raw);
   }
   const toMember = getFromMap(membersById, toId);
   const toName =
     firstName(tx.to_name) ||
     firstName(toMember?.name) ||
-    firstName(
-      `${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()
-    ) ||
+    firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toAvatar =
-    tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
+  const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
   const participantsFromShares: GroupMemberLike[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
-        .map((s: any) =>
-          getFromMap(membersById, Number(s?.user_id ?? s?.user?.id))
-        )
+        .map((s: any) => getFromMap(membersById, Number(s?.user_id ?? s?.user?.id)))
         .filter(Boolean) as GroupMemberLike[]
     : [];
-  const participantsExceptPayer = participantsFromShares.filter(
-    (m) => Number(m.id) !== Number(payerId)
-  );
+  const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
   /* --- заголовок --- */
-  // Расход: если нет comment — показываем имя категории.
-  // Перевод: не дублируем «кто → кому» в заголовке (оно ниже).
   const title = isExpense
-    ? (tx.comment && String(tx.comment).trim()) ||
-      (tx.category?.name ? String(tx.category.name) : "—")
+    ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
     : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, отдельной строкой) --- */
+  /* --- статус участия (ТОЛЬКО ДЛЯ РАСХОДОВ, без валюты) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
     let payerShare = 0;
-
     for (const s of tx.shares as any[]) {
       const uid = Number(s?.user_id);
       const val = Number(s?.amount ?? 0);
@@ -290,30 +246,16 @@ export default function TransactionCard({
       if (uid === Number(currentUserId)) myShare += val;
       if (uid === Number(payerId)) payerShare += val;
     }
-
     const iAmPayer = Number(payerId) === Number(currentUserId);
     if (iAmPayer) {
-      // Сколько ИТОГО должны плательщику: total - его собственная доля
       const lent = Math.max(0, amountNum - payerShare);
-      if (lent > 0) {
-        const sumStr = fmtNumberOnly(lent);
-        statusText =
-          (t && t("group_participant_owes_you", { sum: sumStr })) ||
-          `Вам должны: ${sumStr}`;
-      } else {
-        statusText =
-          (t && t("group_participant_no_debt")) || "Нет долга";
-      }
+      statusText = lent > 0
+        ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) || `Вам должны: ${fmtNumberOnly(lent)}`)
+        : ((t && t("group_participant_no_debt")) || "Нет долга");
     } else {
-      if (myShare > 0) {
-        const sumStr = fmtNumberOnly(myShare);
-        statusText =
-          (t && t("group_participant_you_owe", { sum: sumStr })) ||
-          `Вы должны: ${sumStr}`;
-      } else {
-        statusText =
-          (t && t("group_participant_no_debt")) || "Нет долга";
-      }
+      statusText = myShare > 0
+        ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) || `Вы должны: ${fmtNumberOnly(myShare)}`)
+        : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   }
 
@@ -321,7 +263,7 @@ export default function TransactionCard({
   const longPressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
 
-  const onPointerDown = (e: React.PointerEvent) => {
+  const onPointerDown = () => {
     didLongPress.current = false;
     if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = window.setTimeout(() => {
@@ -343,14 +285,11 @@ export default function TransactionCard({
       e.stopPropagation();
     }
   };
-  const onContextMenu = (e: React.MouseEvent) => {
-    // мобильный «удерживать» иногда триггерит контекст — перехватим
-    e.preventDefault();
-  };
+  const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   const CardInner = (
     <div
-      className={`relative px-3 py-2 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
+      className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
@@ -372,7 +311,6 @@ export default function TransactionCard({
           <TransferAvatar dateStr={dateStr} />
         )}
 
-        {/* center */}
         <div className="min-w-0 flex-1">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
@@ -381,14 +319,13 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* amount */}
         <div className="text-[14px] font-semibold shrink-0">
           {fmtAmount(amountNum, tx.currency)}
         </div>
       </div>
 
-      {/* Блок «Заплатил ...» или «A → B» */}
-      <div className="mt-2 ml-12 min-w-0">
+      {/* Paid by / A→B */}
+      <div className="mt-1 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <span className="opacity-70 text-[var(--tg-hint-color)]">
@@ -409,7 +346,7 @@ export default function TransactionCard({
           </div>
         )}
 
-        {/* Строка статуса долгов + аватары участников (без плательщика) — ОДНА ЛИНИЯ */}
+        {/* Статус долгов + аватары участников (без плательщика) */}
         {isExpense && (
           <div className="mt-1 flex items-center gap-2">
             <div className="text-[12px] text-[var(--tg-hint-color)] truncate flex-1">
@@ -443,7 +380,6 @@ export default function TransactionCard({
     </div>
   );
 
-  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
