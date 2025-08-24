@@ -113,26 +113,26 @@ const formatDateHuman = (d: Date, t?: Props["t"]) => {
     .replace("{{month}}", String(month));
 };
 
-/** Подсчёт долга. Если viewerId не задан — считаем со стороны плательщика. Есть фоллбэк для split_type=equal без shares. */
-function computeViewerDebt(
+/** Подсчёт долга. Возвращает положительную сумму или 0, если долга нет/невозможно посчитать. */
+function computeViewerDebtAmount(
   tx: any,
   viewerId?: number,
   groupMembersCount?: number,
   membersById?: MembersMap
-): { kind: "owe" | "lent"; amount: number } | null {
-  if (!tx || tx.type !== "expense") return null;
+): { type: "owe" | "lent" | "none"; amount: number } {
+  if (!tx || tx.type !== "expense") return { type: "none", amount: 0 };
 
   const total = Number(tx.amount ?? 0);
-  if (!Number.isFinite(total) || total <= 0) return null;
-
   const currency = trim(tx.currency).toUpperCase();
+  if (!Number.isFinite(total) || total <= 0) return { type: "none", amount: 0 };
+
   const payerId: number | undefined = Number(
     tx.paid_by ?? tx.created_by ?? NaN
   );
   const me = viewerId ?? payerId;
-  if (!me || !Number.isFinite(payerId)) return null;
+  if (!me || !Number.isFinite(payerId)) return { type: "none", amount: 0 };
 
-  // 1) точный расчёт по shares, если есть
+  // 1) точный расчёт по shares
   if (Array.isArray(tx.shares) && tx.shares.length > 0) {
     let myShare = 0;
     let payerShare = 0;
@@ -146,46 +146,40 @@ function computeViewerDebt(
     const iAmPayer = Number(me) === Number(payerId);
     if (iAmPayer) {
       const lent = roundByCcy(Math.max(0, total - payerShare), currency);
-      return lent > 0 ? { kind: "lent", amount: lent } : null;
+      return lent > 0 ? { type: "lent", amount: lent } : { type: "none", amount: 0 };
+    } else {
+      myShare = roundByCcy(myShare, currency);
+      return myShare > 0 ? { type: "owe", amount: myShare } : { type: "none", amount: 0 };
     }
-    myShare = roundByCcy(myShare, currency);
-    return myShare > 0 ? { kind: "owe", amount: myShare } : null;
   }
 
-  // 2) фоллбэк: split_type === "equal" и явных shares нет
+  // 2) фоллбэк: split_type === equal (или вообще не задан)
   const equal =
     String(tx.split_type || "").toLowerCase() === "equal" ||
     (!tx.split_type && (!tx.shares || tx.shares.length === 0));
 
   if (equal) {
-    // пытаемся определить количество участников n
+    // определить n участников
     let n: number | undefined = Number(tx.participants_count);
     if (!Number.isFinite(n) || n! <= 0) {
-      // попробуем по membersById
-      if (membersById instanceof Map) {
-        n = membersById.size;
-      } else if (membersById) {
-        n = Object.keys(membersById as Record<number, GroupMemberLike>).length;
-      }
+      if (membersById instanceof Map) n = membersById.size;
+      else if (membersById) n = Object.keys(membersById as Record<number, GroupMemberLike>).length;
     }
-    // приоритет — явное количество из пропсов
-    if (groupMembersCount && (!n || n < groupMembersCount)) {
-      n = groupMembersCount;
-    }
+    if (groupMembersCount && (!n || n < groupMembersCount)) n = groupMembersCount;
 
-    if (!n || n <= 0) return null;
+    if (!n || n <= 0) return { type: "none", amount: 0 };
 
     const iAmPayer = Number(me) === Number(payerId);
     if (iAmPayer) {
       const lent = roundByCcy(total * ((n - 1) / n), currency);
-      return lent > 0 ? { kind: "lent", amount: lent } : null;
+      return lent > 0 ? { type: "lent", amount: lent } : { type: "none", amount: 0 };
     } else {
       const owe = roundByCcy(total / n, currency);
-      return owe > 0 ? { kind: "owe", amount: owe } : null;
+      return owe > 0 ? { type: "owe", amount: owe } : { type: "none", amount: 0 };
     }
   }
 
-  return null;
+  return { type: "none", amount: 0 };
 }
 
 /* ====================== UI bits ====================== */
@@ -358,12 +352,7 @@ export default function TransactionCard({
 
   // расчёт долга (если currentUserId нет — считаем как плательщик)
   const viewerId = currentUserId ?? payerId;
-  const viewerDebt = computeViewerDebt(
-    tx,
-    viewerId,
-    groupMembersCount,
-    membersById
-  );
+  const debt = computeViewerDebtAmount(tx, viewerId, groupMembersCount, membersById);
 
   /* ====================== RENDER ====================== */
 
@@ -423,22 +412,25 @@ export default function TransactionCard({
     </div>
   );
 
+  // ВАЖНО: показываем строку ВСЕГДА. Если долга нет/не посчитался — "Нет долга".
   const DebtRow =
-    isExpense && viewerDebt ? (
+    isExpense ? (
       <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">
-        {viewerDebt.kind === "owe"
+        {debt.type === "owe"
           ? tKey(
               t,
               "group_participant_you_owe",
-              `Вы должны: ${fmtNumberOnly(viewerDebt.amount, currency)}`,
-              { sum: fmtNumberOnly(viewerDebt.amount, currency) }
+              `Вы должны: ${fmtNumberOnly(debt.amount, currency)}`,
+              { sum: fmtNumberOnly(debt.amount, currency) }
             )
-          : tKey(
+          : debt.type === "lent"
+          ? tKey(
               t,
               "group_participant_owes_you",
-              `Вам должны: ${fmtNumberOnly(viewerDebt.amount, currency)}`,
-              { sum: fmtNumberOnly(viewerDebt.amount, currency) }
-            )}
+              `Вам должны: ${fmtNumberOnly(debt.amount, currency)}`,
+              { sum: fmtNumberOnly(debt.amount, currency) }
+            )
+          : tKey(t, "group_participant_no_debt", "Нет долга")}
       </div>
     ) : null;
 
@@ -470,7 +462,7 @@ export default function TransactionCard({
             }
 
             const arr = Array.from(uniq.values());
-            const shown = arr.slice(-8); // последние 8 — чтобы крайними справа были «самые свежие»
+            const shown = arr.slice(-8); // последние 8 — справа
             const rest = Math.max(0, arr.length - shown.length);
 
             return (
