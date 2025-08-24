@@ -3,7 +3,6 @@ import React, { useMemo } from "react";
 import { ArrowRightLeft, Layers } from "lucide-react";
 import { Link } from "react-router-dom";
 
-/** Короткая инфа о пользователе в группе */
 export type GroupMemberLike = {
   id: number;
   name?: string | null;
@@ -14,11 +13,10 @@ export type GroupMemberLike = {
   photo_url?: string | null;
 };
 type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
-
 type TFunc = (k: string, vars?: Record<string, any>) => string;
 
 type Props = {
-  tx: any; // TransactionOut | LocalTx
+  tx: any;
   membersById?: MembersMap;
   groupMembersCount?: number;
   t?: TFunc;
@@ -29,11 +27,14 @@ type Props = {
 /* ---------- utils ---------- */
 const s = (x: any) => (typeof x === "string" ? x : "");
 const up = (x?: string | null) => (x ? String(x).toUpperCase() : "");
+const isNum = (v: any) => Number.isFinite(Number(v));
 
 const getFromMap = (m?: MembersMap, id?: number | null) => {
   if (!m || id == null) return undefined;
   const key = Number(id);
-  return m instanceof Map ? (m as Map<number, GroupMemberLike>).get(key) : (m as Record<number, GroupMemberLike>)[key];
+  return m instanceof Map
+    ? (m as Map<number, GroupMemberLike>).get(key)
+    : (m as Record<number, GroupMemberLike>)[key];
 };
 
 const makeName = (u?: GroupMemberLike | null): string => {
@@ -43,9 +44,10 @@ const makeName = (u?: GroupMemberLike | null): string => {
   const ln = s(u.last_name).trim();
   if (fn || ln) return [fn, ln].filter(Boolean).join(" ");
   if (s(u.username)) return `@${s(u.username)}`;
-  if (Number.isFinite(Number((u as any).id))) return `#${(u as any).id}`;
-  return "";
+  return isNum((u as any).id) ? `#${(u as any).id}` : "";
 };
+
+const firstLetter = (v: string) => (v || "").trim().charAt(0).toUpperCase() || "•";
 
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
 const ccyDecimals = (code?: string | null) => (code && ZERO_DEC.has(code.toUpperCase()) ? 0 : 2);
@@ -61,7 +63,6 @@ const fmtAmount = (n: number, code?: string | null) => {
     return `${n.toFixed(dec)} ${c}`.trim();
   }
 };
-
 const fmtNumberOnly = (n: number, code?: string | null) => {
   const dec = ccyDecimals(code || undefined);
   if (!Number.isFinite(n)) n = 0;
@@ -72,26 +73,29 @@ const fmtNumberOnly = (n: number, code?: string | null) => {
   }
 };
 
-const firstLetter = (v: string) => (v || "").trim().charAt(0).toUpperCase() || "•";
+const tKey = (t?: TFunc, key?: string, vars?: Record<string, any>) => {
+  if (!t || !key) return undefined;
+  try {
+    const v = t(key as any, vars);
+    return v && v !== key ? v : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
-/** Локализованный “20 мая” / “May 20” / “20 de mayo” через ключи */
+/** Дата «20 мая» / «May 20» через keys: date_card.months.0..11 + date_card.pattern */
+const MONTHS_FALLBACK = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+const monthByIdx = (idx: number, t?: TFunc) =>
+  tKey(t, `date_card.months.${idx}`) || MONTHS_FALLBACK[idx] || "";
+
 const formatCardDate = (t?: TFunc, date?: string | number | Date) => {
   const d = new Date(date || Date.now());
   const day = d.getDate();
-  // достаём массив месяцев через returnObjects
-  let months: any = t?.("date_card.months", { returnObjects: true as any });
-  if (!Array.isArray(months) || months.length !== 12) {
-    // страховка: англ. месяцы по умолчанию
-    months = [
-      "January","February","March","April","May","June",
-      "July","August","September","October","November","December",
-    ];
-  }
-  const month = months[d.getMonth()] || "";
-  const pat = t?.("date_card.pattern", { day, month });
-  // если i18n вернул исходный ключ — соберём сами как “day month”
-  if (!pat || pat.includes("date_card.pattern")) return `${day} ${month}`.trim();
-  return pat;
+  const month = monthByIdx(d.getMonth(), t);
+  return tKey(t, "date_card.pattern", { day, month }) || `${day} ${month}`;
 };
 
 /* ---------- UI bits ---------- */
@@ -114,21 +118,15 @@ function CategoryAvatar({
   );
 }
 
-function RoundAvatar({
-  src,
-  alt,
-  size = 18,
-}: {
-  src?: string | null;
-  alt?: string;
-  size?: number;
-}) {
+function RoundAvatar({ src, alt, size = 18 }: { src?: string | null; alt?: string; size?: number }) {
   const url = s(src).trim();
   return url ? (
     <img src={url} alt={alt || ""} className="rounded-full object-cover" style={{ width: size, height: size }} loading="lazy" />
   ) : (
-    <span className="rounded-full inline-flex items-center justify-center bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[10px] opacity-80"
-          style={{ width: size, height: size }}>
+    <span
+      className="rounded-full inline-flex items-center justify-center bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[10px] opacity-80"
+      style={{ width: size, height: size }}
+    >
       {firstLetter(alt || "")}
     </span>
   );
@@ -144,7 +142,7 @@ export default function TransactionCard({
   className,
 }: Props) {
   const isExpense = s(tx?.type).toLowerCase() === "expense";
-  const hasId = Number.isFinite(Number(tx?.id));
+  const hasId = isNum(tx?.id);
   const txId = hasId ? Number(tx.id) : undefined;
 
   const currentUserId =
@@ -153,20 +151,19 @@ export default function TransactionCard({
       : (() => {
           try {
             const id = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-            return Number.isFinite(Number(id)) ? Number(id) : undefined;
+            return isNum(id) ? Number(id) : undefined;
           } catch {
             return undefined;
           }
         })();
 
   /* --- участники --- */
-  // payer/sender
   const payerId: number | undefined =
-    (Number.isFinite(Number(tx?.paid_by)) ? Number(tx.paid_by) : undefined) ??
-    (Number.isFinite(Number(tx?.created_by)) ? Number(tx.created_by) : undefined) ??
-    (Number.isFinite(Number(tx?.payer_id)) ? Number(tx.payer_id) : undefined) ??
-    (Number.isFinite(Number(tx?.from_user_id)) ? Number(tx.from_user_id) : undefined) ??
-    (Number.isFinite(Number(tx?.transfer_from)) ? Number(tx.transfer_from) : undefined);
+    (isNum(tx?.paid_by) ? Number(tx.paid_by) : undefined) ??
+    (isNum(tx?.created_by) ? Number(tx.created_by) : undefined) ??
+    (isNum(tx?.payer_id) ? Number(tx.payer_id) : undefined) ??
+    (isNum(tx?.from_user_id) ? Number(tx.from_user_id) : undefined) ??
+    (isNum(tx?.transfer_from) ? Number(tx.transfer_from) : undefined);
 
   const payerFromMap = getFromMap(membersById, payerId);
   const payer: GroupMemberLike = {
@@ -179,10 +176,9 @@ export default function TransactionCard({
     photo_url: s(payerFromMap?.photo_url),
   };
 
-  // recipient (transfer)
   let toId: number | undefined;
   const toRaw = Array.isArray(tx?.transfer_to) ? tx.transfer_to[0] : tx?.to_user_id ?? tx?.to;
-  if (toRaw != null) toId = Number(toRaw);
+  if (toRaw != null && isNum(toRaw)) toId = Number(toRaw);
   const toFromMap = getFromMap(membersById, toId);
   const to: GroupMemberLike | undefined = !isExpense
     ? {
@@ -196,7 +192,7 @@ export default function TransactionCard({
       }
     : undefined;
 
-  // участники расхода из shares (для отображения + расчёта долгов)
+  // shares → участники и расчёт долгов
   const shares: Array<{ user_id: number; amount: number; name?: string; avatar_url?: string | null }> = Array.isArray(tx?.shares)
     ? (tx.shares as any[]).map((s: any) => ({
         user_id: Number(s?.user_id ?? s?.user?.id),
@@ -232,7 +228,6 @@ export default function TransactionCard({
       const cat = s(tx?.category?.name).trim();
       return cat || "—";
     }
-    // Для перевода заголовок не дублируем “кто→кому”, если comment есть
     const c = s(tx?.comment).trim();
     if (c) return c;
     return `${makeName(payer)} → ${makeName(to)}`.trim();
@@ -244,24 +239,23 @@ export default function TransactionCard({
   const amountNum = Number(tx?.amount ?? 0);
   const amountStr = fmtAmount(amountNum, up(tx?.currency));
 
-  /* --- подпись про сплит (иконка Layers) --- */
+  /* --- сплит-бейдж --- */
   const splitLabel =
     s(tx?.split_type) === "equal"
-      ? t?.("tx_modal.split_equal")
+      ? tKey(t, "tx_modal.split_equal")
       : s(tx?.split_type) === "shares"
-      ? t?.("tx_modal.split_shares")
+      ? tKey(t, "tx_modal.split_shares")
       : s(tx?.split_type) === "custom"
-      ? t?.("tx_modal.split_custom")
+      ? tKey(t, "tx_modal.split_custom")
       : null;
 
-  /* --- текст по участникам (ALL / список имён) --- */
   const participantsTitle = looksLikeAll
-    ? `${t?.("tx_modal.all") || "ALL"}${groupMembersCount ? ` (${groupMembersCount})` : ""}`
+    ? `${tKey(t, "tx_modal.all") || "ALL"}${groupMembersCount ? ` (${groupMembersCount})` : ""}`
     : participantsUsers.map(makeName).filter(Boolean).join(", ");
 
-  /* --- расчёт долга текущего пользователя (только расходы) --- */
+  /* --- расчёт долга (только если shares есть) --- */
   let statusText = "";
-  if (isExpense && typeof currentUserId === "number" && Array.isArray(shares) && shares.length) {
+  if (isExpense && typeof currentUserId === "number" && shares.length) {
     let myShare = 0;
     let payerShare = 0;
     shares.forEach((s) => {
@@ -270,13 +264,20 @@ export default function TransactionCard({
       if (uid === Number(currentUserId)) myShare += val;
       if (uid === Number(payerId)) payerShare += val;
     });
-
     const iAmPayer = Number(payerId) === Number(currentUserId);
     if (iAmPayer) {
       const lent = Math.max(0, amountNum - payerShare);
-      statusText = lent > 0 ? (t?.("group_participant_owes_you", { sum: fmtNumberOnly(lent, tx?.currency) }) || "") : (t?.("group_participant_no_debt") || "");
+      statusText =
+        lent > 0
+          ? tKey(t, "group_participant_owes_you", { sum: fmtNumberOnly(lent, tx?.currency) }) ||
+            `Вам должны: ${fmtNumberOnly(lent, tx?.currency)}`
+          : tKey(t, "group_participant_no_debt") || "Нет долга";
     } else {
-      statusText = myShare > 0 ? (t?.("group_participant_you_owe", { sum: fmtNumberOnly(myShare, tx?.currency) }) || "") : (t?.("group_participant_no_debt") || "");
+      statusText =
+        myShare > 0
+          ? tKey(t, "group_participant_you_owe", { sum: fmtNumberOnly(myShare, tx?.currency) }) ||
+            `Вы должны: ${fmtNumberOnly(myShare, tx?.currency)}`
+          : tKey(t, "group_participant_no_debt") || "Нет долга";
     }
   }
 
@@ -289,7 +290,7 @@ export default function TransactionCard({
       }
     >
       <div className="flex items-start gap-3">
-        {/* Левая колонка: аватар категории/перевода + дата под ним */}
+        {/* Левая колонка: аватар + дата под ним */}
         <div className="flex flex-col items-center w-10 shrink-0">
           {isExpense ? (
             <CategoryAvatar name={tx?.category?.name} color={tx?.category?.color} icon={tx?.category?.icon} />
@@ -305,7 +306,7 @@ export default function TransactionCard({
 
         {/* Правая часть */}
         <div className="min-w-0 flex-1">
-          {/* Верхняя строка: заголовок + сумма справа */}
+          {/* Заголовок + сумма */}
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1 text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
               {title}
@@ -313,32 +314,29 @@ export default function TransactionCard({
             <div className="text-[14px] font-semibold shrink-0">{amountStr}</div>
           </div>
 
-          {/* Вторая строка: кто платил / участники ИЛИ стрелка перевода */}
+          {/* Инфо строка */}
           <div className="mt-1 flex items-center justify-between gap-2">
             {isExpense ? (
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
-                  {t?.("tx_modal.paid_by_label") || "Paid by"}:
+                  {tKey(t, "tx_modal.paid_by_label") || "Paid by"}:
                 </span>
                 <div className="flex items-center gap-1 min-w-0">
                   <RoundAvatar src={payer.avatar_url || payer.photo_url} alt={makeName(payer)} />
                   <span className="text-[12px] text-[var(--tg-text-color)] truncate">{makeName(payer)}</span>
                 </div>
-
                 <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0 mx-1">—</span>
-
                 {looksLikeAll ? (
                   <span className="text-[12px] text-[var(--tg-text-color)] whitespace-nowrap">{participantsTitle}</span>
                 ) : (
                   <div className="flex items-center gap-1 min-w-0">
-                    {/* аватарки первых трёх участников */}
                     <div className="flex items-center gap-1">
                       {participantsUsers.slice(0, 3).map((u) => (
                         <RoundAvatar key={u.id} src={u.avatar_url || u.photo_url} alt={makeName(u)} size={16} />
                       ))}
                     </div>
                     <span className="text-[12px] text-[var(--tg-text-color)] truncate">
-                      {participantsTitle || (t?.("participants") || "Participants")}
+                      {participantsTitle || tKey(t, "participants") || "Participants"}
                     </span>
                   </div>
                 )}
@@ -361,7 +359,7 @@ export default function TransactionCard({
             )}
           </div>
 
-          {/* Третья строка: статус долга (если смогли посчитать) */}
+          {/* Статус долга (только если смогли посчитать) */}
           {isExpense && statusText && (
             <div className="mt-1 text-[12px] text-[var(--tg-hint-color)]">{statusText}</div>
           )}
@@ -371,10 +369,7 @@ export default function TransactionCard({
   );
 
   return hasId ? (
-    <Link
-      to={`/transactions/${txId}`}
-      className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl"
-    >
+    <Link to={`/transactions/${txId}`} className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl">
       {Card}
     </Link>
   ) : (
