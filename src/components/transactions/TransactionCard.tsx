@@ -131,72 +131,37 @@ function displayName(raw?: string, max = 12): string {
   return truncateGraphemes(base, max);
 }
 
-/** Резолвер имени/иконки/цвета категории из разных источников */
+/** Резолвер имени/иконки/цвета категории: объект → словарь → плоские поля → "Категория #id" */
 function resolveCategory(
   tx: any,
   categoriesById?: CategoriesMap,
-  t?: Props["t"]
+  _t?: Props["t"]
 ): { id?: number; name: string; icon?: string | null; color?: string | null } {
   const catObj: CategoryLike | undefined = tx?.category || undefined;
+
   const catId: number | undefined = Number.isFinite(Number(tx?.category_id))
     ? Number(tx.category_id)
     : Number.isFinite(Number(catObj?.id))
       ? Number(catObj?.id)
       : undefined;
 
-  // 1) Прямо из объекта категории
+  // 1) из объекта категории
   const nameFromObj =
     (catObj?.name ?? catObj?.title ?? catObj?.label ?? "")?.toString().trim() || "";
 
-  // 2) i18n-ключ в объекте/плоско
-  const possibleKey =
-    (catObj?.key ??
-      catObj?.slug ??
-      catObj?.code ??
-      (tx?.category_key as string | undefined)) || null;
-
-  let nameFromI18n = "";
-  if (possibleKey && typeof t === "function") {
-    const tryKeys = [
-      `categories.${possibleKey}`,
-      `category.${possibleKey}`,
-      `tx_categories.${possibleKey}`,
-    ];
-    for (const k of tryKeys) {
-      try {
-        const v = t(k);
-        if (typeof v === "string" && v.trim()) {
-          nameFromI18n = v.trim();
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-
-  // 3) Из внешней мапы по id (если передали)
+  // 2) из внешней мапы по id
   const fromMap = getCategoryFromMap(categoriesById, catId);
   const nameFromMap =
     (fromMap?.name ?? fromMap?.title ?? fromMap?.label ?? "")?.toString().trim() || "";
 
-  // 4) Плоские поля на самой транзакции
+  // 3) плоские поля на транзакции (на всякий случай)
   const flatName =
     (tx?.category_name ?? tx?.categoryTitle ?? tx?.category_label ?? "")?.toString().trim() || "";
 
-  // Выбираем имя по приоритету
-  let name =
-    nameFromObj ||
-    nameFromI18n ||
-    nameFromMap ||
-    flatName ||
-    "";
+  let name = nameFromObj || nameFromMap || flatName;
 
-  if (!name) {
-    // Если всё пусто — пытаемся показать хоть что-то осмысленное
-    const unnamed =
-      (t && typeof t("category.unnamed") === "string" && (t("category.unnamed") as string)) ||
-      (catId != null ? `Категория #${catId}` : "Без категории");
-    name = unnamed;
-  }
+  // 4) жёсткий безопасный фолбэк
+  if (!name) name = catId != null ? `Категория #${catId}` : "Категория";
 
   return {
     id: catId,
@@ -349,15 +314,12 @@ export default function TransactionCard({
   const isCommentEmpty = rawComment === "" || rawComment === "-" || rawComment === "—";
 
   const title = isExpense
-    ? // Расход: комментарий (если не пустой), иначе — имя категории
-      (isCommentEmpty ? categoryName : rawComment) || categoryName || ""
-    : // Перевод: комментарий (обычно ключ) или перевод строки из i18n
-      rawComment || (t && (t("tx_modal.transfer") as string)) || "Transfer";
+    ? (isCommentEmpty ? categoryName : rawComment) || categoryName || ""
+    : rawComment || (t && (t("tx_modal.transfer") as string)) || "Transfer";
 
   /* --- строка долга (Row3/Col2-4) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
-    // Долг по расходу (по долям)
     let myShare = 0;
     let payerShare = 0;
     for (const s of tx.shares as any[]) {
@@ -383,7 +345,6 @@ export default function TransactionCard({
           : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
     }
   } else if (!isExpense) {
-    // Долг для перевода
     const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
     let toRaw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
     const toIdResolved =
@@ -444,7 +405,7 @@ export default function TransactionCard({
       role="button"
     >
       <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
-        {/* Row1 / Col1 — DATE (по вертикали по центру ряда) */}
+        {/* Row1 / Col1 — DATE */}
         <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{dateStr}</div>
         </div>
@@ -458,12 +419,12 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row1 / Col4 — AMOUNT (для обоих типов) */}
+        {/* Row1 / Col4 — AMOUNT */}
         <div className="col-start-4 row-start-1">
           <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
         </div>
 
-        {/* Row2-3 / Col1 — LEFT ICON spans 2 rows */}
+        {/* Row2-3 / Col1 — LEFT ICON */}
         <div className="col-start-1 row-start-2 row-span-2">
           {isExpense ? (
             <CategoryAvatar
@@ -476,7 +437,7 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col2-3 — EXPENSE: Paid by  | TRANSFER: A → B (мини-сетка) */}
+        {/* Row2 / Col2-3 — PAID BY / A→B */}
         <div className="col-start-2 col-end-4 row-start-2 min-w-0 self-center">
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
@@ -493,16 +454,13 @@ export default function TransactionCard({
             </div>
           ) : (
             <div className="grid grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] items-center gap-x-1 text-[12px] text-[var(--tg-text-color)]">
-              {/* A (left) */}
               <div className="min-w-0 flex items-center gap-2">
                 <RoundAvatar src={payerAvatar} alt={payerNameFull} />
                 <span className="font-medium truncate" title={payerNameFull}>
                   {payerNameDisplay}
                 </span>
               </div>
-              {/* arrow */}
               <div className="justify-self-center opacity-60">→</div>
-              {/* B (right) */}
               <div className="min-w-0 flex items-center gap-2 justify-self-end">
                 <RoundAvatar src={toAvatar} alt={toNameFull} />
                 <span className="font-medium truncate" title={toNameFull}>
@@ -513,7 +471,7 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col4 — EXPENSE: "& " + STACK | TRANSFER: пусто */}
+        {/* Row2 / Col4 — "& " + STACK (только для расходов) */}
         <div className="col-start-4 row-start-2 justify-self-end self-center">
           {isExpense && participantsExceptPayer.length > 0 ? (
             <div className="flex items-center">

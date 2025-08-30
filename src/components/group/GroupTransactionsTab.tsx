@@ -25,8 +25,38 @@ type Props = {
 
 const PAGE_SIZE = 20;
 
+/* ---------- локальный мини-клиент категорий (как в CategoryPickerModal) ---------- */
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
+function getTelegramInitData(): string {
+  // @ts-ignore
+  return window?.Telegram?.WebApp?.initData || "";
+}
+type ApiExpenseCategoryOut = {
+  id: number;
+  key: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  parent_id?: number | null;
+  is_active: boolean;
+  name_i18n?: Record<string, string> | null;
+};
+type ApiListResp = { items: ApiExpenseCategoryOut[]; total: number; restricted: boolean };
+async function apiListGroupCategoriesPage(params: {
+  groupId: number; offset: number; limit: number; locale: string;
+}): Promise<ApiListResp> {
+  const url = new URL(`${API_URL}/groups/${params.groupId}/categories`);
+  url.searchParams.set("offset", String(params.offset));
+  url.searchParams.set("limit", String(params.limit));
+  url.searchParams.set("locale", params.locale);
+  const res = await fetch(url.toString(), { headers: { "x-telegram-initdata": getTelegramInitData() } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd }: Props) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const navigate = useNavigate();
 
   const [openCreate, setOpenCreate] = useState(false);
@@ -52,6 +82,11 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   // участники группы -> Map<userId, GroupMemberLike>
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
+
+  // категории группы -> Map<categoryId, { id, name, icon, color }>
+  const [categoriesById, setCategoriesById] = useState<
+    Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>
+  >(new Map());
 
   // для отмены запросов/IO
   const abortRef = useRef<AbortController | null>(null);
@@ -107,6 +142,42 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       cancelled = true;
     };
   }, [groupId]);
+
+  /* ---------- загрузка СПРАВОЧНИКА категорий для корректных имён ---------- */
+  useEffect(() => {
+    if (!groupId) {
+      setCategoriesById(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = new Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>();
+        let offset = 0;
+        const LIMIT = 200;
+        while (true) {
+          const page = await apiListGroupCategoriesPage({ groupId, offset, limit: LIMIT, locale });
+          for (const it of page.items || []) {
+            const prev = m.get(it.id);
+            m.set(it.id, {
+              id: it.id,
+              name: it.name || prev?.name || null, // имя локализованное на бэке
+              icon: (it.icon ?? prev?.icon) ?? null,
+              color: (it.color ?? prev?.color) ?? null,
+            });
+          }
+          offset += (page.items?.length || 0);
+          if ((page.items?.length || 0) < LIMIT) break;
+        }
+        if (!cancelled) setCategoriesById(m);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("Failed to load categories dictionary", e);
+        if (!cancelled) setCategoriesById(new Map());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [groupId, locale]);
 
   /* ---------- функция первичной загрузки (и перезагрузки после delete) ---------- */
   const reloadFirstPage = useCallback(async () => {
@@ -279,6 +350,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
                   groupMembersCount={membersCount}
                   t={t}
                   onLongPress={handleLongPress}
+                  categoriesById={categoriesById}  // <-- пробрасываем словарь категорий
                 />
               </div>
               {idx !== visible.length - 1 && (
