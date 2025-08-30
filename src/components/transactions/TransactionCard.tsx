@@ -17,12 +17,29 @@ export type GroupMemberLike = {
 
 type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
 
+/** (новое) Мап категорий по id — для безопасного резолва имени */
+type CategoryLike = {
+  id: number;
+  name?: string | null;
+  title?: string | null;
+  label?: string | null;
+  key?: string | null;
+  slug?: string | null;
+  code?: string | null;
+  icon?: string | null;
+  color?: string | null;
+};
+type CategoriesMap = Record<number, CategoryLike> | Map<number, CategoryLike>;
+
 type Props = {
   tx: any; // TransactionOut | LocalTx
   membersById?: MembersMap;
   groupMembersCount?: number;
-  t?: (k: string, vars?: Record<string, any>) => string;
+  t?: (k: string, vars?: Record<string, any>) => string | string[];
   onLongPress?: (tx: any) => void;
+
+  /** (новое, необязательное) Справочник категорий по id — если бек отдал только category_id */
+  categoriesById?: CategoriesMap;
 };
 
 /* ---------- utils ---------- */
@@ -30,6 +47,13 @@ const getFromMap = (m?: MembersMap, id?: number | null) => {
   if (!m || id == null) return undefined;
   if (m instanceof Map) return m.get(Number(id));
   return (m as Record<number, GroupMemberLike>)[Number(id)];
+};
+
+/** универсальный геттер из CategoriesMap */
+const getCategoryFromMap = (m?: CategoriesMap, id?: number | null): CategoryLike | undefined => {
+  if (!m || id == null) return undefined;
+  if (m instanceof Map) return m.get(Number(id));
+  return (m as Record<number, CategoryLike>)[Number(id)];
 };
 
 const firstName = (full?: string) => {
@@ -58,11 +82,18 @@ const fmtAmount = (n: number, code?: string) => {
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
     const months = (t && (t("date_card.months") as unknown as string[])) || null;
-    const pattern = (t && t("date_card.pattern")) || "{{day}} {{month}}";
+
+    // ВАЖНО: t(...) может вернуть string | string[] — гарантируем строку для pattern
+    let patternStr = "{{day}} {{month}}";
+    try {
+      const maybe = t && t("date_card.pattern");
+      if (typeof maybe === "string" && maybe.trim()) patternStr = maybe;
+    } catch { /* ignore */ }
+
     if (Array.isArray(months) && months.length === 12) {
       const day = d.getDate().toString();
       const month = months[d.getMonth()];
-      return pattern.replace("{{day}}", day).replace("{{month}}", month);
+      return patternStr.replace("{{day}}", day).replace("{{month}}", month);
     }
   } catch { /* ignore */ }
   try {
@@ -100,6 +131,73 @@ function displayName(raw?: string, max = 12): string {
   return truncateGraphemes(base, max);
 }
 
+/** (новое) Резолвер имени/иконки/цвета категории из разных источников */
+function resolveCategory(
+  tx: any,
+  categoriesById?: CategoriesMap,
+  t?: Props["t"]
+): { id?: number; name: string; icon?: string | null; color?: string | null } {
+  const catObj: CategoryLike | undefined = tx?.category || undefined;
+  const catId: number | undefined = Number.isFinite(Number(tx?.category_id))
+    ? Number(tx.category_id)
+    : Number.isFinite(Number(catObj?.id))
+      ? Number(catObj?.id)
+      : undefined;
+
+  // 1) Прямо из объекта категории
+  const nameFromObj =
+    (catObj?.name ?? catObj?.title ?? catObj?.label ?? "")?.toString().trim() || "";
+
+  // 2) i18n-ключ в объекте/плоско
+  const possibleKey =
+    (catObj?.key ??
+      catObj?.slug ??
+      catObj?.code ??
+      (tx?.category_key as string | undefined)) || null;
+
+  let nameFromI18n = "";
+  if (possibleKey && typeof t === "function") {
+    const tryKeys = [
+      `categories.${possibleKey}`,
+      `category.${possibleKey}`,
+      `tx_categories.${possibleKey}`,
+    ];
+    for (const k of tryKeys) {
+      try {
+        const v = t(k);
+        if (typeof v === "string" && v.trim()) {
+          nameFromI18n = v.trim();
+          break;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  // 3) Из внешней мапы по id (если передали)
+  const fromMap = getCategoryFromMap(categoriesById, catId);
+  const nameFromMap =
+    (fromMap?.name ?? fromMap?.title ?? fromMap?.label ?? "")?.toString().trim() || "";
+
+  // 4) Плоские поля на самой транзакции
+  const flatName =
+    (tx?.category_name ?? tx?.categoryTitle ?? tx?.category_label ?? "")?.toString().trim() || "";
+
+  // Выбираем имя по приоритету
+  const name =
+    nameFromObj ||
+    nameFromI18n ||
+    nameFromMap ||
+    flatName ||
+    ""; // финальный fallback (ниже)
+
+  return {
+    id: catId,
+    name: name || "Без категории",
+    icon: (catObj?.icon ?? fromMap?.icon) || null,
+    color: (catObj?.color ?? fromMap?.color) || null,
+  };
+}
+
 /* ---------- UI bits ---------- */
 function CategoryAvatar({
   name,
@@ -108,7 +206,7 @@ function CategoryAvatar({
 }: {
   name?: string;
   color?: string | null;
-  icon?: string;
+  icon?: string | null;
 }) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
@@ -169,6 +267,7 @@ export default function TransactionCard({
   membersById,
   t,
   onLongPress,
+  categoriesById, // (новое) опционально
 }: Props) {
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
@@ -233,18 +332,9 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  // ---------- CATEGORY NAME (как для аватара) ----------
-  const categoryName = (() => {
-    // объект категории — основная правда
-    const obj = tx?.category || {};
-    const objName = String(obj.name ?? obj.title ?? obj.label ?? "").trim();
-    if (objName) return objName;
-    // плоские варианты на всякий случай
-    const flat = String(
-      (tx.category_name ?? tx.categoryTitle ?? tx.category_label ?? "") as string
-    ).trim();
-    return flat;
-  })();
+  // ---------- CATEGORY (универсальный резолвер) ----------
+  const resolvedCategory = resolveCategory(tx, categoriesById, t);
+  const categoryName = resolvedCategory.name;
 
   // ---------- TITLE ----------
   const rawComment = String(tx.comment ?? "").trim();
@@ -254,7 +344,7 @@ export default function TransactionCard({
     ? // Расход: комментарий (если не пустой), иначе — имя категории
       (isCommentEmpty ? categoryName : rawComment) || categoryName || ""
     : // Перевод: комментарий (обычно ключ) или перевод строки из i18n
-      rawComment || (t && t("tx_modal.transfer")) || "Transfer";
+      rawComment || (t && (t("tx_modal.transfer") as string)) || "Transfer";
 
   /* --- строка долга (Row3/Col2-4) --- */
   let statusText = "";
@@ -274,15 +364,15 @@ export default function TransactionCard({
       const lent = Math.max(0, amountNum - payerShare);
       statusText =
         lent > 0
-          ? ((t && t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) })) ||
+          ? ((t && (t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) }) as string)) ||
             `Вам должны: ${fmtAmount(lent, tx.currency)}`)
-          : ((t && t("group_participant_no_debt")) || "Нет долга");
+          : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
     } else {
       statusText =
         myShare > 0
-          ? ((t && t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) })) ||
+          ? ((t && (t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) }) as string)) ||
             `Вы должны: ${fmtAmount(myShare, tx.currency)}`)
-          : ((t && t("group_participant_no_debt")) || "Нет долга");
+          : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
     }
   } else if (!isExpense) {
     // Долг для перевода
@@ -293,17 +383,17 @@ export default function TransactionCard({
 
     if (Number.isFinite(fromId) && Number(currentUserId) === fromId) {
       statusText =
-        (t && t("group_participant_owes_you", { sum: fmtAmount(amountNum, tx.currency) })) ||
+        (t && (t("group_participant_owes_you", { sum: fmtAmount(amountNum, tx.currency) }) as string)) ||
         `Вам должны: ${fmtAmount(amountNum, tx.currency)}`;
     } else if (Number.isFinite(toIdResolved) && Number(currentUserId) === toIdResolved) {
       statusText =
-        (t && t("group_participant_you_owe", { sum: fmtAmount(amountNum, tx.currency) })) ||
+        (t && (t("group_participant_you_owe", { sum: fmtAmount(amountNum, tx.currency) }) as string)) ||
         `Вы должны: ${fmtAmount(amountNum, tx.currency)}`;
     } else {
-      statusText = (t && t("group_participant_no_debt")) || "Нет долга";
+      statusText = (t && (t("group_participant_no_debt") as string)) || "Нет долга";
     }
   } else {
-    statusText = (t && t("group_participant_no_debt")) || "Нет долга";
+    statusText = (t && (t("group_participant_no_debt") as string)) || "Нет долга";
   }
 
   /* ---------- long press handling ---------- */
@@ -369,9 +459,9 @@ export default function TransactionCard({
         <div className="col-start-1 row-start-2 row-span-2">
           {isExpense ? (
             <CategoryAvatar
-              name={categoryName || tx.category?.name}
-              color={tx.category?.color}
-              icon={tx.category?.icon}
+              name={categoryName}
+              color={resolvedCategory.color}
+              icon={resolvedCategory.icon}
             />
           ) : (
             <TransferAvatar />
@@ -383,7 +473,7 @@ export default function TransactionCard({
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
-                {(t && t("tx_modal.paid_by_label")) || "Заплатил"}:
+                {(t && (t("tx_modal.paid_by_label") as string)) || "Заплатил"}:
               </span>
               <RoundAvatar src={payerAvatar} alt={payerNameFull} />
               <span
