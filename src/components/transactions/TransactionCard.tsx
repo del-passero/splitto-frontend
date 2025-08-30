@@ -49,22 +49,9 @@ const fmtAmount = (n: number, code?: string) => {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
-    return `${nf.format(n)} ${code || ""}`.trim();
+    return `${nf.format(Math.abs(n))} ${code || ""}`.trim();
   } catch {
-    return `${n.toFixed(decimalsByCode(code))} ${code || ""}`.trim();
-  }
-};
-
-const fmtNumberOnly = (n: number) => {
-  if (!isFinite(n)) n = 0;
-  try {
-    const nf = new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
-    return nf.format(n);
-  } catch {
-    return n.toFixed(2);
+    return `${Math.abs(n).toFixed(decimalsByCode(code))} ${code || ""}`.trim();
   }
 };
 
@@ -77,7 +64,7 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
       const month = months[d.getMonth()];
       return pattern.replace("{{day}}", day).replace("{{month}}", month);
     }
-  } catch {}
+  } catch { /* ignore */ }
   try {
     return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
   } catch {
@@ -90,7 +77,11 @@ function CategoryAvatar({
   name,
   color,
   icon,
-}: { name?: string; color?: string | null; icon?: string }) {
+}: {
+  name?: string;
+  color?: string | null;
+  icon?: string;
+}) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
@@ -121,7 +112,12 @@ function RoundAvatar({
   alt,
   size = 18,
   className = "",
-}: { src?: string; alt?: string; size?: number; className?: string }) {
+}: {
+  src?: string;
+  alt?: string;
+  size?: number;
+  className?: string;
+}) {
   return src ? (
     <img
       src={src}
@@ -207,16 +203,22 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  // заголовок
-  const title =
-    isExpense
-      ? (tx.comment && String(tx.comment).trim()) ||
-        (tx.category?.name ? String(tx.category.name) : "—")
-      : (tx.comment && String(tx.comment).trim()) || "";
+  // ---------- TITLE ----------
+  const trimmedComment = String(tx.comment || "").trim();
 
-  /* --- строка долга --- */
+  const title = isExpense
+    ? // Расход: комментарий или название категории (без прочерка)
+      (trimmedComment ||
+        (tx.category?.name ? String(tx.category.name).trim() : "")) || ""
+    : // Перевод: комментарий или ключ tx_modal.transfer
+      trimmedComment ||
+      (t && t("tx_modal.transfer")) ||
+      "Transfer";
+
+  /* --- строка долга (Row3/Col2-4) --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
+    // Долг по расходу (по долям)
     let myShare = 0;
     let payerShare = 0;
     for (const s of tx.shares as any[]) {
@@ -231,15 +233,34 @@ export default function TransactionCard({
       const lent = Math.max(0, amountNum - payerShare);
       statusText =
         lent > 0
-          ? ((t && t("group_participant_owes_you", { sum: fmtNumberOnly(lent) })) ||
-            `Вам должны: ${fmtNumberOnly(lent)}`)
+          ? ((t && t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) })) ||
+            `Вам должны: ${fmtAmount(lent, tx.currency)}`)
           : ((t && t("group_participant_no_debt")) || "Нет долга");
     } else {
       statusText =
         myShare > 0
-          ? ((t && t("group_participant_you_owe", { sum: fmtNumberOnly(myShare) })) ||
-            `Вы должны: ${fmtNumberOnly(myShare)}`)
+          ? ((t && t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) })) ||
+            `Вы должны: ${fmtAmount(myShare, tx.currency)}`)
           : ((t && t("group_participant_no_debt")) || "Нет долга");
+    }
+  } else if (!isExpense) {
+    // Долг для перевода:
+    // currentUserId — участник перевода? sender -> "Вам должны", receiver -> "Вы должны", иначе "Нет долга".
+    const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
+    let toRaw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
+    const toIdResolved =
+      Array.isArray(toRaw) && toRaw.length > 0 ? Number(toRaw[0]) : Number(toRaw ?? NaN);
+
+    if (Number.isFinite(fromId) && Number(currentUserId) === fromId) {
+      statusText =
+        (t && t("group_participant_owes_you", { sum: fmtAmount(amountNum, tx.currency) })) ||
+        `Вам должны: ${fmtAmount(amountNum, tx.currency)}`;
+    } else if (Number.isFinite(toIdResolved) && Number(currentUserId) === toIdResolved) {
+      statusText =
+        (t && t("group_participant_you_owe", { sum: fmtAmount(amountNum, tx.currency) })) ||
+        `Вы должны: ${fmtAmount(amountNum, tx.currency)}`;
+    } else {
+      statusText = (t && t("group_participant_no_debt")) || "Нет долга";
     }
   } else {
     statusText = (t && t("group_participant_no_debt")) || "Нет долга";
@@ -285,8 +306,8 @@ export default function TransactionCard({
       role="button"
     >
       <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
-        {/* Row1 / Col1 — DATE */}
-        <div className="col-start-1 row-start-1 text-center">
+        {/* Row1 / Col1 — DATE (по вертикали по центру ряда) */}
+        <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{dateStr}</div>
         </div>
 
@@ -299,11 +320,9 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row1 / Col4 — AMOUNT (только для расхода) */}
+        {/* Row1 / Col4 — AMOUNT (для обоих типов) */}
         <div className="col-start-4 row-start-1">
-          {isExpense && (
-            <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
-          )}
+          <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
         </div>
 
         {/* Row2-3 / Col1 — LEFT ICON spans 2 rows */}
@@ -342,30 +361,33 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col4 — EXPENSE: STACK | TRANSFER: пусто */}
+        {/* Row2 / Col4 — EXPENSE: "& " + STACK | TRANSFER: пусто */}
         <div className="col-start-4 row-start-2 justify-self-end">
-          {isExpense ? (
-            <div className="shrink-0 flex items-center justify-end -space-x-2">
-              {participantsExceptPayer.slice(0, 16).map((m, i) => {
-                const url = (m as any).photo_url || (m as any).avatar_url;
-                return url ? (
-                  <img
-                    key={m.id}
-                    src={url}
-                    alt=""
-                    className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
-                    style={{ marginLeft: i === 0 ? 0 : -8 }}
-                    loading="lazy"
-                  />
-                ) : (
-                  <span
-                    key={m.id}
-                    className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
-                    style={{ marginLeft: i === 0 ? 0 : -8 }}
-                    aria-hidden
-                  />
-                );
-              })}
+          {isExpense && participantsExceptPayer.length > 0 ? (
+            <div className="flex items-center">
+              <span className="mr-1 select-none">&amp;&nbsp;</span>
+              <div className="shrink-0 flex items-center justify-end -space-x-2">
+                {participantsExceptPayer.slice(0, 16).map((m, i) => {
+                  const url = (m as any).photo_url || (m as any).avatar_url;
+                  return url ? (
+                    <img
+                      key={m.id}
+                      src={url}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
+                      style={{ marginLeft: i === 0 ? 0 : -8 }}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span
+                      key={m.id}
+                      className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
+                      style={{ marginLeft: i === 0 ? 0 : -8 }}
+                      aria-hidden
+                    />
+                  );
+                })}
+              </div>
             </div>
           ) : null}
         </div>
