@@ -77,7 +77,7 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
       const month = months[d.getMonth()];
       return pattern.replace("{{day}}", day).replace("{{month}}", month);
     }
-  } catch { /* ignore */ }
+  } catch {}
   try {
     return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
   } catch {
@@ -90,11 +90,7 @@ function CategoryAvatar({
   name,
   color,
   icon,
-}: {
-  name?: string;
-  color?: string | null;
-  icon?: string;
-}) {
+}: { name?: string; color?: string | null; icon?: string }) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
@@ -125,12 +121,7 @@ function RoundAvatar({
   alt,
   size = 18,
   className = "",
-}: {
-  src?: string;
-  alt?: string;
-  size?: number;
-  className?: string;
-}) {
+}: { src?: string; alt?: string; size?: number; className?: string }) {
   return src ? (
     <img
       src={src}
@@ -216,16 +207,16 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  // заголовок (Row1/Col2)
+  // заголовок
   const title =
     isExpense
       ? (tx.comment && String(tx.comment).trim()) ||
         (tx.category?.name ? String(tx.category.name) : "—")
       : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- строка долга (Row3/Col2) --- */
+  /* --- строка долга --- */
   let statusText = "";
-  if (typeof currentUserId === "number" && Array.isArray(tx.shares) && isExpense) {
+  if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
     let payerShare = 0;
     for (const s of tx.shares as any[]) {
@@ -281,7 +272,7 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  /* ---------- layout (GRID 3×3 с твоей сеткой) ---------- */
+  /* ---------- layout (GRID 4 колонки) ---------- */
   const CardInner = (
     <div
       className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
@@ -293,14 +284,14 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      <div className="grid grid-cols-[40px,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
-        {/* Row1 / Col1 — DATE (теперь сверху слева для обоих типов) */}
+      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
+        {/* Row1 / Col1 — DATE */}
         <div className="col-start-1 row-start-1 text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{dateStr}</div>
         </div>
 
-        {/* Row1 / Col2 — TITLE */}
-        <div className="col-start-2 row-start-1 min-w-0">
+        {/* Row1 / Col2-3 — TITLE */}
+        <div className="col-start-2 col-end-4 row-start-1 min-w-0">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
               {title}
@@ -308,13 +299,15 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row1 / Col3 — AMOUNT (для обоих типов) */}
-        <div className="col-start-3 row-start-1">
-          <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
+        {/* Row1 / Col4 — AMOUNT (только для расхода) */}
+        <div className="col-start-4 row-start-1">
+          {isExpense && (
+            <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
+          )}
         </div>
 
-        {/* Row2 / Col1 — CATEGORY or TRANSFER ICON */}
-        <div className="col-start-1 row-start-2">
+        {/* Row2-3 / Col1 — LEFT ICON spans 2 rows */}
+        <div className="col-start-1 row-start-2 row-span-2">
           {isExpense ? (
             <CategoryAvatar
               name={tx.category?.name}
@@ -326,8 +319,8 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col2 — EXPENSE: "Paid by NAME" | TRANSFER: "A → B" */}
-        <div className="col-start-2 row-start-2 min-w-0">
+        {/* Row2 / Col2-3 — EXPENSE: Paid by  | TRANSFER: A → B */}
+        <div className="col-start-2 col-end-4 row-start-2 min-w-0">
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
@@ -349,8 +342,8 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col3 — EXPENSE: STACK | TRANSFER: пусто */}
-        <div className="col-start-3 row-start-2 justify-self-end">
+        {/* Row2 / Col4 — EXPENSE: STACK | TRANSFER: пусто */}
+        <div className="col-start-4 row-start-2 justify-self-end">
           {isExpense ? (
             <div className="shrink-0 flex items-center justify-end -space-x-2">
               {participantsExceptPayer.slice(0, 16).map((m, i) => {
@@ -377,16 +370,10 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row3 / Col1 — пусто (ячейка-«буфер» под левую колонку) */}
-        <div className="col-start-1 row-start-3" />
-
-        {/* Row3 / Col2 — DEBT/STATUS (для обоих типов; для перевода — «Нет долга») */}
-        <div className="col-start-2 row-start-3 min-w-0">
+        {/* Row3 / Col2-4 — STATUS / DEBT */}
+        <div className="col-start-2 col-end-5 row-start-3 min-w-0">
           <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{statusText}</div>
         </div>
-
-        {/* Row3 / Col3 — пусто */}
-        <div className="col-start-3 row-start-3" />
       </div>
     </div>
   );
