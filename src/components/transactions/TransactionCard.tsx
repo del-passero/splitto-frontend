@@ -90,44 +90,32 @@ function CategoryAvatar({
   name,
   color,
   icon,
-  dateStr,
 }: {
   name?: string;
   color?: string | null;
   icon?: string;
-  dateStr: string;
 }) {
   const bg = typeof color === "string" && color.trim() ? color : "var(--tg-link-color)";
   const ch = (name || "").trim().charAt(0).toUpperCase() || "•";
   return (
-    <div className="w-10 shrink-0 flex flex-col items-center">
-      <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
-        style={{ background: bg }}
-      >
-        <span style={{ fontSize: 16 }} aria-hidden>
-          {icon || ch}
-        </span>
-      </div>
-      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
-        {dateStr}
-      </div>
+    <div
+      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0"
+      style={{ background: bg }}
+      aria-hidden
+    >
+      <span style={{ fontSize: 16 }}>{icon || ch}</span>
     </div>
   );
 }
 
-function TransferAvatar({ dateStr }: { dateStr: string }) {
+function TransferAvatar() {
   return (
-    <div className="w-10 shrink-0 flex flex-col items-center">
-      <div
-        className="w-10 h-10 rounded-xl border flex items-center justify-center"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-      >
-        <ArrowRightLeft size={18} className="opacity-80" />
-      </div>
-      <div className="mt-0.5 text-[11px] text-[var(--tg-hint-color)] leading-none text-center">
-        {dateStr}
-      </div>
+    <div
+      className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      aria-hidden
+    >
+      <ArrowRightLeft size={18} className="opacity-80" />
     </div>
   );
 }
@@ -235,7 +223,7 @@ export default function TransactionCard({
         (tx.category?.name ? String(tx.category.name) : "—")
       : (tx.comment && String(tx.comment).trim()) || "";
 
-  /* --- статус участия / строка долга --- */
+  /* --- строка долга --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
@@ -263,7 +251,7 @@ export default function TransactionCard({
           : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   } else {
-    // Для переводов показываем хотя бы «Нет долга», чтобы строка была всегда.
+    // Для переводов строка долга тоже присутствует (если логики нет — показываем "Нет долга")
     statusText = (t && t("group_participant_no_debt")) || "Нет долга";
   }
 
@@ -306,17 +294,16 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      {/* Ряд 1: иконка/трансфер + заголовок (коммент/категория/пусто) + сумма */}
+      {/* Ряд 1: иконка/трансфер + заголовок + сумма */}
       <div className="flex items-start gap-3">
         {isExpense ? (
           <CategoryAvatar
             name={tx.category?.name}
             color={tx.category?.color}
             icon={tx.category?.icon}
-            dateStr={dateStr}
           />
         ) : (
-          <TransferAvatar dateStr={dateStr} />
+          <TransferAvatar />
         )}
 
         <div className="min-w-0 flex-1">
@@ -332,10 +319,8 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* Ряд 2:
-          - transfer: A → B (под строкой суммы)
-          - expense : Paid by … (слева) и аватары участников (справа) */}
-      <div className="mt-1 ml-12 min-w-0">
+      {/* Ряд 2: СРАЗУ под строкой с комментом/суммой */}
+      <div className="mt-0.5 ml-12 min-w-0">
         {isExpense ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
@@ -381,10 +366,17 @@ export default function TransactionCard({
         )}
       </div>
 
-      {/* Ряд 3: строка долга — на одной линии с датой под аватаром слева */}
-      <div className="mt-0.5 ml-12">
-        <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-          {statusText}
+      {/* Ряд 3: слева — ДАТА под аватаром, справа — строка долга */}
+      <div className="mt-0.5 flex items-start gap-3">
+        {/* колонка под аватаром */}
+        <div className="w-10 text-center">
+          <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{dateStr}</div>
+        </div>
+        {/* долг */}
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
+            {statusText}
+          </div>
         </div>
       </div>
     </div>
