@@ -203,17 +203,31 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
+  // ---------- CATEGORY NAME (как для аватара) ----------
+  const categoryName = (() => {
+    // 1) объект категории
+    const fromObj =
+      (tx?.category &&
+        (String(tx.category.name ?? tx.category.title ?? tx.category.label ?? "").trim())) ||
+      "";
+    if (fromObj) return fromObj;
+    // 2) возможные плоские поля
+    const flat =
+      String(
+        (tx.category_name ?? tx.categoryTitle ?? tx.category_label ?? "") as string
+      ).trim();
+    return flat;
+  })();
+
   // ---------- TITLE ----------
-  const trimmedComment = String(tx.comment || "").trim();
+  const rawComment = String(tx.comment ?? "").trim();
+  const isCommentEmpty = rawComment === "" || rawComment === "-" || rawComment === "—";
 
   const title = isExpense
-    ? // Расход: комментарий или название категории (без прочерка)
-      (trimmedComment ||
-        (tx.category?.name ? String(tx.category.name).trim() : "")) || ""
-    : // Перевод: комментарий или ключ tx_modal.transfer
-      trimmedComment ||
-      (t && t("tx_modal.transfer")) ||
-      "Transfer";
+    ? // Расход: комментарий (если не пустой/не прочерк), иначе имя категории
+      (isCommentEmpty ? categoryName : rawComment) || categoryName || ""
+    : // Перевод: комментарий (обычно приходит ключ) или t('tx_modal.transfer') или "Transfer"
+      rawComment || (t && t("tx_modal.transfer")) || "Transfer";
 
   /* --- строка долга (Row3/Col2-4) --- */
   let statusText = "";
@@ -245,7 +259,6 @@ export default function TransactionCard({
     }
   } else if (!isExpense) {
     // Долг для перевода:
-    // currentUserId — участник перевода? sender -> "Вам должны", receiver -> "Вы должны", иначе "Нет долга".
     const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
     let toRaw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
     const toIdResolved =
@@ -329,7 +342,7 @@ export default function TransactionCard({
         <div className="col-start-1 row-start-2 row-span-2">
           {isExpense ? (
             <CategoryAvatar
-              name={tx.category?.name}
+              name={categoryName || tx.category?.name}
               color={tx.category?.color}
               icon={tx.category?.icon}
             />
@@ -339,7 +352,7 @@ export default function TransactionCard({
         </div>
 
         {/* Row2 / Col2-3 — EXPENSE: Paid by  | TRANSFER: A → B */}
-        <div className="col-start-2 col-end-4 row-start-2 min-w-0">
+        <div className="col-start-2 col-end-4 row-start-2 min-w-0 self-center">
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
@@ -362,10 +375,12 @@ export default function TransactionCard({
         </div>
 
         {/* Row2 / Col4 — EXPENSE: "& " + STACK | TRANSFER: пусто */}
-        <div className="col-start-4 row-start-2 justify-self-end">
+        <div className="col-start-4 row-start-2 justify-self-end self-center">
           {isExpense && participantsExceptPayer.length > 0 ? (
             <div className="flex items-center">
-              <span className="mr-1 select-none">&amp;&nbsp;</span>
+              <span className="mr-1 select-none text-[12px] text-[var(--tg-text-color)] font-medium">
+                &amp;&nbsp;
+              </span>
               <div className="shrink-0 flex items-center justify-end -space-x-2">
                 {participantsExceptPayer.slice(0, 16).map((m, i) => {
                   const url = (m as any).photo_url || (m as any).avatar_url;
