@@ -81,21 +81,27 @@ const fmtAmount = (n: number, code?: string) => {
 
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
-    const months = (t && (t("date_card.months") as unknown as string[])) || null;
+    // i18next для массивов требует returnObjects: true
+    const monthsRaw =
+      t && (t("date_card.months", { returnObjects: true } as any) as unknown);
+    const months = Array.isArray(monthsRaw) ? (monthsRaw as string[]) : null;
 
-    // t(...) может вернуть string | string[] — гарантируем строку для pattern
     let patternStr = "{{day}} {{month}}";
     try {
       const maybe = t && t("date_card.pattern");
-      if (typeof maybe === "string" && maybe.trim()) patternStr = maybe;
+      if (typeof maybe === "string" && maybe.trim() && maybe !== "date_card.pattern") {
+        patternStr = maybe;
+      }
     } catch { /* ignore */ }
 
-    if (Array.isArray(months) && months.length === 12) {
+    if (months && months.length === 12) {
       const day = d.getDate().toString();
       const month = months[d.getMonth()];
       return patternStr.replace("{{day}}", day).replace("{{month}}", month);
     }
   } catch { /* ignore */ }
+
+  // Фолбэк: системная локаль, короткий месяц
   try {
     return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
   } catch {
@@ -145,22 +151,18 @@ function resolveCategory(
       ? Number(catObj?.id)
       : undefined;
 
-  // 1) из объекта категории
   const nameFromObj =
     (catObj?.name ?? catObj?.title ?? catObj?.label ?? "")?.toString().trim() || "";
 
-  // 2) из внешней мапы по id
   const fromMap = getCategoryFromMap(categoriesById, catId);
   const nameFromMap =
     (fromMap?.name ?? fromMap?.title ?? fromMap?.label ?? "")?.toString().trim() || "";
 
-  // 3) плоские поля на транзакции (на всякий случай)
   const flatName =
     (tx?.category_name ?? tx?.categoryTitle ?? tx?.category_label ?? "")?.toString().trim() || "";
 
   let name = nameFromObj || nameFromMap || flatName;
 
-  // 4) жёсткий безопасный фолбэк
   if (!name) name = catId != null ? `Категория #${catId}` : "Категория";
 
   return {
@@ -276,7 +278,7 @@ export default function TransactionCard({
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
   const payerNameDisplayExpense = displayName(payerNameFull, 14);
-  const payerNameDisplayTransfer = displayName(payerNameFull, 20); // длиннее для transfer
+  const payerNameDisplayTransfer = displayName(payerNameFull, 24); // длиннее для transfer
 
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
@@ -295,7 +297,7 @@ export default function TransactionCard({
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toNameDisplayTransfer = displayName(toNameFull, 20); // длиннее для transfer
+  const toNameDisplayTransfer = displayName(toNameFull, 24);
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
@@ -456,17 +458,17 @@ export default function TransactionCard({
           ) : (
             <div className="grid grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] items-center gap-x-1 text-[12px] text-[var(--tg-text-color)]">
               {/* A (left) */}
-              <div className="min-w-0 basis-0 grow max-w-[48%] flex items-center gap-1">
-                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={16} />
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
                 <span className="font-medium truncate" title={payerNameFull}>
                   {payerNameDisplayTransfer}
                 </span>
               </div>
               {/* arrow */}
-              <div className="justify-self-center opacity-60 text-[12px]">→</div>
+              <div className="justify-self-center opacity-60 px-1">→</div>
               {/* B (right) */}
-              <div className="min-w-0 basis-0 grow max-w-[48%] flex items-center gap-1 justify-self-end">
-                <RoundAvatar src={toAvatar} alt={toNameFull} size={16} />
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
                 <span className="font-medium truncate" title={toNameFull}>
                   {toNameDisplayTransfer}
                 </span>
