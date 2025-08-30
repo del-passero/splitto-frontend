@@ -72,6 +72,34 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
   }
 };
 
+/** Мягкая обрезка по графемам (учёт кириллицы/эмодзи) */
+function truncateGraphemes(input: string, max = 12): string {
+  const s = String(input || "");
+  if (!s) return s;
+  try {
+    // @ts-ignore
+    const seg = new (Intl as any).Segmenter(undefined, { granularity: "grapheme" });
+    const iter = seg.segment(s)[Symbol.iterator]();
+    let out = "", count = 0, cur = iter.next();
+    while (!cur.done && count < max) {
+      out += cur.value.segment;
+      count++;
+      cur = iter.next();
+    }
+    if (!cur.done) out += "…";
+    return out;
+  } catch {
+    return s.length > max ? s.slice(0, max) + "…" : s;
+  }
+}
+
+/** Нормализатор отображаемого имени */
+function displayName(raw?: string, max = 12): string {
+  const base = (raw || "").trim();
+  if (!base) return "";
+  return truncateGraphemes(base, max);
+}
+
 /* ---------- UI bits ---------- */
 function CategoryAvatar({
   name,
@@ -169,12 +197,13 @@ export default function TransactionCard({
     : Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
 
   const payerMember = getFromMap(membersById, payerId);
-  const payerName =
+  const payerNameFull =
     firstName(tx.paid_by_name || tx.from_name) ||
     firstName(payerMember?.name) ||
     firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
+  const payerNameDisplay = displayName(payerNameFull, 14);
 
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
@@ -187,12 +216,13 @@ export default function TransactionCard({
     else if (raw != null) toId = Number(raw);
   }
   const toMember = getFromMap(membersById, toId);
-  const toName =
+  const toNameFull =
     firstName(tx.to_name) ||
     firstName(toMember?.name) ||
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
+  const toNameDisplay = displayName(toNameFull, 14);
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
@@ -205,17 +235,14 @@ export default function TransactionCard({
 
   // ---------- CATEGORY NAME (как для аватара) ----------
   const categoryName = (() => {
-    // 1) объект категории
-    const fromObj =
-      (tx?.category &&
-        (String(tx.category.name ?? tx.category.title ?? tx.category.label ?? "").trim())) ||
-      "";
-    if (fromObj) return fromObj;
-    // 2) возможные плоские поля
-    const flat =
-      String(
-        (tx.category_name ?? tx.categoryTitle ?? tx.category_label ?? "") as string
-      ).trim();
+    // объект категории — основная правда
+    const obj = tx?.category || {};
+    const objName = String(obj.name ?? obj.title ?? obj.label ?? "").trim();
+    if (objName) return objName;
+    // плоские варианты на всякий случай
+    const flat = String(
+      (tx.category_name ?? tx.categoryTitle ?? tx.category_label ?? "") as string
+    ).trim();
     return flat;
   })();
 
@@ -224,9 +251,9 @@ export default function TransactionCard({
   const isCommentEmpty = rawComment === "" || rawComment === "-" || rawComment === "—";
 
   const title = isExpense
-    ? // Расход: комментарий (если не пустой/не прочерк), иначе имя категории
+    ? // Расход: комментарий (если не пустой), иначе — имя категории
       (isCommentEmpty ? categoryName : rawComment) || categoryName || ""
-    : // Перевод: комментарий (обычно приходит ключ) или t('tx_modal.transfer') или "Transfer"
+    : // Перевод: комментарий (обычно ключ) или перевод строки из i18n
       rawComment || (t && t("tx_modal.transfer")) || "Transfer";
 
   /* --- строка долга (Row3/Col2-4) --- */
@@ -258,7 +285,7 @@ export default function TransactionCard({
           : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   } else if (!isExpense) {
-    // Долг для перевода:
+    // Долг для перевода
     const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
     let toRaw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
     const toIdResolved =
@@ -327,7 +354,7 @@ export default function TransactionCard({
         {/* Row1 / Col2-3 — TITLE */}
         <div className="col-start-2 col-end-4 row-start-1 min-w-0">
           {title ? (
-            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate" title={title}>
               {title}
             </div>
           ) : null}
@@ -351,25 +378,39 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col2-3 — EXPENSE: Paid by  | TRANSFER: A → B */}
+        {/* Row2 / Col2-3 — EXPENSE: Paid by  | TRANSFER: A → B (мини-сетка) */}
         <div className="col-start-2 col-end-4 row-start-2 min-w-0 self-center">
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
                 {(t && t("tx_modal.paid_by_label")) || "Заплатил"}:
               </span>
-              <RoundAvatar src={payerAvatar} alt={payerName} />
-              <span className="text-[12px] text-[var(--tg-text-color)] font-medium truncate">
-                {payerName}
+              <RoundAvatar src={payerAvatar} alt={payerNameFull} />
+              <span
+                className="text-[12px] text-[var(--tg-text-color)] font-medium truncate"
+                title={payerNameFull}
+              >
+                {payerNameDisplay}
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
-              <RoundAvatar src={payerAvatar} alt={payerName} />
-              <span className="font-medium truncate">{payerName}</span>
-              <span className="opacity-60">→</span>
-              <RoundAvatar src={toAvatar} alt={toName} />
-              <span className="font-medium truncate">{toName}</span>
+            <div className="grid grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] items-center gap-x-1 text-[12px] text-[var(--tg-text-color)]">
+              {/* A (left) */}
+              <div className="min-w-0 flex items-center gap-2">
+                <RoundAvatar src={payerAvatar} alt={payerNameFull} />
+                <span className="font-medium truncate" title={payerNameFull}>
+                  {payerNameDisplay}
+                </span>
+              </div>
+              {/* arrow */}
+              <div className="justify-self-center opacity-60">→</div>
+              {/* B (right) */}
+              <div className="min-w-0 flex items-center gap-2 justify-self-end">
+                <RoundAvatar src={toAvatar} alt={toNameFull} />
+                <span className="font-medium truncate" title={toNameFull}>
+                  {toNameDisplay}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -379,7 +420,7 @@ export default function TransactionCard({
           {isExpense && participantsExceptPayer.length > 0 ? (
             <div className="flex items-center">
               <span className="mr-1 select-none text-[12px] text-[var(--tg-text-color)] font-medium">
-                &amp;&nbsp;
+                &nbsp;&amp;&nbsp;
               </span>
               <div className="shrink-0 flex items-center justify-end -space-x-2">
                 {participantsExceptPayer.slice(0, 16).map((m, i) => {
