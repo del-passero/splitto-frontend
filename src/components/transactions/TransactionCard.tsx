@@ -216,7 +216,7 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  // заголовок (строка 1)
+  // заголовок (строка 1, колонка 2)
   const title =
     isExpense
       ? (tx.comment && String(tx.comment).trim()) ||
@@ -251,7 +251,7 @@ export default function TransactionCard({
           : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   } else {
-    // Для переводов строка долга тоже присутствует (если логики нет — показываем "Нет долга")
+    // Для переводов отдельной логики долга нет — строку не показываем в сетке (по твоей схеме).
     statusText = (t && t("group_participant_no_debt")) || "Нет долга";
   }
 
@@ -282,7 +282,7 @@ export default function TransactionCard({
   };
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
-  /* ---------- layout ---------- */
+  /* ---------- layout (GRID 3×3) ---------- */
   const CardInner = (
     <div
       className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
@@ -294,19 +294,15 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      {/* Ряд 1: иконка/трансфер + заголовок + сумма */}
-      <div className="flex items-start gap-3">
-        {isExpense ? (
-          <CategoryAvatar
-            name={tx.category?.name}
-            color={tx.category?.color}
-            icon={tx.category?.icon}
-          />
-        ) : (
-          <TransferAvatar />
-        )}
+      <div className="grid grid-cols-[40px,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
+        {/* Row1, Col1 */}
+        <div className="col-start-1 row-start-1">
+          {!isExpense && <TransferAvatar />}
+          {/* для РАСХОДА по макету тут пусто */}
+        </div>
 
-        <div className="min-w-0 flex-1">
+        {/* Row1, Col2 — Заголовок */}
+        <div className="col-start-2 row-start-1 min-w-0">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
               {title}
@@ -314,15 +310,27 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        <div className="text-[14px] font-semibold shrink-0">
-          {fmtAmount(amountNum, tx.currency)}
+        {/* Row1, Col3 — Сумма (только для РАСХОДА) */}
+        <div className="col-start-3 row-start-1">
+          {isExpense && (
+            <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
+          )}
         </div>
-      </div>
 
-      {/* Ряд 2: СРАЗУ под строкой с комментом/суммой */}
-      <div className="mt-0.5 ml-12 min-w-0">
-        {isExpense ? (
-          <div className="flex items-center justify-between">
+        {/* Row2, Col1 — Аватар категории (только для РАСХОДА) */}
+        <div className="col-start-1 row-start-2">
+          {isExpense && (
+            <CategoryAvatar
+              name={tx.category?.name}
+              color={tx.category?.color}
+              icon={tx.category?.icon}
+            />
+          )}
+        </div>
+
+        {/* Row2, Col2 — Paid by / пусто в переводе */}
+        <div className="col-start-2 row-start-2 min-w-0">
+          {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
                 {(t && t("tx_modal.paid_by_label")) || "Заплатил"}:
@@ -332,9 +340,15 @@ export default function TransactionCard({
                 {payerName}
               </span>
             </div>
+          ) : null}
+        </div>
+
+        {/* Row2, Col3 — стек участников (для РАСХОДА) ИЛИ сумма (для ПЕРЕВОДА) */}
+        <div className="col-start-3 row-start-2 justify-self-end">
+          {isExpense ? (
             <div className="shrink-0 flex items-center justify-end -space-x-2">
               {participantsExceptPayer.slice(0, 16).map((m, i) => {
-                const url = m.photo_url || m.avatar_url;
+                const url = (m as any).photo_url || (m as any).avatar_url;
                 return url ? (
                   <img
                     key={m.id}
@@ -354,30 +368,33 @@ export default function TransactionCard({
                 );
               })}
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
-            <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="font-medium truncate">{payerName}</span>
-            <span className="opacity-60">→</span>
-            <RoundAvatar src={toAvatar} alt={toName} />
-            <span className="font-medium truncate">{toName}</span>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
+          )}
+        </div>
 
-      {/* Ряд 3: слева — ДАТА под аватаром, справа — строка долга */}
-      <div className="mt-0.5 flex items-start gap-3">
-        {/* колонка под аватаром */}
-        <div className="w-10 text-center">
+        {/* Row3, Col1 — Дата */}
+        <div className="col-start-1 row-start-3 text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{dateStr}</div>
         </div>
-        {/* долг */}
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-            {statusText}
-          </div>
+
+        {/* Row3, Col2 — Строка долга (РАСХОД) или A → B (ПЕРЕВОД) */}
+        <div className="col-start-2 row-start-3 min-w-0">
+          {isExpense ? (
+            <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{statusText}</div>
+          ) : (
+            <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+              <RoundAvatar src={payerAvatar} alt={payerName} />
+              <span className="font-medium truncate">{payerName}</span>
+              <span className="opacity-60">→</span>
+              <RoundAvatar src={toAvatar} alt={toName} />
+              <span className="font-medium truncate">{toName}</span>
+            </div>
+          )}
         </div>
+
+        {/* Row3, Col3 — пусто по макету */}
+        <div className="col-start-3 row-start-3" />
       </div>
     </div>
   );
