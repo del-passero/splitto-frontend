@@ -130,6 +130,21 @@ function truncateGraphemes(input: string, max = 12): string {
   }
 }
 
+/** Подсчёт графем для адаптивного flex-grow */
+function countGraphemes(input: string): number {
+  const s = String(input || "");
+  if (!s) return 0;
+  try {
+    // @ts-ignore
+    const seg = new (Intl as any).Segmenter(undefined, { granularity: "grapheme" });
+    let n = 0;
+    for (const _ of seg.segment(s)) n++;
+    return n || s.length;
+  } catch {
+    return s.length;
+  }
+}
+
 /** Нормализатор отображаемого имени */
 function displayName(raw?: string, max = 12): string {
   const base = (raw || "").trim();
@@ -278,7 +293,7 @@ export default function TransactionCard({
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
   const payerNameDisplayExpense = displayName(payerNameFull, 14);
-  const payerNameDisplayTransfer = displayName(payerNameFull, 24); // длиннее для transfer
+  const payerNameDisplayTransfer = displayName(payerNameFull, 30); // длиннее для transfer
 
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
@@ -297,7 +312,7 @@ export default function TransactionCard({
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toNameDisplayTransfer = displayName(toNameFull, 24);
+  const toNameDisplayTransfer = displayName(toNameFull, 30);
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
@@ -440,8 +455,8 @@ export default function TransactionCard({
           )}
         </div>
 
-        {/* Row2 / Col2-3 — PAID BY / A→B */}
-        <div className="col-start-2 col-end-4 row-start-2 min-w-0 self-center">
+        {/* Row2 — PAID BY / A→B */}
+        <div className={`col-start-2 ${isExpense ? "col-end-4" : "col-end-5"} row-start-2 min-w-0 self-center`}>
           {isExpense ? (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
@@ -456,24 +471,37 @@ export default function TransactionCard({
               </span>
             </div>
           ) : (
-            <div className="grid grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] items-center gap-x-1 text-[12px] text-[var(--tg-text-color)]">
-              {/* A (left) */}
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
-                <span className="font-medium truncate" title={payerNameFull}>
-                  {payerNameDisplayTransfer}
-                </span>
-              </div>
-              {/* arrow */}
-              <div className="justify-self-center opacity-60 px-1">→</div>
-              {/* B (right) */}
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
-                <span className="font-medium truncate" title={toNameFull}>
-                  {toNameDisplayTransfer}
-                </span>
-              </div>
-            </div>
+            (() => {
+              const leftLen = countGraphemes(payerNameFull);
+              const rightLen = countGraphemes(toNameFull);
+              const total = Math.max(1, leftLen + rightLen);
+              // 1..3, пропорционально длинам имён
+              const leftGrow = Math.max(1, Math.min(3, Math.round((leftLen / total) * 4)));
+              const rightGrow = Math.max(1, Math.min(3, Math.round((rightLen / total) * 4)));
+
+              return (
+                <div className="flex items-center min-w-0 text-[12px] text-[var(--tg-text-color)]">
+                  {/* A (left) */}
+                  <div className="min-w-0 flex items-center gap-2" style={{ flexGrow: leftGrow }}>
+                    <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
+                    <span className="font-medium truncate" title={payerNameFull}>
+                      {payerNameDisplayTransfer}
+                    </span>
+                  </div>
+
+                  {/* arrow */}
+                  <div className="shrink-0 opacity-60 px-1">→</div>
+
+                  {/* B (right) */}
+                  <div className="min-w-0 flex items-center gap-2" style={{ flexGrow: rightGrow }}>
+                    <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
+                    <span className="font-medium truncate" title={toNameFull}>
+                      {toNameDisplayTransfer}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()
           )}
         </div>
 
