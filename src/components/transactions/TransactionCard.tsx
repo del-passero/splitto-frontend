@@ -19,13 +19,9 @@ type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>
 
 type Props = {
   tx: any; // TransactionOut | LocalTx
-  /** Справочник участников группы по ID (для имён/аватаров) */
   membersById?: MembersMap;
-  /** Сколько всего участников в группе (чтобы уметь писать «ВСЕ») */
   groupMembersCount?: number;
-  /** i18n t() — используем только уже существующие ключи */
   t?: (k: string, vars?: Record<string, any>) => string;
-  /** Кастомный long-press обработчик (для action-sheet) */
   onLongPress?: (tx: any) => void;
 };
 
@@ -72,7 +68,6 @@ const fmtNumberOnly = (n: number) => {
   }
 };
 
-/* ---------- date via locales (дата под иконкой) ---------- */
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
     const months = (t && (t("date_card.months") as unknown as string[])) || null;
@@ -82,7 +77,7 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
       const month = months[d.getMonth()];
       return pattern.replace("{{day}}", day).replace("{{month}}", month);
     }
-  } catch { /* ignore */ }
+  } catch {}
   try {
     return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
   } catch {
@@ -176,7 +171,6 @@ export default function TransactionCard({
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
 
-  // Тек. пользователь
   const storeUserId = useUserStore((s: any) => s.user?.id) as number | undefined;
   const currentUserId =
     typeof storeUserId === "number"
@@ -210,7 +204,6 @@ export default function TransactionCard({
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
 
-  // recipient (transfer only)
   let toId: number | undefined = undefined;
   if (!isExpense) {
     const raw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
@@ -226,7 +219,7 @@ export default function TransactionCard({
     (toId != null ? `#${toId}` : "");
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
-  // participants (expense only) — для правой стороны второй строки
+  // участники (только для расходов) справа во 2й строке
   const participantsFromShares: GroupMemberLike[] = Array.isArray(tx?.shares)
     ? (tx.shares as any[])
         .map((s: any) => getFromMap(membersById, Number(s?.user_id ?? s?.user?.id)))
@@ -234,12 +227,14 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  /* --- заголовок --- */
-  const title = isExpense
-    ? (tx.comment && String(tx.comment).trim()) || (tx.category?.name ? String(tx.category.name) : "—")
-    : (tx.comment && String(tx.comment).trim()) || "";
+  // заголовок только для расходов (для переводов поднимем A→B наверх)
+  const title =
+    isExpense
+      ? (tx.comment && String(tx.comment).trim()) ||
+        (tx.category?.name ? String(tx.category.name) : "—")
+      : ""; // для transfer в 1-й строке будет A→B
 
-  /* --- статус участия (и для переводов тоже РЕНДЕРИМ строку) --- */
+  /* --- статус участия / строка долга --- */
   let statusText = "";
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
@@ -267,7 +262,7 @@ export default function TransactionCard({
           : ((t && t("group_participant_no_debt")) || "Нет долга");
     }
   } else {
-    // Для переводов — всегда показываем строку статуса, минимум "Нет долга"
+    // для переводов — минимум «Нет долга», чтобы строка всегда была
     statusText = (t && t("group_participant_no_debt")) || "Нет долга";
   }
 
@@ -311,7 +306,7 @@ export default function TransactionCard({
       onContextMenu={onContextMenu}
       role="button"
     >
-      {/* Ряд 1: иконка/трансфер + Комментарий | Сумма */}
+      {/* Ряд 1: иконка/трансфер + (Expense: title | Transfer: A→B) | Amount */}
       <div className="flex items-start gap-3">
         {isExpense ? (
           <CategoryAvatar
@@ -325,9 +320,20 @@ export default function TransactionCard({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
-            {title}
-          </div>
+          {isExpense ? (
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate">
+              {title}
+            </div>
+          ) : (
+            // поднятый наверх блок A → B
+            <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)] min-w-0">
+              <RoundAvatar src={payerAvatar} alt={payerName} />
+              <span className="font-medium truncate">{payerName}</span>
+              <span className="opacity-60">→</span>
+              <RoundAvatar src={toAvatar} alt={toName} />
+              <span className="font-medium truncate">{toName}</span>
+            </div>
+          )}
         </div>
 
         <div className="text-[14px] font-semibold shrink-0">
@@ -335,10 +341,9 @@ export default function TransactionCard({
         </div>
       </div>
 
-      {/* Ряд 2: слева Paid by (или A→B для переводов), справа — аватары участников */}
-      <div className="mt-1 ml-12 flex items-center justify-between min-w-0">
-        {/* left */}
-        {isExpense ? (
+      {/* Ряд 2: только для расходов — слева Paid by, справа аватары участников */}
+      {isExpense && (
+        <div className="mt-1 ml-12 flex items-center justify-between min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
               {(t && t("tx_modal.paid_by_label")) || "Заплатил"}:
@@ -348,18 +353,7 @@ export default function TransactionCard({
               {payerName}
             </span>
           </div>
-        ) : (
-          <div className="flex items-center gap-2 text-[12px] text-[var(--tg-text-color)] min-w-0">
-            <RoundAvatar src={payerAvatar} alt={payerName} />
-            <span className="font-medium truncate">{payerName}</span>
-            <span className="opacity-60">→</span>
-            <RoundAvatar src={toAvatar} alt={toName} />
-            <span className="font-medium truncate">{toName}</span>
-          </div>
-        )}
 
-        {/* right: участники (только для расходов) */}
-        {isExpense ? (
           <div className="shrink-0 flex items-center justify-end -space-x-2">
             {participantsExceptPayer.slice(0, 16).map((m, i) => {
               const url = m.photo_url || m.avatar_url;
@@ -382,21 +376,18 @@ export default function TransactionCard({
               );
             })}
           </div>
-        ) : (
-          <div className="shrink-0" />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Ряд 3: слева — ( дата уже под иконкой ), под блоком Paid by — строка долга */}
+      {/* Ряд 3: строка долга под «paid by»/A→B, на линии с датой */}
       <div className="mt-0.5 ml-12">
         <div className="text-[12px] text-[var(--tg-hint-color)] truncate">
-          {statusText /* БЕЗ символа валюты — только число */}
+          {statusText}
         </div>
       </div>
     </div>
   );
 
-  // Если есть id — заворачиваем в Link, иначе — просто статичная карточка
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
