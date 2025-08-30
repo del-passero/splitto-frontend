@@ -17,7 +17,7 @@ export type GroupMemberLike = {
 
 type MembersMap = Record<number, GroupMemberLike> | Map<number, GroupMemberLike>;
 
-/** (новое) Мап категорий по id — для безопасного резолва имени */
+/** Мап категорий по id — для безопасного резолва имени */
 type CategoryLike = {
   id: number;
   name?: string | null;
@@ -38,7 +38,7 @@ type Props = {
   t?: (k: string, vars?: Record<string, any>) => string | string[];
   onLongPress?: (tx: any) => void;
 
-  /** (новое, необязательное) Справочник категорий по id — если бек отдал только category_id */
+  /** Опционально: словарь категорий по id (если бек отдал только category_id) */
   categoriesById?: CategoriesMap;
 };
 
@@ -83,7 +83,7 @@ const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
     const months = (t && (t("date_card.months") as unknown as string[])) || null;
 
-    // ВАЖНО: t(...) может вернуть string | string[] — гарантируем строку для pattern
+    // t(...) может вернуть string | string[] — гарантируем строку для pattern
     let patternStr = "{{day}} {{month}}";
     try {
       const maybe = t && t("date_card.pattern");
@@ -131,7 +131,7 @@ function displayName(raw?: string, max = 12): string {
   return truncateGraphemes(base, max);
 }
 
-/** (новое) Резолвер имени/иконки/цвета категории из разных источников */
+/** Резолвер имени/иконки/цвета категории из разных источников */
 function resolveCategory(
   tx: any,
   categoriesById?: CategoriesMap,
@@ -183,16 +183,24 @@ function resolveCategory(
     (tx?.category_name ?? tx?.categoryTitle ?? tx?.category_label ?? "")?.toString().trim() || "";
 
   // Выбираем имя по приоритету
-  const name =
+  let name =
     nameFromObj ||
     nameFromI18n ||
     nameFromMap ||
     flatName ||
-    ""; // финальный fallback (ниже)
+    "";
+
+  if (!name) {
+    // Если всё пусто — пытаемся показать хоть что-то осмысленное
+    const unnamed =
+      (t && typeof t("category.unnamed") === "string" && (t("category.unnamed") as string)) ||
+      (catId != null ? `Категория #${catId}` : "Без категории");
+    name = unnamed;
+  }
 
   return {
     id: catId,
-    name: name || "Без категории",
+    name,
     icon: (catObj?.icon ?? fromMap?.icon) || null,
     color: (catObj?.color ?? fromMap?.color) || null,
   };
@@ -267,7 +275,7 @@ export default function TransactionCard({
   membersById,
   t,
   onLongPress,
-  categoriesById, // (новое) опционально
+  categoriesById, // опционально
 }: Props) {
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
