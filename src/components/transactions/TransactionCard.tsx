@@ -275,7 +275,8 @@ export default function TransactionCard({
     firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
-  const payerNameDisplay = displayName(payerNameFull, 14);
+  const payerNameDisplayExpense = displayName(payerNameFull, 14);
+  const payerNameDisplayTransfer = displayName(payerNameFull, 20); // длиннее для transfer
 
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
@@ -294,7 +295,7 @@ export default function TransactionCard({
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toNameDisplay = displayName(toNameFull, 14);
+  const toNameDisplayTransfer = displayName(toNameFull, 20); // длиннее для transfer
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
@@ -449,22 +450,25 @@ export default function TransactionCard({
                 className="text-[12px] text-[var(--tg-text-color)] font-medium truncate"
                 title={payerNameFull}
               >
-                {payerNameDisplay}
+                {payerNameDisplayExpense}
               </span>
             </div>
           ) : (
             <div className="grid grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] items-center gap-x-1 text-[12px] text-[var(--tg-text-color)]">
-              <div className="min-w-0 flex items-center gap-2">
-                <RoundAvatar src={payerAvatar} alt={payerNameFull} />
+              {/* A (left) */}
+              <div className="min-w-0 basis-0 grow max-w-[48%] flex items-center gap-1">
+                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={16} />
                 <span className="font-medium truncate" title={payerNameFull}>
-                  {payerNameDisplay}
+                  {payerNameDisplayTransfer}
                 </span>
               </div>
-              <div className="justify-self-center opacity-60">→</div>
-              <div className="min-w-0 flex items-center gap-2 justify-self-end">
-                <RoundAvatar src={toAvatar} alt={toNameFull} />
+              {/* arrow */}
+              <div className="justify-self-center opacity-60 text-[12px]">→</div>
+              {/* B (right) */}
+              <div className="min-w-0 basis-0 grow max-w-[48%] flex items-center gap-1 justify-self-end">
+                <RoundAvatar src={toAvatar} alt={toNameFull} size={16} />
                 <span className="font-medium truncate" title={toNameFull}>
-                  {toNameDisplay}
+                  {toNameDisplayTransfer}
                 </span>
               </div>
             </div>

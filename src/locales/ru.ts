@@ -45,7 +45,6 @@ export default {
   group_header_settings: "Настройки",
   group_header_my_balance: "Мой баланс",
   group_participant_no_debt: "Нет долга",
-  // ⬇️ УБРАЛ символ валюты — остаётся только сумма
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
 
@@ -137,7 +136,6 @@ export default {
   close: "Закрыть",
   delete: "Удалить",
   loading: "Загрузка...",
-  // Доп. статусы ошибок сохранения/удаления
   save_failed: "Не удалось сохранить",
   delete_failed: "Не удалось удалить",
 
@@ -157,10 +155,7 @@ export default {
   },
 
   // --- ДОБАВЛЕНО: общие и форма группы ---
-  common: {
-    yes: "Да",
-    no: "Нет",
-  },
+  common: { yes: "Да", no: "Нет" },
   errors: {
     group_name_required: "Введите название группы",
     group_trip_date_required: "Укажите дату поездки",
@@ -216,7 +211,6 @@ export default {
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
 
-    // Валидация/превью
     amount_required: "Введите сумму",
     comment_required: "Введите комментарий",
     category_required: "Выберите категорию",
@@ -229,12 +223,10 @@ export default {
     each: "с каждого:",
     create_and_new: "Создать и новую",
 
-    // Новое
     all: "ВСЕ",
     paid_by_label: "Заплатил",
     owes_label: "Должен",
 
-    // ⬇️ ДОБАВИЛОСЬ: текст подтверждения удаления
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
   },
 
@@ -249,21 +241,10 @@ export default {
   date_card: {
     pattern: "{{day}} {{month}}",
     months: [
-      "января",
-      "февраля",
-      "марта",
-      "апреля",
-      "мая",
-      "июня",
-      "июля",
-      "августа",
-      "сентября",
-      "октября",
-      "ноября",
-      "декабря",
+      "янв", "фев", "мар", "апр", "мая", "июн",
+      "июл", "авг", "сен", "окт", "ноя", "дек",
     ],
   },
 
-  // Опционально: заголовок для ActionModal
   actions: "Действия",
 };
