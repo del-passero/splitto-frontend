@@ -41,15 +41,15 @@ function GroupTabs<T extends string>({
               transition-colors cursor-pointer
               ${
                 selected === tab.key
-                  ? "text-[color:var(--tg-accent-color,#3C8DD9)]"
-                  : "text-[color:var(--tg-hint-color,#929292)]"
+                  ? "text-[var(--tg-accent-color,#3C8DD9)]"
+                  : "text-[var(--tg-hint-color,#929292)]"
               }
             `}
           >
             {tab.label}
             {selected === tab.key && (
               <span
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-2/3 h-[3px] bg-[color:var(--tg-accent-color,#3C8DD9)] rounded transition-all duration-200 pointer-events-none"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-2/3 h-[3px] bg-[var(--tg-accent-color,#3C8DD9)] rounded transition-all duration-200 pointer-events-none"
               />
             )}
           </button>

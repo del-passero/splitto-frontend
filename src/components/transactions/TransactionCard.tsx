@@ -438,7 +438,7 @@ export default function TransactionCard({
   // Плоский элемент списка: без рамки/скруглений/фона; лёгкие горизонтальные отступы и «телеграмный» hover.
   const CardInner = (
     <div
-      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
+      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-[var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -453,7 +453,7 @@ export default function TransactionCard({
         </div>
 
         {/* Row1 / Col2-3 — TITLE */}
-        <div className="col-start-2 col-end-4 row-start-1 min-w-0">
+        <div className="col-start-2 col-end-3 sm:col-end-4 row-start-1 min-w-0">
           {title ? (
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] truncate" title={title}>
               {title}
@@ -466,7 +466,7 @@ export default function TransactionCard({
           <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
         </div>
 
-        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ (поднято ближе к году, одна строка, без подложки) */}
+        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ */}
         <div className="col-start-1 row-start-2 row-span-2 -mt-1.5">
           <div className="flex flex-col items-center">
             {isExpense ? (
