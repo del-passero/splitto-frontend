@@ -1,6 +1,12 @@
 // src/components/group/GroupBalanceTabSmart.tsx
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CheckCircle2, Bell } from "lucide-react";
+import { useParams } from "react-router-dom";
+
+import { useUserStore } from "../../store/userStore";
+import { useGroupsStore } from "../../store/groupsStore";
+import CreateTransactionModal from "../transactions/CreateTransactionModal";
 
 type User = {
   id: number;
@@ -65,13 +71,54 @@ export default function GroupBalanceTabSmart({
     return t("group_balance_zero");
   }, [myBalance, t, currency]);
 
-  // константы как в TransactionList
+  // такие же отступы и разделители, как в списке транзакций
   const H_PADDING = 16;
-  const LEFT_INSET = 52; // 40px (иконка/колонка) + 12px gap — как у TransactionList
+  const LEFT_INSET = 52; // 40 (аватар/колонка) + 12 gap — начало линии
+
+  // тек. пользователь и текущая группа
+  const me = useUserStore((s) => s.user);
+  const myId = me?.id as number | undefined;
+  const params = useParams();
+  const groupId = Number(params.groupId || params.id || 0) || undefined;
+
+  // группы — для CreateTransactionModal
+  const groups = useGroupsStore((s: any) => (s.groups ?? []) as any[]);
+
+  // CreateTransactionModal с предзаполнением
+  const [createOpen, setCreateOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{
+    type?: "expense" | "transfer";
+    amount?: number;
+    paidBy?: { id: number; name?: string; avatar_url?: string };
+    toUser?: { id: number; name?: string; avatar_url?: string };
+    comment?: string | null;
+  } | null>(null);
+
+  // заглушка «Напомнить о долге»
+  const [remindText, setRemindText] = useState<string | null>(null);
+
+  const openRepay = (d: MyDebt) => {
+    if (!myId || !groupId) return;
+    setPrefill({
+      type: "transfer",
+      amount: Math.abs(d.amount),
+      paidBy: { id: myId, name: me?.first_name || me?.username, avatar_url: (me as any)?.photo_url },
+      toUser: { id: d.user.id, name: firstOnly(d.user), avatar_url: d.user.photo_url },
+      comment: null,
+    });
+    setCreateOpen(true);
+  };
+
+  const openRemind = () => {
+    setRemindText(String(t("debts_reserved") || ""));
+  };
+
+  // текст «должен» в нижнем регистре для вкладки «Все»
+  const owesWord = String(t("tx_modal.owes") || "должен").toLocaleLowerCase();
 
   return (
     <div className="w-full" style={{ color: "var(--tg-text-color)" }}>
-      {/* переключатель оставляем как было */}
+      {/* переключатель оставляем неизменным */}
       <div className="flex justify-center mt-1 mb-2">
         <div
           className="inline-flex rounded-xl border overflow-hidden"
@@ -128,48 +175,76 @@ export default function GroupBalanceTabSmart({
               </div>
             ) : (
               <div role="list">
-                {myDebts.map((d, idx) => (
-                  <div key={d.user.id} className={`relative ${idx > 0 ? "-mt-1" : ""}`}>
-                    {/* row */}
-                    <div className="flex items-center justify-between py-[6px]">
-                      <div className="min-w-0 flex items-center gap-2">
-                        {d.user.photo_url ? (
-                          <img
-                            src={d.user.photo_url}
-                            alt=""
-                            className="w-7 h-7 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span
-                            className="w-7 h-7 rounded-full inline-block"
-                            style={{ background: "var(--tg-link-color)" }}
-                          />
-                        )}
-                        <span className="truncate text-[14px] text-[var(--tg-text-color)]">
-                          {firstOnly(d.user)}
-                        </span>
-                      </div>
-                      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                        {d.amount >= 0
-                          ? t("group_balance_get_from", {
-                              sum: fmtMoney(d.amount, currency),
-                            })
-                          : t("group_balance_owe_to", {
-                              sum: fmtMoney(Math.abs(d.amount), currency),
-                            })}
-                      </div>
-                    </div>
+                {myDebts.map((d, idx) => {
+                  const iOwe = d.amount < 0;          // я должен
+                  const amountStr = fmtMoney(Math.abs(d.amount), currency);
 
-                    {/* divider */}
-                    {idx !== myDebts.length - 1 && (
-                      <div
-                        className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
-                        style={{ left: LEFT_INSET, right: -H_PADDING }}
-                        aria-hidden
-                      />
-                    )}
-                  </div>
-                ))}
+                  return (
+                    <div key={d.user.id} className={`relative ${idx > 0 ? "" : ""}`}>
+                      {/* row — карточки сделали повыше (py-2.5) */}
+                      <div className="flex items-center justify-between py-2.5">
+                        {/* левая часть: аватар, имя, сумма ниже имени */}
+                        <div className="min-w-0 flex items-center gap-3">
+                          {d.user.photo_url ? (
+                            <img
+                              src={d.user.photo_url}
+                              alt=""
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span
+                              className="w-10 h-10 rounded-full inline-block"
+                              style={{ background: "var(--tg-link-color)" }}
+                            />
+                          )}
+
+                          <div className="min-w-0">
+                            <div className="truncate text-[14px] text-[var(--tg-text-color)] font-medium">
+                              {firstOnly(d.user)}
+                            </div>
+                            <div className="text-[12px] font-semibold text-[var(--tg-text-color)] opacity-80 truncate">
+                              {amountStr}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* правая часть: действие */}
+                        <div className="shrink-0 flex items-center gap-2">
+                          {iOwe ? (
+                            <button
+                              type="button"
+                              onClick={() => openRepay(d)}
+                              className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                              style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>{t("repay_debt") || "Погасить долг"}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={openRemind}
+                              className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                              style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+                            >
+                              <Bell size={16} />
+                              <span>{t("remind_debt") || "Напомнить о долге"}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* divider */}
+                      {idx !== myDebts.length - 1 && (
+                        <div
+                          className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
+                          style={{ left: LEFT_INSET, right: -H_PADDING }}
+                          aria-hidden
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
@@ -181,53 +256,95 @@ export default function GroupBalanceTabSmart({
               </div>
             ) : (
               <div role="list">
-                {allDebts.map((p, idx) => (
-                  <div key={`${p.from.id}-${p.to.id}-${idx}`} className={`relative ${idx > 0 ? "-mt-1" : ""}`}>
-                    {/* row */}
-                    <div className="flex items-center justify-between py-[6px]">
-                      <div className="min-w-0 flex items-center gap-2">
-                        {p.from.photo_url ? (
-                          <img
-                            src={p.from.photo_url}
-                            alt=""
-                            className="w-6 h-6 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span
-                            className="w-6 h-6 rounded-full inline-block"
-                            style={{ background: "var(--tg-link-color)" }}
-                          />
-                        )}
-                        <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
-                          {firstOnly(p.from)}
-                        </span>
-                        <span className="opacity-60 shrink-0">→</span>
-                        <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
-                          {firstOnly(p.to)}
-                        </span>
-                      </div>
-                      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                        {fmtMoney(p.amount, currency)}
-                      </div>
-                    </div>
+                {allDebts.map((p, idx) => {
+                  const amountStr = fmtMoney(p.amount, currency);
+                  return (
+                    <div key={`${p.from.id}-${p.to.id}-${idx}`} className={`relative`}>
+                      {/* row — повыше и без стрелки, вместо неё слово «должен» */}
+                      <div className="flex items-center justify-between py-2.5">
+                        <div className="min-w-0 flex items-center gap-3">
+                          {/* левая сторона: from */}
+                          {p.from.photo_url ? (
+                            <img src={p.from.photo_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+                          ) : (
+                            <span className="w-9 h-9 rounded-full inline-block" style={{ background: "var(--tg-link-color)" }} />
+                          )}
+                          <div className="min-w-0">
+                            <div className="truncate text-[14px] text-[var(--tg-text-color)] font-medium">
+                              {firstOnly(p.from)} <span className="opacity-60">{owesWord}</span> {firstOnly(p.to)}
+                            </div>
+                            <div className="text-[12px] font-semibold text-[var(--tg-text-color)] opacity-80 truncate">
+                              {amountStr}
+                            </div>
+                          </div>
+                        </div>
 
-                    {/* divider */}
-                    {idx !== allDebts.length - 1 && (
-                      <div
-                        className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
-                        style={{ left: LEFT_INSET, right: -H_PADDING }}
-                        aria-hidden
-                      />
-                    )}
-                  </div>
-                ))}
+                        {/* правой кнопки здесь нет */}
+                      </div>
+
+                      {/* divider начинается со 2-го столбца */}
+                      {idx !== allDebts.length - 1 && (
+                        <div
+                          className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
+                          style={{ left: LEFT_INSET, right: -H_PADDING }}
+                          aria-hidden
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* Hook для onFabClick (оставляем невидимую кнопку, если понадобится) */}
+      {/* Модалка «создать транзакцию» с предзаполнением (перевод на погашение долга) */}
+      <CreateTransactionModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        groups={groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: (g as any).icon,
+          color: (g as any).color,
+          default_currency_code: (g as any).default_currency_code,
+          currency_code: (g as any).currency_code,
+          currency: (g as any).currency,
+        }))}
+        defaultGroupId={groupId}
+        onCreated={() => {}}
+        // новый проп: prefill
+        prefill={prefill || undefined}
+      />
+
+      {/* Заглушка «Напомнить о долге» */}
+      {remindText && (
+        <div
+          className="fixed inset-0 z-[1100] flex items-end justify-center"
+          onClick={() => setRemindText(null)}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[14px]">{remindText}</div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                className="px-4 h-9 rounded-lg border text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+                onClick={() => setRemindText(null)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Хук для onFabClick (как было) */}
       <div className="hidden">
         <button type="button" onClick={onFabClick} />
       </div>

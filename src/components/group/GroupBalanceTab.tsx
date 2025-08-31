@@ -162,7 +162,7 @@ export default function GroupBalanceTab() {
         }
 
         creditors.sort((a, b) => b.left - a.left);   // по убыванию
-        debtors.sort((a, b) => a.left - b.left);     // по возрастанию (самый «минусовой» первым)
+        debtors.sort((a, b) => a.left - b.left);     // по возрастанию
 
         const pairs: { from: number; to: number; amount: number }[] = [];
         let ci = 0, di = 0;
