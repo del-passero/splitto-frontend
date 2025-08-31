@@ -2,25 +2,19 @@
 import React, { ReactNode } from "react";
 
 /**
- * Универсальный список «как в ContactsList»:
- *  • На всю ширину контейнера (есть режим bleed).
- *  • Без рамок карточек.
- *  • Единый горизонтальный паддинг списка (можно задать 0).
- *  • Разделители между элементами, начинаются после левой колонки.
+ * Универсальный список «как в ContactsList».
+ * Без рамок карточек, единые отступы, разделители на цветах Telegram.
  */
 type Props<T> = {
   items: T[];
   renderItem: (item: T, index: number) => ReactNode;
   keyExtractor?: (item: T, index: number) => string | number;
   className?: string;
-  /** Отступ слева для разделителя (px). */
+  /** Отступ слева для разделителя (px) — чтобы не заходить на аватар/иконку. */
   leftInsetPx?: number;
   /** Горизонтальный паддинг самого списка. */
   horizontalPaddingPx?: number;
-  /**
-   * Насколько «кровоточить» за пределы родителя по горизонтали.
-   * Нужен, если родитель уже дал свой внутренний паддинг.
-   */
+  /** «Кровотечение» за пределы родителя по горизонтали. */
   bleedPx?: number;
 };
 
@@ -29,8 +23,8 @@ export default function TransactionList<T>({
   renderItem,
   keyExtractor,
   className = "",
-  leftInsetPx = 48,           // 40px иконка + небольшой зазор
-  horizontalPaddingPx = 0,    // по умолчанию без боковых отступов
+  leftInsetPx = 48,         // 40px иконка + небольшой зазор
+  horizontalPaddingPx = 0,  // на странице уже выходим в край
   bleedPx = 0,
 }: Props<T>) {
   return (
@@ -55,7 +49,7 @@ export default function TransactionList<T>({
             {renderItem(it, idx)}
             {idx !== items.length - 1 && (
               <div
-                className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
+                className="absolute bottom-0 right-0 h-px bg-[var(--tg-secondary-bg-color,#e7e7e7)] opacity-30"
                 style={{ left: leftInsetPx }}
                 aria-hidden
               />
