@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import GroupBalanceTabSmart, { MyDebt, AllDebt } from "./GroupBalanceTabSmart";
 import { getTransactions } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
+import CreateTransactionModal from "../transactions/CreateTransactionModal";
 
 // Мягкое определение точности по коду валюты (как в других местах проекта)
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
@@ -49,6 +50,10 @@ export default function GroupBalanceTab() {
 
   // справочник участников
   const [membersMap, setMembersMap] = useState<Map<number, GroupMember>>(new Map());
+
+  // ====== состояние модалки перевода (погашение долга)
+  const [txOpen, setTxOpen] = useState(false);
+  const [txInitial, setTxInitial] = useState<any | null>(null);
 
   // загрузка участников (весь список)
   useEffect(() => {
@@ -235,27 +240,47 @@ export default function GroupBalanceTab() {
     return () => { aborted = true; };
   }, [groupId, currentUserId, membersMap]);
 
-  // Колбэки для «погасить»/«напомнить».
-  // Сейчас — заглушки; сюда потом прикрутишь открытие модалки CreateTransactionModal.
-  const handleRepay = (u: SimpleUser, amount: number) => {
-    console.log("repay", u, amount);
-    alert("Долги — скоро!");
-  };
-  const handleRemind = (u: SimpleUser, amount: number) => {
+  // ====== Колбэки для «погасить»/«напомнить» ======
+  const handleRepay = useCallback((u: SimpleUser, amount: number) => {
+    // перевод ОТ меня К пользователю u на сумму amount
+    const amt = Math.abs(Number(amount) || 0);
+    setTxInitial({
+      type: "transfer",
+      amount: amt,
+      paidBy: currentUserId,
+      toUser: u.id,
+      groupId,
+    });
+    setTxOpen(true);
+  }, [currentUserId, groupId]);
+
+  const handleRemind = useCallback((u: SimpleUser, amount: number) => {
+    // сейчас логика-«заглушка» живёт в Smart (центр-модалка).
+    // этот колбэк оставлен на будущее (лог/метрики).
     console.log("remind", u, amount);
-    alert("Долги — скоро!");
-  };
+  }, []);
 
   return (
-    <GroupBalanceTabSmart
-      myBalance={myBalance}
-      myDebts={myDebts}
-      allDebts={allDebts}
-      loading={loading}
-      onFabClick={() => {}}
-      currency={currency}
-      onRepay={handleRepay}
-      onRemind={handleRemind}
-    />
+    <>
+      <GroupBalanceTabSmart
+        myBalance={myBalance}
+        myDebts={myDebts}
+        allDebts={allDebts}
+        loading={loading}
+        onFabClick={() => {}}
+        currency={currency}
+        onRepay={handleRepay}
+        onRemind={handleRemind}
+      />
+
+      {/* модалка создания транзакции с предзаполнением для «Погасить долг» */}
+      <CreateTransactionModal
+        open={txOpen}
+        onOpenChange={setTxOpen}
+        groups={[]}
+        defaultGroupId={groupId}
+        initialTx={txInitial || undefined}
+      />
+    </>
   );
 }
