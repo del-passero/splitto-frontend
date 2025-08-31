@@ -81,7 +81,7 @@ const fmtAmount = (n: number, code?: string) => {
 
 const formatCardDate = (d: Date, t?: Props["t"]) => {
   try {
-    // i18next для массивов требует returnObjects: true
+    // i18next: получить массив через returnObjects
     const monthsRaw =
       t && (t("date_card.months", { returnObjects: true } as any) as unknown);
     const months = Array.isArray(monthsRaw) ? (monthsRaw as string[]) : null;
@@ -130,8 +130,28 @@ function truncateGraphemes(input: string, max = 12): string {
   }
 }
 
-/** Подсчёт графем для адаптивного flex-grow */
-function countGraphemes(input: string): number {
+/** Middle-ellipsis обрезка для длинных имён (Alex…nder) */
+function truncateMiddleGraphemes(input: string, max = 32): string {
+  const s = String(input || "");
+  if (!s) return s;
+  try {
+    // @ts-ignore
+    const seg = new (Intl as any).Segmenter(undefined, { granularity: "grapheme" });
+    const arr = [...seg.segment(s)].map(x => x.segment);
+    if (arr.length <= max) return s;
+    const head = Math.ceil((max - 1) * 0.6);
+    const tail = (max - 1) - head;
+    return arr.slice(0, head).join("") + "…" + arr.slice(-tail).join("");
+  } catch {
+    if (s.length <= max) return s;
+    const head = Math.ceil((max - 1) * 0.6);
+    const tail = (max - 1) - head;
+    return s.slice(0, head) + "…" + s.slice(-tail);
+  }
+}
+
+/** Подсчёт графем для адаптивной раскладки */
+function countGraphemes(input?: string): number {
   const s = String(input || "");
   if (!s) return 0;
   try {
@@ -144,8 +164,9 @@ function countGraphemes(input: string): number {
     return s.length;
   }
 }
+const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 
-/** Нормализатор отображаемого имени */
+/** Нормализатор отображаемого имени (для расходов) */
 function displayName(raw?: string, max = 12): string {
   const base = (raw || "").trim();
   if (!base) return "";
@@ -293,7 +314,7 @@ export default function TransactionCard({
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
   const payerNameDisplayExpense = displayName(payerNameFull, 14);
-  const payerNameDisplayTransfer = displayName(payerNameFull, 30); // длиннее для transfer
+  const payerNameDisplayTransfer = truncateMiddleGraphemes(payerNameFull, 32);
 
   const payerAvatar =
     tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
@@ -312,7 +333,7 @@ export default function TransactionCard({
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
     (toId != null ? `#${toId}` : "");
-  const toNameDisplayTransfer = displayName(toNameFull, 30);
+  const toNameDisplayTransfer = truncateMiddleGraphemes(toNameFull, 32);
   const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
 
   // participants (expense only)
@@ -472,17 +493,20 @@ export default function TransactionCard({
             </div>
           ) : (
             (() => {
-              const leftLen = countGraphemes(payerNameFull);
-              const rightLen = countGraphemes(toNameFull);
-              const total = Math.max(1, leftLen + rightLen);
-              // 1..3, пропорционально длинам имён
-              const leftGrow = Math.max(1, Math.min(3, Math.round((leftLen / total) * 4)));
-              const rightGrow = Math.max(1, Math.min(3, Math.round((rightLen / total) * 4)));
+              const l = countGraphemes(payerNameFull);
+              const r = countGraphemes(toNameFull);
+              const total = Math.max(1, l + r);
+              // желаемая доля слева и справа (кламп 40–60), чтобы не было «дыр»
+              const leftPct = clamp(Math.round((l / total) * 100), 40, 60);
+              const rightPct = 100 - leftPct;
 
               return (
-                <div className="flex items-center min-w-0 text-[12px] text-[var(--tg-text-color)]">
+                <div
+                  className="grid items-center min-w-0 text-[12px] text-[var(--tg-text-color)]"
+                  style={{ gridTemplateColumns: `minmax(0,${leftPct}%) auto minmax(0,${rightPct}%)` }}
+                >
                   {/* A (left) */}
-                  <div className="min-w-0 flex items-center gap-2" style={{ flexGrow: leftGrow }}>
+                  <div className="min-w-0 flex items-center gap-2 justify-self-end">
                     <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
                     <span className="font-medium truncate" title={payerNameFull}>
                       {payerNameDisplayTransfer}
@@ -490,10 +514,10 @@ export default function TransactionCard({
                   </div>
 
                   {/* arrow */}
-                  <div className="shrink-0 opacity-60 px-1">→</div>
+                  <div className="justify-self-center opacity-60 px-1">→</div>
 
                   {/* B (right) */}
-                  <div className="min-w-0 flex items-center gap-2" style={{ flexGrow: rightGrow }}>
+                  <div className="min-w-0 flex items-center gap-2 justify-self-start">
                     <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
                     <span className="font-medium truncate" title={toNameFull}>
                       {toNameDisplayTransfer}
