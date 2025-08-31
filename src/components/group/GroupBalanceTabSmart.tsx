@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import CardSection from "../CardSection";
-import { CheckCircle2, Bell } from "lucide-react";
+import { Bell, CheckCircle2 } from "lucide-react";
 
 type User = {
   id: number;
@@ -21,9 +20,10 @@ type Props = {
   loading: boolean;
   onFabClick: () => void;
   currency?: string | null;
-  // новые колбэки для действий с карточек
-  onRepay?: (u: User, amount: number) => void;
-  onRemind?: (u: User, amount: number) => void;
+
+  // НОВОЕ: опц. колбэки (для модалок/напоминаний)
+  onRepay?: (user: User, amount: number) => void;
+  onRemind?: (user: User, amount: number) => void;
 };
 
 const decimalsByCode = (code?: string | null) =>
@@ -41,54 +41,29 @@ const fmtMoney = (n: number, code?: string | null) => {
   }
 };
 
+// только ИМЯ (без фамилии)
 const firstOnly = (u?: User) => {
   if (!u) return "";
   const name = (u.first_name || "").trim();
   return name || u.username || `#${u.id}`;
 };
 
-function Avatar({ url, size = 28 }: { url?: string; size?: number }) {
+// маленький круглый аватар, как в TransactionCard
+function MiniAvatar({ url, alt, size = 18 }: { url?: string; alt?: string; size?: number }) {
   return url ? (
     <img
       src={url}
-      alt=""
-      className="rounded-full object-cover"
+      alt={alt || ""}
+      className="rounded-full object-cover shrink-0"
       style={{ width: size, height: size }}
       loading="lazy"
     />
   ) : (
     <span
-      className="rounded-full inline-block"
+      className="rounded-full inline-block shrink-0"
       style={{ width: size, height: size, background: "var(--tg-link-color)" }}
       aria-hidden
     />
-  );
-}
-
-function ActionIcon({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick?: () => void;
-}) {
-  return (
-    <div className="shrink-0 flex flex-col items-center ml-2">
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-9 h-9 rounded-full bg-[var(--tg-accent-color,#40A7E3)] text-white flex items-center justify-center active:scale-95"
-        aria-label={label}
-        title={label}
-      >
-        {icon}
-      </button>
-      <div className="mt-1 text-[10px] leading-none text-[var(--tg-hint-color)] text-center max-w-[72px] truncate">
-        {label}
-      </div>
-    </div>
   );
 }
 
@@ -106,14 +81,24 @@ export default function GroupBalanceTabSmart({
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
   const headerText = useMemo(() => {
-    if (myBalance > 0) return t("group_balance_you_get", { sum: fmtMoney(myBalance, currency) });
-    if (myBalance < 0) return t("group_balance_you_owe", { sum: fmtMoney(Math.abs(myBalance), currency) });
+    if (myBalance > 0)
+      return t("group_balance_you_get", { sum: fmtMoney(myBalance, currency) });
+    if (myBalance < 0)
+      return t("group_balance_you_owe", {
+        sum: fmtMoney(Math.abs(myBalance), currency),
+      });
     return t("group_balance_zero");
   }, [myBalance, t, currency]);
 
+  // «owes» (нижний регистр). Фолбэк на owes_label.
+  const owesWord =
+    (t("tx_modal.owes") as string) ||
+    ((t("tx_modal.owes_label") as string) || "").toString().toLowerCase() ||
+    "owes";
+
   return (
     <div className="w-full">
-      {/* микротабы */}
+      {/* Microtabs */}
       <div className="flex justify-center mt-1 mb-2">
         <div
           className="inline-flex rounded-xl border overflow-hidden"
@@ -123,7 +108,9 @@ export default function GroupBalanceTabSmart({
             type="button"
             onClick={() => setTab("mine")}
             className={`px-3 h-9 text-[13px] ${
-              tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+              tab === "mine"
+                ? "bg-[var(--tg-accent-color,#40A7E3)] text-white"
+                : "text-[var(--tg-text-color)]"
             }`}
           >
             {t("group_balance_microtab_mine")}
@@ -132,7 +119,9 @@ export default function GroupBalanceTabSmart({
             type="button"
             onClick={() => setTab("all")}
             className={`px-3 h-9 text-[13px] ${
-              tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+              tab === "all"
+                ? "bg-[var(--tg-accent-color,#40A7E3)] text-white"
+                : "text-[var(--tg-text-color)]"
             }`}
           >
             {t("group_balance_microtab_all")}
@@ -140,69 +129,119 @@ export default function GroupBalanceTabSmart({
         </div>
       </div>
 
-      {/* контейнер под карточки */}
-      <CardSection className="py-0">
+      {/* Карточка-контейнер под список */}
+      <div
+        className="rounded-xl border p-3 bg-[var(--tg-card-bg)]"
+        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      >
         {loading ? (
-          <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+          <div className="py-8 text-center text-[var(--tg-hint-color)]">
+            {t("loading")}
+          </div>
         ) : tab === "mine" ? (
           <>
-            <div className="px-3 pt-2 pb-1 text-[14px] font-semibold text-[var(--tg-text-color)]">
+            {/* Заголовок */}
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-3">
               {headerText}
             </div>
 
             {myDebts.length === 0 ? (
-              <div className="px-3 pb-3 text-[13px] text-[var(--tg-hint-color)]">
+              <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts")}
               </div>
             ) : (
-              <div className="w-full" role="list">
+              <div>
                 {myDebts.map((d, idx) => {
-                  const iOwe = d.amount < 0;
+                  const iOwe = d.amount < 0; // <0 — я должен
                   const amountAbs = Math.abs(d.amount);
-                  const leftInset = 64; // как у TransactionList
-                  return (
-                    <div key={d.user.id} className="relative px-3 py-2.5">
-                      <div className="flex items-center gap-3">
-                        <Avatar url={d.user.photo_url} size={40} />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <span className="text-[13px] text-[var(--tg-text-color)] shrink-0">
-                              {iOwe ? t("group_balance_you_owe", { sum: "" }).replace(/\s*{{sum}}\s*/,"").trim() : t("group_balance_you_get", { sum: "" }).replace(/\s*{{sum}}\s*/,"").trim()}
-                            </span>
-                            <strong className="text-[13px] text-[var(--tg-text-color)] truncate">
-                              {firstOnly(d.user)}
-                            </strong>
-                          </div>
-                        </div>
 
-                        <div className="shrink-0 text-right">
-                          <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
+                  return (
+                    <div key={d.user.id} className="relative">
+                      {/* Ряд */}
+                      <div className="py-2">
+                        <div
+                          className="grid items-center"
+                          style={{
+                            // label | avatar | name | amount | actions
+                            gridTemplateColumns:
+                              "auto auto minmax(0,1fr) auto 96px",
+                            columnGap: 8,
+                          }}
+                        >
+                          {/* label */}
+                          <div className="min-w-0 text-[14px] text-[var(--tg-text-color)]">
+                            {iOwe
+                              ? t("group_balance_owe_to", { sum: "" })
+                                  .replace(/\s*[:：]\s*$/, "") || t("group_balance_owe_to")
+                              : t("group_balance_get_from", { sum: "" })
+                                  .replace(/\s*[:：]\s*$/, "") || t("group_balance_get_from")}
+                          </div>
+
+                          {/* avatar */}
+                          <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
+
+                          {/* name */}
+                          <div className="min-w-0 text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                            {firstOnly(d.user)}
+                          </div>
+
+                          {/* amount */}
+                          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
                             {fmtMoney(amountAbs, currency)}
                           </div>
-                        </div>
 
-                        {iOwe ? (
-                          <ActionIcon
-                            icon={<CheckCircle2 size={18} />}
-                            label={t("repay_debt")}
-                            onClick={() => onRepay?.(d.user, amountAbs)}
-                          />
-                        ) : (
-                          <ActionIcon
-                            icon={<Bell size={18} />}
-                            label={t("remind_debt")}
-                            onClick={() => onRemind?.(d.user, amountAbs)}
-                          />
-                        )}
+                          {/* action button (+ подпись снизу) */}
+                          <div className="justify-self-end">
+                            <div className="w-[96px] flex flex-col items-center">
+                              <button
+                                type="button"
+                                className="w-10 h-10 rounded-full flex items-center justify-center border hover:bg-black/5 dark:hover:bg-white/5 transition"
+                                style={{
+                                  borderColor:
+                                    "var(--tg-secondary-bg-color,#e7e7e7)",
+                                }}
+                                onClick={() => {
+                                  if (iOwe) {
+                                    if (onRepay) onRepay(d.user, amountAbs);
+                                    else alert(t("debts_reserved") as string);
+                                  } else {
+                                    if (onRemind) onRemind(d.user, amountAbs);
+                                    else alert(t("debts_reserved") as string);
+                                  }
+                                }}
+                                aria-label={
+                                  iOwe
+                                    ? (t("repay_debt") as string) || "Repay debt"
+                                    : (t("remind_debt") as string) ||
+                                      "Remind about debt"
+                                }
+                              >
+                                {iOwe ? (
+                                  <CheckCircle2
+                                    size={20}
+                                    className="text-[var(--tg-text-color)] opacity-90"
+                                  />
+                                ) : (
+                                  <Bell
+                                    size={20}
+                                    className="text-[var(--tg-text-color)] opacity-90"
+                                  />
+                                )}
+                              </button>
+                              <div className="mt-1 text-[12px] leading-tight text-center whitespace-normal break-words">
+                                {iOwe
+                                  ? (t("repay_debt") as string) || "Repay debt"
+                                  : (t("remind_debt") as string) ||
+                                    "Remind about debt"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* разделитель */}
+                      {/* divider */}
                       {idx !== myDebts.length - 1 && (
-                        <div
-                          className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
-                          style={{ left: leftInset }}
-                          aria-hidden
-                        />
+                        <div className="absolute left-0 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                       )}
                     </div>
                   );
@@ -211,54 +250,65 @@ export default function GroupBalanceTabSmart({
             )}
           </>
         ) : (
+          // === ALL BALANCES ===
           <>
             {allDebts.length === 0 ? (
-              <div className="px-3 py-3 text-[13px] text-[var(--tg-hint-color)]">
+              <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts_all")}
               </div>
             ) : (
-              <div className="w-full" role="list">
-                {allDebts.map((p, idx) => {
-                  const leftInset = 64;
-                  return (
-                    <div key={`${p.from.id}-${p.to.id}-${idx}`} className="relative px-3 py-2.5">
-                      <div className="grid grid-cols-[auto,1fr,auto] items-center gap-x-3">
-                        {/* аватар + «Имя должен Имя» в одну строку */}
-                        <div className="flex items-center gap-3 min-w-0 col-span-2">
-                          <Avatar url={p.from.photo_url} size={40} />
-                          <div className="min-w-0 text-[14px] text-[var(--tg-text-color)] truncate">
-                            <span className="font-medium truncate max-w-[44%] inline-block align-baseline">
-                              {firstOnly(p.from)}
-                            </span>
-                            <span className="opacity-80 mx-1 shrink-0">{t("tx_modal.owes")}</span>
-                            <span className="font-medium truncate max-w-[44%] inline-block align-baseline">
-                              {firstOnly(p.to)}
-                            </span>
-                          </div>
+              <div>
+                {allDebts.map((p, idx) => (
+                  <div key={idx} className="relative">
+                    <div className="py-2">
+                      <div
+                        className="grid items-center"
+                        style={{
+                          // [avatar+name] [owes] [avatar+name] [amount]
+                          gridTemplateColumns:
+                            "minmax(0,1fr) auto minmax(0,1fr) auto",
+                          columnGap: 8,
+                        }}
+                      >
+                        {/* left: debtor */}
+                        <div className="min-w-0 flex items-center gap-2">
+                          <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} />
+                          <span className="min-w-0 text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                            {firstOnly(p.from)}
+                          </span>
                         </div>
 
-                        {/* сумма справа */}
-                        <div className="justify-self-end text-[14px] font-semibold text-[var(--tg-text-color)]">
+                        {/* owes word (нижний регистр) */}
+                        <div className="text-[14px] text-[var(--tg-text-color)] opacity-90 whitespace-nowrap">
+                          {owesWord}
+                        </div>
+
+                        {/* right: creditor */}
+                        <div className="min-w-0 flex items-center gap-2">
+                          <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} />
+                          <span className="min-w-0 text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                            {firstOnly(p.to)}
+                          </span>
+                        </div>
+
+                        {/* amount */}
+                        <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
                           {fmtMoney(p.amount, currency)}
                         </div>
                       </div>
-
-                      {/* разделитель */}
-                      {idx !== allDebts.length - 1 && (
-                        <div
-                          className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
-                          style={{ left: leftInset }}
-                          aria-hidden
-                        />
-                      )}
                     </div>
-                  );
-                })}
+
+                    {/* divider */}
+                    {idx !== allDebts.length - 1 && (
+                      <div className="absolute left-0 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </>
         )}
-      </CardSection>
+      </div>
 
       {/* Hook для onFabClick (оставляем невидимую кнопку, если понадобится) */}
       <div className="hidden">
