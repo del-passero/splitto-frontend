@@ -1,215 +1,305 @@
 // src/components/group/GroupBalanceTabSmart.tsx
-import { useMemo, useRef, useState } from "react";
-import CardSection from "../CardSection";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight } from "lucide-react";
 
-export type SimpleUser = { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
+type User = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+};
 
-export type MyDebt = { user: SimpleUser; amount: number }; // >0 «мне должны», <0 «я должен»
-export type AllDebt = { from: SimpleUser; to: SimpleUser; amount: number };
+export type MyDebt = { user: User; amount: number }; // >0 — вам должны, <0 — вы должны
+export type AllDebt = { from: User; to: User; amount: number };
 
-export type Props = {
+type Props = {
   myBalance: number;
   myDebts: MyDebt[];
   allDebts: AllDebt[];
   loading: boolean;
   onFabClick: () => void;
-  currency: string | null;
-  onAction: (kind: ActionKind, payload: { otherId: number; amount: number }) => void;
+  currency?: string | null;
+
+  onRepay?: (user: User, amount: number) => void;
+  onRemind?: (user: User, amount: number) => void;
 };
 
-export type ActionKind = "repay" | "remind";
-
-const avatar = (u?: SimpleUser, size = 20) =>
-  u?.photo_url
-    ? <img src={u.photo_url} alt="" className="rounded-full object-cover" style={{ width: size, height: size }} />
-    : <span className="inline-block rounded-full bg-[var(--tg-link-color)]" style={{ width: size, height: size }} />;
-
-const userName = (u?: SimpleUser) => {
-  const fn = (u?.first_name || "").trim();
-  const ln = (u?.last_name || "").trim();
-  return (fn || ln) ? `${fn}${ln ? ` ${ln}` : ""}` : (u?.username || `#${u?.id ?? "?"}`);
+/* ---------- utils ---------- */
+const DECLESS = new Set(["JPY", "KRW", "VND"]);
+const decimalsByCode = (c?: string | null) => (c && DECLESS.has(c) ? 0 : 2);
+const fmtMoney = (n: number, code?: string | null) => {
+  const d = decimalsByCode(code);
+  try {
+    return `${new Intl.NumberFormat(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }).format(n)} ${code || ""}`.trim();
+  } catch {
+    return `${n.toFixed(d)} ${code || ""}`.trim();
+  }
+};
+const firstOnly = (u?: User) => {
+  if (!u) return "";
+  const name = (u.first_name || "").trim();
+  return name || u.username || `#${u.id}`;
 };
 
+function MiniAvatar({ url, alt, size = 18 }: { url?: string; alt?: string; size?: number }) {
+  return url ? (
+    <img src={url} alt={alt || ""} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
+  ) : (
+    <span className="rounded-full inline-block shrink-0" style={{ width: size, height: size, background: "var(--tg-link-color)" }} aria-hidden />
+  );
+}
+
+/** Автопрокрутка строки при переполнении */
+function AutoScrollRow({ children, className = "", gap = 8 }: { children: React.ReactNode; className?: string; gap?: number }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [need, setNeed] = useState(false);
+  const [dist, setDist] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      const n = el.scrollWidth > el.clientWidth + 2;
+      setNeed(n);
+      if (n) setDist(el.scrollWidth - el.clientWidth + gap * 2);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    window.addEventListener("resize", check);
+    return () => { ro.disconnect(); window.removeEventListener("resize", check); };
+  }, [gap, children]);
+  const duration = Math.max(6, Math.min(24, dist / 40));
+  return (
+    <div className={`relative overflow-hidden ${className}`}>
+      <style>{`@keyframes gbs-auto-x{0%{transform:translateX(0)}12%{transform:translateX(0)}88%{transform:translateX(calc(-1*var(--gbs-dist,0px)))}100%{transform:translateX(calc(-1*var(--gbs-dist,0px)))}}`}</style>
+      <div
+        ref={ref}
+        className="whitespace-nowrap flex items-center"
+        style={need
+          ? {
+              columnGap: gap,
+              animation: `gbs-auto-x ${duration}s linear infinite`,
+              WebkitMaskImage: "linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%)",
+              maskImage: "linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%)",
+              // @ts-ignore
+              ["--gbs-dist" as any]: `${dist}px`,
+            }
+          : { columnGap: gap }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- constants для отрисовки ---------- */
+const ITEM_VPAD = 4;           // py-4 → карточки в 2 раза выше
+const SEP_LEFT_INSET = 36;     // откуда начинать разделитель внутри карточки (от левого края секции до первой аватарки)
+
+/* ---------- main ---------- */
 export default function GroupBalanceTabSmart({
-  myBalance, myDebts, allDebts, loading, currency, onAction,
+  myBalance, myDebts, allDebts, loading, onFabClick, currency, onRepay, onRemind,
 }: Props) {
-  const { t, i18n } = useTranslation();
-  const loc = (i18n.language || "ru").split("-")[0];
-  const d = useMemo(() => (currency && new Set(["JPY", "KRW", "VND"]).has(currency) ? 0 : 2), [currency]);
-  const fmt = (n: number) => {
-    try {
-      const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: d, maximumFractionDigits: d });
-      return `${nf.format(Math.abs(n))}${currency ? ` ${currency}` : ""}`;
-    } catch {
-      return `${Math.abs(n).toFixed(d)}${currency ? ` ${currency}` : ""}`;
-    }
-  };
-
+  const { t } = useTranslation();
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
-  // centered action modal (long press)
-  const [sheet, setSheet] = useState<{ open: boolean; user?: SimpleUser; amount?: number; kind?: "owe" | "owed" }>({ open: false });
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [selected, setSelected] = useState<MyDebt | null>(null);
 
-  const longPressTimer = useRef<any>(null);
-  const startLP = (cb: () => void) => () => { clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(cb, 380); };
-  const cancelLP = () => { clearTimeout(longPressTimer.current); };
+  // модалка-заглушка по центру
+  const [stubOpen, setStubOpen] = useState(false);
 
-  const openActions = (kind: "owe" | "owed", user: SimpleUser, amount: number) => {
-    setSheet({ open: true, user, amount, kind });
-  };
+  const headerText = useMemo(() => {
+    if (myBalance > 0) return t("group_balance_you_get", { sum: fmtMoney(myBalance, currency) });
+    if (myBalance < 0) return t("group_balance_you_owe", { sum: fmtMoney(Math.abs(myBalance), currency) });
+    return t("group_balance_zero");
+  }, [myBalance, t, currency]);
 
-  const closeSheet = () => setSheet({ open: false });
+  const owesWord = ((t("tx_modal.owes") as string) || "owes").toLowerCase();
 
-  const renderMineRow = (it: MyDebt, idx: number) => {
-    const isIOwe = it.amount < 0;
-    const label = isIOwe ? t("balance.you_owe") : t("balance.you_are_owed");
-    const sum = fmt(it.amount);
-    const u = it.user;
-
-    return (
-      <div
-        key={idx}
-        className="relative px-3"
-        onMouseDown={startLP(() => openActions(isIOwe ? "owe" : "owed", u, Math.abs(it.amount)))}
-        onMouseUp={cancelLP}
-        onMouseLeave={cancelLP}
-        onTouchStart={startLP(() => openActions(isIOwe ? "owe" : "owed", u, Math.abs(it.amount)))}
-        onTouchEnd={cancelLP}
-      >
-        <div className="flex items-center gap-2 h-14"> {/* удвоенная высота */}
-          <span className="shrink-0 text-[13px]">{label}</span>
-          <span className="shrink-0">{avatar(u, 20)}</span>
-          <span className="min-w-0 grow truncate text-[13px]">{userName(u)}</span>
-          <span className="shrink-0 text-[13px] font-semibold">{sum}</span>
-        </div>
-
-        {/* разделитель: от правого края до первой аватарки */}
-        <div className="absolute left-[52px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/20" />
-      </div>
-    );
-  };
-
-  const renderAllRow = (it: AllDebt, idx: number) => {
-    return (
-      <div
-        key={idx}
-        className="px-3 relative"
-        onMouseDown={startLP(() => openActions("owe", it.from, it.amount))}
-        onMouseUp={cancelLP}
-        onMouseLeave={cancelLP}
-        onTouchStart={startLP(() => openActions("owe", it.from, it.amount))}
-        onTouchEnd={cancelLP}
-      >
-        <div className="flex items-center gap-2 h-14">{/* удвоенная высота */}
-          {/* должник */}
-          <span className="shrink-0">{avatar(it.from, 20)}</span>
-          <span className="min-w-0 max-w-[30%] truncate text-[13px]">{userName(it.from)}</span>
-
-          {/* коннектор и стрелка */}
-          <span className="shrink-0 text-[13px]">{t("tx_modal.owes")}</span>
-          <ChevronRight size={16} className="opacity-60 shrink-0" />
-
-          {/* кредитор */}
-          <span className="shrink-0">{avatar(it.to, 20)}</span>
-          <span className="min-w-0 grow truncate text-[13px]">{userName(it.to)}</span>
-
-          {/* сумма справа */}
-          <span className="shrink-0 text-[13px] font-semibold">{fmt(it.amount)}</span>
-        </div>
-
-        {/* разделитель: от правого края до первой аватарки */}
-        <div className="absolute left-[32px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/20" />
-      </div>
-    );
-  };
+  // long-press
+  const timer = useRef<number | null>(null);
+  const startPress = (d: MyDebt) => { clearPress(); timer.current = window.setTimeout(() => { setSelected(d); setSheetOpen(true); }, 420); };
+  const clearPress = () => { if (timer.current) window.clearTimeout(timer.current); timer.current = null; };
 
   return (
-    <div className="px-0">
-      {/* переключатель по центру */}
-      <div className="px-3">
-        <CardSection className="py-2">
-          <div className="flex justify-center">
-            <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setTab("mine")}
-                className={`px-3 h-9 text-[13px] ${tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
-              >
-                {t("group_balance_microtab_mine")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("all")}
-                className={`px-3 h-9 text-[13px] ${tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
-              >
-                {t("group_balance_microtab_all")}
-              </button>
-            </div>
-          </div>
-        </CardSection>
+    <div className="w-full">
+      {/* микротабы */}
+      <div className="flex justify-center mt-1 mb-2">
+        <div className="inline-flex rounded-xl border overflow-hidden" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+          <button
+            type="button"
+            onClick={() => setTab("mine")}
+            className={`px-3 h-9 text-[13px] ${tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+          >
+            {t("group_balance_microtab_mine")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("all")}
+            className={`px-3 h-9 text-[13px] ${tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+          >
+            {t("group_balance_microtab_all")}
+          </button>
+        </div>
       </div>
 
-      {/* карточки */}
+      {/* обёртка CardSection — как на вкладке транзакций */}
       <div className="-mx-3">
-        <CardSection className="py-0">
-          {/* особая сплошная линия под заголовком «Тебе должны/Ты должен» — во всей секции */}
-          <div className="px-3 pt-2 pb-1">
-            <div className="text-[13px] opacity-70">
-              {myBalance > 0 ? t("group_balance_you_get", { sum: "" }).replace(/\s+$/, "") :
-               myBalance < 0 ? t("group_balance_you_owe", { sum: "" }).replace(/\s+$/, "") :
-               t("group_balance_zero")}
+        <div className="mx-3">
+          <div className="rounded-xl border bg-[var(--tg-card-bg)]" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+            {/* CardSection imitation: внутренняя вертикальная «подложка» */}
+            <div className="px-3 py-2">
+              {loading ? (
+                <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+              ) : tab === "mine" ? (
+                <>
+                  {/* заголовок */}
+                  <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">{headerText}</div>
+                  {/* отдельный бордер сразу под заголовком — на всю ширину секции */}
+                  <div className="-mx-3 h-px bg-[var(--tg-hint-color)] opacity-15 mb-1" />
+
+                  {myDebts.length === 0 ? (
+                    <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts")}</div>
+                  ) : (
+                    <div>
+                      {myDebts.map((d, idx) => {
+                        const iOwe = d.amount < 0;
+                        const amountAbs = Math.abs(d.amount);
+                        return (
+                          <div key={d.user.id} className="relative">
+                            <div
+                              className={`py-${ITEM_VPAD}`}
+                              onPointerDown={() => startPress(d)}
+                              onPointerUp={clearPress}
+                              onPointerLeave={clearPress}
+                            >
+                              {/* 2 колонки: бегущая строка слева + сумма справа */}
+                              <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                                <AutoScrollRow className="min-w-0">
+                                  <span className="text-[14px] text-[var(--tg-text-color)]">
+                                    {iOwe
+                                      ? (t("group_balance_owe_to", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")
+                                      : (t("group_balance_get_from", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")}
+                                  </span>
+                                  <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
+                                  <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(d.user)}</span>
+                                </AutoScrollRow>
+                                <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                                  {fmtMoney(amountAbs, currency)}
+                                </div>
+                              </div>
+                            </div>
+                            {/* разделитель между карточками: от правого края до ПЕРВОЙ АВАТАРЫ */}
+                            {idx !== myDebts.length - 1 && (
+                              <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {allDebts.length === 0 ? (
+                    <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
+                  ) : (
+                    <div>
+                      {allDebts.map((p, idx) => (
+                        <div key={idx} className="relative">
+                          <div className={`py-${ITEM_VPAD}`}>
+                            <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                              <AutoScrollRow className="min-w-0">
+                                <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} />
+                                <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.from)}</span>
+                                <span className="text-[14px] text-[var(--tg-text-color)] opacity-90">{owesWord}</span>
+                                <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} />
+                                <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.to)}</span>
+                              </AutoScrollRow>
+                              <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                                {fmtMoney(p.amount, currency)}
+                              </div>
+                            </div>
+                          </div>
+                          {idx !== allDebts.length - 1 && (
+                            <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
-          <div className="h-px bg-[var(--tg-hint-color)]/30 w-full" />
-
-          {loading ? (
-            <div className="px-3 py-4 text-[13px] opacity-70">{t("loading")}</div>
-          ) : (
-            <>
-              {tab === "mine" ? (
-                myDebts.length ? myDebts.map(renderMineRow) : (
-                  <div className="px-3 py-4 text-[13px] opacity-70">{t("group_balance_no_debts")}</div>
-                )
-              ) : (
-                allDebts.length ? allDebts.map(renderAllRow) : (
-                  <div className="px-3 py-4 text-[13px] opacity-70">{t("group_balance_no_debts_all")}</div>
-                )
-              )}
-            </>
-          )}
-        </CardSection>
+        </div>
       </div>
 
-      {/* centered action sheet (по длинному тапу) */}
-      {sheet.open && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50" onClick={closeSheet}>
-          <div className="w-[min(92vw,360px)] rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-xl p-3"
-               onClick={(e) => e.stopPropagation()}>
-            <div className="text-[14px] font-semibold mb-2 truncate">{userName(sheet.user)}</div>
-            <div className="flex flex-col gap-2">
-              {sheet.kind === "owe" && (
-                <button
-                  className="h-10 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white text-[14px] font-bold"
-                  onClick={() => { 
-                    if (sheet.user && sheet.amount) onAction("repay", { otherId: sheet.user.id, amount: Math.abs(sheet.amount) });
-                    closeSheet();
-                  }}
-                >
-                  {t("repay_debt")}
-                </button>
-              )}
+      {/* контекстное меню по long-press — ТЕПЕРЬ ПО ЦЕНТРУ */}
+      {sheetOpen && selected && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={() => setSheetOpen(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative max-w-[84vw] w-[420px] rounded-2xl bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {selected.amount < 0 ? (
               <button
-                className="h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[14px]"
-                onClick={() => { alert(t("debts_reserved")); closeSheet(); }}
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={() => { onRepay?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); }}
+              >
+                {t("repay_debt")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={() => { onRemind?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); setStubOpen(true); }}
               >
                 {t("remind_debt")}
+              </button>
+            )}
+            <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
+            <button
+              type="button"
+              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+              onClick={() => setSheetOpen(false)}
+            >
+              {t("cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* центр-модалка-заглушка */}
+      {stubOpen && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setStubOpen(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative max-w-[84vw] w-[420px] rounded-2xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
+            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[15px] font-semibold mb-2">{t("remind_debt")}</div>
+            <div className="text-[14px] opacity-80 mb-3">{t("debts_reserved")}</div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setStubOpen(false)}
+                className="h-9 px-4 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
+              >
+                OK
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* скрытая кнопка для FAB */}
+      <div className="hidden"><button type="button" onClick={onFabClick} /></div>
     </div>
   );
 }

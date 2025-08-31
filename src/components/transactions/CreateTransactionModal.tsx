@@ -180,7 +180,7 @@ export default function CreateTransactionModal({
   groups: MinimalGroup[];
   defaultGroupId?: number;
   onCreated?: (tx: TransactionOut) => void;
-  initialTx?: Partial<TransactionOut> | any;
+  initialTx?: any;
   mode?: "create" | "edit";
 }) {
   const { t, i18n } = useTranslation();
@@ -193,7 +193,7 @@ export default function CreateTransactionModal({
     setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
   }, [groupsProp, groupsStoreItems]);
 
-  /* ===== FORM STATE ===== */
+  /* ===== FORM STATE (объявляем ДО эффектов) ===== */
   const [groupModal, setGroupModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
   const [type, setType] = useState<TxType>("expense");
@@ -267,7 +267,6 @@ export default function CreateTransactionModal({
               last_name: u.last_name,
               username: u.username,
               photo_url: u.photo_url,
-              name: ((u.first_name || "") + " " + (u.last_name || "")).trim() || u.username || `#${u.id}`,
             });
           }
           offset += items.length;
@@ -354,41 +353,63 @@ export default function CreateTransactionModal({
     return Math.abs(totalParts - total) > eps ? { sumParts: totalParts, total } : null;
   }, [splitData, perPerson, amountNumber, currency.decimals]);
 
-  /* ===== VALIDATION (ТОЛЬКО ЧЕРЕЗ t()) ===== */
+  /* ===== VALIDATION ===== */
   const errors = useMemo(() => {
     const errs: Record<string, string> = {};
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
     if (!amount || amountNumber <= 0) {
-      errs.amount = t("tx_modal.amount_gt_zero");
+      errs.amount =
+        locale === "ru" ? "Введите сумму больше 0" :
+        locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
     }
     if (type === "expense" && !comment.trim()) {
-      errs.comment = t("tx_modal.comment_required");
+      errs.comment =
+        locale === "ru" ? "Заполните комментарий" :
+        locale === "es" ? "Introduce un comentario" : "Enter a comment";
     }
     if (type === "expense" && !categoryId) {
-      errs.category = t("tx_modal.category_required");
+      errs.category =
+        locale === "ru" ? "Выберите категорию" :
+        locale === "es" ? "Elige una categoría" : "Choose a category";
     }
     if (type === "expense" && splitData) {
       if (splitData.type === "equal" && splitData.participants.length === 0) {
-        errs.split = t("tx_modal.split_no_participants");
+        errs.split =
+          locale === "ru" ? "Выберите участников" :
+          locale === "es" ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "shares") {
         const totalShares = splitData.participants.reduce((s, p) => s + (p.share || 0), 0);
-        if (totalShares <= 0) errs.split = t("tx_modal.split_shares_gt_zero");
-        if (splitData.participants.length === 0) errs.split = t("tx_modal.split_no_participants");
+        if (totalShares <= 0) errs.split =
+          locale === "ru" ? "Доли должны быть больше нуля" :
+          locale === "es" ? "Las cuotas deben ser > 0" : "Shares must be > 0";
+        if (splitData.participants.length === 0) errs.split =
+          locale === "ru" ? "Выберите участников" :
+          locale === "es" ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "custom" && customMismatch) {
-        errs.split = t("tx_modal.split_custom_mismatch");
+        errs.split =
+          locale === "ru" ? "Сумма по участникам должна равняться общей" :
+          locale === "es" ? "La suma por participantes debe igualar el total" :
+          "Participants total must equal overall";
       }
     }
     if (type === "transfer") {
-      if (!paidBy) errs.transfer = t("tx_modal.transfer_from_required");
-      if (!toUser) errs.transfer = t("tx_modal.transfer_to_required");
+      if (!paidBy) errs.transfer =
+        locale === "ru" ? "Выберите отправителя" :
+        locale === "es" ? "Elige remitente" : "Select sender";
+      if (!toUser) errs.transfer =
+        locale === "ru" ? "Выберите получателя" :
+        locale === "es" ? "Elige receptor" : "Select recipient";
       if (paidBy && toUser && paidBy === toUser) {
-        errs.transfer = t("tx_modal.transfer_same_person");
+        errs.transfer =
+          locale === "ru" ? "Отправитель и получатель не могут совпадать" :
+          locale === "es" ? "Remitente y receptor no pueden ser iguales" :
+          "Sender and recipient must differ";
       }
     }
     return errs;
-  }, [selectedGroupId, amount, amountNumber, comment, type, categoryId, splitData, customMismatch, t, paidBy, toUser]);
+  }, [selectedGroupId, amount, amountNumber, comment, locale, type, categoryId, splitData, customMismatch, t, paidBy, toUser]);
 
   const handleAmountChange = (v: string) => {
     const decimals = currency.decimals;
@@ -415,6 +436,15 @@ export default function CreateTransactionModal({
   };
   const handleCommentBlur = () => setCommentTouched(true);
 
+  const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
+    const raw = (it as any).color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
+    const hex6 = to6Hex(raw) ?? raw ?? null;
+    setCategoryId(it.id);
+    setCategoryName(it.name);
+    setCategoryColor(hex6);
+    setCategoryIcon((it as any).icon ?? null);
+  };
+
   const resetForNew = () => {
     setType("expense");
     setCategoryId(undefined);
@@ -435,6 +465,30 @@ export default function CreateTransactionModal({
     setShowErrors(false);
     setAmountTouched(false);
     setCommentTouched(false);
+  };
+
+  const ensureValidOrGuide = (): boolean => {
+    setShowErrors(true);
+    setAmountTouched(true);
+    if (type === "expense") setCommentTouched(true);
+
+    if (!selectedGroupId) {
+      setGroupModal(true);
+      return false;
+    }
+    if (!amount || Number(amount) <= 0) {
+      amountInputRef.current?.focus();
+      return false;
+    }
+    if (type === "expense") {
+      if (!categoryId) { setCategoryModal(true); return false; }
+      if (errors.split) { setSplitOpen(true); return false; }
+      return true;
+    }
+    if (!paidBy) { setPayerOpen(true); return false; }
+    if (!toUser) { setRecipientOpen(true); return false; }
+    if (paidBy === toUser) return false;
+    return true;
   };
 
   function buildShares(
@@ -473,30 +527,6 @@ export default function CreateTransactionModal({
       shares: null,
     }));
   }
-
-  const ensureValidOrGuide = (): boolean => {
-    setShowErrors(true);
-    setAmountTouched(true);
-    if (type === "expense") setCommentTouched(true);
-
-    if (!selectedGroupId) {
-      setGroupModal(true);
-      return false;
-    }
-    if (!amount || Number(amount) <= 0) {
-      amountInputRef.current?.focus();
-      return false;
-    }
-    if (type === "expense") {
-      if (!categoryId) { setCategoryModal(true); return false; }
-      if (errors.split) { setSplitOpen(true); return false; }
-      return true;
-    }
-    if (!paidBy) { setPayerOpen(true); return false; }
-    if (!toUser) { setRecipientOpen(true); return false; }
-    if (paidBy === toUser) return false;
-    return true;
-  };
 
   const doSubmit = async (modeAfter: "close" | "again") => {
     if (saving) return;
@@ -596,7 +626,7 @@ export default function CreateTransactionModal({
     if (!initialTx) return;
 
     // группа
-    const gid = Number((initialTx as any).groupId || defaultGroupId);
+    const gid = Number(initialTx.groupId || defaultGroupId);
     if (gid) setSelectedGroupId(gid);
 
     // тип
@@ -610,31 +640,50 @@ export default function CreateTransactionModal({
       setAmount(initialTx.amount.toFixed(d));
     }
 
-    // предзаполнение участников для transfer
+    // перевод
     if (initialTx.type === "transfer") {
-      const pb = Number((initialTx as any).paidBy || user?.id);
-      const tu = Number((initialTx as any).toUser);
+      const pb = Number(initialTx.paidBy || user?.id);
+      const tu = Number(initialTx.toUser);
+      if (isFinite(pb)) setPaidBy(pb);
+      if (isFinite(tu)) setToUser(tu);
 
-      if (Number.isFinite(pb)) setPaidBy(pb);
-      if (Number.isFinite(tu)) setToUser(tu);
+      // имена/аватар могут подтянуться позже отдельным эффектом (см. ниже)
+      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : "";
+      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : "";
 
-      const mPayer = membersMap.get(pb);
-      const mTo = membersMap.get(tu);
+      if (pbName) setPaidByName(pbName);
+      if (tuName) setToUserName(tuName);
 
-      if (mPayer) {
-        setPaidByName(nameFromMember(mPayer));
-        setPaidByAvatar(mPayer.photo_url || undefined);
-      }
-      if (mTo) {
-        setToUserName(nameFromMember(mTo));
-        setToUserAvatar(mTo.photo_url || undefined);
-      }
+      const pbAv = membersMap.get(pb)?.photo_url;
+      const tuAv = membersMap.get(tu)?.photo_url;
+      if (pbAv) setPaidByAvatar(pbAv);
+      if (tuAv) setToUserAvatar(tuAv);
     }
 
     if (typeof initialTx.comment === "string") setComment(initialTx.comment);
 
     prefilledRef.current = true;
   }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
+
+  /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ПОСЛЕ ЗАГРУЗКИ membersMap ===== */
+  useEffect(() => {
+    if (!open) return;
+
+    if (paidBy && !paidByName) {
+      const m = membersMap.get(paidBy);
+      if (m) {
+        setPaidByName(nameFromMember(m));
+        setPaidByAvatar(m.photo_url || undefined);
+      }
+    }
+    if (toUser && !toUserName) {
+      const m = membersMap.get(toUser);
+      if (m) {
+        setToUserName(nameFromMember(m));
+        setToUserAvatar(m.photo_url || undefined);
+      }
+    }
+  }, [open, membersMap, paidBy, toUser, paidByName, toUserName]);
 
   if (!open) return null;
 
@@ -646,13 +695,13 @@ export default function CreateTransactionModal({
 
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
-  const fromLabel = t("tx_modal.transfer_from");
-  const toLabel = t("tx_modal.transfer_to");
+  const fromLabel = locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From";
+  const toLabel = locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To";
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
-        {/* контент окна; вертикальный скролл только внутри */}
+        {/* добавил overflow-x-hidden чтобы не было артефактов прокрутки по X */}
         <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto overflow-x-hidden bg-[var(--tg-card-bg,#111)]">
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
@@ -773,7 +822,6 @@ export default function CreateTransactionModal({
                           className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
                           style={fillStyle(categoryColor)}
                         >
-                          {/* Категория */}
                           <button
                             type="button"
                             onClick={() => setCategoryModal(true)}
@@ -790,7 +838,6 @@ export default function CreateTransactionModal({
                             </span>
                           </button>
 
-                          {/* Комментарий */}
                           <div className="min-w-0 flex items-center gap-2">
                             <FileText size={16} className="opacity-80 shrink-0" />
                             <input
@@ -804,10 +851,11 @@ export default function CreateTransactionModal({
                         </div>
 
                         <div className={`px-3 pb-0.5 -mt-0.5 text-[12px] ${commentLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
-                          {
-                            comment.length === 0
-                              ? t("tx_modal.comment_hint_initial", { max: COMMENT_MAX })
-                              : t("tx_modal.comment_hint_remaining", { n: commentLeft })
+                          {(i18n.language || "en").startsWith("ru")
+                            ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
+                            : (i18n.language || "en").startsWith("es")
+                            ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
+                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
                           }
                         </div>
 
@@ -826,7 +874,6 @@ export default function CreateTransactionModal({
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
-                          {/* Paid by */}
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -844,7 +891,7 @@ export default function CreateTransactionModal({
                                 </span>
                                 <span
                                   role="button"
-                                  aria-label={t("clear")}
+                                  aria-label={t("clear") || "Очистить"}
                                   className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
                                 >
@@ -856,7 +903,6 @@ export default function CreateTransactionModal({
                             )}
                           </button>
 
-                          {/* Split */}
                           <button
                             type="button"
                             onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
@@ -918,6 +964,16 @@ export default function CreateTransactionModal({
                         {(showErrors && errors.split) && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.split}</div>
                         )}
+                        {customMismatch && (
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
+                            {locale === "ru"
+                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : locale === "es"
+                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                            }
+                          </div>
+                        )}
                       </CardSection>
                     </div>
                   </>
@@ -929,7 +985,6 @@ export default function CreateTransactionModal({
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
-                          {/* From */}
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -947,7 +1002,7 @@ export default function CreateTransactionModal({
                                 </span>
                                 <span
                                   role="button"
-                                  aria-label={t("clear")}
+                                  aria-label={t("clear") || "Очистить"}
                                   className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
                                 >
@@ -959,7 +1014,6 @@ export default function CreateTransactionModal({
                             )}
                           </button>
 
-                          {/* To */}
                           <button
                             type="button"
                             onClick={openRecipientPicker}
@@ -977,7 +1031,7 @@ export default function CreateTransactionModal({
                                 </span>
                                 <span
                                   role="button"
-                                  aria-label={t("clear")}
+                                  aria-label={t("clear") || "Очистить"}
                                   className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setToUser(undefined); setToUserName(""); setToUserAvatar(undefined); }}
                                 >
@@ -990,7 +1044,6 @@ export default function CreateTransactionModal({
                           </button>
                         </div>
 
-                        {/* Превью перевода */}
                         {(paidBy || toUser) && amountNumber > 0 && (
                           <div className="px-3 pb-1 mt-1">
                             <div className="flex items-center gap-2 text-[13px]">
@@ -1071,7 +1124,7 @@ export default function CreateTransactionModal({
                           type="button"
                           onClick={() => setMoreOpen((v) => !v)}
                           className="px-3 h-10 rounded-r-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
-                          aria-label={t("actions")}
+                          aria-label="More actions"
                           disabled={saving}
                         >
                           <ChevronDown size={16} />
@@ -1142,7 +1195,7 @@ export default function CreateTransactionModal({
           setPaidByName(u.name || "");
           // @ts-ignore
           setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
-          // Автосплит equal со всеми участниками — если ещё не выбран
+          // Автосплит equal со всеми участниками
           setSplitData((prev) => {
             const alreadySet = !!prev && prev.participants && prev.participants.length > 0;
             if (alreadySet) return prev;
