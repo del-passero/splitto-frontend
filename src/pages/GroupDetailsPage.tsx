@@ -41,7 +41,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы: по умолчанию — «Транзакции»
+  // Табы: по умолчанию показываем «Транзакции»
   const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
 
   // Текущий пользователь
@@ -163,31 +163,31 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки и контент */}
+      {/* Вкладки (в CardSection, как и раньше) */}
       <CardSection className="px-0 py-0 mb-2">
         <GroupTabs
           selected={selectedTab}
           onSelect={setSelectedTab}
           className="mb-0"
         />
-        {/* Контент на всю ширину, убираем max-w и боковые паддинги-центровку */}
-        <div className="w-full flex-1 pb-12 mt-1">
-          {selectedTab === "transactions" && (
-            <GroupTransactionsTab
-              loading={false}
-              transactions={transactions}
-              onAddTransaction={() => setCreateTxOpen(true)}
-            />
-          )}
-
-          {selectedTab === "balance" && (
-            // Новый умный таб сам грузит транзакции и считает долги — без пропов.
-            <GroupBalanceTab />
-          )}
-
-          {selectedTab === "analytics" && <GroupAnalyticsTab />}
-        </div>
       </CardSection>
+
+      {/* Контент ВНЕ CardSection — на всю ширину, без боковых паддингов/центровки */}
+      <div className="w-full flex-1 pb-12 mt-1">
+        {selectedTab === "transactions" && (
+          <GroupTransactionsTab
+            loading={false}
+            transactions={transactions}
+            onAddTransaction={() => setCreateTxOpen(true)}
+          />
+        )}
+
+        {selectedTab === "balance" && (
+          <GroupBalanceTab />
+        )}
+
+        {selectedTab === "analytics" && <GroupAnalyticsTab />}
+      </div>
 
       {/* Сентинел для участников */}
       {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}

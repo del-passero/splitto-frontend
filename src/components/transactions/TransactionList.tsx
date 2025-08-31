@@ -5,23 +5,21 @@ import React, { ReactNode } from "react";
  * Универсальный список «как в ContactsList»:
  *  • На всю ширину контейнера (есть режим bleed).
  *  • Без рамок карточек.
- *  • Единый горизонтальный паддинг списка.
- *  • Разделители между элементами, начинаются после левой колонки (иконка 40px + отступ ≈ 52px).
+ *  • Единый горизонтальный паддинг списка (можно задать 0).
+ *  • Разделители между элементами, начинаются после левой колонки.
  */
 type Props<T> = {
   items: T[];
   renderItem: (item: T, index: number) => ReactNode;
   keyExtractor?: (item: T, index: number) => string | number;
   className?: string;
-  /** Отступ слева для разделителя, по умолчанию 52px, чтобы не резать аватар/иконку. */
+  /** Отступ слева для разделителя (px). */
   leftInsetPx?: number;
   /** Горизонтальный паддинг самого списка. */
   horizontalPaddingPx?: number;
   /**
    * Насколько «кровоточить» за пределы родителя по горизонтали.
-   * Нужен, если родитель (страница/CardSection) уже дал свой паддинг.
-   * Например, bleedPx=16 + horizontalPaddingPx=16 даст ровный вылет в край,
-   * но при этом внутри списка будет привычный внутренний отступ 16px.
+   * Нужен, если родитель уже дал свой внутренний паддинг.
    */
   bleedPx?: number;
 };
@@ -31,8 +29,8 @@ export default function TransactionList<T>({
   renderItem,
   keyExtractor,
   className = "",
-  leftInsetPx = 52,
-  horizontalPaddingPx = 16,
+  leftInsetPx = 48,           // 40px иконка + небольшой зазор
+  horizontalPaddingPx = 0,    // по умолчанию без боковых отступов
   bleedPx = 0,
 }: Props<T>) {
   return (
