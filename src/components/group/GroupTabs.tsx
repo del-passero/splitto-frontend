@@ -26,11 +26,10 @@ function GroupTabs<T extends string>({
     { key: "analytics" as T, label: t("group_tab_analytics") },
   ]
 
-  // ⬇️ БЕЗ CardSection. Никакого фонового “карточного” цвета —
-  // работаем прямо поверх bg-[var(--tg-bg-color)] как на Contacts.
+  // Важно: без CardSection — фон берётся у страницы (как на ContactsPage)
   return (
-    <div className={`w-full mb-2 ${className}`}>
-      <div className="flex w-full max-w-sm mx-auto relative">
+    <div className={`w-full ${className}`}>
+      <div className="flex w-full max-w-sm mx-auto relative bg-transparent">
         {TABS.map(tab => (
           <button
             key={tab.key}

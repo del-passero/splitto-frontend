@@ -40,7 +40,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы — ⬇️ Transactions по умолчанию
+  // Табы — по умолчанию показываем транзакции
   const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
 
   // Текущий пользователь
@@ -162,25 +162,23 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки и контент — БЕЗ CardSection, как на Contacts */}
-      <GroupTabs
-        selected={selectedTab}
-        onSelect={setSelectedTab}
-        className="mb-0"
-      />
+      {/* Вкладки и контент — БЕЗ CardSection, чтобы фон как на Contacts */}
+      <div className="w-full">
+        <GroupTabs selected={selectedTab} onSelect={setSelectedTab} className="mb-2" />
+        {/* Контентная область, как и раньше, но без подложки CardSection */}
+        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
+          {selectedTab === "transactions" && (
+            <GroupTransactionsTab
+              loading={false}
+              transactions={transactions}
+              onAddTransaction={() => setCreateTxOpen(true)}
+            />
+          )}
 
-      <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
-        {selectedTab === "transactions" && (
-          <GroupTransactionsTab
-            loading={false}
-            transactions={transactions}
-            onAddTransaction={() => setCreateTxOpen(true)}
-          />
-        )}
+          {selectedTab === "balance" && <GroupBalanceTab />}
 
-        {selectedTab === "balance" && <GroupBalanceTab />}
-
-        {selectedTab === "analytics" && <GroupAnalyticsTab />}
+          {selectedTab === "analytics" && <GroupAnalyticsTab />}
+        </div>
       </div>
 
       {/* Сентинел для участников */}
@@ -195,7 +193,7 @@ const GroupDetailsPage = () => {
         onAdded={() => { /* перезагрузишь при необходимости */ }}
       />
 
-      {/* Модалка создания транзакции — текущая группа передаётся в props */}
+      {/* Модалка создания транзакции */}
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}

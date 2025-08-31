@@ -1,30 +1,38 @@
 // src/components/transactions/TransactionList.tsx
-import React, { ReactNode } from "react";
+
+import React, { ReactNode } from "react"
 
 /**
- * Универсальный список «как в ContactsList».
- * Без рамок карточек, единые отступы, разделители на цветах Telegram.
+ * Универсальный список «как в ContactsList»:
+ *  • На всю ширину контейнера (есть режим bleed).
+ *  • Без рамок карточек.
+ *  • Единый горизонтальный паддинг списка.
+ *  • Разделители между элементами, начинаются после левой колонки (иконка 40px + отступ ≈ 64px).
+ *  • Цвета опираются на те же tg-переменные, что и ContactsList.
  */
 type Props<T> = {
-  items: T[];
-  renderItem: (item: T, index: number) => ReactNode;
-  keyExtractor?: (item: T, index: number) => string | number;
-  className?: string;
-  /** Отступ слева для разделителя (px) — чтобы не заходить на аватар/иконку. */
-  leftInsetPx?: number;
+  items: T[]
+  renderItem: (item: T, index: number) => ReactNode
+  keyExtractor?: (item: T, index: number) => string | number
+  className?: string
+  /** Отступ слева для разделителя, по умолчанию 64px, чтобы не резать аватар/иконку. */
+  leftInsetPx?: number
   /** Горизонтальный паддинг самого списка. */
-  horizontalPaddingPx?: number;
-  /** «Кровотечение» за пределы родителя по горизонтали. */
-  bleedPx?: number;
-};
+  horizontalPaddingPx?: number
+  /**
+   * Насколько «кровоточить» за пределы родителя по горизонтали.
+   * Нужен, если родитель уже дал свой паддинг.
+   */
+  bleedPx?: number
+}
 
 export default function TransactionList<T>({
   items,
   renderItem,
   keyExtractor,
   className = "",
-  leftInsetPx = 48,         // 40px иконка + небольшой зазор
-  horizontalPaddingPx = 0,  // на странице уже выходим в край
+  leftInsetPx = 64,
+  horizontalPaddingPx = 16,
   bleedPx = 0,
 }: Props<T>) {
   return (
@@ -36,6 +44,8 @@ export default function TransactionList<T>({
         marginRight: bleedPx ? -bleedPx : undefined,
         paddingLeft: horizontalPaddingPx,
         paddingRight: horizontalPaddingPx,
+        // фон — прозрачный, чтобы читался системный фон как на Contacts
+        background: "transparent",
       }}
     >
       {items.map((it, idx) => {
@@ -43,20 +53,22 @@ export default function TransactionList<T>({
           (keyExtractor ? keyExtractor(it, idx) : undefined) ??
           (typeof (it as any)?.id !== "undefined"
             ? (it as any).id
-            : `${idx}-${(it as any)?.type ?? "tx"}-${(it as any)?.date ?? ""}-${(it as any)?.amount ?? ""}`);
+            : `${idx}-${(it as any)?.type ?? "tx"}-${(it as any)?.date ?? ""}-${(it as any)?.amount ?? ""}`)
+
         return (
           <div key={key} className="relative">
             {renderItem(it, idx)}
             {idx !== items.length - 1 && (
               <div
-                className="absolute bottom-0 right-0 h-px bg-[var(--tg-secondary-bg-color,#e7e7e7)] opacity-30"
+                // тот же разделитель, что и в ContactsList:
+                className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
                 style={{ left: leftInsetPx }}
                 aria-hidden
               />
             )}
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
