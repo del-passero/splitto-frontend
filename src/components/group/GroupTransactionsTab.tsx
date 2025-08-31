@@ -97,7 +97,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   // ключ пересборки при смене фильтров
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  /* ---------- загрузка участников группы (для имён/аватаров) ---------- */
+  /* ---------- загрузка участников группы ---------- */
   useEffect(() => {
     if (!groupId) {
       setMembersMap(null);
@@ -143,7 +143,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     };
   }, [groupId]);
 
-  /* ---------- загрузка СПРАВОЧНИКА категорий ---------- */
+  /* ---------- загрузка справочника категорий ---------- */
   useEffect(() => {
     if (!groupId) {
       setCategoriesById(new Map());
@@ -179,7 +179,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     return () => { cancelled = true; };
   }, [groupId, locale]);
 
-  /* ---------- функция первичной загрузки (и перезагрузки после delete) ---------- */
+  /* ---------- первичная загрузка ---------- */
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -342,9 +342,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : (
         <TransactionList
           items={visible}
-          bleedPx={0}               // без «кровотечения», т.к. контейнер уже на всю ширину
-          horizontalPaddingPx={0}   // убираем боковые отступы у списка
-          leftInsetPx={48}          // линия-сепаратор доходит до самой иконки (40px) + небольшой зазор
+          bleedPx={0}                // родитель без внешних паддингов
+          horizontalPaddingPx={16}  // как в ContactsList
+          leftInsetPx={64}          // линия начинается у иконки
           renderItem={(tx: any) => (
             <TransactionCard
               tx={tx}
@@ -369,7 +369,24 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
       <GroupFAB onClick={handleAddClick} />
 
-      {/* Мини action sheet (как было) */}
+      {/* Модалка создания (сохраняем старый функционал) */}
+      <CreateTransactionModal
+        open={openCreate}
+        onOpenChange={setOpenCreate}
+        groups={groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: (g as any).icon,
+          color: (g as any).color,
+          default_currency_code: (g as any).default_currency_code,
+          currency_code: (g as any).currency_code,
+          currency: (g as any).currency,
+        }))}
+        defaultGroupId={groupId}
+        onCreated={handleCreated}
+      />
+
+      {/* Мини action sheet */}
       {actionsOpen && (
         <div
           className="fixed inset-0 z-[1100] flex items-end justify-center"
@@ -382,7 +399,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           >
             <button
               type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg:white/5 transition"
+              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
               onClick={handleEdit}
             >
               {t("edit")}

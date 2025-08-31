@@ -40,7 +40,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы — по умолчанию показываем транзакции
+  // Табы — по умолчанию «Транзакции»
   const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
 
   // Текущий пользователь
@@ -141,7 +141,8 @@ const GroupDetailsPage = () => {
   const existingMemberIds = members.map(m => m.user.id)
 
   return (
-    <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
+    // Тот же «каркас», что и на ContactsPage: чистый фон Telegram + текстовые переменные темы.
+    <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
       {/* Шапка группы */}
       <GroupHeader
         group={group}
@@ -162,23 +163,24 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки и контент — БЕЗ CardSection, чтобы фон как на Contacts */}
-      <div className="w-full">
-        <GroupTabs selected={selectedTab} onSelect={setSelectedTab} className="mb-2" />
-        {/* Контентная область, как и раньше, но без подложки CardSection */}
-        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
-          {selectedTab === "transactions" && (
-            <GroupTransactionsTab
-              loading={false}
-              transactions={transactions}
-              onAddTransaction={() => setCreateTxOpen(true)}
-            />
-          )}
+      {/* Вкладки */}
+      <div className="w-full max-w-xl mx-auto px-0">
+        <GroupTabs selected={selectedTab} onSelect={setSelectedTab} className="mb-0" />
+      </div>
 
-          {selectedTab === "balance" && <GroupBalanceTab />}
+      {/* Контент вкладок — без CardSection, как на ContactsPage */}
+      <div className="w-full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
+        {selectedTab === "transactions" && (
+          <GroupTransactionsTab
+            loading={false}
+            transactions={transactions}
+            onAddTransaction={() => setCreateTxOpen(true)}
+          />
+        )}
 
-          {selectedTab === "analytics" && <GroupAnalyticsTab />}
-        </div>
+        {selectedTab === "balance" && <GroupBalanceTab />}
+
+        {selectedTab === "analytics" && <GroupAnalyticsTab />}
       </div>
 
       {/* Сентинел для участников */}
@@ -193,7 +195,7 @@ const GroupDetailsPage = () => {
         onAdded={() => { /* перезагрузишь при необходимости */ }}
       />
 
-      {/* Модалка создания транзакции */}
+      {/* Модалка создания транзакции — текущая группа передаётся в props */}
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}
@@ -201,7 +203,7 @@ const GroupDetailsPage = () => {
         groups={group ? [{
           id: group.id,
           name: group.name,
-          // @ts-ignore
+          // @ts-ignore — если есть в типе
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,
