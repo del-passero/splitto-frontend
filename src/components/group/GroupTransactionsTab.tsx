@@ -342,9 +342,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : (
         <TransactionList
           items={visible}
-          bleedPx={16}               // <-- компенсируем паддинг родителя (как в ContactsList)
-          horizontalPaddingPx={16}  // внутренний отступ самого списка
-          leftInsetPx={64}          // линия после левой колонки (40px иконка + отступы)
+          bleedPx={0}               // родитель больше не даёт боковых паддингов
+          horizontalPaddingPx={16}  // как в ContactsList
+          leftInsetPx={52}          // 12px паддинг + 40px иконка
           renderItem={(tx: any) => (
             <TransactionCard
               tx={tx}

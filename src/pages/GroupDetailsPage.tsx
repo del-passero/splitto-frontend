@@ -41,8 +41,8 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы
-  const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("balance")
+  // Табы: по умолчанию — «Транзакции»
+  const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
 
   // Текущий пользователь
   const user = useUserStore(state => state.user)
@@ -170,7 +170,8 @@ const GroupDetailsPage = () => {
           onSelect={setSelectedTab}
           className="mb-0"
         />
-        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
+        {/* Контент на всю ширину, убираем max-w и боковые паддинги-центровку */}
+        <div className="w-full flex-1 pb-12 mt-1">
           {selectedTab === "transactions" && (
             <GroupTransactionsTab
               loading={false}

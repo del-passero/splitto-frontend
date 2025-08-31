@@ -6,14 +6,14 @@ import React, { ReactNode } from "react";
  *  • На всю ширину контейнера (есть режим bleed).
  *  • Без рамок карточек.
  *  • Единый горизонтальный паддинг списка.
- *  • Разделители между элементами, начинаются после левой колонки (иконка 40px + отступ ≈ 64px).
+ *  • Разделители между элементами, начинаются после левой колонки (иконка 40px + отступ ≈ 52px).
  */
 type Props<T> = {
   items: T[];
   renderItem: (item: T, index: number) => ReactNode;
   keyExtractor?: (item: T, index: number) => string | number;
   className?: string;
-  /** Отступ слева для разделителя, по умолчанию 64px, чтобы не резать аватар/иконку. */
+  /** Отступ слева для разделителя, по умолчанию 52px, чтобы не резать аватар/иконку. */
   leftInsetPx?: number;
   /** Горизонтальный паддинг самого списка. */
   horizontalPaddingPx?: number;
@@ -31,7 +31,7 @@ export default function TransactionList<T>({
   renderItem,
   keyExtractor,
   className = "",
-  leftInsetPx = 64,
+  leftInsetPx = 52,
   horizontalPaddingPx = 16,
   bleedPx = 0,
 }: Props<T>) {
