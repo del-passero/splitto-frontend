@@ -8,12 +8,9 @@ import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
 import TransactionList from "../transactions/TransactionList";
-import CardSection from "../CardSection"; // ⬅️ как в ContactsList
+import CardSection from "../CardSection";
 
-// стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
-
-// API
 import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
@@ -26,7 +23,6 @@ type Props = {
 
 const PAGE_SIZE = 20;
 
-/* ---------- локальный мини-клиент категорий (как в CategoryPickerModal) ---------- */
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -61,63 +57,45 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const navigate = useNavigate();
 
   const [openCreate, setOpenCreate] = useState(false);
-
-  // Action sheet по long-press
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
-  // groupId из урла — фильтрация выборки
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
 
-  // список групп (для модалки создания)
   const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? []);
 
-  // локальный стейт списка транзакций
   const [items, setItems] = useState<TransactionOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // участники группы -> Map<userId, GroupMemberLike>
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
 
-  // категории группы -> Map<categoryId, { id: number; name, icon, color }>
   const [categoriesById, setCategoriesById] = useState<
     Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>
   >(new Map());
 
-  // для отмены запросов/IO
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
 
-  // ключ пересборки при смене фильтров
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  /* ---------- загрузка участников группы ---------- */
   useEffect(() => {
-    if (!groupId) {
-      setMembersMap(null);
-      setMembersCount(0);
-      return;
-    }
-
+    if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
-
-    const run = async () => {
+    (async () => {
       try {
         const { total, items } = await getGroupMembers(groupId, 0, 200);
         if (cancelled) return;
-
         const map = new Map<number, GroupMemberLike>();
         for (const m of items) {
           const u = (m as any).user || {};
           const id = Number(u.id);
           if (!Number.isFinite(id)) continue;
-
           const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
           map.set(id, {
             id,
@@ -135,26 +113,17 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         setMembersMap(null);
         setMembersCount(0);
       }
-    };
-
-    run();
-    return () => {
-      cancelled = true;
-    };
+    })();
+    return () => { cancelled = true; };
   }, [groupId]);
 
-  /* ---------- загрузка справочника категорий ---------- */
   useEffect(() => {
-    if (!groupId) {
-      setCategoriesById(new Map());
-      return;
-    }
+    if (!groupId) { setCategoriesById(new Map()); return; }
     let cancelled = false;
     (async () => {
       try {
         const m = new Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>();
-        let offset = 0;
-        const LIMIT = 200;
+        let offset = 0; const LIMIT = 200;
         while (true) {
           const page = await apiListGroupCategoriesPage({ groupId, offset, limit: LIMIT, locale });
           for (const it of page.items || []) {
@@ -170,119 +139,64 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           if ((page.items?.length || 0) < LIMIT) break;
         }
         if (!cancelled) setCategoriesById(m);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("Failed to load categories dictionary", e);
+      } catch {
         if (!cancelled) setCategoriesById(new Map());
       }
     })();
     return () => { cancelled = true; };
   }, [groupId, locale]);
 
-  /* ---------- первичная загрузка ---------- */
   const reloadFirstPage = useCallback(async () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-
-    setItems([]);
-    setTotal(0);
-    setError(null);
-    setHasMore(true);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
+    abortRef.current?.abort(); abortRef.current = null;
+    setItems([]); setTotal(0); setError(null); setHasMore(true);
+    const controller = new AbortController(); abortRef.current = controller;
     setLoading(true);
     try {
-      const { total, items } = await getTransactions({
-        groupId,
-        offset: 0,
-        limit: PAGE_SIZE,
-        signal: controller.signal,
-      });
-      setItems(items);
-      setTotal(total);
-      setHasMore(items.length < total);
+      const { total, items } = await getTransactions({ groupId, offset: 0, limit: PAGE_SIZE, signal: controller.signal });
+      setItems(items); setTotal(total); setHasMore(items.length < total);
     } catch (e: any) {
-      if (!controller.signal.aborted) {
-        setError(e?.message || "Failed to load transactions");
-      }
+      if (!controller.signal.aborted) setError(e?.message || "Failed to load transactions");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
   }, [groupId]);
 
-  useEffect(() => {
-    void reloadFirstPage();
-  }, [filtersKey, reloadFirstPage]);
+  useEffect(() => { void reloadFirstPage(); }, [filtersKey, reloadFirstPage]);
 
-  /* ---------- догрузка следующей страницы ---------- */
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
+    const controller = new AbortController(); abortRef.current = controller;
     try {
       setLoading(true);
       const offset = items.length;
-      const { total: newTotal, items: chunk } = await getTransactions({
-        groupId,
-        offset,
-        limit: PAGE_SIZE,
-        signal: controller.signal,
-      });
-
+      const { total: newTotal, items: chunk } = await getTransactions({ groupId, offset, limit: PAGE_SIZE, signal: controller.signal });
       setTotal(newTotal);
-
-      // дедуп по id
       const map = new Map<number | string, TransactionOut>();
-      for (const it of items)
-        map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
-      for (const it of chunk)
-        map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
-
+      for (const it of items) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
+      for (const it of chunk) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
       const merged = Array.from(map.values());
-      setItems(merged);
-      setHasMore(merged.length < newTotal);
+      setItems(merged); setHasMore(merged.length < newTotal);
     } catch (e: any) {
-      if (!controller.signal.aborted) {
-        setError(e?.message || "Failed to load more");
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (!controller.signal.aborted) setError(e?.message || "Failed to load more");
+    } finally { setLoading(false); }
   }, [groupId, items, hasMore, loading]);
 
-  /* ---------- IntersectionObserver: сентинел для инфинити-скролла ---------- */
   useEffect(() => {
-    const el = loaderRef.current;
-    if (!el) return;
-
+    const el = loaderRef.current; if (!el) return;
     ioRef.current?.disconnect();
-    const io = new IntersectionObserver(
-      (entries) => {
-        const e = entries[0];
-        if (!e.isIntersecting) return;
-        if (loading || !hasMore) return;
-        void loadMore();
-      },
-      { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 }
-    );
-
-    io.observe(el);
-    ioRef.current = io;
-
-    return () => {
-      io.disconnect();
-      if (ioRef.current === io) ioRef.current = null;
-    };
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[0];
+      if (!e.isIntersecting) return;
+      if (loading || !hasMore) return;
+      void loadMore();
+    }, { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 });
+    io.observe(el); ioRef.current = io;
+    return () => { io.disconnect(); if (ioRef.current === io) ioRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length, hasMore, loading, filtersKey]);
 
-  /* ---------- обработчики ---------- */
   const handleAddClick = () => setOpenCreate(true);
-  const handleCreated = (tx: TransactionOut) => setItems((prev) => [tx, ...prev]);
+  const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
   const handleLongPress = (tx: TransactionOut) => { setTxForActions(tx); setActionsOpen(true); };
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
   const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
@@ -291,19 +205,14 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
     try { setLoading(true); await removeTransaction(txForActions.id); setItems(prev => prev.filter(it => it.id !== txForActions.id)); }
-    catch (e) { /* eslint-disable no-console */ console.error("Failed to delete tx", e); }
+    catch { /* ignore */ }
     finally { setLoading(false); closeActions(); }
   };
 
-  // Видимые элементы
   const visible = items;
 
   return (
-    <CardSection
-      noPadding
-      className="relative w-full h-full min-h-[320px]"
-    >
-      {/* базовый цвет текста для всей карточки-вкладки */}
+    <CardSection noPadding className="relative w-full h-full min-h-[320px]">
       <div style={{ color: "var(--tg-text-color)" }}>
         {error ? (
           <div className="flex justify-center py-12 text-red-500">{error}</div>
@@ -314,9 +223,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         ) : (
           <TransactionList
             items={visible}
-            bleedPx={0}                // родитель без внешних паддингов
-            horizontalPaddingPx={16}  // как в ContactsList
-            leftInsetPx={64}          // линия начинается у иконки
+            bleedPx={0}
+            horizontalPaddingPx={16}
+            leftInsetPx={52}  // ← строго от начала 2-го столбца (40px + 12px gap)
             renderItem={(tx: any) => (
               <TransactionCard
                 tx={tx}
@@ -333,7 +242,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           />
         )}
 
-        {/* сентинел для инфинити-скролла */}
         <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
         {loading && items.length > 0 && (
           <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
@@ -341,7 +249,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
         <GroupFAB onClick={handleAddClick} />
 
-        {/* Модалка создания (сохраняем старый функционал) */}
         <CreateTransactionModal
           open={openCreate}
           onOpenChange={setOpenCreate}
@@ -358,38 +265,22 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           onCreated={handleCreated}
         />
 
-        {/* Мини action sheet */}
         {actionsOpen && (
-          <div
-            className="fixed inset-0 z-[1100] flex items-end justify-center"
-            onClick={closeActions}
-          >
+          <div className="fixed inset-0 z-[1100] flex items-end justify-center" onClick={closeActions}>
             <div className="absolute inset-0 bg-black/50" />
             <div
               className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
               style={{ color: "var(--tg-text-color)" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                type="button"
-                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={handleEdit}
-              >
+              <button type="button" className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition" onClick={handleEdit}>
                 {t("edit")}
               </button>
-              <button
-                type="button"
-                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
-                onClick={handleDelete}
-              >
+              <button type="button" className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition" onClick={handleDelete}>
                 {t("delete")}
               </button>
               <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
-              <button
-                type="button"
-                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={closeActions}
-              >
+              <button type="button" className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition" onClick={closeActions}>
                 {t("cancel")}
               </button>
             </div>

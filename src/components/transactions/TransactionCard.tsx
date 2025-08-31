@@ -300,7 +300,7 @@ export default function TransactionCard({
   const amountNum = Number(tx.amount ?? 0);
   const dateObj = new Date(tx.date || tx.created_at || Date.now());
 
-  // расходим дату: год — отдельной строкой, ниже компактный день+месяц (в одну строку, без подложки)
+  // расходим дату: год — отдельной строкой, ниже компактный день+месяц
   const yearStr = String(dateObj.getFullYear());
   const dayMonthStr = formatCardDate(dateObj, t);
 
@@ -347,7 +347,7 @@ export default function TransactionCard({
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
-  // ---------- CATEGORY (универсальный резолвер) ----------
+  // ---------- CATEGORY ----------
   const resolvedCategory = resolveCategory(tx, categoriesById, t);
   const categoryName = resolvedCategory.name;
 
@@ -435,20 +435,19 @@ export default function TransactionCard({
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   /* ---------- layout (GRID 4 колонки) ---------- */
-  // Плоский элемент списка: без рамки/скруглений/фона; лёгкие горизонтальные отступы и «телеграмный» hover.
+  // компактнее: уже вертикальные паддинги, меньше межстрочного зазора
   const CardInner = (
     <div
-      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
+      className={`relative py-[6px] px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
-      style={{ color: "var(--tg-text-color)" }} 
+      style={{ color: "var(--tg-text-color)" }}
     >
-      {/* весь контент карточки наследует tg-текст */}
-      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
+      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-0.5 items-start">
         {/* Row1 / Col1 — YEAR */}
         <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{yearStr}</div>
@@ -470,8 +469,8 @@ export default function TransactionCard({
           </div>
         </div>
 
-        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ (поднято ближе к году, одна строка, без подложки) */}
-        <div className="col-start-1 row-start-2 row-span-2 -mt-1.5">
+        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ */}
+        <div className="col-start-1 row-start-2 row-span-2 -mt-1">
           <div className="flex flex-col items-center">
             {isExpense ? (
               <CategoryAvatar
@@ -482,7 +481,7 @@ export default function TransactionCard({
             ) : (
               <TransferAvatar />
             )}
-            <div className="mt-1 text-[10px] leading-none text-[var(--tg-hint-color)] whitespace-nowrap">
+            <div className="mt-0.5 text-[10px] leading-none text-[var(--tg-hint-color)] whitespace-nowrap">
               {dayMonthStr}
             </div>
           </div>
@@ -504,39 +503,22 @@ export default function TransactionCard({
               </span>
             </div>
           ) : (
-            (() => {
-              const l = countGraphemes(payerNameFull);
-              const r = countGraphemes(toNameFull);
-              const total = Math.max(1, l + r);
-              const leftPct = clamp(Math.round((l / total) * 100), 40, 60);
-              const rightPct = 100 - leftPct;
-
-              return (
-                <div
-                  className="grid items-center min-w-0 text-[12px] text-[var(--tg-text-color)]"
-                  style={{ gridTemplateColumns: `minmax(0,${leftPct}%) auto minmax(0,${rightPct}%)` }}
-                >
-                  {/* A (left) */}
-                  <div className="min-w-0 flex items-center gap-2 justify-self-end">
-                    <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
-                    <span className="font-medium truncate" title={payerNameFull}>
-                      {payerNameDisplayTransfer}
-                    </span>
-                  </div>
-
-                  {/* arrow */}
-                  <div className="justify-self-center opacity-60 px-1">→</div>
-
-                  {/* B (right) */}
-                  <div className="min-w-0 flex items-center gap-2 justify-self-start">
-                    <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
-                    <span className="font-medium truncate" title={toNameFull}>
-                      {toNameDisplayTransfer}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()
+            // трансфер: прижимаем влево и распределяем ширину имён поровну
+            <div className="min-w-0 flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
+              <div className="min-w-0 flex items-center gap-2 flex-[1_1_0%]">
+                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
+                <span className="font-medium truncate" title={payerNameFull}>
+                  {payerNameDisplayTransfer}
+                </span>
+              </div>
+              <div className="shrink-0 opacity-60 px-1">→</div>
+              <div className="min-w-0 flex items-center gap-2 flex-[1_1_0%]">
+                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
+                <span className="font-medium truncate" title={toNameFull}>
+                  {toNameDisplayTransfer}
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
