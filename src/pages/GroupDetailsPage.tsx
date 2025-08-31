@@ -17,7 +17,6 @@ import GroupTabs from "../components/group/GroupTabs"
 import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
-import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
@@ -41,7 +40,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы: по умолчанию показываем «Транзакции»
+  // Табы — ⬇️ Transactions по умолчанию
   const [selectedTab, setSelectedTab] = useState<"transactions" | "balance" | "analytics">("transactions")
 
   // Текущий пользователь
@@ -163,17 +162,14 @@ const GroupDetailsPage = () => {
         ownerId={group.owner_id}
       />
 
-      {/* Вкладки (в CardSection, как и раньше) */}
-      <CardSection className="px-0 py-0 mb-2">
-        <GroupTabs
-          selected={selectedTab}
-          onSelect={setSelectedTab}
-          className="mb-0"
-        />
-      </CardSection>
+      {/* Вкладки и контент — БЕЗ CardSection, как на Contacts */}
+      <GroupTabs
+        selected={selectedTab}
+        onSelect={setSelectedTab}
+        className="mb-0"
+      />
 
-      {/* Контент ВНЕ CardSection — на всю ширину, без боковых паддингов/центровки */}
-      <div className="w-full flex-1 pb-12 mt-1">
+      <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
         {selectedTab === "transactions" && (
           <GroupTransactionsTab
             loading={false}
@@ -182,9 +178,7 @@ const GroupDetailsPage = () => {
           />
         )}
 
-        {selectedTab === "balance" && (
-          <GroupBalanceTab />
-        )}
+        {selectedTab === "balance" && <GroupBalanceTab />}
 
         {selectedTab === "analytics" && <GroupAnalyticsTab />}
       </div>
@@ -209,7 +203,7 @@ const GroupDetailsPage = () => {
         groups={group ? [{
           id: group.id,
           name: group.name,
-          // @ts-ignore — если есть в типе
+          // @ts-ignore
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,

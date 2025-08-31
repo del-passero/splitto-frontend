@@ -1,7 +1,6 @@
 // src/components/group/GroupTabs.tsx
 
 import { useTranslation } from "react-i18next"
-import CardSection from "../CardSection"
 
 type Tab<T extends string> = {
   key: T
@@ -26,9 +25,12 @@ function GroupTabs<T extends string>({
     { key: "balance" as T, label: t("group_tab_balance") },
     { key: "analytics" as T, label: t("group_tab_analytics") },
   ]
+
+  // ⬇️ БЕЗ CardSection. Никакого фонового “карточного” цвета —
+  // работаем прямо поверх bg-[var(--tg-bg-color)] как на Contacts.
   return (
-    <CardSection className={`pt-0 pb-0 px-0 mb-2 ${className}`}>
-      <div className="flex w-full max-w-sm mx-auto relative bg-transparent">
+    <div className={`w-full mb-2 ${className}`}>
+      <div className="flex w-full max-w-sm mx-auto relative">
         {TABS.map(tab => (
           <button
             key={tab.key}
@@ -54,7 +56,7 @@ function GroupTabs<T extends string>({
           </button>
         ))}
       </div>
-    </CardSection>
+    </div>
   )
 }
 

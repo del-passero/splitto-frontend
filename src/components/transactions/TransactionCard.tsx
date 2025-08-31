@@ -300,10 +300,9 @@ export default function TransactionCard({
   const amountNum = Number(tx.amount ?? 0);
   const dateObj = new Date(tx.date || tx.created_at || Date.now());
 
-  // день + локализованный месяц (как и раньше)
-  const monthDayStr = formatCardDate(dateObj, t);
-  // год отдельной строкой
+  // ⬇️ разнесли дату: верх — год, низ — день+месяц (локализованный ключом), без влияния на высоту
   const yearStr = String(dateObj.getFullYear());
+  const dayMonthStr = formatCardDate(dateObj, t);
 
   /* --- resolve people --- */
   const payerId: number | undefined = isExpense
@@ -436,10 +435,10 @@ export default function TransactionCard({
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   /* ---------- layout (GRID 4 колонки) ---------- */
-  // Плоский элемент списка: добавили небольшие внутренние отступы по бокам.
+  // Плоский элемент списка; добавили лёгкий внутренний горизонтальный отступ.
   const CardInner = (
     <div
-      className={`relative py-2 px-2 ${hasId ? "transition hover:bg-[var(--tg-secondary-bg-color,#e7e7e7)]/15 dark:hover:bg-[var(--tg-secondary-bg-color,#e7e7e7)]/10" : ""}`}
+      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -448,9 +447,10 @@ export default function TransactionCard({
       role="button"
     >
       <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
-        {/* Row1 / Col1 — YEAR ABOVE AVATAR */}
-        <div className="col-start-1 row-start-1 self-end text-center">
-          <div className="text-[10px] text-[var(--tg-hint-color)] leading-none">{yearStr}</div>
+
+        {/* Row1 / Col1 — YEAR (сверху) */}
+        <div className="col-start-1 row-start-1 self-center text-center leading-none">
+          <div className="text-[11px] text-[var(--tg-hint-color)]">{yearStr}</div>
         </div>
 
         {/* Row1 / Col2-3 — TITLE */}
@@ -467,17 +467,26 @@ export default function TransactionCard({
           <div className="text-[14px] font-semibold">{fmtAmount(amountNum, tx.currency)}</div>
         </div>
 
-        {/* Row2 / Col1 — LEFT ICON (теперь без row-span-2, чтобы под ним поместить дату) */}
-        <div className="col-start-1 row-start-2">
-          {isExpense ? (
-            <CategoryAvatar
-              name={categoryName}
-              color={resolvedCategory.color}
-              icon={resolvedCategory.icon}
-            />
-          ) : (
-            <TransferAvatar />
-          )}
+        {/* Row2-3 / Col1 — LEFT ICON + DAY/MONTH ПОД АВАТАРОМ (абсолютно, не меняет высоту) */}
+        <div className="col-start-1 row-start-2 row-span-2 relative">
+          <div className="flex items-center justify-center">
+            {isExpense ? (
+              <CategoryAvatar
+                name={categoryName}
+                color={resolvedCategory.color}
+                icon={resolvedCategory.icon}
+              />
+            ) : (
+              <TransferAvatar />
+            )}
+          </div>
+          {/* подпись под аватаркой: фиксированный offset от верхнего края, чтобы не двигать разметку */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 text-[11px] text-[var(--tg-hint-color)] leading-none whitespace-nowrap pointer-events-none"
+            style={{ top: 44 }} /* 40px иконка + 4px отступ */
+          >
+            {dayMonthStr}
+          </div>
         </div>
 
         {/* Row2 — PAID BY / A→B */}
@@ -496,30 +505,42 @@ export default function TransactionCard({
               </span>
             </div>
           ) : (
-            // Ровная сетка 1fr / auto / 1fr — одинаковая везде (без «плавающих» процентов)
-            <div
-              className="grid items-center min-w-0 text-[12px] text-[var(--tg-text-color)]"
-              style={{ gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)" }}
-            >
-              {/* A (left) */}
-              <div className="min-w-0 flex items-center gap-2 justify-self-end">
-                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
-                <span className="font-medium truncate" title={payerNameFull}>
-                  {payerNameDisplayTransfer}
-                </span>
-              </div>
+            (() => {
+              const l = countGraphemes(payerNameFull);
+              const r = countGraphemes(toNameFull);
+              const total = Math.max(1, l + r);
+              const leftPct = clamp(Math.round((l / total) * 100), 40, 60);
+              const rightPct = 100 - leftPct;
 
-              {/* arrow */}
-              <div className="justify-self-center opacity-60 px-1">→</div>
+              return (
+                <div
+                  className="grid items-center min-w-0 text-[12px] text-[var(--tg-text-color)]"
+                  style={{
+                    // фиксированная колонка под стрелку даёт одинаковое выравнивание
+                    gridTemplateColumns: `minmax(0,${leftPct}%) 20px minmax(0,${rightPct}%)`,
+                  }}
+                >
+                  {/* A (left) */}
+                  <div className="min-w-0 flex items-center gap-2 justify-self-end">
+                    <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
+                    <span className="font-medium truncate" title={payerNameFull}>
+                      {payerNameDisplayTransfer}
+                    </span>
+                  </div>
 
-              {/* B (right) */}
-              <div className="min-w-0 flex items-center gap-2 justify-self-start">
-                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
-                <span className="font-medium truncate" title={toNameFull}>
-                  {toNameDisplayTransfer}
-                </span>
-              </div>
-            </div>
+                  {/* arrow */}
+                  <div className="justify-self-center opacity-60 w-5 text-center select-none">→</div>
+
+                  {/* B (right) */}
+                  <div className="min-w-0 flex items-center gap-2 justify-self-start">
+                    <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
+                    <span className="font-medium truncate" title={toNameFull}>
+                      {toNameDisplayTransfer}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()
           )}
         </div>
 
@@ -554,11 +575,6 @@ export default function TransactionCard({
               </div>
             </div>
           ) : null}
-        </div>
-
-        {/* Row3 / Col1 — DAY + MONTH UNDER AVATAR */}
-        <div className="col-start-1 row-start-3 self-start text-center">
-          <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{monthDayStr}</div>
         </div>
 
         {/* Row3 / Col2-4 — STATUS / DEBT */}
