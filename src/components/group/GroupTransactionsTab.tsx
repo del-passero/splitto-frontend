@@ -7,7 +7,7 @@ import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
-import CardSection from "../CardSection";
+import TransactionList from "../transactions/TransactionList";
 
 // стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
@@ -143,7 +143,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     };
   }, [groupId]);
 
-  /* ---------- загрузка СПРАВОЧНИКА категорий для корректных имён ---------- */
+  /* ---------- загрузка СПРАВОЧНИКА категорий ---------- */
   useEffect(() => {
     if (!groupId) {
       setCategoriesById(new Map());
@@ -161,7 +161,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             const prev = m.get(it.id);
             m.set(it.id, {
               id: it.id,
-              name: it.name || prev?.name || null, // имя локализованное на бэке
+              name: it.name || prev?.name || null,
               icon: (it.icon ?? prev?.icon) ?? null,
               color: (it.color ?? prev?.color) ?? null,
             });
@@ -340,32 +340,30 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : visible.length === 0 ? (
         <EmptyTransactions />
       ) : (
-        <CardSection noPadding>
-          {visible.map((tx: any, idx: number) => (
-            <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
-              {/* ⬇️ Убрали боковые паддинги — тянем карточку на всю ширину */}
-              <div className="py-2">
-                <TransactionCard
-                  tx={tx}
-                  membersById={membersMap ?? undefined}
-                  groupMembersCount={membersCount}
-                  t={t}
-                  onLongPress={handleLongPress}
-                  categoriesById={categoriesById}  // <-- словарь категорий для имени
-                />
-              </div>
-              {idx !== visible.length - 1 && (
-                // ⬇️ Разделитель теперь на всю ширину
-                <div className="absolute left-0 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-              )}
-            </div>
-          ))}
-          {/* сентинел */}
-          <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
-          {loading && items.length > 0 && (
-            <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+        <TransactionList
+          items={visible}
+          leftInsetPx={64}           // линия после левой колонки (40px иконка + отступы)
+          horizontalPaddingPx={0}    // на всю ширину экрана
+          renderItem={(tx: any) => (
+            <TransactionCard
+              tx={tx}
+              membersById={membersMap ?? undefined}
+              groupMembersCount={membersCount}
+              t={t}
+              onLongPress={handleLongPress}
+              categoriesById={categoriesById}
+            />
           )}
-        </CardSection>
+          keyExtractor={(tx: any) =>
+            tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`
+          }
+        />
+      )}
+
+      {/* сентинел */}
+      <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+      {loading && items.length > 0 && (
+        <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
       )}
 
       <GroupFAB onClick={handleAddClick} />

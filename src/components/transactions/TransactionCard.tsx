@@ -313,7 +313,7 @@ export default function TransactionCard({
     firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
     (payerId != null ? `#${payerId}` : "");
-  const payerNameDisplayExpense = displayName(payerNameFull, 14);
+  const payerNameDisplayExpense = truncateGraphemes(payerNameFull, 14);
   const payerNameDisplayTransfer = truncateMiddleGraphemes(payerNameFull, 32);
 
   const payerAvatar =
@@ -432,10 +432,10 @@ export default function TransactionCard({
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   /* ---------- layout (GRID 4 колонки) ---------- */
+  // Плоский элемент списка: без рамки/скруглений/фона; вертикальный отступ даём здесь.
   const CardInner = (
     <div
-      className={`relative px-3 py-1.5 rounded-xl border bg-[var(--tg-card-bg)] ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
-      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      className={`relative py-2 ${hasId ? "transition hover:bg-black/5 dark:hover:bg-white/5" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -496,7 +496,6 @@ export default function TransactionCard({
               const l = countGraphemes(payerNameFull);
               const r = countGraphemes(toNameFull);
               const total = Math.max(1, l + r);
-              // желаемая доля слева и справа (кламп 40–60), чтобы убрать «дыры»
               const leftPct = clamp(Math.round((l / total) * 100), 40, 60);
               const rightPct = 100 - leftPct;
 
@@ -573,7 +572,7 @@ export default function TransactionCard({
   return hasId ? (
     <Link
       to={`/transactions/${txId}`}
-      className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-xl"
+      className="block focus:outline-none focus:ring-2 focus:ring-[var(--tg-accent-color,#40A7E3)] rounded-none"
       onClick={onClick}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
