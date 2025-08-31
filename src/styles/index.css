@@ -3,6 +3,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===================== */
+/*  Animations & helpers */
+/* ===================== */
+
 @keyframes fab-in {
   0% { opacity: 0; transform: scale(0); }
   60% { opacity: 1; transform: scale(1.15); }
@@ -20,49 +24,6 @@
   animation: fab-label-in 0.25s cubic-bezier(.77,0,.18,1) both;
 }
 
-/* Цвета лейблов FAB и поддержка темы */
-:root {
-  --tg-fab-label-bg: rgba(0,0,0,0.82);
-  --tg-fab-label-color: #fff;
-}
-body.light {
-  --tg-fab-label-bg: rgba(255,255,255,0.96);
-  --tg-fab-label-color: #222;
-}
-body.dark {
-  --tg-fab-label-bg: rgba(0,0,0,0.82);
-  --tg-fab-label-color: #fff;
-}
-
-/* Основные переменные Telegram темы */
-:root {
-  --tg-bg-color: #f8faff;
-  --tg-card-bg: #fff;
-  --tg-text-color: #222;
-  --tg-hint-color: #888;
-  --tg-link-color: #5393e7;
-}
-body.light {
-  --tg-bg-color: #f8faff;
-  --tg-card-bg: #fff;
-  --tg-text-color: #222;
-}
-body.dark {
-  --tg-bg-color: #18191b;
-  --tg-card-bg: #232b3b;
-  --tg-text-color: #f2f2f7;
-}
-body {
-  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
-  background: var(--tg-bg-color);
-  color: var(--tg-text-color);
-  min-height: 100vh;
-}
-.shadow-tg-card {
-  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.11);
-}
-
-
 @keyframes modal-pop {
   0% { transform: scale(0.92) translateY(40px); opacity: 0; }
   100% { transform: scale(1) translateY(0); opacity: 1; }
@@ -70,3 +31,85 @@ body {
 .animate-modal-pop {
   animation: modal-pop 0.18s cubic-bezier(.26,1.12,.48,1.03);
 }
+
+/* ===================== */
+/*      Theme vars       */
+/* ===================== */
+
+/* Единственная точка правды по умолчанию.
+   main.tsx поверх этих значений кладёт реальные Telegram WebApp themeParams. */
+:root {
+  /* Чтобы системные контролы/скроллбар корректно инвертировались в тёмной теме */
+  color-scheme: light dark;
+
+  /* Основные переменные Telegram темы (дефолты) */
+  --tg-bg-color: #f8faff;
+  --tg-card-bg: #ffffff;
+  --tg-text-color: #222222;
+  --tg-hint-color: #888888;
+  --tg-link-color: #5393e7;
+  --tg-accent-color: var(--tg-link-color);
+  --tg-secondary-bg-color: #e7e7e7;
+  --tg-button-color: #5294e2;
+  --tg-button-text-color: #ffffff;
+
+  /* Цвета лейблов у FAB по умолчанию */
+  --tg-fab-label-bg: rgba(0,0,0,0.82);
+  --tg-fab-label-color: #ffffff;
+}
+
+/* Локальные светлая/тёмная — полезно для локального стендалона без Telegram,
+   не мешает runtime-подстановкам из main.tsx */
+body.light {
+  --tg-bg-color: #f8faff;
+  --tg-card-bg: #ffffff;
+  --tg-text-color: #222222;
+  --tg-hint-color: #888888;
+  --tg-link-color: #5393e7;
+  --tg-accent-color: var(--tg-link-color);
+  --tg-secondary-bg-color: #e7e7e7;
+
+  --tg-fab-label-bg: rgba(255,255,255,0.96);
+  --tg-fab-label-color: #222222;
+}
+body.dark {
+  --tg-bg-color: #18191b;
+  --tg-card-bg: #232b3b;
+  --tg-text-color: #f2f2f7;
+  --tg-hint-color: #9aa4b2;
+  --tg-link-color: #6aa8ff;
+  --tg-accent-color: var(--tg-link-color);
+  --tg-secondary-bg-color: #2e3748;
+
+  --tg-fab-label-bg: rgba(0,0,0,0.82);
+  --tg-fab-label-color: #ffffff;
+}
+
+/* Базовые глобальные стили (фон/текст всегда из tg-переменных) */
+html, body, #root {
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  min-height: 100%;
+}
+
+/* Шрифт и минимальная высота страницы */
+body {
+  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* Тень карточек, как и раньше */
+.shadow-tg-card {
+  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.11);
+}
+
+/* ===================== */
+/*  Inheritance hardening*/
+/* ===================== */
+
+/* ВАЖНО: ссылки/кнопки и форм-контролы наследуют цвет контейнера,
+   чтобы не появлялся «чёрный/серый» по умолчанию. */
+button, input, select, textarea, a {
+  color: inherit;
+}
+a { text-decoration: none; }

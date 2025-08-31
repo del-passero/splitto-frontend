@@ -141,7 +141,7 @@ const GroupDetailsPage = () => {
   const existingMemberIds = members.map(m => m.user.id)
 
   return (
-    // Тот же «каркас», что и на ContactsPage: чистый фон Telegram + текстовые переменные темы.
+    // Каркас страницы: чистый фон Telegram + текстовые переменные темы.
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
       {/* Шапка группы */}
       <GroupHeader
