@@ -438,7 +438,7 @@ export default function TransactionCard({
   // компактнее: уже вертикальные паддинги, меньше межстрочного зазора
   const CardInner = (
     <div
-      className={`relative py-[6px] px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
+      className={`relative pt-[6px] pb-[2px] px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -447,7 +447,7 @@ export default function TransactionCard({
       role="button"
       style={{ color: "var(--tg-text-color)" }}
     >
-      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-0.5 items-start">
+      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-0 items-start">
         {/* Row1 / Col1 — YEAR */}
         <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{yearStr}</div>
