@@ -39,12 +39,15 @@ export default {
   delete_group: "Удалить группу",
 
   // --- Балансы и долги ---
-  group_balance_you_get: "Тебе должны {{sum}} ₽",
-  group_balance_you_owe: "Ты должен {{sum}} ₽",
+  // ВАЖНО: здесь «ты/тебе» — на вкладке «Мой баланс»
+  // Для статусов в карточках транзакций оставляем «Вы/Вам» (см. ниже).
+  group_balance_you_get: "Тебе должны {{sum}}",
+  group_balance_you_owe: "Ты должен {{sum}}",
   group_balance_zero: "Всё по нулям",
   group_header_settings: "Настройки",
   group_header_my_balance: "Мой баланс",
   group_participant_no_debt: "Нет долга",
+  // Эти два используются в карточках транзакций и в списках, где форма вежливая:
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
 
@@ -70,10 +73,14 @@ export default {
   group_balance_microtab_mine: "Мой баланс",
   group_balance_microtab_all: "Все балансы",
   group_balance_no_debts: "Нет долгов",
-  group_balance_get_from: "Вам должны: {{sum}} ₽",
-  group_balance_owe_to: "Вы должны: {{sum}} ₽",
+  group_balance_get_from: "Вам должны: {{sum}}",
+  group_balance_owe_to: "Вы должны: {{sum}}",
   group_balance_no_debt_with: "Нет долга",
   group_balance_no_debts_all: "В группе никто никому не должен",
+
+  // Новые подписи для кнопок действий на карточках баланса
+  repay_debt: "Погасить долг",
+  remind_debt: "Напомнить о долге",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",
@@ -226,6 +233,8 @@ export default {
     all: "ВСЕ",
     paid_by_label: "Заплатил",
     owes_label: "Должен",
+    // ↓ нужен на вкладке «Все балансы» между именами: «должен»
+    owes: "должен",
 
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
   },

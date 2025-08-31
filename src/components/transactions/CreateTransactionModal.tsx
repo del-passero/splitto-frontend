@@ -1,4 +1,3 @@
-// src/components/transactions/CreateTransactionModal.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -174,8 +173,6 @@ export default function CreateTransactionModal({
   onCreated,
   initialTx,
   mode = "create",
-  // NEW: предзаполнение полей формы (минимально нужно для «Погасить долг»)
-  prefill,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -184,13 +181,6 @@ export default function CreateTransactionModal({
   onCreated?: (tx: TransactionOut) => void;
   initialTx?: any;
   mode?: "create" | "edit";
-  prefill?: {
-    type?: TxType;
-    amount?: number;
-    paidBy?: { id: number; name?: string; avatar_url?: string };
-    toUser?: { id: number; name?: string; avatar_url?: string };
-    comment?: string | null;
-  };
 }) {
   const { t, i18n } = useTranslation();
   const user = useUserStore((s) => s.user);
@@ -330,51 +320,16 @@ export default function CreateTransactionModal({
     };
   }, [currencyCode]);
 
-  /* ======== NEW: применять prefill при открытии ======== */
-  useEffect(() => {
-    if (!open || !prefill) return;
-    // тип
-    if (prefill.type) setType(prefill.type);
-
-    // сумма (как строка, с ограничением по десятичным знакам по текущей валюте — если неизвестна, просто число)
-    if (typeof prefill.amount === "number" && isFinite(prefill.amount)) {
-      const dec = currency.decimals ?? 2;
-      setAmount(prefill.amount.toFixed(dec));
-      setAmountTouched(true);
-    }
-
-    // участники перевода
-    if (prefill.paidBy?.id) {
-      setPaidBy(prefill.paidBy.id);
-      setPaidByName(prefill.paidBy.name || "");
-      setPaidByAvatar(prefill.paidBy.avatar_url || undefined);
-    }
-    if (prefill.toUser?.id) {
-      setToUser(prefill.toUser.id);
-      setToUserName(prefill.toUser.name || "");
-      setToUserAvatar(prefill.toUser.avatar_url || undefined);
-    }
-
-    if (typeof prefill.comment === "string") {
-      setComment(prefill.comment || "");
-      setCommentTouched(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, prefill]);
-
   const COMMENT_MAX = 32;
   const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v);
   const commentLeft = Math.max(0, COMMENT_MAX - comment.length);
 
-  const { i18n: _i18n } = useTranslation();
-  const locale = useMemo(() => (_i18n.language || "ru").split("-")[0], [_i18n.language]);
+  const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const amountNumber = useMemo(() => {
     const n = Number(amount);
     return isFinite(n) ? n : 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, currency.decimals]);
+  }, [amount]);
 
-  // формат с КОДОМ
   const fmtMoney = (n: number, decimals: number, code: string | null, loc: string) => {
     try {
       const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -535,7 +490,6 @@ export default function CreateTransactionModal({
     return true;
   };
 
-  // shares для бэка
   function buildShares(
     sel: SplitSelection | null | undefined,
     total: number,
@@ -592,7 +546,7 @@ export default function CreateTransactionModal({
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: amtStr,             // строка для Decimal
+          amount: amtStr,
           currency: currency.code || "USD",
           date,
           comment: comment.trim() || null,
@@ -663,6 +617,52 @@ export default function CreateTransactionModal({
     setCurrencyCode(null);
   }, [open, defaultGroupId]);
 
+  /* ===== PREFILL из initialTx (одноразово при открытии) ===== */
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!open) { prefilledRef.current = false; return; }
+    if (prefilledRef.current) return;
+    if (!initialTx) return;
+
+    // группа
+    const gid = Number(initialTx.groupId || defaultGroupId);
+    if (gid) setSelectedGroupId(gid);
+
+    // тип
+    if (initialTx.type === "transfer" || initialTx.type === "expense") {
+      setType(initialTx.type);
+    }
+
+    // сумма
+    if (typeof initialTx.amount === "number" && isFinite(initialTx.amount)) {
+      const d = currency.decimals ?? 2;
+      setAmount(initialTx.amount.toFixed(d));
+    }
+
+    // перевод
+    if (initialTx.type === "transfer") {
+      const pb = Number(initialTx.paidBy || user?.id);
+      const tu = Number(initialTx.toUser);
+      if (isFinite(pb)) setPaidBy(pb);
+      if (isFinite(tu)) setToUser(tu);
+
+      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : "";
+      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : "";
+
+      if (pbName) setPaidByName(pbName);
+      if (tuName) setToUserName(tuName);
+
+      const pbAv = membersMap.get(pb)?.photo_url;
+      const tuAv = membersMap.get(tu)?.photo_url;
+      if (pbAv) setPaidByAvatar(pbAv);
+      if (tuAv) setToUserAvatar(tuAv);
+    }
+
+    if (typeof initialTx.comment === "string") setComment(initialTx.comment);
+
+    prefilledRef.current = true;
+  }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
+
   if (!open) return null;
 
   const mustPickGroupFirst = !selectedGroupId;
@@ -673,13 +673,14 @@ export default function CreateTransactionModal({
 
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
-  const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
-  const toLabel   = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
+  const fromLabel = locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From";
+  const toLabel = locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To";
 
   return (
-    <div className="fixed inset-0 z[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
+    <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
-        <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
+        {/* добавил overflow-x-hidden чтобы не было артефактов прокрутки по X */}
+        <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto overflow-x-hidden bg-[var(--tg-card-bg,#111)]">
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
             <div className="text-[17px] font-bold text-[var(--tg-text-color)]">
@@ -727,403 +728,411 @@ export default function CreateTransactionModal({
               </CardSection>
             </div>
 
-            {/* Остальной UI — далее БЕЗ изменений по логике (см. предыдущую версию) */}
-            {/* Тип */}
-            <div className="-mx-3">
-              <CardSection className="py-0.5">
-                <div className="px-3 pb-0.5 flex justify-center">
-                  <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setType("expense")}
-                      className={`px-3 h-9 text-[13px] flex items-center ${type === "expense" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
-                    >
-                      <Receipt size={14} className="mr-1.5" />
-                      {t("tx_modal.expense")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setType("transfer")}
-                      className={`px-3 h-9 text-[13px] flex items-center ${type === "transfer" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
-                    >
-                      {t("tx_modal.transfer")}
-                      <Send size={14} className="ml-1.5" />
-                    </button>
-                  </div>
-                </div>
-              </CardSection>
-            </div>
-
-            {/* Сумма */}
-            <div className="-mx-3">
-              <CardSection className="py-0">
-                <div className="px-3 pb-0">
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {currency.code && (
-                      <div
-                        className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
-                        title={currency.code}
-                      >
-                        {currency.code}
-                      </div>
-                    )}
-                    <input
-                      ref={amountInputRef}
-                      inputMode="decimal"
-                      placeholder={currency.decimals === 0 ? "0" : "0.00"}
-                      value={amount}
-                      onChange={(e) => handleAmountChange(e.target.value)}
-                      onBlur={handleAmountBlur}
-                      className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
-                    />
-                  </div>
-
-                  {(showErrors || amountTouched) && errors.amount && (
-                    <div className="pt-1 pb-1 text-[12px] text-red-500">
-                      {errors.amount}
-                    </div>
-                  )}
-                </div>
-              </CardSection>
-            </div>
-
-            {/* EXPENSE */}
-            {type === "expense" ? (
+            {/* Остальной UI */}
+            {mustPickGroupFirst ? null : (
               <>
-                {/* Категория + Комментарий */}
+                {/* Тип */}
                 <div className="-mx-3">
-                  <CardSection className="py-0">
-                    <div
-                      className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
-                      style={fillStyle(categoryColor)}
-                    >
-                      {/* Категория */}
-                      <button
-                        type="button"
-                        onClick={() => setCategoryModal(true)}
-                        className="min-w-0 flex items-center gap-2 h-9 rounded-lg border px-2 overflow-hidden"
-                        style={categoryColor ? chipStyle(categoryColor) : {}}
-                      >
-                        <span className="inline-flex w-6 h-6 items-center justify-center rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shrink-0">
-                          <span style={{ fontSize: 14 }} aria-hidden>
-                            {categoryIcon || <Layers size={14} />}
-                          </span>
-                        </span>
-                        <span className="text-[13px] font-medium truncate">
-                          {categoryName || t("tx_modal.category")}
-                        </span>
-                      </button>
-
-                      {/* Комментарий */}
-                      <div className="min-w-0 flex items-center gap-2">
-                        <FileText size={16} className="opacity-80 shrink-0" />
-                        <input
-                          value={comment}
-                          onChange={(e) => onCommentChange(e.target.value)}
-                          onBlur={handleCommentBlur}
-                          placeholder={t("tx_modal.comment")}
-                          className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1 text-[14px]"
-                        />
+                  <CardSection className="py-0.5">
+                    <div className="px-3 pb-0.5 flex justify-center">
+                      <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setType("expense")}
+                          className={`px-3 h-9 text-[13px] flex items-center ${type === "expense" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                        >
+                          <Receipt size={14} className="mr-1.5" />
+                          {t("tx_modal.expense")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setType("transfer")}
+                          className={`px-3 h-9 text-[13px] flex items-center ${type === "transfer" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)] bg-transparent"}`}
+                        >
+                          {t("tx_modal.transfer")}
+                          <Send size={14} className="ml-1.5" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className={`px-3 pb-0.5 -mt-0.5 text-[12px] ${Math.max(0, 32 - comment.length) === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
-                      {
-                        (i18n.language || "en").startsWith("ru")
-                          ? (comment.length === 0 ? `Введите комментарий (до 32 символов)` : `Осталось ${Math.max(0, 32 - comment.length)} символов`)
-                          : (i18n.language || "en").startsWith("es")
-                          ? (comment.length === 0 ? `Escribe un comentario (hasta 32 caracteres)` : `Quedan ${Math.max(0, 32 - comment.length)} caracteres`)
-                          : (comment.length === 0 ? `Enter a comment (up to 32 chars)` : `${Math.max(0, 32 - comment.length)} characters left`)
-                      }
-                    </div>
-
-                    {(showErrors && errors.category) && (
-                      <div className="px-3 pb-0.5 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
-                    )}
-                    {(showErrors || commentTouched) && errors.comment && (
-                      <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                        {errors.comment}
-                      </div>
-                    )}
                   </CardSection>
                 </div>
 
-                {/* Paid by / Split */}
+                {/* Сумма */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
-                    <div className="px-3 py-1 grid grid-cols-2 gap-2">
-                      {/* Paid by */}
-                      <button
-                        type="button"
-                        onClick={openPayerPicker}
-                        className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
-                      >
-                        {paidBy ? (
-                          <>
-                            <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                              {paidByAvatar ? (
-                                <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                              )}
-                              <strong className="truncate">{firstNameOnly(paidByName) || t("not_specified")}</strong>
-                            </span>
-                            <span
-                              role="button"
-                              aria-label={t("clear") || "Очистить"}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
-                            >
-                              <X size={12} />
-                            </span>
-                          </>
-                        ) : (
-                          <span className="opacity-70 truncate">{t("tx_modal.paid_by")}</span>
+                    <div className="px-3 pb-0">
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {currency.code && (
+                          <div
+                            className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
+                            title={currency.code}
+                          >
+                            {currency.code}
+                          </div>
                         )}
-                      </button>
+                        <input
+                          ref={amountInputRef}
+                          inputMode="decimal"
+                          placeholder={currency.decimals === 0 ? "0" : "0.00"}
+                          value={amount}
+                          onChange={(e) => handleAmountChange(e.target.value)}
+                          onBlur={handleAmountBlur}
+                          className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
+                        />
+                      </div>
 
-                      {/* Split */}
-                      <button
-                        type="button"
-                        onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
-                        className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
-                      >
-                        <span className="truncate">{t("tx_modal.split")}</span>
-                        <strong className="truncate">
-                          {splitData?.type
-                            ? splitData.type === "equal"
-                              ? t("tx_modal.split_equal")
-                              : splitData.type === "shares"
-                              ? t("tx_modal.split_shares")
-                              : t("tx_modal.split_custom")
-                            : t("tx_modal.split_equal")}
-                        </strong>
-                      </button>
+                      {(showErrors || amountTouched) && errors.amount && (
+                        <div className="pt-1 pb-1 text-[12px] text-red-500">
+                          {errors.amount}
+                        </div>
+                      )}
+                    </div>
+                  </CardSection>
+                </div>
+
+                {/* EXPENSE */}
+                {type === "expense" ? (
+                  <>
+                    {/* Категория + Комментарий */}
+                    <div className="-mx-3">
+                      <CardSection className="py-0">
+                        <div
+                          className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
+                          style={fillStyle(categoryColor)}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setCategoryModal(true)}
+                            className="min-w-0 flex items-center gap-2 h-9 rounded-lg border px-2 overflow-hidden"
+                            style={categoryColor ? chipStyle(categoryColor) : {}}
+                          >
+                            <span className="inline-flex w-6 h-6 items-center justify-center rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shrink-0">
+                              <span style={{ fontSize: 14 }} aria-hidden>
+                                {categoryIcon || <Layers size={14} />}
+                              </span>
+                            </span>
+                            <span className="text-[13px] font-medium truncate">
+                              {categoryName || t("tx_modal.category")}
+                            </span>
+                          </button>
+
+                          <div className="min-w-0 flex items-center gap-2">
+                            <FileText size={16} className="opacity-80 shrink-0" />
+                            <input
+                              value={comment}
+                              onChange={(e) => onCommentChange(e.target.value)}
+                              onBlur={handleCommentBlur}
+                              placeholder={t("tx_modal.comment")}
+                              className="flex-1 bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] py-1 text-[14px]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className={`px-3 pb-0.5 -mt-0.5 text-[12px] ${commentLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
+                          {(i18n.language || "en").startsWith("ru")
+                            ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
+                            : (i18n.language || "en").startsWith("es")
+                            ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
+                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
+                          }
+                        </div>
+
+                        {(showErrors && errors.category) && (
+                          <div className="px-3 pb-0.5 -mt-0.5 text-[12px] text-red-500">{errors.category}</div>
+                        )}
+                        {(showErrors || commentTouched) && errors.comment && (
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
+                            {errors.comment}
+                          </div>
+                        )}
+                      </CardSection>
                     </div>
 
-                    {/* Превью долей */}
-                    {!!perPerson.length && (
-                      <div className="px-3 pb-1 mt-1">
-                        <div className="flex flex-col gap-1">
-                          {paidBy && (
-                            <div className="flex items-center gap-2 text-[13px] font-medium">
-                              {paidByAvatar ? (
-                                <img src={paidByAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                              )}
-                              <span className="truncate flex-1">
-                                {t("tx_modal.paid_by_label")}: {firstNameOnly(paidByName) || t("not_specified")}
-                              </span>
-                              <span className="shrink-0 opacity-80">
-                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
-                              </span>
-                            </div>
-                          )}
+                    {/* Paid by / Split */}
+                    <div className="-mx-3">
+                      <CardSection className="py-0">
+                        <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={openPayerPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                          >
+                            {paidBy ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {paidByAvatar ? (
+                                    <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstNameOnly(paidByName) || t("not_specified")}</strong>
+                                </span>
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
+                            ) : (
+                              <span className="opacity-70 truncate">{t("tx_modal.paid_by")}</span>
+                            )}
+                          </button>
 
-                          {perPerson
-                            .filter((p) => !paidBy || p.user_id !== paidBy)
-                            .map((p) => (
-                              <div key={p.user_id} className="flex items-center gap-2 text-[13px]">
-                                {p.avatar_url ? (
-                                  <img src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
+                            className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                          >
+                            <span className="truncate">{t("tx_modal.split")}</span>
+                            <strong className="truncate">
+                              {splitData?.type
+                                ? splitData.type === "equal"
+                                  ? t("tx_modal.split_equal")
+                                  : splitData.type === "shares"
+                                  ? t("tx_modal.split_shares")
+                                  : t("tx_modal.split_custom")
+                                : t("tx_modal.split_equal")}
+                            </strong>
+                          </button>
+                        </div>
+
+                        {/* Превью долей */}
+                        {!!perPerson.length && (
+                          <div className="px-3 pb-1 mt-1">
+                            <div className="flex flex-col gap-1">
+                              {paidBy && (
+                                <div className="flex items-center gap-2 text-[13px] font-medium">
+                                  {paidByAvatar ? (
+                                    <img src={paidByAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <span className="truncate flex-1">
+                                    {paidByLabel}: {firstNameOnly(paidByName) || t("not_specified")}
+                                  </span>
+                                  <span className="shrink-0 opacity-80">
+                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {perPerson
+                                .filter((p) => !paidBy || p.user_id !== paidBy)
+                                .map((p) => (
+                                  <div key={p.user_id} className="flex items-center gap-2 text-[13px]">
+                                    {p.avatar_url ? (
+                                      <img src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                    ) : (
+                                      <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                    )}
+                                    <span className="truncate flex-1">
+                                      {owesLabel}: {p.name}
+                                    </span>
+                                    <span className="shrink-0 opacity-80">
+                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale)}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                        {(showErrors && errors.split) && (
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.split}</div>
+                        )}
+                        {customMismatch && (
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
+                            {locale === "ru"
+                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : locale === "es"
+                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                            }
+                          </div>
+                        )}
+                      </CardSection>
+                    </div>
+                  </>
+                ) : null}
+
+                {/* TRANSFER */}
+                {type === "transfer" ? (
+                  <>
+                    <div className="-mx-3">
+                      <CardSection className="py-0">
+                        <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={openPayerPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                          >
+                            {paidBy ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {paidByAvatar ? (
+                                    <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstNameOnly(paidByName) || t("not_specified")}</strong>
+                                </span>
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
+                            ) : (
+                              <span className="opacity-70 truncate">{fromLabel}</span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={openRecipientPicker}
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                          >
+                            {toUser ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                  {toUserAvatar ? (
+                                    <img src={toUserAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                  )}
+                                  <strong className="truncate">{firstNameOnly(toUserName) || t("not_specified")}</strong>
+                                </span>
+                                <span
+                                  role="button"
+                                  aria-label={t("clear") || "Очистить"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg:white/10 hover:bg-black/20"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setToUser(undefined); setToUserName(""); setToUserAvatar(undefined); }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              </>
+                            ) : (
+                              <span className="opacity-70 truncate">{toLabel}</span>
+                            )}
+                          </button>
+                        </div>
+
+                        {(paidBy || toUser) && amountNumber > 0 && (
+                          <div className="px-3 pb-1 mt-1">
+                            <div className="flex items-center gap-2 text-[13px]">
+                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                {paidByAvatar ? (
+                                  <img src={paidByAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                 )}
-                                <span className="truncate flex-1">
-                                  {t("tx_modal.owes_label")}: {p.name}
-                                </span>
-                                <span className="shrink-0 opacity-80">
-                                  {fmtMoney(p.amount, currency.decimals, currency.code, locale)}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* ошибки сплита */}
-                  </CardSection>
-                </div>
-              </>
-            ) : null}
+                                <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : fromLabel}</strong>
+                              </span>
+                              <span className="opacity-60">→</span>
+                              <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                                {toUserAvatar ? (
+                                  <img src={toUserAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                ) : (
+                                  <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                                )}
+                                <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
+                              </span>
+                              <span className="ml-auto shrink-0 opacity-80">
+                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
-            {/* TRANSFER */}
-            {type === "transfer" ? (
-              <>
+                        {(showErrors && errors.transfer) && (
+                          <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.transfer}</div>
+                        )}
+                      </CardSection>
+                    </div>
+                  </>
+                ) : null}
+
+                {/* Дата */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
-                    <div className="px-3 py-1 grid grid-cols-2 gap-2">
-                      {/* From */}
-                      <button
-                        type="button"
-                        onClick={openPayerPicker}
-                        className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
-                      >
-                        {paidBy ? (
-                          <>
-                            <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                              {paidByAvatar ? (
-                                <img src={paidByAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                              )}
-                              <strong className="truncate">{firstNameOnly(paidByName) || t("not_specified")}</strong>
-                            </span>
-                            <span
-                              role="button"
-                              aria-label={t("clear") || "Очистить"}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
-                            >
-                              <X size={12} />
-                            </span>
-                          </>
-                        ) : (
-                          <span className="opacity-70 truncate">{fromLabel}</span>
-                        )}
-                      </button>
-
-                      {/* To */}
-                      <button
-                        type="button"
-                        onClick={openRecipientPicker}
-                        className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
-                      >
-                        {toUser ? (
-                          <>
-                            <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                              {toUserAvatar ? (
-                                <img src={toUserAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                              )}
-                              <strong className="truncate">{firstNameOnly(toUserName) || t("not_specified")}</strong>
-                            </span>
-                            <span
-                              role="button"
-                              aria-label={t("clear") || "Очистить"}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setToUser(undefined); setToUserName(""); setToUserAvatar(undefined); }}
-                            >
-                              <X size={12} />
-                            </span>
-                          </>
-                        ) : (
-                          <span className="opacity-70 truncate">{toLabel}</span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Превью перевода */}
-                    {(paidBy || toUser) && amountNumber > 0 && (
-                      <div className="px-3 pb-1 mt-1">
-                        <div className="flex items-center gap-2 text-[13px]">
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                            {paidByAvatar ? (
-                              <img src={paidByAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-                            ) : (
-                              <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                            )}
-                            <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : fromLabel}</strong>
-                          </span>
-                          <span className="opacity-60">→</span>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                            {toUserAvatar ? (
-                              <img src={toUserAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-                            ) : (
-                              <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
-                            )}
-                            <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
-                          </span>
-                          <span className="ml-auto shrink-0 opacity-80">
-                            {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
-                          </span>
-                        </div>
+                    <div className="px-3 py-1">
+                      <label className="block text-[12px] font-medium opacity-80 mb-0.5">{t("tx_modal.date")}</label>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                          className="w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
+                        />
+                        <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                       </div>
-                    )}
-
-                    {(showErrors && errors.transfer) && (
-                      <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">{errors.transfer}</div>
-                    )}
+                    </div>
                   </CardSection>
                 </div>
-              </>
-            ) : null}
 
-            {/* Дата */}
-            <div className="-mx-3">
-              <CardSection className="py-0">
-                <div className="px-3 py-1">
-                  <label className="block text-[12px] font-medium opacity-80 mb-0.5">{t("tx_modal.date")}</label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
-                    />
-                    <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
-                  </div>
-                </div>
-              </CardSection>
-            </div>
-
-            {/* Кнопки */}
-            <div className="flex flex-row gap-2 mt-1 w-full relative">
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                style={{ color: "#000" }}
-                className="w-1/2 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
-                disabled={saving}
-              >
-                {t("cancel")}
-              </button>
-
-              <div className="w-1/2 relative">
-                <div className="flex">
+                {/* Кнопки */}
+                <div className="flex flex-row gap-2 mt-1 w-full relative">
                   <button
                     type="button"
-                    onClick={() => void doSubmit("close")}
-                    className="flex-1 h-10 rounded-l-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
+                    onClick={() => onOpenChange(false)}
+                    style={{ color: "#000" }}
+                    className="w-1/2 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition"
                     disabled={saving}
                   >
-                    {saving ? t("saving") : (mode === "edit" ? t("save") : t("tx_modal.create"))}
+                    {t("cancel")}
                   </button>
-                  {mode !== "edit" && (
-                    <button
-                      type="button"
-                      onClick={() => setMoreOpen((v) => !v)}
-                      className="px-3 h-10 rounded-r-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
-                      aria-label="More actions"
-                      disabled={saving}
-                    >
-                      <ChevronDown size={16} />
-                    </button>
-                  )}
-                </div>
 
-                {moreOpen && !saving && mode !== "edit" && (
-                  <div
-                    className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-20"
-                    onMouseLeave={() => setMoreOpen(false)}
-                  >
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
-                      onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
-                    >
-                      {t("tx_modal.create_and_new")}
-                    </button>
+                  <div className="w-1/2 relative">
+                    <div className="flex">
+                      <button
+                        type="button"
+                        onClick={() => void doSubmit("close")}
+                        className="flex-1 h-10 rounded-l-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
+                        disabled={saving}
+                      >
+                        {saving ? t("saving") : (mode === "edit" ? t("save") : t("tx_modal.create"))}
+                      </button>
+                      {mode !== "edit" && (
+                        <button
+                          type="button"
+                          onClick={() => setMoreOpen((v) => !v)}
+                          className="px-3 h-10 rounded-r-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition disabled:opacity-60"
+                          aria-label="More actions"
+                          disabled={saving}
+                        >
+                          <ChevronDown size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    {moreOpen && !saving && mode !== "edit" && (
+                      <div
+                        className="absolute right-0 mt-1 w-[220px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] z-20"
+                        onMouseLeave={() => setMoreOpen(false)}
+                      >
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
+                          onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
+                        >
+                          {t("tx_modal.create_and_new")}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Выборы/пикеры */}
+      {/* Выбор группы */}
       <GroupPickerModal
         open={groupModal && !groupLocked}
         onClose={() => setGroupModal(false)}
@@ -1131,6 +1140,7 @@ export default function CreateTransactionModal({
         onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false); }}
       />
 
+      {/* Выбор категории */}
       <CategoryPickerModal
         open={!!selectedGroupId && type === "expense" && categoryModal}
         onClose={() => setCategoryModal(false)}
@@ -1152,6 +1162,7 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
+      {/* Выбор плательщика */}
       <MemberPickerModal
         open={payerOpen && !!selectedGroupId}
         onClose={() => setPayerOpen(false)}
@@ -1162,6 +1173,7 @@ export default function CreateTransactionModal({
           setPaidByName(u.name || "");
           // @ts-ignore
           setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
+          // Автосплит equal со всеми участниками
           setSplitData((prev) => {
             const alreadySet = !!prev && prev.participants && prev.participants.length > 0;
             if (alreadySet) return prev;
@@ -1176,6 +1188,7 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
+      {/* Выбор получателя */}
       <MemberPickerModal
         open={recipientOpen && !!selectedGroupId}
         onClose={() => setRecipientOpen(false)}
@@ -1190,6 +1203,7 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
+      {/* Деление */}
       <SplitPickerModal
         open={splitOpen && !!selectedGroupId}
         onClose={() => setSplitOpen(false)}

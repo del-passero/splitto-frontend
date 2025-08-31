@@ -1,14 +1,14 @@
-// src/components/group/GroupBalanceTab.tsx
 import { useEffect, useMemo, useState } from "react";
 import GroupBalanceTabSmart, { MyDebt, AllDebt } from "./GroupBalanceTabSmart";
 import { getTransactions } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
+import { useGroupsStore } from "../../store/groupsStore";
 import type { GroupMember } from "../../types/group_member";
-import CardSection from "../CardSection";
+import CreateTransactionModal from "../transactions/CreateTransactionModal";
 
-// Мягкое определение точности по коду валюты (как в других местах проекта)
+// Мягкое определение точности по коду валюты
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
 const decimalsByCode = (code?: string | null) => (code && ZERO_DEC.has(code) ? 0 : 2);
 const roundBy = (n: number, d: number) => {
@@ -38,6 +38,8 @@ export default function GroupBalanceTab() {
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0);
   const currentUserId = useUserStore((s) => s.user?.id) ?? 0;
+
+  const { groups: groupsStoreItems } = useGroupsStore();
 
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<string | null>(null);
@@ -110,7 +112,7 @@ export default function GroupBalanceTab() {
 
         // 2) Считаем нетто-балансы по пользователям
         const d = decimalsByCode(groupCcy);
-        const bal = new Map<number, number>(); // id -> net ( >0 должны вам, <0 вы должны )
+        const bal = new Map<number, number>(); // id -> net
 
         const add = (id: number, delta: number) => {
           if (!Number.isFinite(delta) || id == null) return;
@@ -118,7 +120,7 @@ export default function GroupBalanceTab() {
         };
 
         for (const tx of all) {
-          // если у группы всегда одна валюта — пропустим проверку; если нет — считаем только в валюте группы
+          // если в группе всегда одна валюта — проверки можно упростить
           if (groupCcy && tx.currency && String(tx.currency).toUpperCase() !== String(groupCcy).toUpperCase()) {
             continue;
           }
@@ -130,8 +132,8 @@ export default function GroupBalanceTab() {
               const amt = toNum((s as any).amount);
               if (!Number.isFinite(amt) || amt <= 0) continue;
               if (uid === payer) continue; // свою долю сам себе не должен
-              add(payer, amt);   // участник должен payer'у
-              add(uid, -amt);    // участник должен
+              add(payer, amt);
+              add(uid, -amt);
             }
           } else if (tx.type === "transfer") {
             const from =
@@ -144,15 +146,14 @@ export default function GroupBalanceTab() {
                      (Array.isArray(tx.transfer) ? tx.transfer[1] : NaN));
             const amt = toNum(tx.amount);
             if (Number.isFinite(from) && Number.isFinite(to) && Number.isFinite(amt) && amt > 0) {
-              // перевод уменьшает долг: from получил «кредит», to — «снял требование»
               add(from, amt);
               add(to, -amt);
             }
           }
         }
 
-        // 3) Жадная разборка на пары (debtor -> creditor)
-        type Node = { id: number; left: number }; // left >0 для кредиторов, <0 для должников
+        // 3) Жадная разборка на пары
+        type Node = { id: number; left: number };
         const creditors: Node[] = [];
         const debtors: Node[] = [];
         for (const [id, net] of bal.entries()) {
@@ -160,27 +161,22 @@ export default function GroupBalanceTab() {
           if (v > 0) creditors.push({ id, left: v });
           else if (v < 0) debtors.push({ id, left: v });
         }
-
-        creditors.sort((a, b) => b.left - a.left);   // по убыванию
-        debtors.sort((a, b) => a.left - b.left);     // по возрастанию
+        creditors.sort((a, b) => b.left - a.left);
+        debtors.sort((a, b) => a.left - b.left);
 
         const pairs: { from: number; to: number; amount: number }[] = [];
         let ci = 0, di = 0;
         while (ci < creditors.length && di < debtors.length) {
           const c = creditors[ci];
-          const dnode = debtors[di];
-          const need = c.left;
-          const owe = -dnode.left;
-          const pay = roundBy(Math.min(need, owe), d);
-
+          const dd = debtors[di];
+          const pay = roundBy(Math.min(c.left, -dd.left), d);
           if (pay > 0) {
-            pairs.push({ from: dnode.id, to: c.id, amount: pay });
+            pairs.push({ from: dd.id, to: c.id, amount: pay });
             c.left = roundBy(c.left - pay, d);
-            dnode.left = roundBy(dnode.left + pay, d);
+            dd.left = roundBy(dd.left + pay, d);
           }
-
           if (c.left <= 0 + 1 / Math.pow(10, d)) ci++;
-          if (dnode.left >= 0 - 1 / Math.pow(10, d)) di++;
+          if (dd.left >= 0 - 1 / Math.pow(10, d)) di++;
         }
 
         // 4) Собираем объекты с юзерами
@@ -196,7 +192,6 @@ export default function GroupBalanceTab() {
               photo_url: u.photo_url,
             };
           }
-          // fallback
           return { id };
         };
 
@@ -206,7 +201,7 @@ export default function GroupBalanceTab() {
           amount: roundBy(p.amount, d),
         }));
 
-        // 5) Мои долги/мои требования и итоговый баланс
+        // 5) Мои долги/требования и итоговый баланс
         const myPairs: MyDebt[] = [];
         let meNet = 0;
         for (const [id, net] of bal.entries()) {
@@ -234,8 +229,42 @@ export default function GroupBalanceTab() {
     return () => { aborted = true; };
   }, [groupId, currentUserId, membersMap]);
 
+  /* ========== КНОПКИ ДЕЙСТВИЙ: модалка создания транзакции ========== */
+  const [openCreate, setOpenCreate] = useState(false);
+  const [initialTx, setInitialTx] = useState<any | null>(null);
+
+  const handleRepay = (u: { id: number; first_name?: string; last_name?: string; username?: string }, amount: number) => {
+    // Префилл как перевод «я → u» на сумму долга
+    setInitialTx({
+      type: "transfer",
+      groupId,
+      amount,
+      paidBy: currentUserId,
+      toUser: u.id,
+      comment: "",
+    });
+    setOpenCreate(true);
+  };
+
+  const handleRemind = () => {
+    // Простая заглушка
+    window.alert((window as any).i18next?.t?.("debts_reserved") || "Долги — скоро!");
+  };
+
+  const groupsForModal = useMemo(() => {
+    return (groupsStoreItems || []).map((g: any) => ({
+      id: g.id,
+      name: g.name,
+      icon: g.icon,
+      color: g.color,
+      default_currency_code: g.default_currency_code,
+      currency_code: g.currency_code,
+      currency: g.currency,
+    }));
+  }, [groupsStoreItems]);
+
   return (
-    <CardSection noPadding>
+    <>
       <GroupBalanceTabSmart
         myBalance={myBalance}
         myDebts={myDebts}
@@ -243,7 +272,19 @@ export default function GroupBalanceTab() {
         loading={loading}
         onFabClick={() => {}}
         currency={currency}
+        onRepay={handleRepay}
+        onRemind={(u, amt) => handleRemind()}
       />
-    </CardSection>
+
+      <CreateTransactionModal
+        open={openCreate}
+        onOpenChange={(v) => setOpenCreate(v)}
+        groups={groupsForModal}
+        defaultGroupId={groupId}
+        onCreated={() => {}}
+        initialTx={initialTx || undefined}
+        mode="create"
+      />
+    </>
   );
 }
