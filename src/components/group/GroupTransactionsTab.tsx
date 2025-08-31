@@ -127,7 +127,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             username: u.username,
             avatar_url: u.photo_url ?? undefined,
             photo_url: u.photo_url ?? undefined,
-          });
+          } as any);
         }
         setMembersMap(map);
         setMembersCount(total || items.length);
@@ -343,18 +343,20 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         <CardSection noPadding>
           {visible.map((tx: any, idx: number) => (
             <div key={tx.id || `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`} className="relative">
-              <div className="px-3 py-2">
+              {/* ⬇️ Убрали боковые паддинги — тянем карточку на всю ширину */}
+              <div className="py-2">
                 <TransactionCard
                   tx={tx}
                   membersById={membersMap ?? undefined}
                   groupMembersCount={membersCount}
                   t={t}
                   onLongPress={handleLongPress}
-                  categoriesById={categoriesById}  // <-- пробрасываем словарь категорий
+                  categoriesById={categoriesById}  // <-- словарь категорий для имени
                 />
               </div>
               {idx !== visible.length - 1 && (
-                <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                // ⬇️ Разделитель теперь на всю ширину
+                <div className="absolute left-0 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
               )}
             </div>
           ))}

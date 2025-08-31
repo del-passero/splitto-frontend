@@ -496,7 +496,7 @@ export default function TransactionCard({
               const l = countGraphemes(payerNameFull);
               const r = countGraphemes(toNameFull);
               const total = Math.max(1, l + r);
-              // желаемая доля слева и справа (кламп 40–60), чтобы не было «дыр»
+              // желаемая доля слева и справа (кламп 40–60), чтобы убрать «дыры»
               const leftPct = clamp(Math.round((l / total) * 100), 40, 60);
               const rightPct = 100 - leftPct;
 
