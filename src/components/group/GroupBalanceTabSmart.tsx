@@ -65,8 +65,13 @@ export default function GroupBalanceTabSmart({
     return t("group_balance_zero");
   }, [myBalance, t, currency]);
 
+  // константы как в TransactionList
+  const H_PADDING = 16;
+  const LEFT_INSET = 52; // 40px (иконка/колонка) + 12px gap — как у TransactionList
+
   return (
-    <div className="w-full">
+    <div className="w-full" style={{ color: "var(--tg-text-color)" }}>
+      {/* переключатель оставляем как было */}
       <div className="flex justify-center mt-1 mb-2">
         <div
           className="inline-flex rounded-xl border overflow-hidden"
@@ -97,9 +102,15 @@ export default function GroupBalanceTabSmart({
         </div>
       </div>
 
+      {/* контейнер списка как у TransactionList */}
       <div
-        className="rounded-xl border p-3 bg-[var(--tg-card-bg)]"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+        className="w-full"
+        style={{
+          paddingLeft: H_PADDING,
+          paddingRight: H_PADDING,
+          background: "transparent",
+          color: "inherit",
+        }}
       >
         {loading ? (
           <div className="py-8 text-center text-[var(--tg-hint-color)]">
@@ -110,40 +121,53 @@ export default function GroupBalanceTabSmart({
             <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">
               {headerText}
             </div>
+
             {myDebts.length === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts")}
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {myDebts.map((d) => (
-                  <div key={d.user.id} className="flex items-center justify-between">
-                    <div className="min-w-0 flex items-center gap-2">
-                      {d.user.photo_url ? (
-                        <img
-                          src={d.user.photo_url}
-                          alt=""
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span
-                          className="w-7 h-7 rounded-full inline-block"
-                          style={{ background: "var(--tg-link-color)" }}
-                        />
-                      )}
-                      <span className="truncate text-[14px] text-[var(--tg-text-color)]">
-                        {firstOnly(d.user)}
-                      </span>
+              <div role="list">
+                {myDebts.map((d, idx) => (
+                  <div key={d.user.id} className={`relative ${idx > 0 ? "-mt-1" : ""}`}>
+                    {/* row */}
+                    <div className="flex items-center justify-between py-[6px]">
+                      <div className="min-w-0 flex items-center gap-2">
+                        {d.user.photo_url ? (
+                          <img
+                            src={d.user.photo_url}
+                            alt=""
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="w-7 h-7 rounded-full inline-block"
+                            style={{ background: "var(--tg-link-color)" }}
+                          />
+                        )}
+                        <span className="truncate text-[14px] text-[var(--tg-text-color)]">
+                          {firstOnly(d.user)}
+                        </span>
+                      </div>
+                      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                        {d.amount >= 0
+                          ? t("group_balance_get_from", {
+                              sum: fmtMoney(d.amount, currency),
+                            })
+                          : t("group_balance_owe_to", {
+                              sum: fmtMoney(Math.abs(d.amount), currency),
+                            })}
+                      </div>
                     </div>
-                    <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                      {d.amount >= 0
-                        ? t("group_balance_get_from", {
-                            sum: fmtMoney(d.amount, currency),
-                          })
-                        : t("group_balance_owe_to", {
-                            sum: fmtMoney(Math.abs(d.amount), currency),
-                          })}
-                    </div>
+
+                    {/* divider */}
+                    {idx !== myDebts.length - 1 && (
+                      <div
+                        className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
+                        style={{ left: LEFT_INSET, right: -H_PADDING }}
+                        aria-hidden
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -156,34 +180,45 @@ export default function GroupBalanceTabSmart({
                 {t("group_balance_no_debts_all")}
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div role="list">
                 {allDebts.map((p, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <div className="min-w-0 flex items-center gap-2">
-                      {p.from.photo_url ? (
-                        <img
-                          src={p.from.photo_url}
-                          alt=""
-                          className="w-6 h-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span
-                          className="w-6 h-6 rounded-full inline-block"
-                          style={{ background: "var(--tg-link-color)" }}
-                        />
-                      )}
-                      {/* Каждый блок имени ограничен в ширину и трюнкетится */}
-                      <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
-                        {firstOnly(p.from)}
-                      </span>
-                      <span className="opacity-60 shrink-0">→</span>
-                      <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
-                        {firstOnly(p.to)}
-                      </span>
+                  <div key={`${p.from.id}-${p.to.id}-${idx}`} className={`relative ${idx > 0 ? "-mt-1" : ""}`}>
+                    {/* row */}
+                    <div className="flex items-center justify-between py-[6px]">
+                      <div className="min-w-0 flex items-center gap-2">
+                        {p.from.photo_url ? (
+                          <img
+                            src={p.from.photo_url}
+                            alt=""
+                            className="w-6 h-6 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="w-6 h-6 rounded-full inline-block"
+                            style={{ background: "var(--tg-link-color)" }}
+                          />
+                        )}
+                        <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
+                          {firstOnly(p.from)}
+                        </span>
+                        <span className="opacity-60 shrink-0">→</span>
+                        <span className="text-[14px] text-[var(--tg-text-color)] max-w-[36%] truncate">
+                          {firstOnly(p.to)}
+                        </span>
+                      </div>
+                      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                        {fmtMoney(p.amount, currency)}
+                      </div>
                     </div>
-                    <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                      {fmtMoney(p.amount, currency)}
-                    </div>
+
+                    {/* divider */}
+                    {idx !== allDebts.length - 1 && (
+                      <div
+                        className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
+                        style={{ left: LEFT_INSET, right: -H_PADDING }}
+                        aria-hidden
+                      />
+                    )}
                   </div>
                 ))}
               </div>

@@ -6,6 +6,7 @@ import { getGroupMembers } from "../../api/groupMembersApi";
 import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
+import CardSection from "../CardSection";
 
 // Мягкое определение точности по коду валюты (как в других местах проекта)
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
@@ -234,13 +235,15 @@ export default function GroupBalanceTab() {
   }, [groupId, currentUserId, membersMap]);
 
   return (
-    <GroupBalanceTabSmart
-      myBalance={myBalance}
-      myDebts={myDebts}
-      allDebts={allDebts}
-      loading={loading}
-      onFabClick={() => {}}
-      currency={currency}
-    />
+    <CardSection noPadding>
+      <GroupBalanceTabSmart
+        myBalance={myBalance}
+        myDebts={myDebts}
+        allDebts={allDebts}
+        loading={loading}
+        onFabClick={() => {}}
+        currency={currency}
+      />
+    </CardSection>
   );
 }
