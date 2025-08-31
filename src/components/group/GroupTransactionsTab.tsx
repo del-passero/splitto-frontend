@@ -18,9 +18,9 @@ import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
 
 type Props = {
-  loading: boolean;            // не используем — грузим сами
-  transactions: any[];         // не используем — грузим сами
-  onAddTransaction: () => void;// не используем
+  loading: boolean;
+  transactions: any[];
+  onAddTransaction: () => void;
 };
 
 const PAGE_SIZE = 20;
@@ -127,7 +127,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             username: u.username,
             avatar_url: u.photo_url ?? undefined,
             photo_url: u.photo_url ?? undefined,
-          } as any);
+          });
         }
         setMembersMap(map);
         setMembersCount(total || items.length);
@@ -342,8 +342,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       ) : (
         <TransactionList
           items={visible}
-          leftInsetPx={64}           // линия после левой колонки (40px иконка + отступы)
-          horizontalPaddingPx={0}    // на всю ширину экрана
+          bleedPx={16}               // <-- компенсируем паддинг родителя (как в ContactsList)
+          horizontalPaddingPx={16}  // внутренний отступ самого списка
+          leftInsetPx={64}          // линия после левой колонки (40px иконка + отступы)
           renderItem={(tx: any) => (
             <TransactionCard
               tx={tx}
@@ -360,30 +361,13 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         />
       )}
 
-      {/* сентинел */}
+      {/* сентинел для инфинити-скролла */}
       <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
       {loading && items.length > 0 && (
         <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
       )}
 
       <GroupFAB onClick={handleAddClick} />
-
-      {/* Модалка создания */}
-      <CreateTransactionModal
-        open={openCreate}
-        onOpenChange={setOpenCreate}
-        groups={groups.map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          icon: g.icon,
-          color: g.color,
-          default_currency_code: (g as any).default_currency_code,
-          currency_code: (g as any).currency_code,
-          currency: (g as any).currency,
-        }))}
-        defaultGroupId={groupId}
-        onCreated={handleCreated}
-      />
 
       {/* Мини action sheet (как было) */}
       {actionsOpen && (

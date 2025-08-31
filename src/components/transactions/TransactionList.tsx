@@ -3,8 +3,9 @@ import React, { ReactNode } from "react";
 
 /**
  * Универсальный список «как в ContactsList»:
- *  • На всю ширину, без рамок карточек.
- *  • Единый горизонтальный паддинг контейнера.
+ *  • На всю ширину контейнера (есть режим bleed).
+ *  • Без рамок карточек.
+ *  • Единый горизонтальный паддинг списка.
  *  • Разделители между элементами, начинаются после левой колонки (иконка 40px + отступ ≈ 64px).
  */
 type Props<T> = {
@@ -14,8 +15,15 @@ type Props<T> = {
   className?: string;
   /** Отступ слева для разделителя, по умолчанию 64px, чтобы не резать аватар/иконку. */
   leftInsetPx?: number;
-  /** Горизонтальный паддинг списка (как у ContactsList) */
+  /** Горизонтальный паддинг самого списка. */
   horizontalPaddingPx?: number;
+  /**
+   * Насколько «кровоточить» за пределы родителя по горизонтали.
+   * Нужен, если родитель (страница/CardSection) уже дал свой паддинг.
+   * Например, bleedPx=16 + horizontalPaddingPx=16 даст ровный вылет в край,
+   * но при этом внутри списка будет привычный внутренний отступ 16px.
+   */
+  bleedPx?: number;
 };
 
 export default function TransactionList<T>({
@@ -25,12 +33,18 @@ export default function TransactionList<T>({
   className = "",
   leftInsetPx = 64,
   horizontalPaddingPx = 16,
+  bleedPx = 0,
 }: Props<T>) {
   return (
     <div
       className={`w-full ${className}`}
       role="list"
-      style={{ paddingLeft: horizontalPaddingPx, paddingRight: horizontalPaddingPx }}
+      style={{
+        marginLeft: bleedPx ? -bleedPx : undefined,
+        marginRight: bleedPx ? -bleedPx : undefined,
+        paddingLeft: horizontalPaddingPx,
+        paddingRight: horizontalPaddingPx,
+      }}
     >
       {items.map((it, idx) => {
         const key =
