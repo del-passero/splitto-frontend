@@ -3,10 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===================== */
-/*  Animations & helpers */
-/* ===================== */
-
 @keyframes fab-in {
   0% { opacity: 0; transform: scale(0); }
   60% { opacity: 1; transform: scale(1.15); }
@@ -35,11 +31,7 @@
 /* ===================== */
 /*      Theme vars       */
 /* ===================== */
-
-/* Единственная точка правды по умолчанию.
-   main.tsx поверх этих значений кладёт реальные Telegram WebApp themeParams. */
 :root {
-  /* Чтобы системные контролы/скроллбар корректно инвертировались в тёмной теме */
   color-scheme: light dark;
 
   /* Основные переменные Telegram темы (дефолты) */
@@ -53,13 +45,12 @@
   --tg-button-color: #5294e2;
   --tg-button-text-color: #ffffff;
 
-  /* Цвета лейблов у FAB по умолчанию */
+  /* Цвета лейблов FAB по умолчанию */
   --tg-fab-label-bg: rgba(0,0,0,0.82);
   --tg-fab-label-color: #ffffff;
 }
 
-/* Локальные светлая/тёмная — полезно для локального стендалона без Telegram,
-   не мешает runtime-подстановкам из main.tsx */
+/* Локальные светлая/тёмная (фолбэк без Telegram) */
 body.light {
   --tg-bg-color: #f8faff;
   --tg-card-bg: #ffffff;
@@ -85,31 +76,19 @@ body.dark {
   --tg-fab-label-color: #ffffff;
 }
 
-/* Базовые глобальные стили (фон/текст всегда из tg-переменных) */
+/* База */
 html, body, #root {
   background: var(--tg-bg-color);
   color: var(--tg-text-color);
   min-height: 100%;
 }
-
-/* Шрифт и минимальная высота страницы */
 body {
   font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
   min-height: 100vh;
 }
+.shadow-tg-card { box-shadow: 0 4px 24px 0 rgba(0,0,0,0.11); }
 
-/* Тень карточек, как и раньше */
-.shadow-tg-card {
-  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.11);
-}
-
-/* ===================== */
-/*  Inheritance hardening*/
-/* ===================== */
-
-/* ВАЖНО: ссылки/кнопки и форм-контролы наследуют цвет контейнера,
-   чтобы не появлялся «чёрный/серый» по умолчанию. */
-button, input, select, textarea, a {
-  color: inherit;
-}
+/* Наследование цвета для интерактивных элементов,
+   чтобы браузерный «чёрный/серый» не прорывался */
+button, input, select, textarea, a { color: inherit; }
 a { text-decoration: none; }

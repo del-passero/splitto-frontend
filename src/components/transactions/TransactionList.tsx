@@ -46,6 +46,8 @@ export default function TransactionList<T>({
         paddingRight: horizontalPaddingPx,
         // фон — прозрачный, чтобы читался системный фон как на Contacts
         background: "transparent",
+        // критично: заставляем всё внутри унаследовать цвет
+        color: "inherit",
       }}
     >
       {items.map((it, idx) => {
@@ -61,7 +63,7 @@ export default function TransactionList<T>({
             {idx !== items.length - 1 && (
               <div
                 // тот же разделитель, что и в ContactsList:
-                className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-[0.15]"
+                className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
                 style={{ left: leftInsetPx }}
                 aria-hidden
               />

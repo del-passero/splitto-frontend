@@ -83,7 +83,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
 
-  // категории группы -> Map<categoryId, { id, name, icon, color }>
+  // категории группы -> Map<categoryId, { id: number; name, icon, color }>
   const [categoriesById, setCategoriesById] = useState<
     Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>
   >(new Map());
@@ -332,7 +332,10 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const visible = items;
 
   return (
-    <div className="relative w-full h-full min-h-[320px] text-[var(--tg-text-color)]">
+    <div
+      className="relative w-full h-full min-h-[320px] bg-transparent"
+      style={{ color: "var(--tg-text-color)" }}  // базовый цвет для всей вкладки
+    >
       {error ? (
         <div className="flex justify-center py-12 text-red-500">{error}</div>
       ) : loading && items.length === 0 ? (
@@ -394,7 +397,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         >
           <div className="absolute inset-0 bg-black/50" />
           <div
-            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+            style={{ color: "var(--tg-text-color)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <button

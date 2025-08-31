@@ -438,14 +438,16 @@ export default function TransactionCard({
   // Плоский элемент списка: без рамки/скруглений/фона; лёгкие горизонтальные отступы и «телеграмный» hover.
   const CardInner = (
     <div
-      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-[var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""} text-[var(--tg-text-color)]`}
+      className={`relative py-2 px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
+      style={{ color: "var(--tg-text-color)" }} 
     >
+      {/* весь контент карточки наследует tg-текст */}
       <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-1 items-start">
         {/* Row1 / Col1 — YEAR */}
         <div className="col-start-1 row-start-1 self-center text-center">
@@ -461,14 +463,14 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row1 / Col4 — AMOUNT (задаём явный цвет, чтобы точно не перебивало) */}
+        {/* Row1 / Col4 — AMOUNT */}
         <div className="col-start-4 row-start-1">
           <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
             {fmtAmount(amountNum, tx.currency)}
           </div>
         </div>
 
-        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ */}
+        {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ (поднято ближе к году, одна строка, без подложки) */}
         <div className="col-start-1 row-start-2 row-span-2 -mt-1.5">
           <div className="flex flex-col items-center">
             {isExpense ? (
@@ -588,7 +590,7 @@ export default function TransactionCard({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       onContextMenu={onContextMenu}
-      style={{ color: "inherit" }} // важно: ссылка наследует цвет
+      style={{ color: "inherit" }} /* ссылка наследует цвет */
     >
       {CardInner}
     </Link>
