@@ -1,6 +1,6 @@
 // src/components/transactions/TransactionList.tsx
 
-import React, { ReactNode } from "react"
+import React, { ReactNode } from "react";
 
 /**
  * Универсальный список «как в ContactsList»:
@@ -11,20 +11,20 @@ import React, { ReactNode } from "react"
  *  • Цвета опираются на те же tg-переменные, что и ContactsList.
  */
 type Props<T> = {
-  items: T[]
-  renderItem: (item: T, index: number) => ReactNode
-  keyExtractor?: (item: T, index: number) => string | number
-  className?: string
+  items: T[];
+  renderItem: (item: T, index: number) => ReactNode;
+  keyExtractor?: (item: T, index: number) => string | number;
+  className?: string;
   /** Отступ слева для разделителя, по умолчанию 64px, чтобы не резать аватар/иконку. */
-  leftInsetPx?: number
+  leftInsetPx?: number;
   /** Горизонтальный паддинг самого списка. */
-  horizontalPaddingPx?: number
+  horizontalPaddingPx?: number;
   /**
    * Насколько «кровоточить» за пределы родителя по горизонтали.
    * Нужен, если родитель уже дал свой паддинг.
    */
-  bleedPx?: number
-}
+  bleedPx?: number;
+};
 
 export default function TransactionList<T>({
   items,
@@ -44,9 +44,9 @@ export default function TransactionList<T>({
         marginRight: bleedPx ? -bleedPx : undefined,
         paddingLeft: horizontalPaddingPx,
         paddingRight: horizontalPaddingPx,
-        // фон — прозрачный, чтобы читался системный фон как на Contacts
+        // фон — прозрачный, чтобы читался фон CardSection/страницы
         background: "transparent",
-        // критично: заставляем всё внутри унаследовать цвет
+        // всё внутри наследует цвет родителя (tg-тема)
         color: "inherit",
       }}
     >
@@ -55,22 +55,25 @@ export default function TransactionList<T>({
           (keyExtractor ? keyExtractor(it, idx) : undefined) ??
           (typeof (it as any)?.id !== "undefined"
             ? (it as any).id
-            : `${idx}-${(it as any)?.type ?? "tx"}-${(it as any)?.date ?? ""}-${(it as any)?.amount ?? ""}`)
+            : `${idx}-${(it as any)?.type ?? "tx"}-${(it as any)?.date ?? ""}-${(it as any)?.amount ?? ""}`);
 
         return (
-          <div key={key} className="relative">
+          // -mt-1 слегка «сжимает» вертикальный зазор между карточками (~4px)
+          <div key={key} className={`relative ${idx > 0 ? "-mt-1" : ""}`}>
             {renderItem(it, idx)}
+
             {idx !== items.length - 1 && (
               <div
-                // тот же разделитель, что и в ContactsList:
-                className="absolute bottom-0 right-0 h-px bg-[var(--tg-hint-color)] opacity-15"
-                style={{ left: leftInsetPx }}
+                // тот же разделитель, что и в ContactsList,
+                // но справа выходим в padding, чтобы линия доходила до края CardSection
+                className="absolute bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 right-0"
+                style={{ left: leftInsetPx, right: -horizontalPaddingPx }}
                 aria-hidden
               />
             )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
