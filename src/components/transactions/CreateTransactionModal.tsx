@@ -1,3 +1,4 @@
+// src/components/transactions/CreateTransactionModal.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -277,7 +278,7 @@ export default function CreateTransactionModal({
     return () => { abort = true; };
   }, [open, selectedGroupId]);
 
-  /* ===== CURRENCY ===== */
+  /* ===== CURRENCY: всегда показываем КОД; если в списке групп кода нет — дотягиваем деталку ===== */
   const selectedGroup = useMemo(
     () => localGroups.find((g) => g.id === selectedGroupId) || null,
     [localGroups, selectedGroupId]
@@ -292,6 +293,7 @@ export default function CreateTransactionModal({
         if (!cancelled) setCurrencyCode(code);
         return;
       }
+      // подтягиваем деталку группы — там точно есть валюта
       if (selectedGroupId) {
         try {
           const gd = await getGroupDetails(selectedGroupId);
@@ -315,6 +317,7 @@ export default function CreateTransactionModal({
     const code = currencyCode || null;
     return {
       code,
+      // символ нигде не выводим; для SplitPickerModal передаём symbol=code
       symbol: code || "",
       decimals: code ? (DECIMALS_BY_CODE[code] ?? 2) : 2,
     };
@@ -330,7 +333,8 @@ export default function CreateTransactionModal({
     return isFinite(n) ? n : 0;
   }, [amount]);
 
-  const fmtMoney = (n: number, decimals: number, code: string | null, loc: string) => {
+  // форматируем с КОДОМ валюты
+  const fmtMoneyLocal = (n: number, decimals: number, code: string | null, loc: string) => {
     try {
       const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
       return `${nf.format(n)} ${code ?? ""}`;
@@ -490,6 +494,7 @@ export default function CreateTransactionModal({
     return true;
   };
 
+  // shares для бэка
   function buildShares(
     sel: SplitSelection | null | undefined,
     total: number,
@@ -546,7 +551,7 @@ export default function CreateTransactionModal({
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: amtStr,
+          amount: amtStr,             // строка для Decimal
           currency: currency.code || "USD",
           date,
           comment: comment.trim() || null,
@@ -646,22 +651,39 @@ export default function CreateTransactionModal({
       if (isFinite(pb)) setPaidBy(pb);
       if (isFinite(tu)) setToUser(tu);
 
-      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : "";
-      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : "";
-
-      if (pbName) setPaidByName(pbName);
-      if (tuName) setToUserName(tuName);
-
-      const pbAv = membersMap.get(pb)?.photo_url;
-      const tuAv = membersMap.get(tu)?.photo_url;
-      if (pbAv) setPaidByAvatar(pbAv);
-      if (tuAv) setToUserAvatar(tuAv);
+      // мгновенный фолбэк из initialTx (если переданы имена/аватарки)
+      if (typeof initialTx.paidByName === "string") setPaidByName(initialTx.paidByName);
+      if (typeof initialTx.toUserName === "string") setToUserName(initialTx.toUserName);
+      if (typeof initialTx.paidByAvatar === "string") setPaidByAvatar(initialTx.paidByAvatar);
+      if (typeof initialTx.toUserAvatar === "string") setToUserAvatar(initialTx.toUserAvatar);
     }
 
     if (typeof initialTx.comment === "string") setComment(initialTx.comment);
 
     prefilledRef.current = true;
-  }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
+  }, [open, initialTx, currency.decimals, user?.id, defaultGroupId]);
+
+  /* ===== СИНХРОНИЗАЦИЯ имён/аватаров, когда подгрузились участники ===== */
+  useEffect(() => {
+    if (!open || type !== "transfer") return;
+
+    if (paidBy && !paidByName) {
+      const m: any = (membersMap.get(paidBy) as any) || null;
+      if (m?.id || m?.user) {
+        const u = (m.user ?? m) as any;
+        setPaidByName(`${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.username || "");
+        if (u.photo_url) setPaidByAvatar(u.photo_url);
+      }
+    }
+    if (toUser && !toUserName) {
+      const m: any = (membersMap.get(toUser) as any) || null;
+      if (m?.id || m?.user) {
+        const u = (m.user ?? m) as any;
+        setToUserName(`${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.username || "");
+        if (u.photo_url) setToUserAvatar(u.photo_url);
+      }
+    }
+  }, [open, type, paidBy, toUser, paidByName, toUserName, membersMap]);
 
   if (!open) return null;
 
@@ -757,7 +779,7 @@ export default function CreateTransactionModal({
                   </CardSection>
                 </div>
 
-                {/* Сумма */}
+                {/* Сумма (слева — КОД валюты) */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
@@ -793,13 +815,14 @@ export default function CreateTransactionModal({
                 {/* EXPENSE */}
                 {type === "expense" ? (
                   <>
-                    {/* Категория + Комментарий */}
+                    {/* Категория + Комментарий (ограничение 32 символа + счётчик) */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div
                           className="px-3 py-1 grid grid-cols-2 gap-2 items-center"
                           style={fillStyle(categoryColor)}
                         >
+                          {/* Категория */}
                           <button
                             type="button"
                             onClick={() => setCategoryModal(true)}
@@ -816,6 +839,7 @@ export default function CreateTransactionModal({
                             </span>
                           </button>
 
+                          {/* Комментарий */}
                           <div className="min-w-0 flex items-center gap-2">
                             <FileText size={16} className="opacity-80 shrink-0" />
                             <input
@@ -829,11 +853,12 @@ export default function CreateTransactionModal({
                         </div>
 
                         <div className={`px-3 pb-0.5 -mt-0.5 text-[12px] ${commentLeft === 0 ? "text-red-500" : "text-[var(--tg-hint-color)]"}`}>
-                          {(i18n.language || "en").startsWith("ru")
-                            ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
-                            : (i18n.language || "en").startsWith("es")
-                            ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
-                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
+                          {
+                            (i18n.language || "en").startsWith("ru")
+                              ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
+                              : (i18n.language || "en").startsWith("es")
+                              ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
+                              : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
                           }
                         </div>
 
@@ -852,6 +877,7 @@ export default function CreateTransactionModal({
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          {/* Paid by */}
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -881,6 +907,7 @@ export default function CreateTransactionModal({
                             )}
                           </button>
 
+                          {/* Split */}
                           <button
                             type="button"
                             onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
@@ -914,7 +941,7 @@ export default function CreateTransactionModal({
                                     {paidByLabel}: {firstNameOnly(paidByName) || t("not_specified")}
                                   </span>
                                   <span className="shrink-0 opacity-80">
-                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                                    {fmtMoneyLocal(amountNumber, currency.decimals, currency.code, locale)}
                                   </span>
                                 </div>
                               )}
@@ -932,7 +959,7 @@ export default function CreateTransactionModal({
                                       {owesLabel}: {p.name}
                                     </span>
                                     <span className="shrink-0 opacity-80">
-                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale)}
+                                      {fmtMoneyLocal(p.amount, currency.decimals, currency.code, locale)}
                                     </span>
                                   </div>
                                 ))}
@@ -945,10 +972,10 @@ export default function CreateTransactionModal({
                         {customMismatch && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
                             {locale === "ru"
-                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              ? `Сумма по участникам ${fmtMoneyLocal(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoneyLocal(customMismatch.total, currency.decimals, currency.code, locale)}`
                               : locale === "es"
-                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
-                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              ? `La suma de participantes ${fmtMoneyLocal(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoneyLocal(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : `Participants total ${fmtMoneyLocal(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoneyLocal(customMismatch.total, currency.decimals, currency.code, locale)}`
                             }
                           </div>
                         )}
@@ -963,6 +990,7 @@ export default function CreateTransactionModal({
                     <div className="-mx-3">
                       <CardSection className="py-0">
                         <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                          {/* From */}
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -992,6 +1020,7 @@ export default function CreateTransactionModal({
                             )}
                           </button>
 
+                          {/* To */}
                           <button
                             type="button"
                             onClick={openRecipientPicker}
@@ -1022,6 +1051,7 @@ export default function CreateTransactionModal({
                           </button>
                         </div>
 
+                        {/* Превью перевода */}
                         {(paidBy || toUser) && amountNumber > 0 && (
                           <div className="px-3 pb-1 mt-1">
                             <div className="flex items-center gap-2 text-[13px]">
@@ -1043,7 +1073,7 @@ export default function CreateTransactionModal({
                                 <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
                               </span>
                               <span className="ml-auto shrink-0 opacity-80">
-                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                                {fmtMoneyLocal(amountNumber, currency.decimals, currency.code, locale)}
                               </span>
                             </div>
                           </div>
@@ -1162,7 +1192,7 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
-      {/* Выбор плательщика */}
+      {/* Выбор плательщика (Paid by / From) */}
       <MemberPickerModal
         open={payerOpen && !!selectedGroupId}
         onClose={() => setPayerOpen(false)}
@@ -1173,14 +1203,14 @@ export default function CreateTransactionModal({
           setPaidByName(u.name || "");
           // @ts-ignore
           setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
-          // Автосплит equal со всеми участниками
+          // Автосплит «equal» со всеми участниками — сразу после выбора плательщика
           setSplitData((prev) => {
             const alreadySet = !!prev && prev.participants && prev.participants.length > 0;
             if (alreadySet) return prev;
             const participants = Array.from(membersMap.values()).map((m) => ({
               user_id: m.id,
               name: (nameFromMember(m).split(/\s+/)[0]) || "",
-              avatar_url: m.photo_url || undefined,
+              avatar_url: (m as any).photo_url || undefined,
             }));
             return { type: "equal", participants } as SplitSelection;
           });
@@ -1188,7 +1218,7 @@ export default function CreateTransactionModal({
         closeOnSelect
       />
 
-      {/* Выбор получателя */}
+      {/* Выбор получателя (To) */}
       <MemberPickerModal
         open={recipientOpen && !!selectedGroupId}
         onClose={() => setRecipientOpen(false)}
@@ -1209,6 +1239,7 @@ export default function CreateTransactionModal({
         onClose={() => setSplitOpen(false)}
         groupId={selectedGroupId || 0}
         amount={Number((isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0"))}
+        // передаём symbol = КОД, чтобы нигде не всплывали $/€/₽
         currency={{ code: currency.code || "", symbol: currency.code || "", decimals: currency.decimals }}
         initial={splitData || { type: splitType, participants: [] as any[] }}
         paidById={paidBy}
