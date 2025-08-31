@@ -8,6 +8,7 @@ import EmptyTransactions from "../EmptyTransactions";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
 import TransactionList from "../transactions/TransactionList";
+import CardSection from "../CardSection"; // ⬅️ как в ContactsList
 
 // стор групп — только для списка групп и их валют/иконки
 import { useGroupsStore } from "../../store/groupsStore";
@@ -92,7 +93,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
-  const lockRef = useRef(false);
 
   // ключ пересборки при смене фильтров
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
@@ -219,7 +219,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   /* ---------- догрузка следующей страницы ---------- */
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
-    lockRef.current = true;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -252,9 +251,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       }
     } finally {
       setLoading(false);
-      setTimeout(() => {
-        lockRef.current = false;
-      }, 120);
     }
   }, [groupId, items, hasMore, loading]);
 
@@ -268,7 +264,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       (entries) => {
         const e = entries[0];
         if (!e.isIntersecting) return;
-        if (lockRef.current || loading || !hasMore) return;
+        if (loading || !hasMore) return;
         void loadMore();
       },
       { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 }
@@ -286,147 +282,121 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
   /* ---------- обработчики ---------- */
   const handleAddClick = () => setOpenCreate(true);
-
-  // при успешном создании — сразу добавим в выдачу без полного рефетча
   const handleCreated = (tx: TransactionOut) => setItems((prev) => [tx, ...prev]);
-
-  // long-press из карточки
-  const handleLongPress = (tx: TransactionOut) => {
-    setTxForActions(tx);
-    setActionsOpen(true);
-  };
-
-  const closeActions = () => {
-    setActionsOpen(false);
-    setTimeout(() => setTxForActions(null), 160);
-  };
-
-  const handleEdit = () => {
-    if (!txForActions?.id) return;
-    closeActions();
-    navigate(`/transactions/${txForActions.id}`);
-  };
-
+  const handleLongPress = (tx: TransactionOut) => { setTxForActions(tx); setActionsOpen(true); };
+  const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
+  const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
   const handleDelete = async () => {
     if (!txForActions?.id) return;
-    const ok = window.confirm(
-      (t("tx_modal.delete_confirm") as string) ||
-        "Удалить транзакцию? Это действие необратимо."
-    );
+    const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
-
-    try {
-      setLoading(true);
-      await removeTransaction(txForActions.id);
-      setItems((prev) => prev.filter((it) => it.id !== txForActions.id));
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to delete tx", e);
-    } finally {
-      setLoading(false);
-      closeActions();
-    }
+    try { setLoading(true); await removeTransaction(txForActions.id); setItems(prev => prev.filter(it => it.id !== txForActions.id)); }
+    catch (e) { /* eslint-disable no-console */ console.error("Failed to delete tx", e); }
+    finally { setLoading(false); closeActions(); }
   };
 
   // Видимые элементы
   const visible = items;
 
   return (
-    <div
-      className="relative w-full h-full min-h-[320px] bg-transparent"
-      style={{ color: "var(--tg-text-color)" }}  // базовый цвет для всей вкладки
+    <CardSection
+      noPadding
+      className="relative w-full h-full min-h-[320px]"
     >
-      {error ? (
-        <div className="flex justify-center py-12 text-red-500">{error}</div>
-      ) : loading && items.length === 0 ? (
-        <div className="flex justify-center py-12 text-[var(--tg-hint-color)]">{t("loading")}</div>
-      ) : visible.length === 0 ? (
-        <EmptyTransactions />
-      ) : (
-        <TransactionList
-          items={visible}
-          bleedPx={0}                // родитель без внешних паддингов
-          horizontalPaddingPx={16}  // как в ContactsList
-          leftInsetPx={64}          // линия начинается у иконки
-          renderItem={(tx: any) => (
-            <TransactionCard
-              tx={tx}
-              membersById={membersMap ?? undefined}
-              groupMembersCount={membersCount}
-              t={t}
-              onLongPress={handleLongPress}
-              categoriesById={categoriesById}
-            />
-          )}
-          keyExtractor={(tx: any) =>
-            tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`
-          }
+      {/* базовый цвет текста для всей карточки-вкладки */}
+      <div style={{ color: "var(--tg-text-color)" }}>
+        {error ? (
+          <div className="flex justify-center py-12 text-red-500">{error}</div>
+        ) : loading && items.length === 0 ? (
+          <div className="flex justify-center py-12 text-[var(--tg-hint-color)]">{t("loading")}</div>
+        ) : visible.length === 0 ? (
+          <EmptyTransactions />
+        ) : (
+          <TransactionList
+            items={visible}
+            bleedPx={0}                // родитель без внешних паддингов
+            horizontalPaddingPx={16}  // как в ContactsList
+            leftInsetPx={64}          // линия начинается у иконки
+            renderItem={(tx: any) => (
+              <TransactionCard
+                tx={tx}
+                membersById={membersMap ?? undefined}
+                groupMembersCount={membersCount}
+                t={t}
+                onLongPress={handleLongPress}
+                categoriesById={categoriesById}
+              />
+            )}
+            keyExtractor={(tx: any) =>
+              tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`
+            }
+          />
+        )}
+
+        {/* сентинел для инфинити-скролла */}
+        <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+        {loading && items.length > 0 && (
+          <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+        )}
+
+        <GroupFAB onClick={handleAddClick} />
+
+        {/* Модалка создания (сохраняем старый функционал) */}
+        <CreateTransactionModal
+          open={openCreate}
+          onOpenChange={setOpenCreate}
+          groups={groups.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            icon: (g as any).icon,
+            color: (g as any).color,
+            default_currency_code: (g as any).default_currency_code,
+            currency_code: (g as any).currency_code,
+            currency: (g as any).currency,
+          }))}
+          defaultGroupId={groupId}
+          onCreated={handleCreated}
         />
-      )}
 
-      {/* сентинел для инфинити-скролла */}
-      <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
-      {loading && items.length > 0 && (
-        <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
-      )}
-
-      <GroupFAB onClick={handleAddClick} />
-
-      {/* Модалка создания (сохраняем старый функционал) */}
-      <CreateTransactionModal
-        open={openCreate}
-        onOpenChange={setOpenCreate}
-        groups={groups.map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          icon: (g as any).icon,
-          color: (g as any).color,
-          default_currency_code: (g as any).default_currency_code,
-          currency_code: (g as any).currency_code,
-          currency: (g as any).currency,
-        }))}
-        defaultGroupId={groupId}
-        onCreated={handleCreated}
-      />
-
-      {/* Мини action sheet */}
-      {actionsOpen && (
-        <div
-          className="fixed inset-0 z-[1100] flex items-end justify-center"
-          onClick={closeActions}
-        >
-          <div className="absolute inset-0 bg-black/50" />
+        {/* Мини action sheet */}
+        {actionsOpen && (
           <div
-            className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
-            style={{ color: "var(--tg-text-color)" }}
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[1100] flex items-end justify-center"
+            onClick={closeActions}
           >
-            <button
-              type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-              onClick={handleEdit}
+            <div className="absolute inset-0 bg-black/50" />
+            <div
+              className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+              style={{ color: "var(--tg-text-color)" }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {t("edit")}
-            </button>
-            <button
-              type="button"
-              className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
-              onClick={handleDelete}
-            >
-              {t("delete")}
-            </button>
-            <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
-            <button
-              type="button"
-              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
-              onClick={closeActions}
-            >
-              {t("cancel")}
-            </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={handleEdit}
+              >
+                {t("edit")}
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
+                onClick={handleDelete}
+              >
+                {t("delete")}
+              </button>
+              <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
+              <button
+                type="button"
+                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={closeActions}
+              >
+                {t("cancel")}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </CardSection>
   );
 };
 
