@@ -6,8 +6,7 @@ import CardSection from "../components/CardSection"
 import UserCard from "../components/UserCard"
 import SettingItem from "../components/SettingItem"
 import { useUserStore } from "../store/userStore"
-import { useSettingsStore } from "../store/settingsStore"
-import { useApplyTheme } from "../hooks/useApplyTheme"
+import { useSettingsStore, type Theme, type Lang } from "../store/settingsStore"
 import { ModalSelector } from "../components/ModalSelector"
 import { useTranslation } from "react-i18next"
 
@@ -25,12 +24,11 @@ const langOptions = [
 const APP_VERSION = "0.1"
 
 const ProfilePage = () => {
-  useApplyTheme()
   const user = useUserStore((s) => s.user)
   const { theme, lang, setTheme, setLang } = useSettingsStore()
   const [themeOpen, setThemeOpen] = useState(false)
   const [langOpen, setLangOpen] = useState(false)
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
 
   return (
     <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-10">
@@ -68,6 +66,7 @@ const ProfilePage = () => {
             <span className="text-[var(--tg-hint-color)]">{APP_VERSION}</span>
           </div>
         </CardSection>
+
         <ModalSelector
           title={t("choose_theme")}
           open={themeOpen}
@@ -77,11 +76,12 @@ const ProfilePage = () => {
           }))}
           value={theme}
           onChange={(v: string) => {
-            setTheme(v as any)
+            setTheme(v as Theme)
             setThemeOpen(false)
           }}
           onClose={() => setThemeOpen(false)}
         />
+
         <ModalSelector
           title={t("choose_language")}
           open={langOpen}
@@ -91,8 +91,7 @@ const ProfilePage = () => {
           }))}
           value={lang}
           onChange={(v: string) => {
-            setLang(v as any)
-            i18n.changeLanguage(v)
+            setLang(v as Lang) // i18n сменится централизованно в useSyncI18nLanguage
             setLangOpen(false)
           }}
           onClose={() => setLangOpen(false)}
@@ -101,4 +100,5 @@ const ProfilePage = () => {
     </div>
   )
 }
+
 export default ProfilePage

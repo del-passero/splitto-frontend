@@ -29,7 +29,7 @@
 :root {
   color-scheme: light dark;
 
-  /* Основные переменные Telegram темы (дефолты) */
+  /* Базовые значения до инициализации (или вне Telegram) */
   --tg-bg-color: #f8faff;
   --tg-card-bg: #ffffff;
   --tg-text-color: #222222;
@@ -41,12 +41,13 @@
   --tg-button-text-color: #ffffff;
 
   /* Цвета лейблов FAB по умолчанию */
-  --tg-fab-label-bg: rgba(0,0,0,0.82);
-  --tg-fab-label-color: #ffffff;
+  --tg-fab-label-bg: rgba(255,255,255,0.96);
+  --tg-fab-label-color: #222222;
 }
 
-/* Локальные светлая/тёмная (фолбэк без Telegram) */
-body.light {
+/* Локальные светлая/тёмная темы — теперь на <html> через data-theme */
+html[data-theme="light"] {
+  color-scheme: light;
   --tg-bg-color: #f8faff;
   --tg-card-bg: #ffffff;
   --tg-text-color: #222222;
@@ -58,7 +59,8 @@ body.light {
   --tg-fab-label-bg: rgba(255,255,255,0.96);
   --tg-fab-label-color: #222222;
 }
-body.dark {
+html[data-theme="dark"] {
+  color-scheme: dark;
   --tg-bg-color: #18191b;
   --tg-card-bg: #232b3b;
   --tg-text-color: #f2f2f7;
@@ -71,7 +73,7 @@ body.dark {
   --tg-fab-label-color: #ffffff;
 }
 
-/* База (оставляем как было) */
+/* База */
 html, body, #root {
   background: var(--tg-bg-color);
   color: var(--tg-text-color);
@@ -90,7 +92,6 @@ a { text-decoration: none; }
 /* =============================== */
 /* Mobile viewport & overscroll fix*/
 /* =============================== */
-/* Перекрываем базу выше мягко: */
 html, body, #root {
   height: 100dvh;
   min-height: 100dvh;

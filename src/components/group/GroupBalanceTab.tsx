@@ -7,6 +7,7 @@ import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
+import CardSection from "../CardSection"; // ⬅ добавили: единый контейнер как на вкладке Транзакций
 
 // Мягкое определение точности по коду валюты (как в других местах проекта)
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
@@ -35,7 +36,7 @@ type Tx = {
 };
 
 // Доп. тип для колбэков
-type SimpleUser = { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string; };
+type SimpleUser = { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
 
 export default function GroupBalanceTab() {
   const params = useParams();
@@ -77,7 +78,9 @@ export default function GroupBalanceTab() {
       if (!aborted) setMembersMap(map);
     };
     if (groupId) loadMembersAll().catch(() => {});
-    return () => { aborted = true; };
+    return () => {
+      aborted = true;
+    };
   }, [groupId]);
 
   // загрузка транзакций и расчёт
@@ -129,13 +132,13 @@ export default function GroupBalanceTab() {
               const amt = toNum((s as any).amount);
               if (!Number.isFinite(amt) || amt <= 0) continue;
               if (uid === payer) continue;
-              add(payer, amt);   // участник должен payer'у
-              add(uid, -amt);    // участник должен
+              add(payer, amt); // участник должен payer'у
+              add(uid, -amt); // участник должен
             }
           } else if (tx.type === "transfer") {
             const from = Number(tx.from_user_id ?? tx.transfer_from ?? (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN));
-            const to   = Number(tx.to_user_id   ?? tx.transfer_to   ?? (Array.isArray(tx.transfer) ? tx.transfer[1] : NaN));
-            const amt  = toNum(tx.amount);
+            const to = Number(tx.to_user_id ?? tx.transfer_to ?? (Array.isArray(tx.transfer) ? tx.transfer[1] : NaN));
+            const amt = toNum(tx.amount);
             if (Number.isFinite(from) && Number.isFinite(to) && Number.isFinite(amt) && amt > 0) {
               add(from, amt);
               add(to, -amt);
@@ -156,7 +159,8 @@ export default function GroupBalanceTab() {
         debtors.sort((a, b) => a.left - b.left);
 
         const pairs: { from: number; to: number; amount: number }[] = [];
-        let ci = 0, di = 0;
+        let ci = 0,
+          di = 0;
         while (ci < creditors.length && di < debtors.length) {
           const c = creditors[ci];
           const dn = debtors[di];
@@ -212,23 +216,28 @@ export default function GroupBalanceTab() {
     };
 
     if (groupId) calc().catch(() => setLoading(false));
-    return () => { aborted = true; };
+    return () => {
+      aborted = true;
+    };
     // пересчитываем также по refreshSeq (после создания перевода)
   }, [groupId, currentUserId, membersMap, refreshSeq]);
 
   // ====== Колбэки для «погасить»/«напомнить» ======
-  const handleRepay = useCallback((u: SimpleUser, amount: number) => {
-    // перевод ОТ меня К пользователю u на сумму amount
-    const amt = Math.abs(Number(amount) || 0);
-    setTxInitial({
-      type: "transfer",
-      amount: amt,
-      paidBy: currentUserId,
-      toUser: u.id,
-      groupId,
-    });
-    setTxOpen(true);
-  }, [currentUserId, groupId]);
+  const handleRepay = useCallback(
+    (u: SimpleUser, amount: number) => {
+      // перевод ОТ меня К пользователю u на сумму amount
+      const amt = Math.abs(Number(amount) || 0);
+      setTxInitial({
+        type: "transfer",
+        amount: amt,
+        paidBy: currentUserId,
+        toUser: u.id,
+        groupId,
+      });
+      setTxOpen(true);
+    },
+    [currentUserId, groupId]
+  );
 
   const handleRemind = useCallback((u: SimpleUser, amount: number) => {
     // сейчас логика-«заглушка» живёт в Smart (центр-модалка). Оставляем хук на будущее.
@@ -237,17 +246,22 @@ export default function GroupBalanceTab() {
   }, []);
 
   return (
-    <>
-      <GroupBalanceTabSmart
-        myBalance={myBalance}
-        myDebts={myDebts}
-        allDebts={allDebts}
-        loading={loading}
-        onFabClick={() => {}}
-        currency={currency}
-        onRepay={handleRepay}
-        onRemind={handleRemind}
-      />
+    <CardSection
+      noPadding
+      className="relative w-full h-full min-h-[320px] overflow-x-hidden overscroll-x-none"
+    >
+      <div className="w-full min-w-0" style={{ color: "var(--tg-text-color)" }}>
+        <GroupBalanceTabSmart
+          myBalance={myBalance}
+          myDebts={myDebts}
+          allDebts={allDebts}
+          loading={loading}
+          onFabClick={() => {}}
+          currency={currency}
+          onRepay={handleRepay}
+          onRemind={handleRemind}
+        />
+      </div>
 
       {/* модалка создания транзакции с предзаполнением для «Погасить долг» */}
       <CreateTransactionModal
@@ -258,6 +272,6 @@ export default function GroupBalanceTab() {
         initialTx={txInitial || undefined}
         onCreated={() => setRefreshSeq((v) => v + 1)}
       />
-    </>
+    </CardSection>
   );
 }

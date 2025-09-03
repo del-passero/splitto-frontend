@@ -1,15 +1,21 @@
+// src/locales/index.ts
 import ru from "./ru"
 import en from "./en"
 import es from "./es"
 
-const locales: Record<string, any> = { ru, en, es }
+export const LOCALES = { ru, en, es } as const
+export const SUPPORTED_LANGS = ["ru", "en", "es"] as const
+export type SupportedLang = typeof SUPPORTED_LANGS[number]
 
-export function getLocale(lang: string | undefined): typeof ru {
-    if (!lang) return locales.en
-    if (lang in locales) return locales[lang]
-    if (lang.includes("-")) {
-        const short = lang.split("-")[0]
-        if (short in locales) return locales[short]
-    }
-    return locales.en
+export function resolveLanguage(input?: string): SupportedLang {
+  const base = (input || "").toLowerCase().split("-")[0]
+  return (SUPPORTED_LANGS as readonly string[]).includes(base as any)
+    ? (base as SupportedLang)
+    : "en"
 }
+
+export function getLocale(lang: string | undefined) {
+  return LOCALES[resolveLanguage(lang)]
+}
+
+export { ru, en, es }

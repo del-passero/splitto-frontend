@@ -16,9 +16,18 @@ type Props = {
 }
 
 const MainLayout = ({ children, fabActions = [] }: Props) => (
-  <div className="flex flex-col min-h-screen bg-[var(--tg-bg-color)]">
-    <main className="flex-1 pb-16">{children}</main>
+  // Внутри .app-scroll, поэтому достаточно min-h-full
+  <div className="flex flex-col min-h-full bg-[var(--tg-bg-color)]">
+    {/* Отступ снизу под Navbar + safe-area */}
+    <main
+      role="main"
+      className="flex-1 pb-[calc(72px+env(safe-area-inset-bottom))]"
+    >
+      {children}
+    </main>
+
     <Navbar />
+
     {!!fabActions.length && <FAB actions={fabActions} />}
   </div>
 )

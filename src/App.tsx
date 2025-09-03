@@ -12,6 +12,7 @@ import TransactionEditPage from "./pages/TransactionEditPage"
 
 import MainLayout from "./layouts/MainLayout"
 import { useApplyTheme } from "./hooks/useApplyTheme"
+import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
@@ -23,14 +24,14 @@ import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
  * - Логика приёма инвайта по токену (друзья/группа)
  */
 const App = () => {
+  // Единые точки инициализации темы и языка
   useApplyTheme()
+  useSyncI18nLanguage()
   useTelegramAuth()
 
   useEffect(() => {
-    // @ts-ignore
-    const tg = window?.Telegram?.WebApp
-    // @ts-ignore
-    const tokenFromInitData = tg?.initDataUnsafe?.start_param
+    const tg = (window as any)?.Telegram?.WebApp
+    const tokenFromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
 
     // Для браузера: ищем token в URL (?startapp=... или ?start=...)
     const params = new URLSearchParams(window.location.search)
