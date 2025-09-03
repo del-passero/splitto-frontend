@@ -3,6 +3,7 @@ import "./i18n"
 import ReactDOM from "react-dom/client"
 import App from "./App"
 import "./styles/index.css"
+import { useUserStore } from "./store/userStore"
 
 // 1) Прописать tg-переменные в :root и слушать смену темы
 function applyTgTheme(p: any = (window as any)?.Telegram?.WebApp?.themeParams || {}) {
@@ -31,6 +32,14 @@ applyTgTheme()
 )
 // (необязательно) Telegram рекомендует вызывать ready
 try { (window as any).Telegram?.WebApp?.ready?.() } catch {}
+
+// 2) Bootstrap userStore (авторизация по Telegram + сброс остальных стора при смене юзера)
+try {
+  // вызывем один раз до рендера; внутри bootstrap есть вся логика с userKey/resetAllStores
+  useUserStore.getState().bootstrap().catch(console.error)
+} catch (e) {
+  console.error(e)
+}
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <App />
