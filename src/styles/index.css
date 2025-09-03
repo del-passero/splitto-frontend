@@ -1,26 +1,17 @@
 /* src/styles/index.css */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+/* УБРАНО: @import Google Fonts — в WebApp часто ломается из-за CSP */
+/* @tailwind — как было */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@keyframes fab-in {
-  0% { opacity: 0; transform: scale(0); }
-  60% { opacity: 1; transform: scale(1.15); }
-  100% { opacity: 1; transform: scale(1); }
-}
+@keyframes fab-in { 0%{opacity:0;transform:scale(0)}60%{opacity:1;transform:scale(1.15)}100%{opacity:1;transform:scale(1)} }
 .animate-fab-in { animation: fab-in 0.25s cubic-bezier(.77,0,.18,1) forwards; }
 
-@keyframes fab-label-in {
-  0% { opacity: 0; transform: translateX(-16px);}
-  100% { opacity: 1; transform: translateX(0);}
-}
+@keyframes fab-label-in { 0%{opacity:0;transform:translateX(-16px)}100%{opacity:1;transform:translateX(0)} }
 .fab-label-appear { animation: fab-label-in 0.25s cubic-bezier(.77,0,.18,1) both; }
 
-@keyframes modal-pop {
-  0% { transform: scale(0.92) translateY(40px); opacity: 0; }
-  100% { transform: scale(1) translateY(0); opacity: 1; }
-}
+@keyframes modal-pop { 0%{transform:scale(0.92) translateY(40px);opacity:0}100%{transform:scale(1) translateY(0);opacity:1} }
 .animate-modal-pop { animation: modal-pop 0.18s cubic-bezier(.26,1.12,.48,1.03); }
 
 /* ===================== */
@@ -28,7 +19,6 @@
 /* ===================== */
 :root {
   color-scheme: light dark;
-
   /* Базовые значения до инициализации (или вне Telegram) */
   --tg-bg-color: #f8faff;
   --tg-card-bg: #ffffff;
@@ -40,12 +30,11 @@
   --tg-button-color: #5294e2;
   --tg-button-text-color: #ffffff;
 
-  /* Цвета лейблов FAB по умолчанию */
   --tg-fab-label-bg: rgba(255,255,255,0.96);
   --tg-fab-label-color: #222222;
 }
 
-/* Локальные светлая/тёмная темы — теперь на <html> через data-theme */
+/* Наши пресеты — переключаются атрибутом data-theme у <html> */
 html[data-theme="light"] {
   color-scheme: light;
   --tg-bg-color: #f8faff;
@@ -80,12 +69,12 @@ html, body, #root {
   min-height: 100%;
 }
 body {
-  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+  /* Системные стек-шрифты (без Google Fonts) */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   min-height: 100vh;
 }
 .shadow-tg-card { box-shadow: 0 4px 24px 0 rgba(0,0,0,0.11); }
 
-/* Наследование цвета для интерактивных элементов */
 button, input, select, textarea, a { color: inherit; }
 a { text-decoration: none; }
 
@@ -95,23 +84,19 @@ a { text-decoration: none; }
 html, body, #root {
   height: 100dvh;
   min-height: 100dvh;
-  overflow: hidden;              /* фон не скроллится */
-  overscroll-behavior: none;     /* без rubber-band/pull-to-refresh */
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   -webkit-overflow-scrolling: touch;
 }
-
 @supports (height: 100svh) {
   html, body, #root {
     height: 100svh;
     min-height: 100svh;
   }
 }
-
-/* Убираем подсветку тапов на мобилках */
 * { -webkit-tap-highlight-color: transparent; }
 
-/* Блокируем фон под модалками (добавляй/снимай класс на body при открытии/закрытии модалки) */
 body.modal-open {
   position: fixed;
   inset: 0;
@@ -120,16 +105,5 @@ body.modal-open {
 }
 
 /* Контейнер-вьюпорт приложения + внутренний скролл */
-.app-viewport {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  background: var(--tg-bg-color);
-}
-.app-scroll {
-  height: 100%;
-  width: 100%;
-  overflow-y: auto;              /* скроллим только здесь */
-  overscroll-behavior: contain;  /* не тянем за края */
-  -webkit-overflow-scrolling: touch;
-}
+.app-viewport { height: 100%; width: 100%; overflow: hidden; background: var(--tg-bg-color); }
+.app-scroll    { height: 100%; width: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }

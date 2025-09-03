@@ -17,14 +17,7 @@ import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
 
-/**
- * Главный компонент приложения:
- * - Навигация по всем страницам (группы, детали группы, контакты, профиль, редактирование транзакции)
- * - Тематизация и авторизация через Telegram
- * - Логика приёма инвайта по токену (друзья/группа)
- */
 const App = () => {
-  // Единые точки инициализации темы и языка
   useApplyTheme()
   useSyncI18nLanguage()
   useTelegramAuth()
@@ -32,27 +25,16 @@ const App = () => {
   useEffect(() => {
     const tg = (window as any)?.Telegram?.WebApp
     const tokenFromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
-
-    // Для браузера: ищем token в URL (?startapp=... или ?start=...)
     const params = new URLSearchParams(window.location.search)
     const tokenFromUrl = params.get("startapp") || params.get("start")
     const token = tokenFromInitData || tokenFromUrl
-
     if (token) {
-      // Сначала пытаемся принять инвайт как "друга"
-      acceptFriendInvite(token)
-        .then(() => {
-          // Можно показать уведомление "Добавлен в друзья"
-        })
-        .catch(() => {
-          // Если это не инвайт для друзей — игнорируем
-        })
+      acceptFriendInvite(token).catch(() => {})
     }
   }, [])
 
   return (
     <div className="app-viewport">
-      {/* Только этот слой скроллится — устраняет «шевелёж» на мобилках */}
       <div className="app-scroll">
         <BrowserRouter>
           <MainLayout>
@@ -63,7 +45,6 @@ const App = () => {
               <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
-              {/* Новая страница редактирования транзакции */}
               <Route path="/transactions/:txId" element={<TransactionEditPage />} />
             </Routes>
           </MainLayout>
@@ -72,5 +53,4 @@ const App = () => {
     </div>
   )
 }
-
 export default App
