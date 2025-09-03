@@ -61,8 +61,8 @@ export default {
   group_balance_microtab_mine: "My balance",
   group_balance_microtab_all: "All balances",
   group_balance_no_debts: "No debts",
-  group_balance_get_from: "You are owed: {{sum}} ?",
-  group_balance_owe_to: "You owe: {{sum}} ?",
+  group_balance_get_from: "You are owed: {{sum}}",
+  group_balance_owe_to: "You owe: {{sum}}",
   group_balance_no_debt_with: "No debt",
   group_balance_no_debts_all: "Nobody owes anyone in this group",
 

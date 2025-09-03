@@ -36,8 +36,8 @@ export default {
   leave_group: "Salir del grupo",
   delete_group: "Eliminar grupo",
 
-  group_balance_you_get: "Te deben {{sum}} ₽",
-  group_balance_you_owe: "Debes {{sum}} ₽",
+  group_balance_you_get: "Te deben {{sum}}",
+  group_balance_you_owe: "Debes {{sum}}",
   group_balance_zero: "Todo saldado",
   group_header_settings: "Ajustes",
   group_header_my_balance: "Mi balance",

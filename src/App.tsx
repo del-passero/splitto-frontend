@@ -1,5 +1,4 @@
 // src/App.tsx
-
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { useEffect } from "react"
 
@@ -51,20 +50,25 @@ const App = () => {
   }, [])
 
   return (
-    <BrowserRouter>
-      <MainLayout>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-          <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
-          <Route path="/contacts" element={<ContactsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          {/* Новая страница редактирования транзакции */}
-          <Route path="/transactions/:txId" element={<TransactionEditPage />} />
-        </Routes>
-      </MainLayout>
-    </BrowserRouter>
+    <div className="app-viewport">
+      {/* Только этот слой скроллится — устраняет «шевелёж» на мобилках */}
+      <div className="app-scroll">
+        <BrowserRouter>
+          <MainLayout>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/groups" element={<GroupsPage />} />
+              <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
+              <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
+              <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              {/* Новая страница редактирования транзакции */}
+              <Route path="/transactions/:txId" element={<TransactionEditPage />} />
+            </Routes>
+          </MainLayout>
+        </BrowserRouter>
+      </div>
+    </div>
   )
 }
 
