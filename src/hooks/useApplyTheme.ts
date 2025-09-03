@@ -9,9 +9,10 @@ type ThemeName = "auto" | "light" | "dark"
 // просто добавь их сюда в пресеты.
 const LIGHT_PRESET: Record<string, string> = {
   "--tg-bg-color": "#ffffff",
+  "--tg-card-bg": "#ffffff",
   "--tg-text-color": "#0a0a0a",
-  "--tg-hint-color": "#6b7280",            // gray-500
-  "--tg-link-color": "#2481cc",            // телеграмный синий близкий
+  "--tg-hint-color": "#6b7280",
+  "--tg-link-color": "#2481cc",
   "--tg-button-color": "#2481cc",
   "--tg-button-text-color": "#ffffff",
   "--tg-secondary-bg-color": "#f2f3f5",
@@ -19,12 +20,13 @@ const LIGHT_PRESET: Record<string, string> = {
 }
 
 const DARK_PRESET: Record<string, string> = {
-  "--tg-bg-color": "#17212b",              // популярный bg из Telegram dark
+  "--tg-bg-color": "#17212b",
+  "--tg-card-bg": "#232e3c",
   "--tg-text-color": "#e6e6e6",
   "--tg-hint-color": "#8b949e",
   "--tg-link-color": "#6ab3f3",
   "--tg-button-color": "#2ea6ff",
-  "--tg-button-text-color": "#0b0f13",     // можно и #fff, если контраст нужен выше
+  "--tg-button-text-color": "#0b0f13",
   "--tg-secondary-bg-color": "#232e3c",
   "--tg-accent-bg-color": "rgba(255,255,255,0.06)",
 }
@@ -69,21 +71,23 @@ function setHtmlThemeClass(mode: "light" | "dark") {
 }
 
 function applyTelegramTheme(tgThemeParams: any) {
-  // На базе Telegram themeParams проставляем все известные переменные,
-  // а где нет — подставляем из пресета по яркости bg_color.
   const dark = isDarkByLuminance(tgThemeParams?.bg_color)
-
   const base = dark ? DARK_PRESET : LIGHT_PRESET
 
   const merged: Record<string, string> = {
-    "--tg-bg-color": tgThemeParams?.bg_color || base["--tg-bg-color"],
-    "--tg-text-color": tgThemeParams?.text_color || base["--tg-text-color"],
-    "--tg-hint-color": tgThemeParams?.hint_color || base["--tg-hint-color"],
-    "--tg-link-color": tgThemeParams?.link_color || base["--tg-link-color"],
-    "--tg-button-color": tgThemeParams?.button_color || base["--tg-button-color"],
-    "--tg-button-text-color": tgThemeParams?.button_text_color || base["--tg-button-text-color"],
-    // Доп. параметры у Telegram не всегда есть — держим свои:
-    "--tg-secondary-bg-color": base["--tg-secondary-bg-color"],
+    "--tg-bg-color": tgThemeParams?.bg_color ?? base["--tg-bg-color"],
+    "--tg-card-bg":
+      tgThemeParams?.secondary_bg_color ?? base["--tg-card-bg"],
+    "--tg-secondary-bg-color":
+      tgThemeParams?.secondary_bg_color ?? base["--tg-secondary-bg-color"],
+    "--tg-text-color": tgThemeParams?.text_color ?? base["--tg-text-color"],
+    "--tg-hint-color": tgThemeParams?.hint_color ?? base["--tg-hint-color"],
+    "--tg-link-color": tgThemeParams?.link_color ?? base["--tg-link-color"],
+    "--tg-button-color":
+      tgThemeParams?.button_color ?? base["--tg-button-color"],
+    "--tg-button-text-color":
+      tgThemeParams?.button_text_color ?? base["--tg-button-text-color"],
+    // вспомогательная
     "--tg-accent-bg-color": base["--tg-accent-bg-color"],
   }
 

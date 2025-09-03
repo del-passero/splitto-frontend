@@ -16,23 +16,25 @@ export const ModalSelector = ({ title, open, value, options, onChange, onClose }
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement | null>(null)
 
-  if (!open) return null
-
+  // ВАЖНО: хук вызываем всегда, но внутри проверяем open
   useEffect(() => {
+    if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [open, onClose])
 
-  const handleBackdropClick = () => onClose()
+  const handleBackdropMouseDown = () => open && onClose()
   const stop = (e: React.MouseEvent) => e.stopPropagation()
+
+  if (!open) return null
 
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center"
-      onMouseDown={handleBackdropClick}
+      onMouseDown={handleBackdropMouseDown}
     >
       <div
         ref={panelRef}
@@ -46,11 +48,7 @@ export const ModalSelector = ({ title, open, value, options, onChange, onClose }
           {title}
         </div>
 
-        <div
-          className="flex flex-col max-h-[65vh] overflow-y-auto"
-          role="radiogroup"
-          aria-label={title}
-        >
+        <div className="flex flex-col max-h-[65vh] overflow-y-auto" role="radiogroup" aria-label={title}>
           {options.map((opt) => {
             const selected = opt.value === value
             return (
