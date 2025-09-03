@@ -3,26 +3,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Splitto TEST WebApp</title>
-
+    <title>Splitto WebApp</title>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <meta name="color-scheme" content="light dark" />
-
-    <!-- Telegram WebApp API -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <!-- ⚡ Ранняя установка темы до монтирования React (убираем FOUC) -->
+    <!-- РАННЯЯ установка темы: уважает сохранённый выбор пользователя; если 'auto' — смотрит на Telegram -->
     <script>
       (function () {
         try {
           var mode = "light";
           var raw = localStorage.getItem("settings-storage");
-          var theme = raw ? JSON.parse(raw).state?.theme : "auto";
-          if (theme === "dark") mode = "dark";
-          else if (theme === "auto") {
+          var parsed = raw ? JSON.parse(raw) : null;
+          var theme = parsed && parsed.state ? parsed.state.theme : "auto";
+          if (theme === "dark") {
+            mode = "dark";
+          } else if (theme === "light") {
+            mode = "light";
+          } else {
             var tg = window.Telegram && window.Telegram.WebApp;
             if (tg && (tg.colorScheme === "dark" || tg.colorScheme === "light")) {
               mode = tg.colorScheme;

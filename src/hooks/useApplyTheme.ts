@@ -3,6 +3,7 @@ import { useEffect } from "react"
 import { useSettingsStore } from "../store/settingsStore"
 
 type Mode = "light" | "dark"
+type Theme = "auto" | Mode
 
 function hexToRgb(hex?: string): { r: number; g: number; b: number } | null {
   if (!hex || typeof hex !== "string") return null
@@ -22,33 +23,36 @@ function isDarkByLuminance(hex?: string) {
 }
 
 export function useApplyTheme() {
-  const theme = useSettingsStore(s => s.theme)
+  const theme = useSettingsStore(s => s.theme) as Theme
 
   useEffect(() => {
     const tg = (window as any)?.Telegram?.WebApp
 
-    const detectMode = (): Mode => {
-      // 1) Явная подсказка Telegram
+    const detectModeFromTelegram = (): Mode => {
       const scheme = tg?.colorScheme as Mode | undefined
       if (scheme === "light" || scheme === "dark") return scheme
-
-      // 2) Эвристика по bg_color, если вдруг colorScheme нет
       const bg = tg?.themeParams?.bg_color
       if (bg) return isDarkByLuminance(bg) ? "dark" : "light"
-
-      // 3) Вне Telegram — системная настройка
       const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches
-      return prefersDark ? "dark" as const : "light" as const
+      return prefersDark ? "dark" : "light"
+    }
+
+    const setMode = (mode: Mode) => {
+      document.documentElement.setAttribute("data-theme", mode)
     }
 
     const apply = () => {
-      const mode: Mode = theme === "auto" ? detectMode() : (theme as Mode)
-      document.documentElement.setAttribute("data-theme", mode)
+      if (theme === "auto") {
+        setMode(detectModeFromTelegram())
+      } else {
+        // ⬇️ КЛЮЧЕВОЕ: ручной выбор пользователя всегда сильнее Telegram
+        setMode(theme)
+      }
     }
 
     apply()
 
-    // В auto реагируем на смену темы Telegram
+    // Подписываемся на изменения темы Telegram ТОЛЬКО в auto
     if (theme === "auto" && tg?.onEvent) {
       const handler = () => apply()
       tg.onEvent("themeChanged", handler)
