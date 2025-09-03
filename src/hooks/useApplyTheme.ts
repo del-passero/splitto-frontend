@@ -5,6 +5,30 @@ import { useSettingsStore } from "../store/settingsStore"
 type Mode = "light" | "dark"
 type Theme = "auto" | Mode
 
+// Перечень всех var(--tg-*) которые могли быть записаны инлайном старым кодом.
+// Мы их удалим, чтобы пресеты из CSS (html[data-theme]) снова управляли UI.
+const VAR_KEYS = [
+  "--tg-bg-color",
+  "--tg-card-bg",
+  "--tg-text-color",
+  "--tg-hint-color",
+  "--tg-link-color",
+  "--tg-accent-color",
+  "--tg-secondary-bg-color",
+  "--tg-button-color",
+  "--tg-button-text-color",
+  "--tg-accent-bg-color",
+  "--tg-fab-label-bg",
+  "--tg-fab-label-color",
+]
+
+// Удаляем любые инлайновые overrides CSS-переменных на <html>,
+// чтобы css-правила html[data-theme="..."] снова стали источником истины.
+function clearInlineOverrides() {
+  const root = document.documentElement
+  for (const k of VAR_KEYS) root.style.removeProperty(k)
+}
+
 function hexToRgb(hex?: string): { r: number; g: number; b: number } | null {
   if (!hex || typeof hex !== "string") return null
   const m = hex.trim().match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
@@ -38,6 +62,10 @@ export function useApplyTheme() {
     }
 
     const setMode = (mode: Mode) => {
+      // Ключевой порядок:
+      // 1) убираем старые инлайновые overrides (если вдруг были)
+      // 2) выставляем атрибут темы
+      clearInlineOverrides()
       document.documentElement.setAttribute("data-theme", mode)
     }
 
@@ -45,18 +73,18 @@ export function useApplyTheme() {
       if (theme === "auto") {
         setMode(detectModeFromTelegram())
       } else {
-        // ⬇️ КЛЮЧЕВОЕ: ручной выбор пользователя всегда сильнее Telegram
+        // РУЧНОЙ ВЫБОР ВСЕГДА СИЛЬНЕЕ Telegram
         setMode(theme)
       }
     }
 
     apply()
 
-    // Подписываемся на изменения темы Telegram ТОЛЬКО в auto
+    // Слушаем Telegram только в auto
     if (theme === "auto" && tg?.onEvent) {
       const handler = () => apply()
       tg.onEvent("themeChanged", handler)
-      return () => { tg?.offEvent?.("themeChanged", handler) }
+      return () => { try { tg.offEvent?.("themeChanged", handler) } catch {} }
     }
   }, [theme])
 }
