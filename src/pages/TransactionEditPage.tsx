@@ -15,7 +15,6 @@ import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
 import { getTransaction, updateTransaction, removeTransaction } from "../api/transactionsApi";
 import { useUserStore } from "../store/userStore";
-import { getExpenseCategories } from "../api/expenseCategoriesApi";
 
 import {
   X,
@@ -40,7 +39,7 @@ type TxOut = {
 
   // expense-only
   category?:
-    | { id: number; name?: string; color?: string | null; icon?: string | null }
+    | { id: number; name: string; color?: string | null; icon?: string | null }
     | null;
   paid_by?: number | null;
   shares?: TxShare[];
@@ -51,14 +50,8 @@ type TxOut = {
 
   created_at?: string;
 
-  // часто приходит с бэка
+  // нередко приходит с бэка для расхода
   split_type?: "equal" | "shares" | "custom";
-
-  // фолбэки, если category не развёрнут
-  category_id?: number;
-  category_name?: string;
-  category_icon?: string | null;
-  category_color?: string | null;
 };
 
 export interface MinimalGroup {
@@ -197,26 +190,6 @@ const nameFromMember = (m?: MemberMini) => {
   return composed || m.username || m.name || `#${m.id}`;
 };
 
-/* ====== Геттеры полей категории — безопасные для любых типов ====== */
-function catNameOf(x: any): string {
-  const s = (x?.name ?? x?.title ?? x?.label ?? x?.key ?? x?.slug ?? "").toString().trim();
-  return s;
-}
-function catIconOf(x: any): string | null {
-  return (x?.icon ?? x?.emoji ?? null) ?? null;
-}
-function catColorOf(x: any): string | null {
-  const raw =
-    x?.color ??
-    x?.bg_color ??
-    x?.hex ??
-    x?.background_color ??
-    x?.color_hex ??
-    null;
-  const hex6 = to6Hex(raw) ?? raw ?? null;
-  return hex6;
-}
-
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
   const { t, i18n } = useTranslation();
@@ -274,11 +247,6 @@ export default function TransactionEditPage() {
     if (!splitData || amountNumber <= 0) return [];
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
-
-  /* ---------- кеш категорий (id -> {name, icon, color}) ---------- */
-  const categoryCacheRef = useRef<Map<number, { name: string; icon?: string | null; color?: string | null }>>(
-    new Map()
-  );
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -378,42 +346,51 @@ export default function TransactionEditPage() {
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
-        // Категория (надёжный префилл + фолбэки)
-        const catId =
-          tx.category?.id ??
-          tx.category_id ??
-          (tx as any).categoryId ??
-          undefined;
-        const catName =
-          tx.category?.name ??
-          tx.category_name ??
-          (tx as any).categoryName ??
-          null;
-        const catIcon =
-          (tx.category as any)?.icon ??
-          tx.category_icon ??
-          (tx as any).categoryIcon ??
-          null;
-        const rawColor =
-          (tx.category as any)?.color ??
-          (tx.category as any)?.bg_color ??
-          (tx.category as any)?.hex ??
-          (tx.category as any)?.background_color ??
-          (tx.category as any)?.color_hex ??
-          tx.category_color ??
-          (tx as any).categoryColor ??
-          null;
-        const hex6 = to6Hex(rawColor) ?? rawColor ?? null;
-        setCategoryId(catId);
-        setCategoryName(catName);
-        setCategoryColor(hex6);
-        setCategoryIcon(catIcon);
+        // Категория — сначала развёрнутая, иначе фолбэки из полей транзакции
+        if (tx.category) {
+          const rawColor =
+            (tx.category as any).color ??
+            (tx.category as any).bg_color ??
+            (tx.category as any).hex ??
+            (tx.category as any).background_color ??
+            (tx.category as any).color_hex ??
+            null;
+          const hex6 = to6Hex(rawColor) ?? rawColor ?? null;
+          setCategoryId(tx.category.id);
+          setCategoryName(tx.category.name || null);
+          setCategoryColor(hex6);
+          setCategoryIcon((tx.category as any).icon ?? null);
+        } else {
+          const rawId = Number((tx as any).category_id ?? NaN);
+          const rawName =
+            ((tx as any).category_name ??
+             (tx as any).categoryTitle ??
+             (tx as any).category_label ??
+             null) as string | null;
+          const rawIcon =
+            ((tx as any).category_icon ??
+             (tx as any).categoryEmoji ??
+             null) as string | null;
+          const rawColor =
+            (tx as any).category_color ??
+            (tx as any).category_hex ??
+            (tx as any).category_bg ??
+            (tx as any).category_background ??
+            null;
+
+          const hex6 = to6Hex(rawColor as any) ?? (rawColor as any) ?? null;
+
+          setCategoryId(Number.isFinite(rawId) ? rawId : undefined);
+          setCategoryName(rawName || null);
+          setCategoryColor(hex6);
+          setCategoryIcon(rawIcon);
+        }
 
         // Плательщик
         const payerId = Number(tx.paid_by ?? NaN);
         setPaidBy(Number.isFinite(payerId) ? payerId : undefined);
 
-        // Разделение — переносим ТИП из бэка, без принудительного custom
+        // Разделение
         const baseParts: any[] = Array.isArray(tx.shares)
           ? tx.shares.map((s) => ({
               user_id: Number(s.user_id),
@@ -422,6 +399,8 @@ export default function TransactionEditPage() {
               amount: Number(s.amount) || 0,
             }))
           : [];
+
+        // Сохраняем тип разделения из бэка (если есть), иначе «custom»
         const initialSplitType: "equal" | "shares" | "custom" =
           (tx.split_type as any) || "custom";
 
@@ -435,14 +414,13 @@ export default function TransactionEditPage() {
             })),
           } as any);
         } else if (initialSplitType === "shares") {
-          // стартуем только с участников транзакции (НЕ со всех членов группы)
           setSplitData({
             type: "shares",
             participants: baseParts.map((p) => ({
               user_id: p.user_id,
               name: p.name,
               avatar_url: p.avatar_url,
-              share: 1, // пометка «участвовал»
+              share: 1,
             })),
           } as any);
         } else {
@@ -469,118 +447,6 @@ export default function TransactionEditPage() {
       didPrefillRef.current = true;
     } catch { /* ignore */ }
   }, [tx, group]);
-
-  /* ---------- 3.1) ГЛУБОКИЙ lazy-резолв категории по id + кэш ---------- */
-  useEffect(() => {
-    let abort = false;
-
-    const setFromCache = (id: number) => {
-      const cached = categoryCacheRef.current.get(id);
-      if (cached) {
-        setCategoryName((prev) => prev || cached.name || null);
-        setCategoryIcon((prev) => prev ?? cached.icon ?? null);
-        setCategoryColor((prev) => prev ?? cached.color ?? null);
-        return true;
-      }
-      return false;
-    };
-
-    // BFS по дереву категорий (до 5 уровней)
-    const findCategoryDeep = async (wantedId: number) => {
-      // сначала накачаем верхний уровень
-      let offset = 0;
-      const limit = 100;
-      let total = Infinity;
-      const roots: any[] = [];
-
-      try {
-        while (!abort && offset < total) {
-          const res = await getExpenseCategories({ offset, limit });
-          total = res.total ?? 0;
-          const items = res.items ?? [];
-          for (const c of items as any[]) {
-            categoryCacheRef.current.set(c.id, {
-              name: catNameOf(c),
-              icon: catIconOf(c),
-              color: catColorOf(c),
-            });
-            if (c.id === wantedId) return c;
-          }
-          roots.push(...items);
-          offset += items.length;
-          if (items.length === 0) break;
-        }
-      } catch { /* ignore */ }
-
-      // очередь на обход вниз
-      const queue: number[] = roots.map((r: any) => r.id);
-      const visited = new Set<number>(queue);
-
-      let depth = 0;
-      while (!abort && queue.length && depth < 5) {
-        const breadth = queue.length;
-        for (let i = 0; i < breadth; i++) {
-          const parentId = queue.shift()!;
-          try {
-            let chOffset = 0;
-            let chTotal = Infinity;
-            while (!abort && chOffset < chTotal) {
-              const res = await getExpenseCategories({ parentId, offset: chOffset, limit: 100 });
-              chTotal = res.total ?? 0;
-              const items = res.items ?? [];
-              for (const c of items as any[]) {
-                categoryCacheRef.current.set(c.id, {
-                  name: catNameOf(c),
-                  icon: catIconOf(c),
-                  color: catColorOf(c),
-                });
-                if (c.id === wantedId) return c;
-                if (!visited.has(c.id)) {
-                  visited.add(c.id);
-                  queue.push(c.id);
-                }
-              }
-              chOffset += items.length;
-              if (items.length === 0) break;
-            }
-          } catch { /* ignore */ }
-        }
-        depth++;
-      }
-
-      return null;
-    };
-
-    (async () => {
-      if (tx?.type !== "expense") return;
-      if (!categoryId) return;
-
-      // если уже всё есть — выходим
-      const hasName = !!(categoryName && categoryName.trim());
-      const haveVisual = categoryIcon != null || categoryColor != null;
-      if (hasName && haveVisual) return;
-
-      // из кеша
-      if (setFromCache(categoryId)) return;
-
-      // ищем по дереву
-      const found: any = await findCategoryDeep(categoryId);
-      if (abort) return;
-      if (found) {
-        const name = catNameOf(found);
-        const icon = catIconOf(found);
-        const color = catColorOf(found);
-        categoryCacheRef.current.set(found.id, { name, icon, color });
-
-        setCategoryName((prev) => prev || (name || null));
-        setCategoryIcon((prev) => prev ?? icon);
-        setCategoryColor((prev) => prev ?? color);
-      }
-    })();
-
-    return () => { abort = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tx?.type, categoryId, categoryName, categoryIcon, categoryColor]);
 
   /* ---------- 4) имена/аватарки после загрузки участников ---------- */
   useEffect(() => {
@@ -624,22 +490,19 @@ export default function TransactionEditPage() {
   const goBack = () => navigate(-1);
 
   const handleSelectCategory = (
-    it: Record<string, any>
+    it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>
   ) => {
-    // безопасные геттеры — не зависим от конкретных полей типа
-    const id = Number(it.id);
-    const name = catNameOf(it);
-    const icon = catIconOf(it);
-    const color = catColorOf(it);
-
-    setCategoryId(Number.isFinite(id) ? id : undefined);
-    setCategoryName(name || null);
-    setCategoryColor(color);
-    setCategoryIcon(icon);
-
-    if (Number.isFinite(id)) {
-      categoryCacheRef.current.set(id, { name, icon, color });
-    }
+    const raw =
+      (it as any).color ??
+      (it as any).bg_color ??
+      (it as any).hex ??
+      (it as any).background_color ??
+      (it as any).color_hex;
+    const hex6 = to6Hex(raw) ?? raw ?? null;
+    setCategoryId(it.id);
+    setCategoryName(it.name);
+    setCategoryColor(hex6);
+    setCategoryIcon((it as any).icon ?? null);
   };
 
   function buildShares(
@@ -663,8 +526,7 @@ export default function TransactionEditPage() {
     if (sel.type === "shares") {
       const sharesByUser = new Map<number, number>();
       for (const p of sel.participants as any[]) {
-        const v = Number((p as any).share || 0);
-        if (v > 0) sharesByUser.set(Number(p.user_id), v);
+        sharesByUser.set(Number(p.user_id), Number((p as any).share || 0));
       }
       return list.map((p) => ({
         user_id: Number(p.user_id),
@@ -703,41 +565,6 @@ export default function TransactionEditPage() {
     return true;
   };
 
-  // нормализация результата SplitPickerModal (фикс «равно/доли»)
-  const normalizeSplitSelection = (sel: SplitSelection): SplitSelection => {
-    const prevIds = new Set((splitData?.participants || []).map((p: any) => Number(p.user_id)));
-    const enrich = (u: number) => {
-      const m = membersMap.get(u);
-      return {
-        user_id: u,
-        name: firstNameOnly(nameFromMember(m)),
-        avatar_url: m?.photo_url,
-      };
-    };
-
-    if (sel.type === "equal") {
-      const returned = sel.participants || [];
-      // если модалка отдала только плательщика — восстановим исходный состав
-      if (returned.length <= 1 && prevIds.size > 0) {
-        const participants = Array.from(prevIds).map(enrich);
-        return { type: "equal", participants };
-      }
-      return sel;
-    }
-
-    if (sel.type === "shares") {
-      let returned = sel.participants || [];
-      // оставляем только тех, кто уже был участником ранее ИЛИ у кого share > 0
-      returned = returned.filter((p: any) => prevIds.has(Number(p.user_id)) || Number(p.share || 0) > 0);
-      if (returned.length === 0 && prevIds.size > 0) {
-        returned = Array.from(prevIds).map((u) => ({ ...enrich(u), share: 1 }));
-      }
-      return { type: "shares", participants: returned as any };
-    }
-
-    return sel; // custom — без изменений
-  };
-
   // SAVE (PUT /transactions/{id})
   const doSave = async () => {
     if (!tx || !group?.id) return;
@@ -745,7 +572,7 @@ export default function TransactionEditPage() {
     try {
       setSaving(true);
       const gid = group.id;
-      const amtStr = toFixedSafe(amount || "0", currency.decimals); // строка для стабильности округления
+      const amtStr = toFixedSafe(amount || "0", currency.decimals); // строка как в create-модалке
       const curr = currency.code || tx.currency || "";
 
       if (tx.type === "expense") {
@@ -756,7 +583,9 @@ export default function TransactionEditPage() {
           return;
         }
 
+        // проверка корректности split перед отправкой
         if (!validateSplitBeforeSave(amtStr)) {
+          // Подсветим пользователю место правки
           setSplitOpen(true);
           setSaving(false);
           return;
@@ -765,7 +594,7 @@ export default function TransactionEditPage() {
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: amtStr,
+          amount: amtStr, // строкой
           currency: curr,
           date,
           comment: (comment || "").trim() || null,
@@ -785,7 +614,7 @@ export default function TransactionEditPage() {
         const payload: any = {
           type: "transfer",
           group_id: gid,
-          amount: amtStr,
+          amount: amtStr, // строкой
           currency: curr,
           date,
           comment: (comment || "").trim() || null,
@@ -804,7 +633,7 @@ export default function TransactionEditPage() {
     }
   };
 
-  // DELETE
+  // DELETE (вернул как было в стабильной версии)
   const doDelete = async () => {
     if (!tx) return;
     const yes = window.confirm(
@@ -854,7 +683,7 @@ export default function TransactionEditPage() {
     );
   }
 
-  // ПОЛНОЭКРАННАЯ МОДАЛКА ПОВЕРХ ВСЕГО
+  // ПОЛНОЭКРАННАЯ МОДАЛКА ПОВЕРХ ВСЕГО (Navbar под ней)
   return (
     <div className="fixed inset-0 z-[1000] bg-black/40" onClick={goBack}>
       <div
@@ -877,7 +706,7 @@ export default function TransactionEditPage() {
           <div className="w-7" />
         </div>
 
-        {/* Content — как в CreateTransactionModal */}
+        {/* Content — как в CreateTransactionModal: внешний gap между секциями уменьшен */}
         <div className="p-3 flex flex-col gap-0.5 max-w-xl mx-auto">
           {/* Сумма */}
           <div className="-mx-3">
@@ -1256,7 +1085,12 @@ export default function TransactionEditPage() {
           groupId={group?.id || 0}
           selectedId={categoryId}
           onSelect={(it) => {
-            handleSelectCategory(it as any);
+            handleSelectCategory({
+              id: it.id,
+              name: it.name,
+              color: (it as any).color,
+              icon: (it as any).icon,
+            } as any);
             setCategoryModal(false);
           }}
           closeOnSelect
@@ -1303,8 +1137,26 @@ export default function TransactionEditPage() {
           initial={splitData || { type: "equal", participants: [] as any[] }}
           paidById={paidBy}
           onSave={(sel) => {
-            const normalized = normalizeSplitSelection(sel);
-            setSplitData(normalized);
+            // НОРМАЛИЗАЦИЯ ТОЛЬКО ДЛЯ «ПОРОВНУ»:
+            // если модалка вернула <=1 участника (часто только плательщика),
+            // восстанавливаем исходный состав участников транзакции.
+            let out: SplitSelection = sel;
+            if (sel?.type === "equal") {
+              const returned = sel.participants || [];
+              const prev = splitData?.participants || [];
+              if (returned.length <= 1 && prev.length > 0) {
+                const participants = prev.map((p: any) => {
+                  const m = membersMap.get(p.user_id);
+                  return {
+                    user_id: p.user_id,
+                    name: p.name || (m ? firstNameOnly(nameFromMember(m)) : ""),
+                    avatar_url: p.avatar_url || m?.photo_url,
+                  };
+                });
+                out = { type: "equal", participants } as any;
+              }
+            }
+            setSplitData(out);
             setSplitOpen(false);
           }}
         />
@@ -1313,7 +1165,7 @@ export default function TransactionEditPage() {
   );
 }
 
-/* --- локальный стиль для скрытия нативных стрелок/индикаторов у input[type="date"] --- */
+/* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках (как в CreateTransactionModal) --- */
 const style = typeof document !== "undefined" ? document.createElement("style") : null;
 if (style) {
   style.innerHTML = `
