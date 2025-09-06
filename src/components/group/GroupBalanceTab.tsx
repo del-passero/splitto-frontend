@@ -1,5 +1,5 @@
 // src/components/group/GroupBalanceTab.tsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import GroupBalanceTabSmart, { MyDebt, AllDebt } from "./GroupBalanceTabSmart";
 import { getTransactions } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
@@ -7,7 +7,7 @@ import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
-import CardSection from "../CardSection"; // единый контейнер как на вкладке Транзакций
+import CardSection from "../CardSection";
 
 // Мягкое определение точности по коду валюты (как в других местах проекта)
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
@@ -57,8 +57,10 @@ export default function GroupBalanceTab() {
   const [txOpen, setTxOpen] = useState(false);
   const [txInitial, setTxInitial] = useState<any | null>(null);
 
-  // чтобы пересчитать после создания транзакции
+  // чтобы пересчитать после создания транзакции / закрытия модалки
   const [refreshSeq, setRefreshSeq] = useState(0);
+  const wasOpenRef = useRef(false);
+  const shouldRefreshOnCloseRef = useRef(false);
 
   // загрузка участников (весь список)
   useEffect(() => {
@@ -219,7 +221,7 @@ export default function GroupBalanceTab() {
     return () => {
       aborted = true;
     };
-    // пересчитываем также по refreshSeq (после создания перевода)
+    // пересчитываем также по refreshSeq (после создания перевода / закрытия модалки)
   }, [groupId, currentUserId, membersMap, refreshSeq]);
 
   // ====== Колбэки для «погасить»/«напомнить» ======
@@ -234,6 +236,7 @@ export default function GroupBalanceTab() {
         toUser: u.id,
         groupId,
       });
+      shouldRefreshOnCloseRef.current = true; // при закрытии модалки обновим список
       setTxOpen(true);
     },
     [currentUserId, groupId]
@@ -245,10 +248,24 @@ export default function GroupBalanceTab() {
     console.log("remind", u, amount);
   }, []);
 
+  // Автообновление при закрытии модалки (даже если пользователь отменил — это безопасно)
+  useEffect(() => {
+    if (txOpen) {
+      wasOpenRef.current = true;
+      return;
+    }
+    // стейт перешёл в закрытое состояние
+    if (wasOpenRef.current && shouldRefreshOnCloseRef.current) {
+      shouldRefreshOnCloseRef.current = false;
+      wasOpenRef.current = false;
+      setRefreshSeq((v) => v + 1);
+    }
+  }, [txOpen]);
+
   return (
     <CardSection
       noPadding
-      className="relative w-full h-full min-h[320px] overflow-x-hidden overscroll-x-none"
+      className="relative w-full h-full min-h-[320px] overflow-x-hidden overscroll-x-none"
     >
       <div className="w-full min-w-0" style={{ color: "var(--tg-text-color)" }}>
         <GroupBalanceTabSmart
@@ -270,7 +287,11 @@ export default function GroupBalanceTab() {
         groups={[]}
         defaultGroupId={groupId}
         initialTx={txInitial || undefined}
-        onCreated={() => setRefreshSeq((v) => v + 1)}
+        onCreated={() => {
+          // если CreateTransactionModal вызовет колбэк — обновим сразу (дублируем логику на случай,
+          // если модалка НЕ вызовет onCreated — тогда сработает эффект закрытия выше)
+          setRefreshSeq((v) => v + 1);
+        }}
       />
     </CardSection>
   );

@@ -1,7 +1,6 @@
 // src/components/group/GroupBalanceTabSmart.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import TransactionList from "../transactions/TransactionList";
 
 type User = {
   id: number;
@@ -96,7 +95,7 @@ function AutoScrollRow({ children, className = "", gap = 8 }: { children: React.
 
 /* ---------- constants для отрисовки ---------- */
 const ITEM_VPAD = 4;           // py-4 → карточки в 2 раза выше
-const SEP_LEFT_INSET = 36;     // откуда начинать разделитель внутри карточки (от левого края секции до первой аватарки)
+const SEP_LEFT_INSET = 18;     // уменьшили в 2 раза (было 36)
 
 /* ---------- main ---------- */
 export default function GroupBalanceTabSmart({
@@ -146,97 +145,95 @@ export default function GroupBalanceTabSmart({
         </div>
       </div>
 
-      {/* обёртка «карточки» как на вкладке транзакций */}
-      <div className="-mx-3">
-        <div className="mx-3">
-          <div className="rounded-xl border bg-[var(--tg-card-bg)]" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
-            {/* Внутренние отступы для заголовка */}
-            <div className="px-3 pt-2">
-              {loading ? (
-                <div className="py-6 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
-              ) : tab === "mine" ? (
-                <>
-                  {/* заголовок */}
-                  <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">{headerText}</div>
-                  {/* разделитель на всю ширину секции */}
-                  <div className="-mx-3 h-px bg-[var(--tg-hint-color)] opacity-15" />
-                  {/* список */}
-                  {myDebts.length === 0 ? (
-                    <div className="px-3 py-3 text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts")}</div>
-                  ) : (
-                    <TransactionList<MyDebt>
-                      items={myDebts}
-                      keyExtractor={(d) => d.user.id}
-                      leftInsetPx={SEP_LEFT_INSET}
-                      horizontalPaddingPx={12 /* px-3 */}
-                      renderItem={(d) => {
-                        const iOwe = d.amount < 0;
-                        const amountAbs = Math.abs(d.amount);
-                        return (
-                          <div
-                            className={`py-${ITEM_VPAD}`}
-                            onPointerDown={() => startPress(d)}
-                            onPointerUp={clearPress}
-                            onPointerLeave={clearPress}
-                          >
-                            <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                              <AutoScrollRow className="min-w-0">
-                                <span className="text-[14px] text-[var(--tg-text-color)]">
-                                  {iOwe
-                                    ? (t("group_balance_owe_to", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")
-                                    : (t("group_balance_get_from", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")}
-                                </span>
-                                <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
-                                <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(d.user)}</span>
-                              </AutoScrollRow>
-                              <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                                {fmtMoney(amountAbs, currency)}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* разделитель под шапкой — без текста в табе «Все» */}
-                  <div className="-mx-3 h-px bg-[var(--tg-hint-color)] opacity-15" />
-                  {allDebts.length === 0 ? (
-                    <div className="px-3 py-3 text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
-                  ) : (
-                    <TransactionList<AllDebt>
-                      items={allDebts}
-                      keyExtractor={(p, i) => `${p.from.id}->${p.to.id}-${i}`}
-                      leftInsetPx={SEP_LEFT_INSET}
-                      horizontalPaddingPx={12 /* px-3 */}
-                      renderItem={(p) => (
-                        <div className={`py-${ITEM_VPAD}`}>
-                          <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                            <AutoScrollRow className="min-w-0">
-                              <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} />
-                              <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.from)}</span>
-                              <span className="text-[14px] text-[var(--tg-text-color)] opacity-90">{owesWord}</span>
-                              <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} />
-                              <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.to)}</span>
-                            </AutoScrollRow>
-                            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                              {fmtMoney(p.amount, currency)}
-                            </div>
+      {/* Контент напрямую внутри CardSection: уменьшенные горизонтальные отступы */}
+      <div className="px-2 py-2">
+        {loading ? (
+          <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+        ) : tab === "mine" ? (
+          <>
+            {/* заголовок */}
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">{headerText}</div>
+            {/* разделитель под заголовком */}
+            <div className="h-px bg-[var(--tg-hint-color)] opacity-15 mb-1" />
+
+            {myDebts.length === 0 ? (
+              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts")}</div>
+            ) : (
+              <div>
+                {myDebts.map((d, idx) => {
+                  const iOwe = d.amount < 0;
+                  const amountAbs = Math.abs(d.amount);
+                  return (
+                    <div key={d.user.id} className="relative">
+                      <div
+                        className={`py-${ITEM_VPAD}`}
+                        onPointerDown={() => startPress(d)}
+                        onPointerUp={clearPress}
+                        onPointerLeave={clearPress}
+                      >
+                        {/* 2 колонки: бегущая строка слева + сумма справа */}
+                        <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                          <AutoScrollRow className="min-w-0">
+                            <span className="text-[14px] text-[var(--tg-text-color)]">
+                              {iOwe
+                                ? (t("group_balance_owe_to", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")
+                                : (t("group_balance_get_from", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")}
+                            </span>
+                            <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
+                            {/* важно: НЕ обрезаем имя */}
+                            <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">
+                              {firstOnly(d.user)}
+                            </span>
+                          </AutoScrollRow>
+                          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                            {fmtMoney(amountAbs, currency)}
                           </div>
                         </div>
+                      </div>
+                      {/* разделитель между карточками: от правого края до ПЕРВОЙ АВАТАРЫ (уменьшенный inset) */}
+                      {idx !== myDebts.length - 1 && (
+                        <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
                       )}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {allDebts.length === 0 ? (
+              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
+            ) : (
+              <div>
+                {allDebts.map((p, idx) => (
+                  <div key={idx} className="relative">
+                    <div className={`py-${ITEM_VPAD}`}>
+                      <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                        <AutoScrollRow className="min-w-0">
+                          <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} />
+                          <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">{firstOnly(p.from)}</span>
+                          <span className="text-[14px] text-[var(--tg-text-color)] opacity-90">{owesWord}</span>
+                          <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} />
+                          <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">{firstOnly(p.to)}</span>
+                        </AutoScrollRow>
+                        <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                          {fmtMoney(p.amount, currency)}
+                        </div>
+                      </div>
+                    </div>
+                    {idx !== allDebts.length - 1 && (
+                      <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {/* контекстное меню по long-press — по центру */}
+      {/* контекстное меню по long-press — ТЕПЕРЬ ПО ЦЕНТРУ */}
       {sheetOpen && selected && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={() => setSheetOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
@@ -247,7 +244,7 @@ export default function GroupBalanceTabSmart({
             {selected.amount < 0 ? (
               <button
                 type="button"
-                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg_white/5 transition"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
                 onClick={() => { onRepay?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); }}
               >
                 {t("repay_debt")}
@@ -255,7 +252,7 @@ export default function GroupBalanceTabSmart({
             ) : (
               <button
                 type="button"
-                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg_white/5 transition"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
                 onClick={() => { onRemind?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); setStubOpen(true); }}
               >
                 {t("remind_debt")}
@@ -264,7 +261,7 @@ export default function GroupBalanceTabSmart({
             <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
             <button
               type="button"
-              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg_white/5 transition"
+              className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
               onClick={() => setSheetOpen(false)}
             >
               {t("cancel")}
