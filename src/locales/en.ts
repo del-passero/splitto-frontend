@@ -1,6 +1,5 @@
-// src/i18n/en.ts
+// src/locales/en.ts
 export default {
-  // --- Navigation & main sections ---
   main: "Home",
   groups: "Groups",
   group: "Group",
@@ -11,7 +10,6 @@ export default {
   contacts: "Contacts",
   profile: "Profile",
 
-  // --- Groups & members ---
   participants: "Participants",
   members: "Members",
   owner: "Owner",
@@ -39,38 +37,29 @@ export default {
   leave_group: "Leave group",
   delete_group: "Delete group",
 
-  // --- Balances & debts ---
-  // IMPORTANT: use informal “you” on "My balance" tab.
-  // In transaction cards use neutral wording.
   group_balance_you_get: "You're owed {{sum}}",
   group_balance_you_owe: "You owe {{sum}}",
   group_balance_zero: "All settled",
   group_header_settings: "Settings",
   group_header_my_balance: "My balance",
   group_participant_no_debt: "No debt",
-  // Used in transaction cards / polite lists:
   group_participant_you_owe: "You owe: {{sum}}",
   group_participant_owes_you: "Owes you: {{sum}}",
 
-  // --- Members list (scroll) ---
   group_invite: "Invite",
   group_add_member: "Add",
 
-  // --- Group tabs ---
   group_tab_transactions: "Transactions",
   group_tab_balance: "Balance",
   group_tab_analytics: "Analytics",
 
-  // --- FAB ---
   group_fab_add_transaction: "Add transaction",
 
-  // --- Transactions ---
   group_transactions_empty: "There are no expenses in the group yet — add the first one!",
   group_transactions_not_found: "No expenses found",
   group_transactions_placeholder:
     "Placeholder for the transactions list. Your group's transactions will appear here.",
 
-  // --- Balance tab ---
   group_balance_microtab_mine: "My balance",
   group_balance_microtab_all: "All balances",
   group_balance_no_debts: "No debts",
@@ -79,14 +68,11 @@ export default {
   group_balance_no_debt_with: "No debt",
   group_balance_no_debts_all: "No one owes anyone in this group",
 
-  // Action buttons on balance cards
   repay_debt: "Repay debt",
   remind_debt: "Remind about debt",
 
-  // --- Analytics tab ---
   group_analytics_coming_soon: "Analytics coming soon",
 
-  // --- Group settings page ---
   group_settings_tab_settings: "Settings",
   group_settings_tab_members: "Members",
   group_settings_leave_group: "Leave group",
@@ -97,7 +83,6 @@ export default {
   group_settings_close: "Close",
   group_settings_save_and_exit: "Save & close",
 
-  // --- Invites ---
   create_invite_link: "Create invite link",
   invite_by_link: "Invite by link",
   copy_link: "Copy link",
@@ -111,7 +96,6 @@ export default {
     "Join me on Splitto — an easy way to manage shared expenses without leaving Telegram.\nHere's your link:\n{{link}}",
   error_invite_link: "Failed to get the link",
 
-  // --- Contacts ---
   empty_contacts: "You don't have any contacts yet...",
   contacts_count: "Total contacts: {{count}}",
   search_placeholder: "Search contact...",
@@ -119,7 +103,6 @@ export default {
   sort: "Sort",
   no_friends: "No friends to add",
 
-  // --- Profile & settings ---
   account: "Account",
   settings: "Settings",
   about: "About",
@@ -137,7 +120,6 @@ export default {
   language_es: "Spanish",
   version: "Version",
 
-  // --- Buttons & statuses ---
   edit: "Edit",
   cancel: "Cancel",
   save: "Save",
@@ -147,12 +129,10 @@ export default {
   save_failed: "Failed to save",
   delete_failed: "Failed to delete",
 
-  // --- Errors & system statuses ---
   error: "Error",
   group_settings_cannot_leave_due_debt:
     "You can't leave this group right now, because you have outstanding debts to other members. Please make sure all your debts are paid and try again.",
 
-  // --- Currencies ---
   currency: {
     select_title: "Choose currency",
     search_placeholder: "Search currency",
@@ -162,13 +142,18 @@ export default {
     currency_popular: "Popular",
   },
 
-  // --- Common & group form ---
   common: { yes: "Yes", no: "No" },
   errors: {
     group_name_required: "Enter a group name",
     group_trip_date_required: "Enter a trip date",
     create_group_failed: "Failed to create group",
+    friends_load: "Failed to load friends",
+    friends_search: "Search failed",
+    contact_load: "Failed to load contact",
+    common_groups_load: "Failed to load mutual groups",
+    contact_friends_load: "Failed to load contact's friends",
   },
+
   group_form: {
     name_placeholder: "Group name",
     description_placeholder: "Group description",
@@ -182,7 +167,6 @@ export default {
     trip_date_placeholder: "DD.MM.YYYY",
   },
 
-  // --- Add members modal ---
   add_members_modal: {
     title: "Add participants",
     search_placeholder: "Search contact...",
@@ -192,7 +176,6 @@ export default {
     error_some_failed: "Added: {{added}}, failed: {{failed}}",
   },
 
-  // --- Transaction modal ---
   tx_modal: {
     title: "New transaction",
     choose_group: "Choose a group",
@@ -234,32 +217,41 @@ export default {
     all: "ALL",
     paid_by_label: "Paid by",
     owes_label: "Owes",
-    // v used between names in “All balances”: “owes”
     owes: "owes",
 
     delete_confirm: "Delete the transaction? This action is irreversible.",
   },
 
-  // --- Transaction card ---
   tx_card: {
     not_participant_expense: "You are not a participant in this expense",
   },
 
-  // --- Categories ---
   category: {
     select_title: "Choose category",
     search_placeholder: "Search category",
     not_found: "Nothing found",
   },
 
-  // --- Date format for cards (via keys) ---
   date_card: {
     pattern: "{{day}} {{month}}",
-    months: [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ],
+    months: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
   },
 
   actions: "Actions",
-};
+
+  contact: {
+    tab_info: "Contact info",
+    tab_contact_friends: "Contact's friends",
+    in_friends_since: "Friends since",
+    open_in_telegram: "Open in Telegram",
+    mutual_groups: "Mutual groups",
+    no_common_groups: "No mutual groups",
+    loading: "Loading…",
+    error_contact: "Failed to load contact",
+    error_common_groups: "Failed to load mutual groups",
+    error_contact_friends: "Failed to load contact's friends",
+    error_friends_list: "Failed to load friends list",
+    shown_of_total: "{{shown}} of {{total}}",
+    no_name: "No name",
+  },
+}

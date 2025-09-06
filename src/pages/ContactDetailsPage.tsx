@@ -30,7 +30,8 @@ const ContactDetailsPage = () => {
 
   const contactUser = useMemo(() => {
     if (!contactFriend) return null
-    return contactFriend.friend
+    // В нашем контракте профиль контакта лежит в поле user
+    return contactFriend.user
   }, [contactFriend])
 
   const onOpenProfile = () => {
@@ -45,31 +46,31 @@ const ContactDetailsPage = () => {
           className={`flex-1 py-2 text-sm ${activeTab === "info" ? "bg-[var(--tg-accent-color)] text-white" : "bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]"}`}
           onClick={() => setActiveTab("info")}
         >
-          {t("contacts.tab_info")}
+          {t("contact.tab_info")}
         </button>
         <button
           className={`flex-1 py-2 text-sm ${activeTab === "friends" ? "bg-[var(--tg-accent-color)] text-white" : "bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]"}`}
           onClick={() => setActiveTab("friends")}
         >
-          {t("contacts.tab_contact_friends")}
+          {t("contact.tab_contact_friends")}
         </button>
       </div>
 
       {activeTab === "info" && (
         <>
           <CardSection>
-            {contactFriendLoading && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.loading")}</div>}
-            {contactFriendError && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.error_contact")}</div>}
+            {contactFriendLoading && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>}
+            {contactFriendError && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_contact")}</div>}
             {contactUser && (
               <div className="cursor-default">
                 <UserCard
-                  name={contactUser.name || `${contactUser.first_name || ""} ${contactUser.last_name || ""}`.trim() || t("contacts.no_name")}
+                  name={contactUser.name || `${contactUser.first_name || ""} ${contactUser.last_name || ""}`.trim() || t("contact.no_name")}
                   username={contactUser.username}
                   photo_url={contactUser.photo_url}
                 />
                 <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-                  {t("contacts.in_friends_since")}{" "}
-                  <b>{new Date(contactFriend!.created_at).toLocaleDateString()}</b>
+                  {t("contact.in_friends_since")}{" "}
+                  <b>{contactFriend?.created_at ? new Date(contactFriend.created_at).toLocaleDateString() : ""}</b>
                 </div>
                 {contactUser.username && (
                   <div className="px-3 pb-3">
@@ -77,7 +78,7 @@ const ContactDetailsPage = () => {
                       className="w-full py-2 rounded-lg bg-[var(--tg-button-color)] text-[var(--tg-button-text-color)]"
                       onClick={onOpenProfile}
                     >
-                      {t("contacts.open_in_telegram")}
+                      {t("contact.open_in_telegram")}
                     </button>
                   </div>
                 )}
@@ -85,21 +86,31 @@ const ContactDetailsPage = () => {
             )}
           </CardSection>
 
-          <CardSection>
-            <div className="px-3 py-2 font-semibold">{t("contacts.mutual_groups")}</div>
-            {contactCommonGroupsLoading && <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.loading")}</div>}
-            {contactCommonGroupsError && <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.error_common_groups")}</div>}
-            {!contactCommonGroupsLoading && !contactCommonGroupNames.length && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.no_common_groups")}</div>
+          {/* Общие группы — псевдокарточки как у контактов */}
+          <CardSection noPadding>
+            <div className="px-3 pt-3 pb-2 font-semibold">{t("contact.mutual_groups")}</div>
+
+            {contactCommonGroupsLoading && (
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>
             )}
+            {contactCommonGroupsError && (
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_common_groups")}</div>
+            )}
+
+            {!contactCommonGroupsLoading && !contactCommonGroupNames.length && (
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.no_common_groups")}</div>
+            )}
+
             {!!contactCommonGroupNames.length && (
-              <ul className="px-3 pb-2">
+              <div>
                 {contactCommonGroupNames.map((name, idx) => (
-                  <li key={`${name}-${idx}`} className="py-1 text-sm truncate">
-                    {name}
-                  </li>
+                  <div key={`${name}-${idx}`} className="cursor-default">
+                    {/* используем UserCard как «псевдокарточку группы» */}
+                    <UserCard name={name} />
+                  </div>
                 ))}
-              </ul>
+                <div className="h-2" />
+              </div>
             )}
           </CardSection>
         </>
@@ -107,7 +118,7 @@ const ContactDetailsPage = () => {
 
       {activeTab === "friends" && contactUser?.id && (
         <CardSection noPadding>
-          <ContactFriendsList contactUserId={contactUser.id} />
+          <ContactFriendsList contactUserId={Number(contactUser.id)} />
         </CardSection>
       )}
     </div>

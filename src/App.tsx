@@ -17,6 +17,7 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
+import { acceptGroupInvite } from "./api/groupInvitesApi" // ← ДОБАВЛЕНО
 
 const App = () => {
   useApplyTheme()
@@ -30,7 +31,20 @@ const App = () => {
     const tokenFromUrl = params.get("startapp") || params.get("start")
     const token = tokenFromInitData || tokenFromUrl
     if (token) {
-      acceptFriendInvite(token).catch(() => {})
+      if (token.startsWith("GINV_")) {
+        // ГРУППОВОЙ инвайт: акцепт + авто-редирект в группу
+        acceptGroupInvite(token)
+          .then((res) => {
+            if (res?.group_id) {
+              // Жёсткий редирект, чтобы гарантированно попасть внутрь роутера:
+              window.location.replace(`/groups/${res.group_id}`)
+            }
+          })
+          .catch(() => {})
+      } else {
+        // Инвайт друзей — как было
+        acceptFriendInvite(token).catch(() => {})
+      }
     }
   }, [])
 

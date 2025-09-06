@@ -1,14 +1,16 @@
 // src/components/ContactsList.tsx
+
 import { useEffect, useRef } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useFriendsStore } from "../store/friendsStore"
 import UserCard from "./UserCard"
+import type { Friend } from "../types/friend"
 
 const PAGE_SIZE = 20
 
 type Props = {
-  // оставляем для совместимости с вызовом в ContactsPage.tsx
+  // оставляем для совместимости (не используем внутри)
   isSearching?: boolean
   searchQuery?: string
 }
@@ -40,40 +42,40 @@ const ContactsList = (_props: Props) => {
   }, [hasMore, loading, page, fetchFriends])
 
   if (error) {
-    return <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.error_friends_list")}</div>
+    return <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_friends_list")}</div>
   }
 
   return (
     <div>
-      {friends.map((f, idx) => {
-        // IMPORTANT: в общем списке «друг» должен быть в f.friend
-        const person = f.friend
+      {friends.map((f: Friend, idx: number) => {
+        // В текущем контракте профиль ДРУГА лежит в f.user
+        const person = f.user
         const displayName =
-          person.name ||
-          `${person.first_name || ""} ${person.last_name || ""}`.trim() ||
-          t("contacts.no_name")
+          person?.name ||
+          `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
+          t("contact.no_name")
         return (
           <Link
             key={`${f.id}-${idx}`}
-            to={`/contacts/${person.id}`}
+            to={`/contacts/${person?.id}`}
             className="block active:opacity-70"
           >
             <UserCard
               name={displayName}
-              username={person.username}
-              photo_url={person.photo_url}
+              username={person?.username}
+              photo_url={person?.photo_url}
             />
           </Link>
         )
       })}
 
       <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-        {t("contacts.shown_of_total", { shown: friends.length, total })}
+        {t("contact.shown_of_total", { shown: friends.length, total })}
       </div>
 
       <div ref={sentinelRef} className="h-6" />
       {loading && (
-        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.loading")}</div>
+        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>
       )}
     </div>
   )

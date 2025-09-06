@@ -1,4 +1,4 @@
-// frontend/src/api/friendsApi.ts
+// src/api/friendsApi.ts
 import { Friend, FriendInvite, FriendsResponse } from "../types/friend"
 
 // Получение initData из Telegram WebApp
@@ -25,7 +25,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
 /**
  * Получить список друзей с поддержкой пагинации.
- * Сервер возвращает объект { total, friends }
+ * Теперь сервер всегда возвращает объект { total, friends }
  */
 export async function getFriends(
   showHidden: boolean = false,
@@ -90,23 +90,23 @@ export async function unhideFriend(friendId: number): Promise<{ success: boolean
   })
 }
 
-// ===================== NEW API =====================
+/* ======= НОВОЕ ДЛЯ СТРАНИЦЫ КОНТАКТА ======= */
 
-// Детали дружбы по friendId (ID пользователя-друга относительно текущего пользователя)
-export async function getFriend(friendId: number): Promise<Friend> {
+// Детали конкретного друга
+export async function getFriendDetail(friendId: number): Promise<Friend> {
   return fetchJson<Friend>(`${BASE_URL}${friendId}`)
 }
 
-// Только названия общих групп (string[])
+// Имена общих групп
 export async function getCommonGroupNames(friendId: number): Promise<string[]> {
   return fetchJson<string[]>(`${BASE_URL}${friendId}/common-groups`)
 }
 
-// Друзья указанного пользователя (контакты контакта) — пагинация
+// Друзья выбранного пользователя (для вкладки «Друзья контакта»)
 export async function getFriendsOfUser(
   userId: number,
   offset: number = 0,
-  limit: number = 20
+  limit: number = 50
 ): Promise<FriendsResponse> {
   const url = `${BASE_URL}of/${userId}?offset=${offset}&limit=${limit}`
   return fetchJson<FriendsResponse>(url)

@@ -1,11 +1,11 @@
-// frontend/src/store/friendsStore.ts
+// src/store/friendsStore.ts
 
 import { create } from "zustand"
-import { Friend } from "../types/friend"
-import { getFriends, searchFriends, getFriend, getCommonGroupNames, getFriendsOfUser } from "../api/friendsApi"
+import type { Friend } from "../types/friend"
+import { getFriends, searchFriends, getFriendDetail, getCommonGroupNames, getFriendsOfUser } from "../api/friendsApi"
 
 interface FriendsStore {
-  // список моих друзей
+  // основной список друзей (как было)
   friends: Friend[]
   total: number
   loading: boolean
@@ -19,30 +19,32 @@ interface FriendsStore {
   searchFriends: (query: string, offset?: number, limit?: number) => Promise<void>
   clearFriends: () => void
 
-  // ===== Contact Details Page state =====
+  // ===== страница контакта (НОВОЕ), отдельное состояние чтобы не ломать основное =====
   contactFriend: Friend | null
   contactFriendLoading: boolean
   contactFriendError: string | null
-  fetchFriendById: (friendId: number) => Promise<void>
 
   contactCommonGroupNames: string[]
   contactCommonGroupsLoading: boolean
   contactCommonGroupsError: string | null
-  fetchCommonGroupNames: (friendId: number) => Promise<void>
 
   contactFriends: Friend[]
   contactTotal: number
   contactLoading: boolean
   contactError: string | null
-  contactPage: number
   contactHasMore: boolean
-  clearContactFriends: () => void
+  contactPage: number
+
+  fetchFriendById: (friendId: number) => Promise<void>
+  fetchCommonGroupNames: (friendId: number) => Promise<void>
   fetchFriendsOfUser: (userId: number, offset?: number, limit?: number) => Promise<void>
+  clearContactFriends: () => void
 }
 
 const PAGE_SIZE = 20
 
 export const useFriendsStore = create<FriendsStore>((set, get) => ({
+  // основной список
   friends: [],
   total: 0,
   loading: false,
@@ -95,23 +97,32 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
     set({ friends: [], total: 0, page: 0, hasMore: true })
   },
 
-  // ===== Contact Details Page state & loaders =====
+  // ===== страница контакта =====
   contactFriend: null,
   contactFriendLoading: false,
   contactFriendError: null,
+
+  contactCommonGroupNames: [],
+  contactCommonGroupsLoading: false,
+  contactCommonGroupsError: null,
+
+  contactFriends: [],
+  contactTotal: 0,
+  contactLoading: false,
+  contactError: null,
+  contactHasMore: true,
+  contactPage: 0,
+
   async fetchFriendById(friendId: number) {
     set({ contactFriendLoading: true, contactFriendError: null })
     try {
-      const data = await getFriend(friendId)
+      const data = await getFriendDetail(friendId)
       set({ contactFriend: data, contactFriendLoading: false })
     } catch (e: any) {
       set({ contactFriendError: e.message || "errors.contact_load", contactFriendLoading: false })
     }
   },
 
-  contactCommonGroupNames: [],
-  contactCommonGroupsLoading: false,
-  contactCommonGroupsError: null,
   async fetchCommonGroupNames(friendId: number) {
     set({ contactCommonGroupsLoading: true, contactCommonGroupsError: null })
     try {
@@ -122,15 +133,6 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
     }
   },
 
-  contactFriends: [],
-  contactTotal: 0,
-  contactLoading: false,
-  contactError: null,
-  contactPage: 0,
-  contactHasMore: true,
-  clearContactFriends() {
-    set({ contactFriends: [], contactTotal: 0, contactPage: 0, contactHasMore: true })
-  },
   async fetchFriendsOfUser(userId: number, offset = 0, limit = PAGE_SIZE) {
     set({ contactLoading: true, contactError: null })
     try {
@@ -141,10 +143,27 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
         contactTotal: data.total,
         contactLoading: false,
         contactHasMore: offset + data.friends.length < data.total,
-        contactPage: Math.floor((offset + data.friends.length) / limit)
+        contactPage: offset === 0 ? 0 : get().contactPage + 1,
       })
     } catch (e: any) {
       set({ contactError: e.message || "errors.contact_friends_load", contactLoading: false })
     }
+  },
+
+  clearContactFriends() {
+    set({
+      contactFriends: [],
+      contactTotal: 0,
+      contactLoading: false,
+      contactError: null,
+      contactHasMore: true,
+      contactPage: 0,
+      contactFriend: null,
+      contactFriendError: null,
+      contactFriendLoading: false,
+      contactCommonGroupNames: [],
+      contactCommonGroupsError: null,
+      contactCommonGroupsLoading: false,
+    })
   },
 }))

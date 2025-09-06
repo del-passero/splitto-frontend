@@ -1,4 +1,4 @@
-// src/pages/GroupDetailsPage.tsx
+// frontend/src/pages/GroupDetailsPage.tsx
 
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
@@ -19,6 +19,7 @@ import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
+import InviteGroupModal from "../components/group/InviteGroupModal" // ← ДОБАВЛЕНО
 
 const PAGE_SIZE = 24
 
@@ -50,6 +51,7 @@ const GroupDetailsPage = () => {
   // Модалки
   const [addOpen, setAddOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false) // ← ДОБАВЛЕНО
 
   // Заглушка для списка транзакций (список здесь не грузим — грузит таб)
   const transactions: any[] = []
@@ -155,7 +157,7 @@ const GroupDetailsPage = () => {
         members={members}
         currentUserId={currentUserId}
         onParticipantClick={handleBalanceClick}
-        onInviteClick={() => {/* откроешь инвайт */}}
+        onInviteClick={() => setInviteOpen(true)}   /* ← ИЗМЕНЕНО */
         onAddClick={() => setAddOpen(true)}
         loadMore={loadMembers}
         hasMore={hasMore}
@@ -169,7 +171,7 @@ const GroupDetailsPage = () => {
       </div>
 
       {/* Контент вкладок — без CardSection, как на ContactsPage */}
-      <div className="w-full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
+      <div className="w/full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
         {selectedTab === "transactions" && (
           <GroupTransactionsTab
             loading={false}
@@ -193,6 +195,13 @@ const GroupDetailsPage = () => {
         groupId={id}
         existingMemberIds={existingMemberIds}
         onAdded={() => { /* перезагрузишь при необходимости */ }}
+      />
+
+      {/* Модалка инвайта в группу */}
+      <InviteGroupModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        groupId={id}
       />
 
       {/* Модалка создания транзакции — текущая группа передаётся в props */}

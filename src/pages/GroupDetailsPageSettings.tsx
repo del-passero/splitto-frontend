@@ -1,4 +1,4 @@
-// src/pages/GroupDetailsPageSettings.tsx
+// frontend/src/pages/GroupDetailsPageSettings.tsx
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -15,6 +15,7 @@ import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import { HandCoins } from "lucide-react"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
+import InviteGroupModal from "../components/group/InviteGroupModal" // ← ДОБАВЛЕНО
 
 const PAGE_SIZE = 24
 
@@ -40,6 +41,7 @@ const GroupDetailsPageSettings = () => {
   // модалки
   const [addOpen, setAddOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false) // ← ДОБАВЛЕНО
 
   // user/owner
   const user = useUserStore(s => s.user)
@@ -95,7 +97,7 @@ const GroupDetailsPageSettings = () => {
   const goToGroup = () => navigate(`/groups/${groupId}`)
   const handleLeave = () => {}
   const handleDelete = () => {}
-  const handleInvite = () => {}
+  const handleInvite = () => setInviteOpen(true)   // ← ИЗМЕНЕНО
   const handleAdd = () => setAddOpen(true)
   const handleRemove = (_userId: number) => {}
   const handleSaveAndExit = goToGroup
@@ -179,6 +181,13 @@ const GroupDetailsPageSettings = () => {
       >
         <HandCoins size={24} strokeWidth={1.5} />
       </button>
+
+      {/* Модалка инвайта в группу */}
+      <InviteGroupModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        groupId={id}
+      />
 
       {/* Модалка создания транзакции: автоподставляем текущую группу */}
       <CreateTransactionModal

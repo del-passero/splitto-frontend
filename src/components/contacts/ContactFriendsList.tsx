@@ -1,4 +1,5 @@
 // src/components/contacts/ContactFriendsList.tsx
+
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
@@ -21,11 +22,9 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  // первая загрузка (на случай прямого монтирования)
+  // первая загрузка
   useEffect(() => {
-    if (contactFriends.length === 0) {
-      fetchFriendsOfUser(contactUserId, 0, PAGE_SIZE)
-    }
+    fetchFriendsOfUser(contactUserId, 0, PAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactUserId])
 
@@ -47,7 +46,7 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
   if (contactError) {
     return (
       <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
-        {t("contacts.error_contact_friends")}
+        {t("contact.error_contact_friends")}
       </div>
     )
   }
@@ -55,36 +54,36 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
   return (
     <div>
       {contactFriends.map((f: Friend, idx: number) => {
-        // в списке друзей контакта отображаем «друга» (friend)
-        const person = f.friend
+        // Контракт тот же: у каждой связи профиль «друга» в поле user
+        const person = f.user
         const displayName =
-          person.name ||
-          `${person.first_name || ""} ${person.last_name || ""}`.trim() ||
-          t("contacts.no_name")
+          person?.name ||
+          `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
+          t("contact.no_name")
 
         return (
           <Link
             key={`${f.id}-${idx}`}
-            to={`/contacts/${person.id}`}
+            to={`/contacts/${person?.id}`}
             className="block active:opacity-70"
           >
             <UserCard
               name={displayName}
-              username={person.username}
-              photo_url={person.photo_url}
+              username={person?.username}
+              photo_url={person?.photo_url}
             />
           </Link>
         )
       })}
 
       <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-        {t("contacts.shown_of_total", { shown: contactFriends.length, total: contactTotal })}
+        {t("contact.shown_of_total", { shown: contactFriends.length, total: contactTotal })}
       </div>
 
       <div ref={sentinelRef} className="h-6" />
       {contactLoading && (
         <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">
-          {t("contacts.loading")}
+          {t("contact.loading")}
         </div>
       )}
     </div>

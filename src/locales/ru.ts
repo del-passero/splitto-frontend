@@ -1,4 +1,4 @@
-// src/i18n/ru.ts
+// src/locales/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -40,15 +40,12 @@ export default {
   delete_group: "Удалить группу",
 
   // --- Балансы и долги ---
-  // ВАЖНО: здесь «ты/тебе» — на вкладке «Мой баланс»
-  // Для статусов в карточках транзакций оставляем «Вы/Вам» (см. ниже).
   group_balance_you_get: "Тебе должны {{sum}}",
   group_balance_you_owe: "Ты должен {{sum}}",
   group_balance_zero: "Всё по нулям",
   group_header_settings: "Настройки",
   group_header_my_balance: "Мой баланс",
   group_participant_no_debt: "Нет долга",
-  // Эти два используются в карточках транзакций и в списках, где форма вежливая:
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
 
@@ -162,13 +159,19 @@ export default {
     currency_popular: "Популярные",
   },
 
-  // --- ДОБАВЛЕНО: общие и форма группы ---
+  // --- Общие и форма группы ---
   common: { yes: "Да", no: "Нет" },
   errors: {
     group_name_required: "Введите название группы",
     group_trip_date_required: "Укажите дату поездки",
     create_group_failed: "Не удалось создать группу",
+    friends_load: "Не удалось загрузить друзей",
+    friends_search: "Не удалось выполнить поиск",
+    contact_load: "Не удалось загрузить контакт",
+    common_groups_load: "Не удалось загрузить общие группы",
+    contact_friends_load: "Не удалось загрузить друзей контакта",
   },
+
   group_form: {
     name_placeholder: "Название группы",
     description_placeholder: "Описание группы",
@@ -182,7 +185,7 @@ export default {
     trip_date_placeholder: "ДД.ММ.ГГГГ",
   },
 
-  // --- НОВОЕ: модалка добавления участников ---
+  // --- Модалки ---
   add_members_modal: {
     title: "Добавить участников",
     search_placeholder: "Поиск контакта...",
@@ -192,7 +195,6 @@ export default {
     error_some_failed: "Добавлено: {{added}}, не удалось: {{failed}}",
   },
 
-  // --- Новое: модалка транзакций ---
   tx_modal: {
     title: "Новая транзакция",
     choose_group: "Выберите группу",
@@ -234,7 +236,6 @@ export default {
     all: "ВСЕ",
     paid_by_label: "Заплатил",
     owes_label: "Должен",
-    // ↓ нужен на вкладке «Все балансы» между именами: «должен»
     owes: "должен",
 
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
@@ -252,7 +253,7 @@ export default {
     not_found: "Ничего не найдено",
   },
 
-  // --- Формат даты для карточек (через ключи) ---
+  // --- Формат даты для карточек ---
   date_card: {
     pattern: "{{day}} {{month}}",
     months: [
@@ -262,4 +263,21 @@ export default {
   },
 
   actions: "Действия",
-};
+
+  // --- Страница контакта (singular namespace) ---
+  contact: {
+    tab_info: "Информация о контакте",
+    tab_contact_friends: "Друзья контакта",
+    in_friends_since: "В друзьях с",
+    open_in_telegram: "Открыть в Telegram",
+    mutual_groups: "Общие группы",
+    no_common_groups: "Общих групп нет",
+    loading: "Загрузка…",
+    error_contact: "Не удалось загрузить контакт",
+    error_common_groups: "Не удалось загрузить общие группы",
+    error_contact_friends: "Не удалось загрузить друзей контакта",
+    error_friends_list: "Не удалось загрузить список друзей",
+    shown_of_total: "{{shown}} из {{total}}",
+    no_name: "Без имени",
+  },
+}
