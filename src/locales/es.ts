@@ -152,6 +152,8 @@ export default {
     contact_load: "No se pudo cargar el contacto",
     common_groups_load: "No se pudieron cargar los grupos en común",
     contact_friends_load: "No se pudieron cargar los amigos del contacto",
+    tx_delete_forbidden_expense: "Solo el autor o el pagador pueden eliminar este gasto",
+    tx_delete_forbidden_transfer: "Solo el autor o el remitente pueden eliminar esta transferencia",
   },
 
   group_form: {

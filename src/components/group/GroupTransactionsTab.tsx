@@ -15,6 +15,34 @@ import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
 
+// === ТОЛЬКО ДОБАВЛЕНО: helper + тост ===
+function mapDeleteErrorToKey(e: any): string {
+  try {
+    const parsed = JSON.parse(e?.message || "{}");
+    const code = parsed?.detail?.code || parsed?.code || parsed?.detail;
+    if (code === "tx_delete_forbidden_expense") return "errors.tx_delete_forbidden_expense";
+    if (code === "tx_delete_forbidden_transfer") return "errors.tx_delete_forbidden_transfer";
+  } catch {
+    /* ignore */
+  }
+  return "delete_failed";
+}
+const Toast = ({ text, onClose }: { text: string; onClose: () => void }) => (
+  <div
+    className="fixed left-1/2 -translate-x-1/2 bottom-4 z-[1200] px-3 py-2 rounded-xl text-[13px] font-semibold shadow-lg"
+    style={{
+      background: "var(--tg-card-bg)",
+      color: "var(--tg-text-color)",
+      border: "1px solid var(--tg-secondary-bg-color, #e7e7e7)",
+    }}
+    onClick={onClose}
+    role="status"
+  >
+    {text}
+  </div>
+);
+// === /ТОЛЬКО ДОБАВЛЕНО ===
+
 type Props = {
   loading: boolean;
   transactions: any[];
@@ -83,6 +111,15 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const ioRef = useRef<IntersectionObserver | null>(null);
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
+
+  // === ТОЛЬКО ДОБАВЛЕНО: состояние тоста ===
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(id);
+  }, [toast]);
+  // === /ТОЛЬКО ДОБАВЛЕНО ===
 
   useEffect(() => {
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
@@ -205,7 +242,11 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
     try { setLoading(true); await removeTransaction(txForActions.id); setItems(prev => prev.filter(it => it.id !== txForActions.id)); }
-    catch { /* ignore */ }
+    catch (e: any) {
+      // === ТОЛЬКО ДОБАВЛЕНО: показать тост с ключом ===
+      const key = mapDeleteErrorToKey(e);
+      setToast(t(key) as string);
+    }
     finally { setLoading(false); closeActions(); }
   };
 
@@ -225,7 +266,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             items={visible}
             bleedPx={0}
             horizontalPaddingPx={16}
-            leftInsetPx={52}  // ← строго от начала 2-го столбца (40px + 12px gap)
+            leftInsetPx={52}
             renderItem={(tx: any) => (
               <TransactionCard
                 tx={tx}
@@ -266,10 +307,10 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
         />
 
         {actionsOpen && (
-          <div className="fixed inset-0 z-[1100] flex items-end justify-center" onClick={closeActions}>
+          <div className="fixed inset-0 z-[1100] flex items	end justify-center" onClick={closeActions}>
             <div className="absolute inset-0 bg-black/50" />
             <div
-              className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+              className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7е7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
               style={{ color: "var(--tg-text-color)" }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -286,6 +327,10 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             </div>
           </div>
         )}
+
+        {/* === ТОЛЬКО ДОБАВЛЕНО: тост === */}
+        {toast && <Toast text={toast} onClose={() => setToast(null)} />}
+        {/* === /ТОЛЬКО ДОБАВЛЕНО === */}
       </div>
     </CardSection>
   );

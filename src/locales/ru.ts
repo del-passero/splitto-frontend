@@ -170,6 +170,8 @@ export default {
     contact_load: "Не удалось загрузить контакт",
     common_groups_load: "Не удалось загрузить общие группы",
     contact_friends_load: "Не удалось загрузить друзей контакта",
+	tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
+    tx_delete_forbidden_transfer: "Удалять перевод может только автор или отправитель",
   },
 
   group_form: {

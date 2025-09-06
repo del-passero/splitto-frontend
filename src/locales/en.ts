@@ -152,6 +152,8 @@ export default {
     contact_load: "Failed to load contact",
     common_groups_load: "Failed to load mutual groups",
     contact_friends_load: "Failed to load contact's friends",
+	tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
+    tx_delete_forbidden_transfer: "Удалять перевод может только автор или отправитель",
   },
 
   group_form: {

@@ -19,6 +19,18 @@ import { useTelegramAuth } from "./hooks/useTelegramAuth"
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
 import { acceptGroupInvite } from "./api/groupInvitesApi"
 
+/** Нормализуем токен: срезаем `join:`, убираем пробелы, добиваем base64url-паддинг */
+function normalizeInviteToken(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  let t = String(raw).trim().replace(/\s+/g, "")
+  if (t.startsWith("join:")) t = t.slice(5) // убрать префикс join:
+  // base64url-паддинг, если строка урл-безопасная и длина не кратна 4
+  if (/^[A-Za-z0-9_-]+$/.test(t) && t.length % 4 !== 0) {
+    t = t + "=".repeat((4 - (t.length % 4)) % 4)
+  }
+  return t
+}
+
 const App = () => {
   useApplyTheme()
   useSyncI18nLanguage()
@@ -44,12 +56,13 @@ const App = () => {
       params.get("tgWebAppStartParam") ||
       null
 
-    const token = fromInitData || fromUrl
+    const tokenRaw = fromInitData || fromUrl
+    const token = normalizeInviteToken(tokenRaw)
     if (!token) return
 
     // === ВАЖНО ===
     // Всегда пробуем принять КАК ГРУППОВОЙ инвайт.
-    // Если бэк ответил bad_token — это не групповой → пробуем дружбу.
+    // Если бэк ответил bad_token / invite_not_found — это не групповой → пробуем дружбу.
     ;(async () => {
       try {
         const res = await acceptGroupInvite(token)
@@ -60,9 +73,9 @@ const App = () => {
         }
         // если без group_id — просто замолчим
       } catch (e: any) {
-        const msg = (e?.message || "").toString().toLowerCase()
-        // fallback только при «не наш» токен
-        if (msg.includes("bad_token")) {
+        const msg = String(e?.message || "").toLowerCase()
+        // fallback только при «не наш» групповой токен
+        if (msg.includes("bad_token") || msg.includes("invite_not_found")) {
           try {
             await acceptFriendInvite(token)
           } catch {
