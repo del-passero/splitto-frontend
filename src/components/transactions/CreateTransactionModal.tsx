@@ -88,7 +88,7 @@ function SelectedGroupPill({
     <button
       type="button"
       onClick={locked ? undefined : onClick}
-      className={`mx-3 mt-1 mb-1 inline-flex items-center w-[calc(100%-1.5rem)] justify-between rounded-full border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] px-3 py-1 transition focus:outline-none ${locked ? "cursor-default" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+      className={`mx-3 mt-1 mb-1 inline-flex items-center w-[calc(100%-1.5rem)] justify-between rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] px-3 py-1 transition focus:outline-none ${locked ? "cursor-default" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
       aria-label={locked ? `Группа: ${name}` : `Текущая группа: ${name}. Нажмите, чтобы сменить`}
     >
       <span className="flex items-center min-w-0">
@@ -719,7 +719,7 @@ export default function CreateTransactionModal({
           </div>
 
           {/* Content */}
-          <div className="p-3 flex flex-col gap-1">
+          <div className="p-3 flex flex-col gap-0.5">
             {/* Группа */}
             <div className="-mx-3">
               <CardSection className="py-0">
@@ -1089,7 +1089,7 @@ export default function CreateTransactionModal({
                           type="date"
                           value={date}
                           onChange={(e) => setDate(e.target.value)}
-                          className="w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
+                          className="date-input-clean appearance-none w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 pr-8 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
                         />
                         <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                       </div>
@@ -1098,7 +1098,7 @@ export default function CreateTransactionModal({
                 </div>
 
                 {/* Кнопки */}
-                <div className="flex flex-row gap-2 mt-1 w-full relative">
+                <div className="flex flex-row gap-2 mt-0.5 w-full relative">
                   <button
                     type="button"
                     onClick={() => onOpenChange(false)}
@@ -1238,4 +1238,27 @@ export default function CreateTransactionModal({
       />
     </div>
   );
+}
+
+/* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках --- */
+const style = typeof document !== "undefined" ? document.createElement("style") : null;
+if (style) {
+  style.innerHTML = `
+  .date-input-clean {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    background-clip: padding-box;
+  }
+  /* скрыть webkit-индикатор календаря/стрелки */
+  .date-input-clean::-webkit-calendar-picker-indicator,
+  .date-input-clean::-webkit-clear-button,
+  .date-input-clean::-webkit-inner-spin-button {
+    display: none;
+    -webkit-appearance: none;
+  }
+  /* для старых Edge/IE (не критично) */
+  .date-input-clean::-ms-expand { display: none; }
+  `;
+  document.head.appendChild(style);
 }
