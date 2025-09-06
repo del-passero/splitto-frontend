@@ -1,6 +1,6 @@
 // frontend/src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 import DashboardPage from "./pages/DashboardPage"
 import GroupsPage from "./pages/GroupsPage"
@@ -17,47 +17,61 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
-import { acceptGroupInvite } from "./api/groupInvitesApi" // ← ГРУППОВОЙ инвайт
+import { acceptGroupInvite } from "./api/groupInvitesApi"
 
 const App = () => {
   useApplyTheme()
   useSyncI18nLanguage()
   useTelegramAuth()
 
+  // предохранитель от двойного вызова useEffect (StrictMode/dev/ре-рендеры)
+  const handledStartParamRef = useRef(false)
+
   useEffect(() => {
+    if (handledStartParamRef.current) return
+    handledStartParamRef.current = true
+
     const tg = (window as any)?.Telegram?.WebApp
 
-    // 1) initDataUnsafe.start_param — главный источник (всегда есть в TWA)
-    const tokenFromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
+    // 1) берем start_param из WebApp
+    const fromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
 
-    // 2) Параметры URL: поддерживаем ВСЕ варианты, встречающиеся на Android/iOS/Web
+    // 2) а также все известные вариации в URL (Android/iOS/Web)
     const params = new URLSearchParams(window.location.search)
-    const tokenFromUrl =
+    const fromUrl =
       params.get("startapp") ||
       params.get("start") ||
-      params.get("tgWebAppStartParam") || // ← часто встречается в логах
+      params.get("tgWebAppStartParam") ||
       null
 
-    const token = tokenFromInitData || tokenFromUrl
+    const token = fromInitData || fromUrl
     if (!token) return
 
-    // 3) Разводим по типу токена
-    if (token.startsWith("GINV_")) {
-      // ГРУППА: акцепт + авто-редирект в группу
-      acceptGroupInvite(token)
-        .then((res) => {
-          if (res?.group_id) {
-            // Жёсткий редирект — гарантируем заход на нужную страницу
-            window.location.replace(`/groups/${res.group_id}`)
+    // === ВАЖНО ===
+    // Всегда пробуем принять КАК ГРУППОВОЙ инвайт.
+    // Если бэк ответил bad_token — это не групповой → пробуем дружбу.
+    ;(async () => {
+      try {
+        const res = await acceptGroupInvite(token)
+        if (res?.group_id) {
+          // жёсткий редирект, чтобы гарантированно оказаться внутри роутера нужной группы
+          window.location.replace(`/groups/${res.group_id}`)
+          return
+        }
+        // если без group_id — просто замолчим
+      } catch (e: any) {
+        const msg = (e?.message || "").toString().toLowerCase()
+        // fallback только при «не наш» токен
+        if (msg.includes("bad_token")) {
+          try {
+            await acceptFriendInvite(token)
+          } catch {
+            // молча игнорируем: это «чужой» или протухший дружеский
           }
-        })
-        .catch(() => {
-          // молча игнорируем — токен мог быть битый/просроченный/и т.п.
-        })
-    } else {
-      // ДРУЖБА: как и раньше
-      acceptFriendInvite(token).catch(() => {})
-    }
+        }
+        // для любых других ошибок по группам (например, group_not_found, cannot_join) — тоже молчим
+      }
+    })()
   }, [])
 
   return (
@@ -81,4 +95,5 @@ const App = () => {
     </div>
   )
 }
+
 export default App

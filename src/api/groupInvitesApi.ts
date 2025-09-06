@@ -27,14 +27,11 @@ export async function createGroupInvite(groupId: number): Promise<{ token: strin
   })
 }
 
-/** Принять инвайт в группу по токену — дублируем initData и в теле, и в заголовке */
+/** Принять инвайт в группу по токену */
 export async function acceptGroupInvite(token: string): Promise<{ success: boolean; group_id?: number }> {
   return fetchJson<{ success: boolean; group_id?: number }>(`${API_URL}/groups/invite/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      token,
-      initData: getTelegramInitData(),
-    }),
+    body: JSON.stringify({ token }),
   })
 }
