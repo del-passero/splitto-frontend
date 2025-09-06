@@ -62,25 +62,28 @@ const ContactsList = (_props: Props) => {
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
           (person?.username ? `@${person.username}` : "")
         return (
-          <Link
-            key={`${f.id}-${idx}`}
-            to={`/contacts/${person?.id}`}
-            className="block active:opacity-70"
-          >
-            <UserCard
-              name={displayName}
-              username={person?.username}
-              photo_url={person?.photo_url}
-            />
-          </Link>
+          <div key={`${f.id}-${idx}`} className="relative">
+            <Link to={`/contacts/${person?.id}`} className="block active:opacity-70">
+              <UserCard
+                name={displayName}
+                username={person?.username}
+                photo_url={person?.photo_url}
+              />
+            </Link>
+
+            {/* разделитель между карточками — не рисуем после последней;
+               смещаем влево отступ под аватар (≈ 64px) */}
+            {idx !== friends.length - 1 && (
+              <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/15" />
+            )}
+          </div>
         )
       })}
 
-      {/* убрано «shown_of_total» по просьбе — ничего не выводим */}
-
-      <div ref={sentinelRef} className="h-6" />
+      {/* компактный «якорь» для подгрузки — убрали лишнее пустое место внизу */}
+      <div ref={sentinelRef} className="h-px" />
       {loading && (
-        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
+        <div className="px-3 py-2 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
       )}
     </CardSection>
   )

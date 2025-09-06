@@ -8,6 +8,7 @@ import UserCard from "../components/UserCard"
 import { useFriendsStore } from "../store/friendsStore"
 import ContactFriendsList from "../components/contacts/ContactFriendsList"
 import type { UserShort } from "../types/friend"
+import type { User } from "../types/user"
 
 const ContactDetailsPage = () => {
   const { t } = useTranslation()
@@ -17,12 +18,12 @@ const ContactDetailsPage = () => {
   const {
     contactFriend, contactFriendLoading, contactFriendError, fetchFriendById,
     contactCommonGroupNames, contactCommonGroupsLoading, contactCommonGroupsError, fetchCommonGroupNames,
-    clearContactFriends
+    contactUserFallback, clearContactFriends,
   } = useFriendsStore()
 
   const [activeTab, setActiveTab] = useState<"info" | "friends">("info")
 
-  // при смене friendId — чистим контактные данные до новой загрузки
+  // Смена профиля — очищаем и грузим заново
   useEffect(() => {
     clearContactFriends()
     if (Number.isFinite(friendId)) {
@@ -32,15 +33,33 @@ const ContactDetailsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [friendId])
 
-  const contactUser: UserShort | null = useMemo(() => {
+  // user из FriendOut (если это мой друг)
+  const userFromFriendOut: UserShort | null = useMemo(() => {
     if (!contactFriend) return null
-    const c = [contactFriend.user, contactFriend.friend].filter(Boolean) as UserShort[]
-    return c.find(u => u.id === contactFriend.friend_id) || c[0] || null
+    const candidates = [contactFriend.user, contactFriend.friend].filter(Boolean) as UserShort[]
+    return candidates.find(u => u.id === contactFriend.friend_id) || candidates[0] || null
   }, [contactFriend])
 
+  // фоллбек-профиль (если НЕ друг)
+  const userFromFallback: User | null = contactUserFallback
+
+  const contactUserName =
+    (userFromFriendOut?.name ||
+      `${userFromFriendOut?.first_name || ""} ${userFromFriendOut?.last_name || ""}`.trim() ||
+      (userFromFriendOut?.username ? `@${userFromFriendOut.username}` : "")) ||
+    (userFromFallback?.name ||
+      `${userFromFallback?.first_name || ""} ${userFromFallback?.last_name || ""}`.trim() ||
+      (userFromFallback?.username ? `@${userFromFallback.username}` : "")) ||
+    ""
+
+  const contactUsername = userFromFriendOut?.username ?? userFromFallback?.username
+  const contactPhoto = userFromFriendOut?.photo_url ?? userFromFallback?.photo_url
+
+  const isFriend = !!contactFriend // наличие FriendOut => это мой друг
+
   const onOpenProfile = () => {
-    if (!contactUser?.username) return
-    window.open(`https://t.me/${contactUser.username}`, "_blank")
+    if (!contactUsername) return
+    window.open(`https://t.me/${contactUsername}`, "_blank")
   }
 
   return (
@@ -63,20 +82,30 @@ const ContactDetailsPage = () => {
       {activeTab === "info" && (
         <>
           <CardSection>
-            {contactFriendLoading && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>}
-            {!!contactFriendError && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("error")}</div>}
-            {contactUser && (
+            {contactFriendLoading && (
+              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
+            )}
+            {!!contactFriendError && !userFromFallback && (
+              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("error")}</div>
+            )}
+
+            {(userFromFriendOut || userFromFallback) && (
               <div className="cursor-default">
                 <UserCard
-                  name={contactUser.name || `${contactUser.first_name || ""} ${contactUser.last_name || ""}`.trim() || (contactUser.username ? `@${contactUser.username}` : "")}
-                  username={contactUser.username}
-                  photo_url={contactUser.photo_url}
+                  name={contactUserName}
+                  username={contactUsername}
+                  photo_url={contactPhoto}
                 />
-                <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-                  {t("contact.in_friends_since")}{" "}
-                  <b>{contactFriend?.created_at ? new Date(contactFriend.created_at).toLocaleDateString() : ""}</b>
-                </div>
-                {contactUser.username && (
+
+                {/* «В друзьях с …» показываем ТОЛЬКО если это мой друг */}
+                {isFriend && contactFriend?.created_at && (
+                  <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
+                    {t("contact.in_friends_since")}{" "}
+                    <b>{new Date(contactFriend.created_at).toLocaleDateString()}</b>
+                  </div>
+                )}
+
+                {contactUsername && (
                   <div className="px-3 pb-3">
                     <button
                       className="w-full py-2 rounded-lg bg-[var(--tg-button-color)] text-[var(--tg-button-text-color)]"
@@ -108,6 +137,7 @@ const ContactDetailsPage = () => {
               <div>
                 {contactCommonGroupNames.map((name, idx) => (
                   <div key={`${name}-${idx}`} className="cursor-default">
+                    {/* псевдокарточка, как просили: используем UserCard с name */}
                     <UserCard name={name} />
                   </div>
                 ))}
@@ -118,11 +148,12 @@ const ContactDetailsPage = () => {
         </>
       )}
 
-      {activeTab === "friends" && contactUser?.id && (
-        <ContactFriendsList contactUserId={Number(contactUser.id)} />
+      {activeTab === "friends" && Number.isFinite(friendId) && (
+        <ContactFriendsList contactUserId={friendId} />
       )}
     </div>
   )
 }
 
 export default ContactDetailsPage
+

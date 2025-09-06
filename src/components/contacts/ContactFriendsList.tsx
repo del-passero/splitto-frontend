@@ -22,14 +22,13 @@ function pickPerson(f: Friend): UserShort | undefined {
 const ContactFriendsList = ({ contactUserId }: Props) => {
   const { t } = useTranslation()
   const {
-    contactFriends, contactTotal, contactLoading, contactError,
+    contactFriends, contactLoading, contactError,
     contactHasMore, fetchFriendsOfUser
   } = useFriendsStore()
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    // начальная загрузка друзей этого контакта
     fetchFriendsOfUser(contactUserId, 0, PAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactUserId])
@@ -63,25 +62,27 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
           (person?.username ? `@${person.username}` : "")
         return (
-          <Link
-            key={`${f.id}-${idx}`}
-            to={`/contacts/${person?.id}`}
-            className="block active:opacity-70"
-          >
-            <UserCard
-              name={displayName}
-              username={person?.username}
-              photo_url={person?.photo_url}
-            />
-          </Link>
+          <div key={`${f.id}-${idx}`} className="relative">
+            <Link to={`/contacts/${person?.id}`} className="block active:opacity-70">
+              <UserCard
+                name={displayName}
+                username={person?.username}
+                photo_url={person?.photo_url}
+              />
+            </Link>
+
+            {/* разделитель между карточками (смещение под аватар) */}
+            {idx !== contactFriends.length - 1 && (
+              <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/15" />
+            )}
+          </div>
         )
       })}
 
-      {/* счётчик убран по просьбе */}
-
-      <div ref={sentinelRef} className="h-6" />
+      {/* компактный якорь — чтобы не было «пустого низа» */}
+      <div ref={sentinelRef} className="h-px" />
       {contactLoading && (
-        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">
+        <div className="px-3 py-2 text-sm text-[var(--tg-hint-color)]">
           {t("loading")}
         </div>
       )}

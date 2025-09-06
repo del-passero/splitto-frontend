@@ -1,9 +1,11 @@
 // src/api/friendsApi.ts
 import { Friend, FriendInvite, FriendsResponse } from "../types/friend"
+import type { User } from "../types/user"
 
+// Получение initData из Telegram WebApp
 function getTelegramInitData(): string {
   // @ts-ignore
-  return window?.Telegram?.WebApp?.initData || ""
+  return (window as any)?.Telegram?.WebApp?.initData || ""
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
@@ -45,35 +47,39 @@ export async function searchFriends(
   return fetchJson<FriendsResponse>(url)
 }
 
+// Сгенерировать invite-ссылку (POST)
 export async function createInvite(): Promise<FriendInvite> {
   return fetchJson<FriendInvite>(`${BASE_URL}invite`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" }
+    headers: { "Content-Type": "application/json" },
   })
 }
 
+// Принять invite по токену (POST)
 export async function acceptInvite(token: string): Promise<{ success: boolean }> {
   return fetchJson<{ success: boolean }>(`${BASE_URL}accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ token }),
   })
 }
 
+// Скрыть друга (POST)
 export async function hideFriend(friendId: number): Promise<{ success: boolean }> {
   return fetchJson<{ success: boolean }>(`${BASE_URL}${friendId}/hide`, { method: "POST" })
 }
 
+// Восстановить друга (POST)
 export async function unhideFriend(friendId: number): Promise<{ success: boolean }> {
   return fetchJson<{ success: boolean }>(`${BASE_URL}${friendId}/unhide`, { method: "POST" })
 }
 
-/** Детали конкретного моего друга */
+/** Детали конкретного МОЕГО друга (FriendOut) */
 export async function getFriendDetail(friendId: number): Promise<Friend> {
   return fetchJson<Friend>(`${BASE_URL}${friendId}`)
 }
 
-/** Названия общих групп с другом */
+/** Названия общих групп с пользователем */
 export async function getCommonGroupNames(friendId: number): Promise<string[]> {
   return fetchJson<string[]>(`${BASE_URL}${friendId}/common-groups`)
 }
@@ -85,4 +91,9 @@ export async function getFriendsOfUser(
   limit: number = 50
 ): Promise<FriendsResponse> {
   return fetchJson<FriendsResponse>(`${BASE_URL}of/${userId}?offset=${offset}&limit=${limit}`)
+}
+
+/** НОВОЕ: Публичный профиль по user_id (если не друг) */
+export async function getUserProfilePublic(userId: number): Promise<User> {
+  return fetchJson<User>(`${BASE_URL}user/${userId}`)
 }

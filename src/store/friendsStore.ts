@@ -1,12 +1,14 @@
 // src/store/friendsStore.ts
 import { create } from "zustand"
 import type { Friend } from "../types/friend"
+import type { User } from "../types/user"
 import {
   getFriends,
   searchFriends,
   getFriendDetail,
   getCommonGroupNames,
-  getFriendsOfUser
+  getFriendsOfUser,
+  getUserProfilePublic,
 } from "../api/friendsApi"
 
 interface FriendsStore {
@@ -27,6 +29,9 @@ interface FriendsStore {
   contactFriend: Friend | null
   contactFriendLoading: boolean
   contactFriendError: string | null
+
+  // фоллбек-профиль, если это НЕ друг (UserOut)
+  contactUserFallback: User | null
 
   contactCommonGroupNames: string[]
   contactCommonGroupsLoading: boolean
@@ -73,7 +78,7 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
         friends: offset === 0 ? data.friends : [...friends, ...data.friends],
         total: data.total,
         loading: false,
-        hasMore: offset + data.friends.length < data.total
+        hasMore: offset + data.friends.length < data.total,
       })
     } catch (e: any) {
       set({ error: e.message || "errors.friends_load", loading: false })
@@ -89,7 +94,7 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
         friends: offset === 0 ? data.friends : [...friends, ...data.friends],
         total: data.total,
         loading: false,
-        hasMore: offset + data.friends.length < data.total
+        hasMore: offset + data.friends.length < data.total,
       })
     } catch (e: any) {
       set({ error: e.message || "errors.friends_search", loading: false })
@@ -105,6 +110,8 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
   contactFriendLoading: false,
   contactFriendError: null,
 
+  contactUserFallback: null,
+
   contactCommonGroupNames: [],
   contactCommonGroupsLoading: false,
   contactCommonGroupsError: null,
@@ -117,12 +124,29 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
   contactPage: 0,
 
   async fetchFriendById(friendId: number) {
-    set({ contactFriendLoading: true, contactFriendError: null })
+    set({
+      contactFriendLoading: true,
+      contactFriendError: null,
+      contactFriend: null,
+      contactUserFallback: null,
+    })
     try {
       const data = await getFriendDetail(friendId)
       set({ contactFriend: data, contactFriendLoading: false })
     } catch (e: any) {
-      set({ contactFriendError: e.message || "errors.contact_load", contactFriendLoading: false })
+      // Если не друг — пробуем публичный профиль
+      try {
+        const user = await getUserProfilePublic(friendId)
+        set({
+          contactUserFallback: user,
+          contactFriendLoading: false,
+        })
+      } catch (e2: any) {
+        set({
+          contactFriendError: e2?.message || e?.message || "errors.contact_load",
+          contactFriendLoading: false,
+        })
+      }
     }
   },
 
@@ -132,7 +156,10 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
       const names = await getCommonGroupNames(friendId)
       set({ contactCommonGroupNames: names, contactCommonGroupsLoading: false })
     } catch (e: any) {
-      set({ contactCommonGroupsError: e.message || "errors.common_groups_load", contactCommonGroupsLoading: false })
+      set({
+        contactCommonGroupsError: e.message || "errors.common_groups_load",
+        contactCommonGroupsLoading: false,
+      })
     }
   },
 
@@ -164,6 +191,7 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
       contactFriend: null,
       contactFriendError: null,
       contactFriendLoading: false,
+      contactUserFallback: null,
       contactCommonGroupNames: [],
       contactCommonGroupsError: null,
       contactCommonGroupsLoading: false,
