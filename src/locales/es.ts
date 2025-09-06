@@ -1,4 +1,3 @@
-
 export default {
   main: "Inicio",
   groups: "Grupos",
@@ -208,6 +207,11 @@ export default {
     owes: "debe",
 
     delete_confirm: "¿Eliminar transacción? Esta acción es irreversible.",
+  },
+
+  // --- Tarjeta de transacción ---
+  tx_card: {
+    not_participant_expense: "No participas en este gasto",
   },
 
   category: {

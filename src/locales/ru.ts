@@ -239,6 +239,11 @@ export default {
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
   },
 
+  // --- Карточка транзакции ---
+  tx_card: {
+    not_participant_expense: "Вы не участник этой траты",
+  },
+
   // --- Категории ---
   category: {
     select_title: "Выбор категории",

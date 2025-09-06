@@ -65,17 +65,25 @@ const firstName = (full?: string) => {
 const ZERO_CCY_DEC = new Set(["JPY", "KRW", "VND"]);
 const decimalsByCode = (code?: string) => (code && ZERO_CCY_DEC.has(code) ? 0 : 2);
 
+/** Формат: без копеек, если дробная часть нулевая; иначе ровно 2 (или по валюте) знака */
 const fmtAmount = (n: number, code?: string) => {
   if (!isFinite(n)) n = 0;
+  const decimals = decimalsByCode(code);
+  const abs = Math.abs(n);
+  const pow = Math.pow(10, decimals);
+  const fracInt = decimals > 0 ? Math.round(abs * pow) % pow : 0;
+  const showDecimals = decimals > 0 && fracInt !== 0;
+
   try {
-    const decimals = decimalsByCode(code);
     const nf = new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
+      minimumFractionDigits: showDecimals ? decimals : 0,
+      maximumFractionDigits: showDecimals ? decimals : 0,
     });
-    return `${nf.format(Math.abs(n))} ${code || ""}`.trim();
+    return `${nf.format(abs)} ${code || ""}`.trim();
   } catch {
-    return `${Math.abs(n).toFixed(decimalsByCode(code))} ${code || ""}`.trim();
+    return showDecimals
+      ? `${abs.toFixed(decimals)} ${code || ""}`.trim()
+      : `${Math.round(abs)} ${code || ""}`.trim();
   }
 };
 
@@ -232,14 +240,15 @@ function CategoryAvatar({
   );
 }
 
+/** Прямоугольный аватар для перевода: 40×20, мягкое скругление */
 function TransferAvatar() {
   return (
     <div
-      className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+      className="w-10 h-5 rounded-md border flex items-center justify-center shrink-0"
       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
       aria-hidden
     >
-      <ArrowRightLeft size={18} className="opacity-80" />
+      <ArrowRightLeft size={16} className="opacity-80" />
     </div>
   );
 }
@@ -364,45 +373,43 @@ export default function TransactionCard({
   if (isExpense && typeof currentUserId === "number" && Array.isArray(tx.shares)) {
     let myShare = 0;
     let payerShare = 0;
+    let iParticipate = Number(payerId) === Number(currentUserId); // плательщик — всегда участник
     for (const s of tx.shares as any[]) {
       const uid = Number(s?.user_id);
       const val = Number(s?.amount ?? 0);
       if (!Number.isFinite(val)) continue;
-      if (uid === Number(currentUserId)) myShare += val;
+      if (uid === Number(currentUserId)) {
+        myShare += val;
+        iParticipate = true; // есть запись о моём участии
+      }
       if (uid === Number(payerId)) payerShare += val;
     }
-    const iAmPayer = Number(payerId) === Number(currentUserId);
-    if (iAmPayer) {
-      const lent = Math.max(0, amountNum - payerShare);
+
+    // если я не участвовал — отдельный статус
+    if (!iParticipate) {
       statusText =
-        lent > 0
-          ? ((t && (t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) }) as string)) ||
-            `Вам должны: ${fmtAmount(lent, tx.currency)}`)
-          : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
+        (t && (t("tx_card.not_participant_expense") as string)) ||
+        "Вы не участник этой траты";
     } else {
-      statusText =
-        myShare > 0
-          ? ((t && (t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) }) as string)) ||
-            `Вы должны: ${fmtAmount(myShare, tx.currency)}`)
-          : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
+      const iAmPayer = Number(payerId) === Number(currentUserId);
+      if (iAmPayer) {
+        const lent = Math.max(0, amountNum - payerShare);
+        statusText =
+          lent > 0
+            ? ((t && (t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) }) as string)) ||
+              `Вам должны: ${fmtAmount(lent, tx.currency)}`)
+            : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
+      } else {
+        statusText =
+          myShare > 0
+            ? ((t && (t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) }) as string)) ||
+              `Вы должны: ${fmtAmount(myShare, tx.currency)}`)
+            : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
+      }
     }
   } else if (!isExpense) {
-    const fromId = Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
-    let toRaw = tx.transfer_to ?? tx.to_user_id ?? tx.to;
-    const toIdResolved =
-      Array.isArray(toRaw) && toRaw.length > 0 ? Number(toRaw[0]) : Number(toRaw ?? NaN);
-
-    if (Number.isFinite(fromId) && Number(currentUserId) === fromId) {
-      statusText =
-        (t && (t("group_participant_owes_you", { sum: fmtAmount(amountNum, tx.currency) }) as string)) ||
-        `Вам должны: ${fmtAmount(amountNum, tx.currency)}`;
-    } else if (Number.isFinite(toIdResolved) && Number(currentUserId) === toIdResolved) {
-      statusText =
-        (t && (t("group_participant_you_owe", { sum: fmtAmount(amountNum, tx.currency) }) as string)) ||
-        `Вы должны: ${fmtAmount(amountNum, tx.currency)}`;
-    } else {
-      statusText = (t && (t("group_participant_no_debt") as string)) || "Нет долга";
-    }
+    // Для переводов статус долга не отображаем (см. требования)
+    statusText = "";
   } else {
     statusText = (t && (t("group_participant_no_debt") as string)) || "Нет долга";
   }
@@ -435,10 +442,14 @@ export default function TransactionCard({
   const onContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   /* ---------- layout (GRID 4 колонки) ---------- */
-  // компактнее: уже вертикальные паддинги, меньше межстрочного зазора
+  const gridRowsClass = isExpense ? "grid-rows-[auto,auto,auto]" : "grid-rows-[auto,auto]";
+
+  // компактные вертикальные отступы; для переводов ещё компактнее
+  const cardPaddingY = isExpense ? "pt-[6px] pb-[2px]" : "pt-[4px] pb-[1px]";
+
   const CardInner = (
     <div
-      className={`relative pt-[6px] pb-[2px] px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
+      className={`relative ${cardPaddingY} px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -447,7 +458,7 @@ export default function TransactionCard({
       role="button"
       style={{ color: "var(--tg-text-color)" }}
     >
-      <div className="grid grid-cols-[40px,1fr,1fr,auto] grid-rows-[auto,auto,auto] gap-x-3 gap-y-0 items-start">
+      <div className={`grid grid-cols-[40px,1fr,1fr,auto] ${gridRowsClass} gap-x-3 gap-y-0 items-start`}>
         {/* Row1 / Col1 — YEAR */}
         <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{yearStr}</div>
@@ -470,7 +481,7 @@ export default function TransactionCard({
         </div>
 
         {/* Row2-3 / Col1 — ИКОНКА + ДЕНЬ-МЕСЯЦ */}
-        <div className="col-start-1 row-start-2 row-span-2 -mt-1">
+        <div className={`col-start-1 row-start-2 ${isExpense ? "row-span-2" : "row-span-1"} -mt-1`}>
           <div className="flex flex-col items-center">
             {isExpense ? (
               <CategoryAvatar
@@ -555,10 +566,12 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row3 / Col2-4 — STATUS / DEBT */}
-        <div className="col-start-2 col-end-5 row-start-3 min-w-0">
-          <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{statusText}</div>
-        </div>
+        {/* Row3 / Col2-4 — STATUS / DEBT (только для расходов) */}
+        {isExpense && (
+          <div className="col-start-2 col-end-5 row-start-3 min-w-0">
+            <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{statusText}</div>
+          </div>
+        )}
       </div>
     </div>
   );
