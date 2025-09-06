@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { useFriendsStore } from "../../store/friendsStore"
 import UserCard from "../UserCard"
+import CardSection from "../CardSection"
 import type { Friend, UserShort } from "../../types/friend"
 
 type Props = {
@@ -14,20 +15,21 @@ type Props = {
 const PAGE_SIZE = 20
 
 function pickPerson(f: Friend): UserShort | undefined {
-  const candidates = [f.user, f.friend].filter(Boolean) as UserShort[]
-  return candidates.find(u => u.id === f.friend_id) || candidates[0]
+  const c = [f.user, f.friend].filter(Boolean) as UserShort[]
+  return c.find(u => u.id === f.friend_id) || c[0]
 }
 
 const ContactFriendsList = ({ contactUserId }: Props) => {
   const { t } = useTranslation()
   const {
     contactFriends, contactTotal, contactLoading, contactError,
-    contactHasMore, contactPage, fetchFriendsOfUser
+    contactHasMore, fetchFriendsOfUser
   } = useFriendsStore()
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    // начальная загрузка друзей этого контакта
     fetchFriendsOfUser(contactUserId, 0, PAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactUserId])
@@ -38,31 +40,28 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
     const io = new IntersectionObserver(entries => {
       const entry = entries[0]
       if (entry.isIntersecting && contactHasMore && !contactLoading) {
-        const nextOffset = (contactPage + 1) * PAGE_SIZE
+        const nextOffset = contactFriends.length
         fetchFriendsOfUser(contactUserId, nextOffset, PAGE_SIZE)
       }
     })
     io.observe(el)
     return () => io.disconnect()
-  }, [contactHasMore, contactLoading, contactPage, contactUserId, fetchFriendsOfUser])
-
-  if (contactError) {
-    return (
-      <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
-        {t("contact.error_contact_friends")}
-      </div>
-    )
-  }
+  }, [contactHasMore, contactLoading, contactFriends.length, contactUserId, fetchFriendsOfUser])
 
   return (
-    <div>
+    <CardSection noPadding>
+      {!!contactError && (
+        <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
+          {t("error")}
+        </div>
+      )}
+
       {contactFriends.map((f: Friend, idx: number) => {
         const person = pickPerson(f)
         const displayName =
           person?.name ||
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
-          t("contact.no_name")
-
+          (person?.username ? `@${person.username}` : "")
         return (
           <Link
             key={`${f.id}-${idx}`}
@@ -78,17 +77,15 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
         )
       })}
 
-      <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-        {t("contact.shown_of_total", { shown: contactFriends.length, total: contactTotal })}
-      </div>
+      {/* счётчик убран по просьбе */}
 
       <div ref={sentinelRef} className="h-6" />
       {contactLoading && (
         <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">
-          {t("contact.loading")}
+          {t("loading")}
         </div>
       )}
-    </div>
+    </CardSection>
   )
 }
 

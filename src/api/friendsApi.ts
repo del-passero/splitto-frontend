@@ -22,6 +22,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return await res.json()
 }
 
+/** Мои друзья (пагинация) */
 export async function getFriends(
   showHidden: boolean = false,
   offset: number = 0,
@@ -32,6 +33,7 @@ export async function getFriends(
   return fetchJson<FriendsResponse>(url)
 }
 
+/** Поиск по моим друзьям */
 export async function searchFriends(
   query: string,
   showHidden: boolean = false,
@@ -66,15 +68,17 @@ export async function unhideFriend(friendId: number): Promise<{ success: boolean
   return fetchJson<{ success: boolean }>(`${BASE_URL}${friendId}/unhide`, { method: "POST" })
 }
 
-/* ======= для страницы контакта ======= */
+/** Детали конкретного моего друга */
 export async function getFriendDetail(friendId: number): Promise<Friend> {
   return fetchJson<Friend>(`${BASE_URL}${friendId}`)
 }
 
+/** Названия общих групп с другом */
 export async function getCommonGroupNames(friendId: number): Promise<string[]> {
   return fetchJson<string[]>(`${BASE_URL}${friendId}/common-groups`)
 }
 
+/** Друзья произвольного пользователя (для вкладки «Друзья контакта») */
 export async function getFriendsOfUser(
   userId: number,
   offset: number = 0,

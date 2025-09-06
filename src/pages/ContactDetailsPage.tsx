@@ -22,17 +22,20 @@ const ContactDetailsPage = () => {
 
   const [activeTab, setActiveTab] = useState<"info" | "friends">("info")
 
+  // при смене friendId — чистим контактные данные до новой загрузки
   useEffect(() => {
-    if (!Number.isFinite(friendId)) return
-    fetchFriendById(friendId)
-    fetchCommonGroupNames(friendId)
-    return () => { clearContactFriends() }
-  }, [friendId, fetchFriendById, fetchCommonGroupNames, clearContactFriends])
+    clearContactFriends()
+    if (Number.isFinite(friendId)) {
+      fetchFriendById(friendId)
+      fetchCommonGroupNames(friendId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [friendId])
 
   const contactUser: UserShort | null = useMemo(() => {
     if (!contactFriend) return null
-    const candidates = [contactFriend.user, contactFriend.friend].filter(Boolean) as UserShort[]
-    return candidates.find(u => u.id === contactFriend.friend_id) || candidates[0] || null
+    const c = [contactFriend.user, contactFriend.friend].filter(Boolean) as UserShort[]
+    return c.find(u => u.id === contactFriend.friend_id) || c[0] || null
   }, [contactFriend])
 
   const onOpenProfile = () => {
@@ -60,12 +63,12 @@ const ContactDetailsPage = () => {
       {activeTab === "info" && (
         <>
           <CardSection>
-            {contactFriendLoading && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>}
-            {contactFriendError && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_contact")}</div>}
+            {contactFriendLoading && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>}
+            {!!contactFriendError && <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("error")}</div>}
             {contactUser && (
               <div className="cursor-default">
                 <UserCard
-                  name={contactUser.name || `${contactUser.first_name || ""} ${contactUser.last_name || ""}`.trim() || t("contact.no_name")}
+                  name={contactUser.name || `${contactUser.first_name || ""} ${contactUser.last_name || ""}`.trim() || (contactUser.username ? `@${contactUser.username}` : "")}
                   username={contactUser.username}
                   photo_url={contactUser.photo_url}
                 />
@@ -91,14 +94,14 @@ const ContactDetailsPage = () => {
             <div className="px-3 pt-3 pb-2 font-semibold">{t("contact.mutual_groups")}</div>
 
             {contactCommonGroupsLoading && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
             )}
-            {contactCommonGroupsError && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_common_groups")}</div>
+            {!!contactCommonGroupsError && (
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("error")}</div>
             )}
 
             {!contactCommonGroupsLoading && !contactCommonGroupNames.length && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.no_common_groups")}</div>
+              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("groups_not_found")}</div>
             )}
 
             {!!contactCommonGroupNames.length && (
@@ -116,9 +119,7 @@ const ContactDetailsPage = () => {
       )}
 
       {activeTab === "friends" && contactUser?.id && (
-        <CardSection noPadding>
-          <ContactFriendsList contactUserId={Number(contactUser.id)} />
-        </CardSection>
+        <ContactFriendsList contactUserId={Number(contactUser.id)} />
       )}
     </div>
   )

@@ -5,6 +5,7 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useFriendsStore } from "../store/friendsStore"
 import UserCard from "./UserCard"
+import CardSection from "./CardSection"
 import type { Friend, UserShort } from "../types/friend"
 
 const PAGE_SIZE = 20
@@ -15,13 +16,13 @@ type Props = {
 }
 
 function pickPerson(f: Friend): UserShort | undefined {
-  const candidates = [f.user, f.friend].filter(Boolean) as UserShort[]
-  return candidates.find(u => u.id === f.friend_id) || candidates[0]
+  const c = [f.user, f.friend].filter(Boolean) as UserShort[]
+  return c.find(u => u.id === f.friend_id) || c[0]
 }
 
 const ContactsList = (_props: Props) => {
   const { t } = useTranslation()
-  const { friends, total, loading, error, hasMore, page, fetchFriends } = useFriendsStore()
+  const { friends, loading, error, hasMore, fetchFriends } = useFriendsStore()
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -31,32 +32,35 @@ const ContactsList = (_props: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // инфинити-скролл: считаем offset по фактической длине
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
     const io = new IntersectionObserver(entries => {
       const entry = entries[0]
       if (entry.isIntersecting && hasMore && !loading) {
-        const nextOffset = (page + 1) * PAGE_SIZE
+        const nextOffset = friends.length
         fetchFriends(nextOffset, PAGE_SIZE)
       }
     })
     io.observe(el)
     return () => io.disconnect()
-  }, [hasMore, loading, page, fetchFriends])
-
-  if (error) {
-    return <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contact.error_friends_list")}</div>
-  }
+  }, [hasMore, loading, friends.length, fetchFriends])
 
   return (
-    <div>
+    <CardSection noPadding>
+      {!!error && (
+        <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
+          {t("error")}
+        </div>
+      )}
+
       {friends.map((f: Friend, idx: number) => {
         const person = pickPerson(f)
         const displayName =
           person?.name ||
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
-          t("contact.no_name")
+          (person?.username ? `@${person.username}` : "")
         return (
           <Link
             key={`${f.id}-${idx}`}
@@ -72,15 +76,13 @@ const ContactsList = (_props: Props) => {
         )
       })}
 
-      <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
-        {t("contact.shown_of_total", { shown: friends.length, total })}
-      </div>
+      {/* убрано «shown_of_total» по просьбе — ничего не выводим */}
 
       <div ref={sentinelRef} className="h-6" />
       {loading && (
-        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contact.loading")}</div>
+        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
       )}
-    </div>
+    </CardSection>
   )
 }
 
