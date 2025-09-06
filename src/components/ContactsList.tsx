@@ -32,7 +32,6 @@ const ContactsList = (_props: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // инфинити-скролл: считаем offset по фактической длине
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
@@ -63,7 +62,10 @@ const ContactsList = (_props: Props) => {
           (person?.username ? `@${person.username}` : "")
         return (
           <div key={`${f.id}-${idx}`} className="relative">
-            <Link to={`/contacts/${person?.id}`} className="block active:opacity-70">
+            <Link
+              to={`/contacts/${person?.id}`}
+              className="block active:opacity-70"
+            >
               <UserCard
                 name={displayName}
                 username={person?.username}
@@ -71,16 +73,15 @@ const ContactsList = (_props: Props) => {
               />
             </Link>
 
-            {/* разделитель между карточками — не рисуем после последней;
-               смещаем влево отступ под аватар (≈ 64px) */}
+            {/* разделитель в стиле «как раньше» */}
             {idx !== friends.length - 1 && (
-              <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/15" />
+              <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
             )}
           </div>
         )
       })}
 
-      {/* компактный «якорь» для подгрузки — убрали лишнее пустое место внизу */}
+      {/* компактный якорь — без пустоты снизу */}
       <div ref={sentinelRef} className="h-px" />
       {loading && (
         <div className="px-3 py-2 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>

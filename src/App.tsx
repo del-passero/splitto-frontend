@@ -17,7 +17,7 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
-import { acceptGroupInvite } from "./api/groupInvitesApi" // ← ДОБАВЛЕНО
+import { acceptGroupInvite } from "./api/groupInvitesApi" // ← ГРУППОВОЙ инвайт
 
 const App = () => {
   useApplyTheme()
@@ -30,22 +30,36 @@ const App = () => {
     const params = new URLSearchParams(window.location.search)
     const tokenFromUrl = params.get("startapp") || params.get("start")
     const token = tokenFromInitData || tokenFromUrl
-    if (token) {
-      if (token.startsWith("GINV_")) {
-        // ГРУППОВОЙ инвайт: акцепт + авто-редирект в группу
-        acceptGroupInvite(token)
-          .then((res) => {
-            if (res?.group_id) {
-              // Жёсткий редирект, чтобы гарантированно попасть внутрь роутера:
-              window.location.replace(`/groups/${res.group_id}`)
-            }
-          })
-          .catch(() => {})
-      } else {
-        // Инвайт друзей — как было
-        acceptFriendInvite(token).catch(() => {})
+
+    if (!token) return
+
+    // Ждём, пока Telegram подставит initData (убираем гонку на старте)
+    const waitForInitData = async (tries = 30, intervalMs = 100): Promise<string | null> => {
+      for (let i = 0; i < tries; i++) {
+        const val: string | undefined = (window as any)?.Telegram?.WebApp?.initData
+        if (val && val.length > 0) return val
+        await new Promise(r => setTimeout(r, intervalMs))
       }
+      return (window as any)?.Telegram?.WebApp?.initData || null
     }
+
+    ;(async () => {
+      await waitForInitData() // даже если вернётся null — у нас ещё и дублирование initData в теле запроса
+      try {
+        if (token.startsWith("GINV_")) {
+          // ГРУППОВОЙ инвайт: акцепт + авто-редирект в группу
+          const res = await acceptGroupInvite(token)
+          if (res?.group_id) {
+            window.location.replace(`/groups/${res.group_id}`)
+          }
+        } else {
+          // Инвайт друзей — как было
+          await acceptFriendInvite(token)
+        }
+      } catch {
+        // мягко игнорируем
+      }
+    })()
   }, [])
 
   return (

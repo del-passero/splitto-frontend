@@ -56,6 +56,7 @@ const ContactDetailsPage = () => {
   const contactPhoto = userFromFriendOut?.photo_url ?? userFromFallback?.photo_url
 
   const isFriend = !!contactFriend // наличие FriendOut => это мой друг
+  const currentUserId = contactFriend?.friend?.id // точный id текущего юзера, когда выбранный контакт — мой друг
 
   const onOpenProfile = () => {
     if (!contactUsername) return
@@ -149,11 +150,10 @@ const ContactDetailsPage = () => {
       )}
 
       {activeTab === "friends" && Number.isFinite(friendId) && (
-        <ContactFriendsList contactUserId={friendId} />
+        <ContactFriendsList contactUserId={friendId} currentUserId={currentUserId} />
       )}
     </div>
   )
 }
 
 export default ContactDetailsPage
-

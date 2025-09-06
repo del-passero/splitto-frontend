@@ -10,6 +10,8 @@ import type { Friend, UserShort } from "../../types/friend"
 
 type Props = {
   contactUserId: number
+  /** чтобы по клику на себя открывать /profile */
+  currentUserId?: number
 }
 
 const PAGE_SIZE = 20
@@ -19,7 +21,7 @@ function pickPerson(f: Friend): UserShort | undefined {
   return c.find(u => u.id === f.friend_id) || c[0]
 }
 
-const ContactFriendsList = ({ contactUserId }: Props) => {
+const ContactFriendsList = ({ contactUserId, currentUserId }: Props) => {
   const { t } = useTranslation()
   const {
     contactFriends, contactLoading, contactError,
@@ -61,9 +63,12 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
           person?.name ||
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
           (person?.username ? `@${person.username}` : "")
+
+        const toHref = person?.id === currentUserId ? "/profile" : `/contacts/${person?.id}`
+
         return (
           <div key={`${f.id}-${idx}`} className="relative">
-            <Link to={`/contacts/${person?.id}`} className="block active:opacity-70">
+            <Link to={toHref} className="block active:opacity-70">
               <UserCard
                 name={displayName}
                 username={person?.username}
@@ -71,15 +76,15 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
               />
             </Link>
 
-            {/* разделитель между карточками (смещение под аватар) */}
+            {/* разделитель как раньше: с отступом под аватар и без «дыры» справа */}
             {idx !== contactFriends.length - 1 && (
-              <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)]/15" />
+              <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
             )}
           </div>
         )
       })}
 
-      {/* компактный якорь — чтобы не было «пустого низа» */}
+      {/* компактный якорь — без лишнего пустого места */}
       <div ref={sentinelRef} className="h-px" />
       {contactLoading && (
         <div className="px-3 py-2 text-sm text-[var(--tg-hint-color)]">
