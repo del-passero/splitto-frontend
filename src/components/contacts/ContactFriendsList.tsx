@@ -1,8 +1,7 @@
 // src/components/contacts/ContactFriendsList.tsx
-
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { useFriendsStore } from "../../store/friendsStore"
 import UserCard from "../UserCard"
 import type { Friend } from "../../types/friend"
@@ -15,7 +14,6 @@ const PAGE_SIZE = 20
 
 const ContactFriendsList = ({ contactUserId }: Props) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const {
     contactFriends, contactTotal, contactLoading, contactError,
     contactHasMore, contactPage, fetchFriendsOfUser
@@ -57,7 +55,7 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
   return (
     <div>
       {contactFriends.map((f: Friend, idx: number) => {
-        // владелец связи — user_id === contactUserId; отображаем друга (friend)
+        // в списке друзей контакта отображаем «друга» (friend)
         const person = f.friend
         const displayName =
           person.name ||
@@ -65,17 +63,17 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
           t("contacts.no_name")
 
         return (
-          <div
+          <Link
             key={`${f.id}-${idx}`}
-            className="cursor-pointer active:opacity-70"
-            onClick={() => navigate(`/contacts/${person.id}`)}
+            to={`/contacts/${person.id}`}
+            className="block active:opacity-70"
           >
             <UserCard
               name={displayName}
               username={person.username}
               photo_url={person.photo_url}
             />
-          </div>
+          </Link>
         )
       })}
 
