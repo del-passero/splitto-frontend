@@ -15,34 +15,6 @@ import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
 
-// === ТОЛЬКО ДОБАВЛЕНО: helper + тост ===
-function mapDeleteErrorToKey(e: any): string {
-  try {
-    const parsed = JSON.parse(e?.message || "{}");
-    const code = parsed?.detail?.code || parsed?.code || parsed?.detail;
-    if (code === "tx_delete_forbidden_expense") return "errors.tx_delete_forbidden_expense";
-    if (code === "tx_delete_forbidden_transfer") return "errors.tx_delete_forbidden_transfer";
-  } catch {
-    /* ignore */
-  }
-  return "delete_failed";
-}
-const Toast = ({ text, onClose }: { text: string; onClose: () => void }) => (
-  <div
-    className="fixed left-1/2 -translate-x-1/2 bottom-4 z-[1200] px-3 py-2 rounded-xl text-[13px] font-semibold shadow-lg"
-    style={{
-      background: "var(--tg-card-bg)",
-      color: "var(--tg-text-color)",
-      border: "1px solid var(--tg-secondary-bg-color, #e7e7e7)",
-    }}
-    onClick={onClose}
-    role="status"
-  >
-    {text}
-  </div>
-);
-// === /ТОЛЬКО ДОБАВЛЕНО ===
-
 type Props = {
   loading: boolean;
   transactions: any[];
@@ -88,6 +60,13 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
+  // ---- unified center toast ----
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
+  const showToast = useCallback((msg: string) => {
+    setToast({ open: true, message: msg });
+    window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
+  }, []);
+
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
 
@@ -111,15 +90,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const ioRef = useRef<IntersectionObserver | null>(null);
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
-
-  // === ТОЛЬКО ДОБАВЛЕНО: состояние тоста ===
-  const [toast, setToast] = useState<string | null>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(id);
-  }, [toast]);
-  // === /ТОЛЬКО ДОБАВЛЕНО ===
 
   useEffect(() => {
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
@@ -241,13 +211,23 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     if (!txForActions?.id) return;
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
-    try { setLoading(true); await removeTransaction(txForActions.id); setItems(prev => prev.filter(it => it.id !== txForActions.id)); }
-    catch (e: any) {
-      // === ТОЛЬКО ДОБАВЛЕНО: показать тост с ключом ===
-      const key = mapDeleteErrorToKey(e);
-      setToast(t(key) as string);
+    try {
+      setLoading(true);
+      await removeTransaction(txForActions.id);
+      setItems(prev => prev.filter(it => it.id !== txForActions.id));
+    } catch (e: any) {
+      // Разбираем ответ, чтобы показать корректный перевод
+      let raw = typeof e === "string" ? e : e?.message || "";
+      try { const j = JSON.parse(raw); raw = j?.detail || raw; } catch {}
+      const msg =
+        (raw && raw.includes("Only author or payer"))
+          ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
+          : (t("delete_failed") as string);
+      showToast(msg);
+    } finally {
+      setLoading(false);
+      closeActions();
     }
-    finally { setLoading(false); closeActions(); }
   };
 
   const visible = items;
@@ -306,34 +286,56 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           onCreated={handleCreated}
         />
 
+        {/* === Центрированная модалка действий === */}
         {actionsOpen && (
-          <div className="fixed inset-0 z-[1100] flex items	end justify-center" onClick={closeActions}>
-            <div className="absolute inset-0 bg-black/50" />
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={closeActions}>
+            <div className="absolute inset-0 bg-black/40" />
             <div
-              className="relative w-full max-w-[520px] rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7е7)] shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.45)] p-2"
+              className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-2"
               style={{ color: "var(--tg-text-color)" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <button type="button" className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition" onClick={handleEdit}>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={handleEdit}
+              >
                 {t("edit")}
               </button>
-              <button type="button" className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition" onClick={handleDelete}>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold text-red-500 hover:bg-red-500/10 transition"
+                onClick={handleDelete}
+              >
                 {t("delete")}
               </button>
               <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
-              <button type="button" className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition" onClick={closeActions}>
+              <button
+                type="button"
+                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                onClick={closeActions}
+              >
                 {t("cancel")}
               </button>
             </div>
           </div>
         )}
 
-        {/* === ТОЛЬКО ДОБАВЛЕНО: тост === */}
-        {toast && <Toast text={toast} onClose={() => setToast(null)} />}
-        {/* === /ТОЛЬКО ДОБАВЛЕНО === */}
+        {/* === Центрированный тост === */}
+        {toast.open && (
+          <div className="fixed inset-0 z-[1200] pointer-events-none flex items-center justify-center">
+            <div
+              className="px-4 py-2.5 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-2xl text-[14px] font-medium"
+              style={{ color: "var(--tg-text-color)" }}
+            >
+              {toast.message}
+            </div>
+          </div>
+        )}
       </div>
     </CardSection>
   );
 };
 
 export default GroupTransactionsTab;
+

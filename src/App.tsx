@@ -19,16 +19,15 @@ import { useTelegramAuth } from "./hooks/useTelegramAuth"
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
 import { acceptGroupInvite } from "./api/groupInvitesApi"
 
-/** Нормализуем токен: срезаем `join:`, убираем пробелы, добиваем base64url-паддинг */
-function normalizeInviteToken(raw: string | null | undefined): string | null {
+// Небольшая нормализация токена: убираем возможные префиксы
+function normalizeStartParam(raw: string | null | undefined): string | null {
   if (!raw) return null
-  let t = String(raw).trim().replace(/\s+/g, "")
-  if (t.startsWith("join:")) t = t.slice(5) // убрать префикс join:
-  // base64url-паддинг, если строка урл-безопасная и длина не кратна 4
-  if (/^[A-Za-z0-9_-]+$/.test(t) && t.length % 4 !== 0) {
-    t = t + "=".repeat((4 - (t.length % 4)) % 4)
-  }
-  return t
+  let t = String(raw).trim()
+  if (t.startsWith("join:")) t = t.slice(5)
+  if (t.startsWith("JOIN:")) t = t.slice(5)
+  if (t.startsWith("g:")) t = t.slice(2)
+  if (t.startsWith("G:")) t = t.slice(2)
+  return t || null
 }
 
 const App = () => {
@@ -56,13 +55,11 @@ const App = () => {
       params.get("tgWebAppStartParam") ||
       null
 
-    const tokenRaw = fromInitData || fromUrl
-    const token = normalizeInviteToken(tokenRaw)
+    const token = normalizeStartParam(fromInitData || fromUrl)
     if (!token) return
 
-    // === ВАЖНО ===
-    // Всегда пробуем принять КАК ГРУППОВОЙ инвайт.
-    // Если бэк ответил bad_token / invite_not_found — это не групповой → пробуем дружбу.
+    // Сначала пробуем принять КАК ГРУППОВОЙ инвайт.
+    // Если бэк ответил bad_token — пробуем дружеский инвайт.
     ;(async () => {
       try {
         const res = await acceptGroupInvite(token)
@@ -73,9 +70,9 @@ const App = () => {
         }
         // если без group_id — просто замолчим
       } catch (e: any) {
-        const msg = String(e?.message || "").toLowerCase()
-        // fallback только при «не наш» групповой токен
-        if (msg.includes("bad_token") || msg.includes("invite_not_found")) {
+        const msg = (e?.message || "").toString().toLowerCase()
+        // fallback только при «не наш» токен
+        if (msg.includes("bad_token")) {
           try {
             await acceptFriendInvite(token)
           } catch {

@@ -1,4 +1,4 @@
-// src/pages/TransactionEditPage.tsx
+// frontend/src/pages/TransactionEditPage.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -24,34 +24,6 @@ import {
   FileText,
   ArrowLeft,
 } from "lucide-react";
-
-// === ТОЛЬКО ДОБАВЛЕНО: helper + тост ===
-function mapDeleteErrorToKey(e: any): string {
-  try {
-    const parsed = JSON.parse(e?.message || "{}");
-    const code = parsed?.detail?.code || parsed?.code || parsed?.detail;
-    if (code === "tx_delete_forbidden_expense") return "errors.tx_delete_forbidden_expense";
-    if (code === "tx_delete_forbidden_transfer") return "errors.tx_delete_forbidden_transfer";
-  } catch {
-    /* ignore */
-  }
-  return "delete_failed";
-}
-const Toast = ({ text, onClose }: { text: string; onClose: () => void }) => (
-  <div
-    className="fixed left-1/2 -translate-x-1/2 bottom-4 z-[1200] px-3 py-2 rounded-xl text-[13px] font-semibold shadow-lg"
-    style={{
-      background: "var(--tg-card-bg)",
-      color: "var(--tg-text-color)",
-      border: "1px solid var(--tg-secondary-bg-color, #e7e7e7)",
-    }}
-    onClick={onClose}
-    role="status"
-  >
-    {text}
-  </div>
-);
-// === /ТОЛЬКО ДОБАВЛЕНО ===
 
 /* ====================== ВАЛЮТА/ФОРМАТЫ ====================== */
 type TxType = "expense" | "transfer";
@@ -226,7 +198,6 @@ const deriveSharesFromAmounts = (amounts: number[], decimals: number): number[] 
   const scale = Math.pow(10, Math.max(0, decimals));
   const ints = amounts.map((v) => Math.round(Math.max(0, v) * scale));
   const positive = ints.filter((x) => x > 0);
-  if (!positive.length) return amounts.map(() => 1);
   const g = gcdArr(positive);
   if (!g) return amounts.map(() => 1);
   return ints.map((x) => (x > 0 ? x / g : 0));
@@ -279,6 +250,13 @@ export default function TransactionEditPage() {
 
   const [saving, setSaving] = useState(false);
 
+  // ---- unified center toast ----
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
+  const showToast = (msg: string) => {
+    setToast({ open: true, message: msg });
+    window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
+  };
+
   const currency = useMemo(() => makeCurrency(group, tx?.currency || null), [group, tx?.currency]);
   const amountNumber = useMemo(() => {
     const n = Number(amount);
@@ -289,15 +267,6 @@ export default function TransactionEditPage() {
     if (!splitData || amountNumber <= 0) return [];
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
-
-  // === ТОЛЬКО ДОБАВЛЕНО: состояние тоста ===
-  const [toast, setToast] = useState<string | null>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(id);
-  }, [toast]);
-  // === /ТОЛЬКО ДОБАВЛЕНО ===
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -397,7 +366,6 @@ export default function TransactionEditPage() {
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
-        // Категория — объединяем развёрнутый объект и плоские фолбэки
         const cat: any = (tx as any).category || {};
         const idCandidate =
           cat.id ??
@@ -435,11 +403,9 @@ export default function TransactionEditPage() {
         setCategoryIcon(iconCandidate);
         setCategoryColor(hex6);
 
-        // Плательщик
         const payerId = Number(tx.paid_by ?? NaN);
         setPaidBy(Number.isFinite(payerId) ? payerId : undefined);
 
-        // Разделение: берём amount + (возможные) shares из бэка
         const baseParts: Array<{ user_id: number; name: string; avatar_url?: string; amount: number; share?: number | null }> =
           Array.isArray(tx.shares)
             ? (tx.shares as any[]).map((s) => ({
@@ -447,7 +413,6 @@ export default function TransactionEditPage() {
                 name: "",
                 avatar_url: undefined,
                 amount: Number(s.amount) || 0,
-                // читаем как 'shares' так и 'share' — если нет, оставим undefined
                 share: (() => {
                   const raw = (s as any).shares ?? (s as any).share;
                   const v = Number(raw);
@@ -456,7 +421,6 @@ export default function TransactionEditPage() {
               }))
             : [];
 
-        // Если тип "shares", а 'share' у кого-то отсутствует — восстановим доли из сумм
         const initialSplitType: "equal" | "shares" | "custom" =
           (tx.split_type as any) || "custom";
 
@@ -494,7 +458,6 @@ export default function TransactionEditPage() {
           } as any);
         }
       } else {
-        // === TRANSFER ===
         const fromId = Number(tx.transfer_from ?? NaN);
         const toArr = tx.transfer_to as number[] | null | undefined;
         const toId = Number(toArr && toArr.length ? toArr[0] : NaN);
@@ -606,7 +569,6 @@ export default function TransactionEditPage() {
     }));
   }
 
-  // локальная валидация split перед сохранением (как в create-модалке)
   const validateSplitBeforeSave = (amtStr: string): boolean => {
     if (!splitData) return true;
     const total = Number(amtStr);
@@ -690,6 +652,7 @@ export default function TransactionEditPage() {
     } catch (e) {
       console.error("[TransactionEditPage] save error", e);
       setError(t("save_failed") || "Save failed");
+      showToast((t("save_failed") as string) || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -710,11 +673,15 @@ export default function TransactionEditPage() {
       goBack();
     } catch (e: any) {
       console.error("[TransactionEditPage] delete error", e);
-      // === ТОЛЬКО ДОБАВЛЕНО: показать тост и локализовать сообщение ===
-      const key = mapDeleteErrorToKey(e);
-      setToast(t(key) as string);
-      setError(t(key) || "Delete failed");
-      // === /ТОЛЬКО ДОБАВЛЕНО ===
+      // Разбираем, чтобы показать корректный перевод
+      let raw = typeof e === "string" ? e : e?.message || "";
+      try { const j = JSON.parse(raw); raw = j?.detail || raw; } catch {}
+      const msg =
+        (raw && raw.includes("Only author or payer"))
+          ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
+          : (t("delete_failed") as string);
+      setError(msg);
+      showToast(msg);
     } finally {
       setSaving(false);
     }
@@ -855,7 +822,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg_WHITE/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
@@ -876,7 +843,7 @@ export default function TransactionEditPage() {
                           <span
                             role="button"
                             aria-label={t("clear") || "Очистить"}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg_WHITE/10 hover:bg-black/20"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -903,7 +870,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(true);
                       }}
-                      className="min-w-0 inline-flex items-center justify_between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg_WHITE/5 transition"
+                      className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
                     >
                       <span className="truncate">{t("tx_modal.split")}</span>
                       <strong className="truncate">
@@ -998,7 +965,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg_WHITE/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg白/5 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
@@ -1019,7 +986,7 @@ export default function TransactionEditPage() {
                           <span
                             role="button"
                             aria-label={t("clear") || "Очистить"}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg_WHITE/10 hover:bg-black/20"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1046,7 +1013,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(true);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg_WHITE/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                     >
                       {toUser ? (
                         <>
@@ -1058,7 +1025,7 @@ export default function TransactionEditPage() {
                                 className="w-4 h-4 rounded-full object-cover"
                               />
                             ) : (
-                              <span className="w-4 х-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                              <span className="w-4 h-4 rounded-full bg-[var(--tg-link-color)] inline-block" />
                             )}
                             <strong className="truncate">
                               {firstNameOnly(toUserName) || t("not_specified")}
@@ -1067,7 +1034,7 @@ export default function TransactionEditPage() {
                           <span
                             role="button"
                             aria-label={t("clear") || "Очистить"}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg_WHITE/10 hover:bg-black/20"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1103,7 +1070,7 @@ export default function TransactionEditPage() {
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="date-input-clean appearance-none w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 пр-8 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
+                    className="date-input-clean appearance-none w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 pr-8 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
                   />
                   <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                 </div>
@@ -1203,9 +1170,6 @@ export default function TransactionEditPage() {
           initial={splitData || { type: "equal", participants: [] as any[] }}
           paidById={paidBy}
           onSave={(sel) => {
-            // Если при переключении на "Поровну" вернулся <=1 участник —
-            // восстанавливаем состав участников: сперва из прежнего splitData,
-            // иначе — из всех участников группы.
             let out: SplitSelection = sel;
             if (sel?.type === "equal") {
               const returned = sel.participants || [];
@@ -1237,11 +1201,19 @@ export default function TransactionEditPage() {
             setSplitOpen(false);
           }}
         />
-      </div>
 
-      {/* === ТОЛЬКО ДОБАВЛЕНО: тост === */}
-      {toast && <Toast text={toast} onClose={() => setToast(null)} />}
-      {/* === /ТОЛЬКО ДОБАВЛЕНО === */}
+        {/* === Центрированный тост === */}
+        {toast.open && (
+          <div className="fixed inset-0 z-[1300] pointer-events-none flex items-center justify-center">
+            <div
+              className="px-4 py-2.5 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-2xl text-[14px] font-medium"
+              style={{ color: "var(--tg-text-color)" }}
+            >
+              {toast.message}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
