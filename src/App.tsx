@@ -26,40 +26,38 @@ const App = () => {
 
   useEffect(() => {
     const tg = (window as any)?.Telegram?.WebApp
-    const tokenFromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
-    const params = new URLSearchParams(window.location.search)
-    const tokenFromUrl = params.get("startapp") || params.get("start")
-    const token = tokenFromInitData || tokenFromUrl
 
+    // 1) initDataUnsafe.start_param — главный источник (всегда есть в TWA)
+    const tokenFromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
+
+    // 2) Параметры URL: поддерживаем ВСЕ варианты, встречающиеся на Android/iOS/Web
+    const params = new URLSearchParams(window.location.search)
+    const tokenFromUrl =
+      params.get("startapp") ||
+      params.get("start") ||
+      params.get("tgWebAppStartParam") || // ← часто встречается в логах
+      null
+
+    const token = tokenFromInitData || tokenFromUrl
     if (!token) return
 
-    // Ждём, пока Telegram подставит initData (убираем гонку на старте)
-    const waitForInitData = async (tries = 30, intervalMs = 100): Promise<string | null> => {
-      for (let i = 0; i < tries; i++) {
-        const val: string | undefined = (window as any)?.Telegram?.WebApp?.initData
-        if (val && val.length > 0) return val
-        await new Promise(r => setTimeout(r, intervalMs))
-      }
-      return (window as any)?.Telegram?.WebApp?.initData || null
-    }
-
-    ;(async () => {
-      await waitForInitData() // даже если вернётся null — у нас ещё и дублирование initData в теле запроса
-      try {
-        if (token.startsWith("GINV_")) {
-          // ГРУППОВОЙ инвайт: акцепт + авто-редирект в группу
-          const res = await acceptGroupInvite(token)
+    // 3) Разводим по типу токена
+    if (token.startsWith("GINV_")) {
+      // ГРУППА: акцепт + авто-редирект в группу
+      acceptGroupInvite(token)
+        .then((res) => {
           if (res?.group_id) {
+            // Жёсткий редирект — гарантируем заход на нужную страницу
             window.location.replace(`/groups/${res.group_id}`)
           }
-        } else {
-          // Инвайт друзей — как было
-          await acceptFriendInvite(token)
-        }
-      } catch {
-        // мягко игнорируем
-      }
-    })()
+        })
+        .catch(() => {
+          // молча игнорируем — токен мог быть битый/просроченный/и т.п.
+        })
+    } else {
+      // ДРУЖБА: как и раньше
+      acceptFriendInvite(token).catch(() => {})
+    }
   }, [])
 
   return (
