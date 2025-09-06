@@ -7,7 +7,7 @@ import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
-import CardSection from "../CardSection"; // ⬅ добавили: единый контейнер как на вкладке Транзакций
+import CardSection from "../CardSection"; // единый контейнер как на вкладке Транзакций
 
 // Мягкое определение точности по коду валюты (как в других местах проекта)
 const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
@@ -248,7 +248,7 @@ export default function GroupBalanceTab() {
   return (
     <CardSection
       noPadding
-      className="relative w-full h-full min-h-[320px] overflow-x-hidden overscroll-x-none"
+      className="relative w-full h-full min-h[320px] overflow-x-hidden overscroll-x-none"
     >
       <div className="w-full min-w-0" style={{ color: "var(--tg-text-color)" }}>
         <GroupBalanceTabSmart
