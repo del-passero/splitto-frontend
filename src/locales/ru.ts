@@ -1,3 +1,4 @@
+// src/i18n/ru.ts
 export default {
   // --- Навигация и основные разделы ---
   main: "Главная",
@@ -29,7 +30,7 @@ export default {
   groups_top_info: "У вас {{count}} активных групп",
   empty_groups: "У вас ещё нет ни одной группы",
   empty_groups_hint:
-    "Создайте свою первую группу для управления совместными расходами!",
+    "Создайте свою первую группу для управления совместными расходами не выходя из Telegram.",
   search_group_placeholder: "Поиск группы...",
   debts_reserved: "Долги — скоро!",
   and_more_members: "и ещё {{count}}",

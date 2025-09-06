@@ -1,113 +1,83 @@
-import { useEffect, useRef } from "react"
-import UserCard from "./UserCard"
-import EmptyContacts from "./EmptyContacts"
-import CardSection from "./CardSection"
-import { useFriendsStore } from "../store/friendsStore"
+// src/components/ContactsList.tsx
 
-type Props = {
-  isSearching?: boolean
-  searchQuery?: string | null
-}
+import { useEffect, useRef } from "react"
+import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
+import { useFriendsStore } from "../store/friendsStore"
+import UserCard from "./UserCard"
 
 const PAGE_SIZE = 20
 
-const ContactsList = ({ isSearching = false, searchQuery }: Props) => {
-  const {
-    friends,
-    total,
-    loading,
-    error,
-    fetchFriends,
-    searchFriends,
-    clearFriends,
-    hasMore,
-    page,
-    setPage
-  } = useFriendsStore()
+type Props = {
+  // добавлено для совместимости с вызовом в ContactsPage.tsx
+  isSearching?: boolean
+  searchQuery?: string
+}
 
-  const loaderRef = useRef<HTMLDivElement>(null)
+const ContactsList = ({ isSearching, searchQuery }: Props) => {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { friends, total, loading, error, hasMore, page, fetchFriends } = useFriendsStore()
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  // Сброс и загрузка первой страницы при смене режима или поискового запроса
   useEffect(() => {
-    clearFriends()
-    setPage(0)
-    if (isSearching && searchQuery) {
-      searchFriends(searchQuery, 0, PAGE_SIZE)
-    } else {
+    if (friends.length === 0) {
       fetchFriends(0, PAGE_SIZE)
     }
-    // eslint-disable-next-line
-  }, [isSearching, searchQuery])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Infinity scroll
   useEffect(() => {
-    if (loading || !hasMore || !loaderRef.current) return
-
-    const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !loading && hasMore) {
-        const nextPage = page + 1
-        setPage(nextPage)
-        if (isSearching && searchQuery) {
-          searchFriends(searchQuery, nextPage * PAGE_SIZE, PAGE_SIZE)
-        } else {
-          fetchFriends(nextPage * PAGE_SIZE, PAGE_SIZE)
-        }
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(entries => {
+      const entry = entries[0]
+      if (entry.isIntersecting && hasMore && !loading) {
+        const nextOffset = (page + 1) * PAGE_SIZE
+        fetchFriends(nextOffset, PAGE_SIZE)
       }
     })
-    observer.observe(loaderRef.current)
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasMore, loading, page, fetchFriends])
 
-    return () => observer.disconnect()
-  }, [loading, hasMore, isSearching, searchQuery, fetchFriends, searchFriends, page, setPage])
-
-  // Пустой список (нет друзей и загрузка завершена)
-  if (!friends.length && !loading) {
-    return (
-      <div className="w-full flex flex-col flex-1">
-        <EmptyContacts notFound={isSearching} />
-      </div>
-    )
-  }
-
-  // Ошибка
   if (error) {
-    return (
-      <CardSection>
-        <div className="py-12 text-center text-red-500">{error}</div>
-      </CardSection>
-    )
+    return <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.error_friends_list")}</div>
   }
 
-  // Лоадер при первой загрузке
-  if (loading && friends.length === 0) {
-    return (
-      <CardSection>
-        <div className="py-12 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-      </CardSection>
-    )
-  }
-
-  // Основной список
   return (
-    <CardSection noPadding>
-      {friends.map((friend, idx) => (
-        <div key={friend.id} className="relative">
-          <UserCard
-            name={`${friend.user.first_name ?? ""} ${friend.user.last_name ?? ""}`.trim()}
-            username={friend.user.username}
-            photo_url={friend.user.photo_url}
-          />
-          {idx !== friends.length - 1 && (
-            <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-          )}
-        </div>
-      ))}
-      {hasMore && (
-        <div ref={loaderRef} style={{ height: 1, width: "100%" }} />
+    <div>
+      {friends.map((f, idx) => {
+        // В текущем списке "мой друг" всегда в f.friend
+        const person = f.friend
+        const displayName =
+          person.name ||
+          `${person.first_name || ""} ${person.last_name || ""}`.trim() ||
+          t("contacts.no_name")
+        return (
+          <div
+            key={`${f.id}-${idx}`}
+            className="cursor-pointer active:opacity-70"
+            onClick={() => navigate(`/contacts/${person.id}`)}
+          >
+            <UserCard
+              name={displayName}
+              username={person.username}
+              photo_url={person.photo_url}
+            />
+          </div>
+        )
+      })}
+
+      <div className="px-3 pb-3 text-xs text-[var(--tg-hint-color)]">
+        {t("contacts.shown_of_total", { shown: friends.length, total })}
+      </div>
+
+      <div ref={sentinelRef} className="h-6" />
+      {loading && (
+        <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("contacts.loading")}</div>
       )}
-      {loading && friends.length > 0 && (
-        <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>
-      )}
-    </CardSection>
+    </div>
   )
 }
 

@@ -1,4 +1,4 @@
-// src/App.tsx
+// frontend/src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { useEffect } from "react"
 
@@ -9,6 +9,7 @@ import GroupDetailsPageSettings from "./pages/GroupDetailsPageSettings"
 import ContactsPage from "./pages/ContactsPage"
 import ProfilePage from "./pages/ProfilePage"
 import TransactionEditPage from "./pages/TransactionEditPage"
+import ContactDetailsPage from "./pages/ContactDetailsPage"
 
 import MainLayout from "./layouts/MainLayout"
 import { useApplyTheme } from "./hooks/useApplyTheme"
@@ -44,6 +45,7 @@ const App = () => {
               <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
               <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
               <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/contacts/:friendId" element={<ContactDetailsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/transactions/:txId" element={<TransactionEditPage />} />
             </Routes>

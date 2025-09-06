@@ -1,264 +1,265 @@
+// src/i18n/en.ts
 export default {
-  // --- Навигация и основные разделы ---
-  main: "Главная",
-  groups: "Группы",
-  group: "Группа",
-  create_group: "Создать группу",
-  add_transaction: "Добавить транзакцию",
-  edit_group: "Редактировать группу",
-  no_groups: "Нет групп",
-  contacts: "Контакты",
-  profile: "Профиль",
+  // --- Navigation & main sections ---
+  main: "Home",
+  groups: "Groups",
+  group: "Group",
+  create_group: "Create group",
+  add_transaction: "Add transaction",
+  edit_group: "Edit group",
+  no_groups: "No groups",
+  contacts: "Contacts",
+  profile: "Profile",
 
-  // --- Группы и участники ---
-  participants: "Участники",
-  members: "Участники",
-  owner: "Создатель",
-  no_participants: "Нет участников",
-  contacts_not_found: "Не найдено ни одного контакта",
-  groups_not_found: "Не найдено ни одной группы",
-  group_name_placeholder: "Название группы",
-  group_description_placeholder: "Описание группы",
-  group_name_required: "Введите название группы",
-  error_create_group: "Ошибка при создании группы",
-  error_edit_group: "Ошибка при редактировании группы",
-  saving: "Сохранение...",
-  add_participants: "Добавить участников",
-  empty_members: "Нет участников",
-  groups_count: "Всего групп: {{count}}",
-  groups_top_info: "У вас {{count}} активных групп",
-  empty_groups: "У вас ещё нет ни одной группы",
+  // --- Groups & members ---
+  participants: "Participants",
+  members: "Members",
+  owner: "Owner",
+  no_participants: "No participants",
+  contacts_not_found: "No contacts found",
+  groups_not_found: "No groups found",
+  group_name_placeholder: "Group name",
+  group_description_placeholder: "Group description",
+  group_name_required: "Enter a group name",
+  error_create_group: "Failed to create group",
+  error_edit_group: "Failed to edit group",
+  saving: "Saving...",
+  add_participants: "Add participants",
+  empty_members: "No members",
+  groups_count: "Total groups: {{count}}",
+  groups_top_info: "You have {{count}} active groups",
+  empty_groups: "You don't have any groups yet",
   empty_groups_hint:
-    "Создайте свою первую группу для управления совместными расходами!",
-  search_group_placeholder: "Поиск группы...",
-  debts_reserved: "Долги — скоро!",
-  and_more_members: "и ещё {{count}}",
-  group_members_count: "{{count}} участников",
-  group_status_archived: "Архив",
-  leave_group: "Выйти из группы",
-  delete_group: "Удалить группу",
+    "Create your first group to manage shared expenses without leaving Telegram.",
+  search_group_placeholder: "Search group...",
+  debts_reserved: "Debts — coming soon!",
+  and_more_members: "and {{count}} more",
+  group_members_count: "{{count}} members",
+  group_status_archived: "Archived",
+  leave_group: "Leave group",
+  delete_group: "Delete group",
 
-  // --- Балансы и долги ---
-  // ВАЖНО: здесь «ты/тебе» — на вкладке «Мой баланс»
-  // Для статусов в карточках транзакций оставляем «Вы/Вам» (см. ниже).
-  group_balance_you_get: "Тебе должны {{sum}}",
-  group_balance_you_owe: "Ты должен {{sum}}",
-  group_balance_zero: "Всё по нулям",
-  group_header_settings: "Настройки",
-  group_header_my_balance: "Мой баланс",
-  group_participant_no_debt: "Нет долга",
-  // Эти два используются в карточках транзакций и в списках, где форма вежливая:
-  group_participant_you_owe: "Вы должны: {{sum}}",
-  group_participant_owes_you: "Вам должны: {{sum}}",
+  // --- Balances & debts ---
+  // IMPORTANT: use informal “you” on "My balance" tab.
+  // In transaction cards use neutral wording.
+  group_balance_you_get: "You're owed {{sum}}",
+  group_balance_you_owe: "You owe {{sum}}",
+  group_balance_zero: "All settled",
+  group_header_settings: "Settings",
+  group_header_my_balance: "My balance",
+  group_participant_no_debt: "No debt",
+  // Used in transaction cards / polite lists:
+  group_participant_you_owe: "You owe: {{sum}}",
+  group_participant_owes_you: "Owes you: {{sum}}",
 
-  // --- Список участников (скролл) ---
-  group_invite: "Пригласить",
-  group_add_member: "Добавить",
+  // --- Members list (scroll) ---
+  group_invite: "Invite",
+  group_add_member: "Add",
 
-  // --- Вкладки группы ---
-  group_tab_transactions: "Транзакции",
-  group_tab_balance: "Баланс",
-  group_tab_analytics: "Аналитика",
+  // --- Group tabs ---
+  group_tab_transactions: "Transactions",
+  group_tab_balance: "Balance",
+  group_tab_analytics: "Analytics",
 
   // --- FAB ---
-  group_fab_add_transaction: "Добавить транзакцию",
+  group_fab_add_transaction: "Add transaction",
 
-  // --- Транзакции ---
-  group_transactions_empty: "В группе пока нет трат — добавьте первую!",
-  group_transactions_not_found: "Траты не найдены",
+  // --- Transactions ---
+  group_transactions_empty: "There are no expenses in the group yet — add the first one!",
+  group_transactions_not_found: "No expenses found",
   group_transactions_placeholder:
-    "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
+    "Placeholder for the transactions list. Your group's transactions will appear here.",
 
-  // --- Вкладка Баланс ---
-  group_balance_microtab_mine: "Мой баланс",
-  group_balance_microtab_all: "Все балансы",
-  group_balance_no_debts: "Нет долгов",
-  group_balance_get_from: "Вам должны: {{sum}}",
-  group_balance_owe_to: "Вы должны: {{sum}}",
-  group_balance_no_debt_with: "Нет долга",
-  group_balance_no_debts_all: "В группе никто никому не должен",
+  // --- Balance tab ---
+  group_balance_microtab_mine: "My balance",
+  group_balance_microtab_all: "All balances",
+  group_balance_no_debts: "No debts",
+  group_balance_get_from: "They owe you: {{sum}}",
+  group_balance_owe_to: "You owe: {{sum}}",
+  group_balance_no_debt_with: "No debt",
+  group_balance_no_debts_all: "No one owes anyone in this group",
 
-  // Новые подписи для кнопок действий на карточках баланса
-  repay_debt: "Погасить долг",
-  remind_debt: "Напомнить о долге",
+  // Action buttons on balance cards
+  repay_debt: "Repay debt",
+  remind_debt: "Remind about debt",
 
-  // --- Вкладка Аналитика ---
-  group_analytics_coming_soon: "Аналитика скоро появится",
+  // --- Analytics tab ---
+  group_analytics_coming_soon: "Analytics coming soon",
 
-  // --- Страница настроек группы ---
-  group_settings_tab_settings: "Настройки",
-  group_settings_tab_members: "Участники",
-  group_settings_leave_group: "Выйти из группы",
-  group_settings_delete_group: "Удалить группу",
-  group_members_invite: "Пригласить",
-  group_members_add: "Добавить",
-  group_members_empty: "В группе пока нет участников",
-  group_settings_close: "Закрыть",
-  group_settings_save_and_exit: "Сохранить и закрыть",
+  // --- Group settings page ---
+  group_settings_tab_settings: "Settings",
+  group_settings_tab_members: "Members",
+  group_settings_leave_group: "Leave group",
+  group_settings_delete_group: "Delete group",
+  group_members_invite: "Invite",
+  group_members_add: "Add",
+  group_members_empty: "There are no members in the group yet",
+  group_settings_close: "Close",
+  group_settings_save_and_exit: "Save & close",
 
-  // --- Приглашения (инвайты) ---
-  create_invite_link: "Создать ссылку-приглашение",
-  invite_by_link: "Пригласить по ссылке",
-  copy_link: "Скопировать ссылку",
-  copied: "Скопировано!",
-  share_link: "Поделиться (в Telegram)",
-  share: "Поделиться",
-  shared: "Ссылка готова для вставки!",
-  invite_friend: "Пригласить друга",
-  invite_error: "Не удалось создать ссылку. Попробуйте позже.",
+  // --- Invites ---
+  create_invite_link: "Create invite link",
+  invite_by_link: "Invite by link",
+  copy_link: "Copy link",
+  copied: "Copied!",
+  share_link: "Share (in Telegram)",
+  share: "Share",
+  shared: "Link is ready to paste!",
+  invite_friend: "Invite a friend",
+  invite_error: "Failed to create link. Try again later.",
   invite_message:
-    "Присоединяйся ко мне в Splitto — удобный способ управлять совместными расходами не выходя из Telegram.\nВот ссылка для входа:\n{{link}}",
-  error_invite_link: "Не удалось получить ссылку",
+    "Join me on Splitto — an easy way to manage shared expenses without leaving Telegram.\nHere's your link:\n{{link}}",
+  error_invite_link: "Failed to get the link",
 
-  // --- Контакты ---
-  empty_contacts: "У вас ещё нет ни одного контакта...",
-  contacts_count: "Всего контактов: {{count}}",
-  search_placeholder: "Поиск контакта...",
-  filter: "Фильтр",
-  sort: "Сортировка",
-  no_friends: "Нет друзей для добавления",
+  // --- Contacts ---
+  empty_contacts: "You don't have any contacts yet...",
+  contacts_count: "Total contacts: {{count}}",
+  search_placeholder: "Search contact...",
+  filter: "Filter",
+  sort: "Sort",
+  no_friends: "No friends to add",
 
-  // --- Профиль и настройки ---
-  account: "Аккаунт",
-  settings: "Настройки",
-  about: "О приложении",
-  theme: "Тема",
-  choose_theme: "Выберите тему",
-  language: "Язык",
-  choose_language: "Выберите язык",
-  not_specified: "Не указано",
-  theme_auto: "Из Telegram",
-  theme_light: "Светлая",
-  theme_dark: "Тёмная",
-  language_auto: "Из Telegram",
-  language_ru: "Русский",
-  language_en: "Английский",
-  language_es: "Испанский",
-  version: "Версия",
+  // --- Profile & settings ---
+  account: "Account",
+  settings: "Settings",
+  about: "About",
+  theme: "Theme",
+  choose_theme: "Choose a theme",
+  language: "Language",
+  choose_language: "Choose a language",
+  not_specified: "Not specified",
+  theme_auto: "From Telegram",
+  theme_light: "Light",
+  theme_dark: "Dark",
+  language_auto: "From Telegram",
+  language_ru: "Russian",
+  language_en: "English",
+  language_es: "Spanish",
+  version: "Version",
 
-  // --- Кнопки и статусы ---
-  edit: "Редактировать",
-  cancel: "Отмена",
-  save: "Сохранить",
-  close: "Закрыть",
-  delete: "Удалить",
-  loading: "Загрузка...",
-  save_failed: "Не удалось сохранить",
-  delete_failed: "Не удалось удалить",
+  // --- Buttons & statuses ---
+  edit: "Edit",
+  cancel: "Cancel",
+  save: "Save",
+  close: "Close",
+  delete: "Delete",
+  loading: "Loading...",
+  save_failed: "Failed to save",
+  delete_failed: "Failed to delete",
 
-  // --- Ошибки и системные статусы ---
-  error: "Ошибка",
+  // --- Errors & system statuses ---
+  error: "Error",
   group_settings_cannot_leave_due_debt:
-    "Сейчас Вы не можете покинуть эту группу, поскольку у вас есть непогашенные долги перед другими участниками группы. Пожалуйста, убедитесь, что все ваши долги погашены, и повторите попытку",
+    "You can't leave this group right now, because you have outstanding debts to other members. Please make sure all your debts are paid and try again.",
 
-  // --- Валюты ---
+  // --- Currencies ---
   currency: {
-    select_title: "Выбор валюты",
-    search_placeholder: "Поиск валюты",
-    not_found: "Ничего не найдено",
-    main_currency: "Основная валюта",
-    select_short: "Выберите валюту",
-    currency_popular: "Популярные",
+    select_title: "Choose currency",
+    search_placeholder: "Search currency",
+    not_found: "Nothing found",
+    main_currency: "Main currency",
+    select_short: "Choose currency",
+    currency_popular: "Popular",
   },
 
-  // --- ДОБАВЛЕНО: общие и форма группы ---
-  common: { yes: "Да", no: "Нет" },
+  // --- Common & group form ---
+  common: { yes: "Yes", no: "No" },
   errors: {
-    group_name_required: "Введите название группы",
-    group_trip_date_required: "Укажите дату поездки",
-    create_group_failed: "Не удалось создать группу",
+    group_name_required: "Enter a group name",
+    group_trip_date_required: "Enter a trip date",
+    create_group_failed: "Failed to create group",
   },
   group_form: {
-    name_placeholder: "Название группы",
-    description_placeholder: "Описание группы",
-    is_trip: "Группа для путешествия?",
+    name_placeholder: "Group name",
+    description_placeholder: "Group description",
+    is_trip: "Is this a travel group?",
     trip_date:
-      "Введите дату, после которой группа (при условии отсутствия долгов) автоматически переместится в архив",
-    name_hint_initial: "Введите название группы (до {{max}} символов)",
-    name_hint_remaining: "Осталось {{n}} символов",
-    desc_hint_initial: "Введите описание группы (до {{max}} символов)",
-    desc_hint_remaining: "Осталось {{n}} символов",
-    trip_date_placeholder: "ДД.ММ.ГГГГ",
+      "Enter a date after which the group (if there are no debts) will be automatically archived",
+    name_hint_initial: "Enter a group name (up to {{max}} characters)",
+    name_hint_remaining: "{{n}} characters left",
+    desc_hint_initial: "Enter a description (up to {{max}} characters)",
+    desc_hint_remaining: "{{n}} characters left",
+    trip_date_placeholder: "DD.MM.YYYY",
   },
 
-  // --- НОВОЕ: модалка добавления участников ---
+  // --- Add members modal ---
   add_members_modal: {
-    title: "Добавить участников",
-    search_placeholder: "Поиск контакта...",
-    empty: "Нет друзей для добавления",
-    add_btn: "Добавить ({{count}})",
-    adding: "Добавление...",
-    error_some_failed: "Добавлено: {{added}}, не удалось: {{failed}}",
+    title: "Add participants",
+    search_placeholder: "Search contact...",
+    empty: "No friends to add",
+    add_btn: "Add ({{count}})",
+    adding: "Adding...",
+    error_some_failed: "Added: {{added}}, failed: {{failed}}",
   },
 
-  // --- Новое: модалка транзакций ---
+  // --- Transaction modal ---
   tx_modal: {
-    title: "Новая транзакция",
-    choose_group: "Выберите группу",
-    group_placeholder: "Выберите…",
-    type: "Тип",
-    expense: "Расход",
-    transfer: "Перевод",
-    amount: "Сумма",
-    currency: "Валюта",
-    date: "Дата",
-    comment: "Комментарий",
-    category: "Категория",
-    paid_by: "Кто платил",
-    participants: "Участники",
-    split: "Деление",
-    split_equal: "Поровну",
-    split_shares: "По долям",
-    split_custom: "Вручную",
-    transfer_from: "Отправитель",
-    transfer_to: "Получатели",
-    cancel: "Отмена",
-    create: "Создать",
-    next: "Далее",
-    back: "Назад",
-    choose_group_first: "Сначала выберите группу",
+    title: "New transaction",
+    choose_group: "Choose a group",
+    group_placeholder: "Choose…",
+    type: "Type",
+    expense: "Expense",
+    transfer: "Transfer",
+    amount: "Amount",
+    currency: "Currency",
+    date: "Date",
+    comment: "Comment",
+    category: "Category",
+    paid_by: "Paid by",
+    participants: "Participants",
+    split: "Split",
+    split_equal: "Equally",
+    split_shares: "By shares",
+    split_custom: "Manual",
+    transfer_from: "Sender",
+    transfer_to: "Recipients",
+    cancel: "Cancel",
+    create: "Create",
+    next: "Next",
+    back: "Back",
+    choose_group_first: "Choose a group first",
 
-    amount_required: "Введите сумму",
-    comment_required: "Введите комментарий",
-    category_required: "Выберите категорию",
-    split_no_participants: "Выберите участников",
-    split_no_shares: "Доли не заданы",
-    split_custom_mismatch: "Сумма по участникам не совпадает с общей",
-    per_share: "За 1 долю",
-    custom_amounts_set: "Суммы по участникам заданы",
-    totals_mismatch: "Итоги не сходятся",
-    each: "с каждого:",
-    create_and_new: "Создать и новую",
+    amount_required: "Enter an amount",
+    comment_required: "Enter a comment",
+    category_required: "Choose a category",
+    split_no_participants: "Choose participants",
+    split_no_shares: "Shares are not set",
+    split_custom_mismatch: "Sum by participants doesn't match the total",
+    per_share: "Per 1 share",
+    custom_amounts_set: "Per-participant amounts set",
+    totals_mismatch: "Totals don't match",
+    each: "each:",
+    create_and_new: "Create & new",
 
-    all: "ВСЕ",
-    paid_by_label: "Заплатил",
-    owes_label: "Должен",
-    // v нужен на вкладке «Все балансы» между именами: «должен»
-    owes: "должен",
+    all: "ALL",
+    paid_by_label: "Paid by",
+    owes_label: "Owes",
+    // v used between names in “All balances”: “owes”
+    owes: "owes",
 
-    delete_confirm: "Удалить транзакцию? Это действие необратимо.",
+    delete_confirm: "Delete the transaction? This action is irreversible.",
   },
 
-  // --- Карточка транзакции ---
+  // --- Transaction card ---
   tx_card: {
-    not_participant_expense: "Вы не участник этой траты",
+    not_participant_expense: "You are not a participant in this expense",
   },
 
-  // --- Категории ---
+  // --- Categories ---
   category: {
-    select_title: "Выбор категории",
-    search_placeholder: "Поиск категории",
-    not_found: "Ничего не найдено",
+    select_title: "Choose category",
+    search_placeholder: "Search category",
+    not_found: "Nothing found",
   },
 
-  // --- Формат даты для карточек (через ключи) ---
+  // --- Date format for cards (via keys) ---
   date_card: {
     pattern: "{{day}} {{month}}",
     months: [
-      "янв", "фев", "мар", "апр", "мая", "июн",
-      "июл", "авг", "сен", "окт", "ноя", "дек",
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ],
   },
 
-  actions: "Действия",
+  actions: "Actions",
 };

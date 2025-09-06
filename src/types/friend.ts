@@ -1,4 +1,4 @@
-// src/types/friend.ts
+// frontend/src/types/friend.ts
 
 // Минимальный тип пользователя (для отображения в UserCard)
 export interface UserShort {
@@ -15,14 +15,14 @@ export interface UserShort {
 // Тип для одного друга (FriendOut)
 export interface Friend {
   id: number
-  user_id: number         // ID текущего пользователя (мы)
+  user_id: number         // ID владельца связи (в моём списке — это я; в списке "контакты контакта" — это он)
   friend_id: number       // ID друга
   created_at: string
   updated_at: string
   hidden: boolean
-  // Вложенный объект user (мы сами)
+  // Вложенный объект user
   user: UserShort
-  // Вложенный объект friend (наш друг)
+  // Вложенный объект friend
   friend: UserShort
 }
 
@@ -33,8 +33,11 @@ export interface FriendInvite {
   token: string
 }
 
-// НОВОЕ: Тип ответа для списка друзей с пагинацией и для поиска
+// Тип ответа для списка друзей с пагинацией (моих или "контактов контакта")
 export interface FriendsResponse {
   total: number
   friends: Friend[]
 }
+
+// На всякий: alias для названий общих групп
+export type CommonGroupName = string
