@@ -15,6 +15,7 @@ import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
 import { getTransaction, updateTransaction, removeTransaction } from "../api/transactionsApi";
 import { useUserStore } from "../store/userStore";
+import { getExpenseCategories } from "../api/expenseCategoriesApi";
 
 import {
   X,
@@ -196,6 +197,26 @@ const nameFromMember = (m?: MemberMini) => {
   return composed || m.username || m.name || `#${m.id}`;
 };
 
+/* ====== Геттеры для полей категории (тип-агностично) ====== */
+function catNameOf(x: any): string {
+  const s = (x?.name ?? x?.title ?? x?.label ?? x?.key ?? x?.slug ?? "").toString().trim();
+  return s;
+}
+function catIconOf(x: any): string | null {
+  return (x?.icon ?? x?.emoji ?? null) ?? null;
+}
+function catColorOf(x: any): string | null {
+  const raw =
+    x?.color ??
+    x?.bg_color ??
+    x?.hex ??
+    x?.background_color ??
+    x?.color_hex ??
+    null;
+  const hex6 = to6Hex(raw) ?? raw ?? null;
+  return hex6;
+}
+
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
   const { t, i18n } = useTranslation();
@@ -253,6 +274,11 @@ export default function TransactionEditPage() {
     if (!splitData || amountNumber <= 0) return [];
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
+
+  /* ---------- кеш категорий (id -> {name, icon, color}) ---------- */
+  const categoryCacheRef = useRef<Map<number, { name: string; icon?: string | null; color?: string | null }>>(
+    new Map()
+  );
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -409,13 +435,14 @@ export default function TransactionEditPage() {
             })),
           } as any);
         } else if (initialSplitType === "shares") {
+          // стартуем только с участников транзакции (НЕ со всех членов группы)
           setSplitData({
             type: "shares",
             participants: baseParts.map((p) => ({
               user_id: p.user_id,
               name: p.name,
               avatar_url: p.avatar_url,
-              share: 1,
+              share: 1, // техническое значение — «они участвовали»
             })),
           } as any);
         } else {
@@ -442,6 +469,107 @@ export default function TransactionEditPage() {
       didPrefillRef.current = true;
     } catch { /* ignore */ }
   }, [tx, group]);
+
+  /* ---------- 3.1) ЛЕНИВЫЙ РЕЗОЛВ КАТЕГОРИИ ПО ID (если имя/иконка не пришли) ---------- */
+  useEffect(() => {
+    let abort = false;
+
+    const setFromCache = (id: number) => {
+      const cached = categoryCacheRef.current.get(id);
+      if (cached) {
+        setCategoryName((prev) => prev || cached.name || null);
+        setCategoryIcon((prev) => prev ?? cached.icon ?? null);
+        setCategoryColor((prev) => prev ?? cached.color ?? null);
+        return true;
+      }
+      return false;
+    };
+
+    const lookupCategoryById = async (wantedId: number) => {
+      // 1) топ-уровень
+      let offset = 0;
+      const limit = 100;
+      let total = Infinity;
+      const topLevel: any[] = [];
+
+      try {
+        while (!abort && offset < total) {
+          const res = await getExpenseCategories({ offset, limit });
+          total = res.total ?? 0;
+          const items = res.items ?? [];
+          for (const c of items as any[]) {
+            categoryCacheRef.current.set(c.id, {
+              name: catNameOf(c),
+              icon: catIconOf(c),
+              color: catColorOf(c),
+            });
+            if (c.id === wantedId) return c;
+          }
+          topLevel.push(...items);
+          offset += items.length;
+          if (items.length === 0) break;
+        }
+      } catch { /* ignore */ }
+
+      // 2) подкатегории (один уровень вниз)
+      for (const parent of topLevel as any[]) {
+        if (abort) break;
+        let chOffset = 0;
+        let chTotal = Infinity;
+        try {
+          while (!abort && chOffset < chTotal) {
+            const res = await getExpenseCategories({ parentId: parent.id, offset: chOffset, limit: 100 });
+            chTotal = res.total ?? 0;
+            const items = res.items ?? [];
+            for (const c of items as any[]) {
+              categoryCacheRef.current.set(c.id, {
+                name: catNameOf(c),
+                icon: catIconOf(c),
+                color: catColorOf(c),
+              });
+              if (c.id === wantedId) return c;
+            }
+            chOffset += items.length;
+            if (items.length === 0) break;
+          }
+        } catch { /* ignore */ }
+      }
+
+      return null;
+    };
+
+    (async () => {
+      if (tx?.type !== "expense") return;
+      if (!categoryId) return;
+
+      // Если уже есть имя+иконка — достаточно
+      const hasEnough =
+        (categoryName && categoryName.trim().length > 0) &&
+        (categoryIcon !== undefined || categoryColor !== undefined);
+      if (hasEnough) return;
+
+      // Пробуем из кеша
+      if (setFromCache(categoryId)) return;
+
+      // Ищем в API
+      const found: any = await lookupCategoryById(categoryId);
+      if (abort) return;
+      if (found) {
+        categoryCacheRef.current.set(found.id, {
+          name: catNameOf(found),
+          icon: catIconOf(found),
+          color: catColorOf(found),
+        });
+        const resolvedName = catNameOf(found);
+        setCategoryName((prev) => prev || (resolvedName || null));
+        setCategoryIcon((prev) => prev ?? catIconOf(found));
+        setCategoryColor((prev) => prev ?? catColorOf(found));
+      }
+    })();
+
+    return () => { abort = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tx?.type, categoryId, categoryName, categoryIcon, categoryColor]);
 
   /* ---------- 4) имена/аватарки после загрузки участников ---------- */
   useEffect(() => {
@@ -498,6 +626,9 @@ export default function TransactionEditPage() {
     setCategoryName(it.name);
     setCategoryColor(hex6);
     setCategoryIcon((it as any).icon ?? null);
+
+    // Положим в кеш, чтобы не дергать сеть повторно
+    categoryCacheRef.current.set(it.id, { name: it.name, icon: (it as any).icon ?? null, color: hex6 });
   };
 
   function buildShares(
@@ -521,7 +652,8 @@ export default function TransactionEditPage() {
     if (sel.type === "shares") {
       const sharesByUser = new Map<number, number>();
       for (const p of sel.participants as any[]) {
-        sharesByUser.set(Number(p.user_id), Number((p as any).share || 0));
+        const v = Number((p as any).share || 0);
+        if (v > 0) sharesByUser.set(Number(p.user_id), v);
       }
       return list.map((p) => ({
         user_id: Number(p.user_id),
@@ -573,6 +705,7 @@ export default function TransactionEditPage() {
     };
 
     if (sel.type === "equal") {
+      // если модалка вернула только плательщика (или 1 чел), но раньше участников было больше — держим исходный состав
       const returned = sel.participants || [];
       if (returned.length <= 1 && prevIds.size > 0) {
         const participants = Array.from(prevIds).map(enrich);
@@ -583,6 +716,8 @@ export default function TransactionEditPage() {
 
     if (sel.type === "shares") {
       let returned = sel.participants || [];
+      // отбрасываем тех, у кого share==0; если модалка вернула «всех членов группы», оставим только тех,
+      // кто был участником раньше (prevIds) или у кого явно >0
       returned = returned.filter((p: any) => prevIds.has(Number(p.user_id)) || Number(p.share || 0) > 0);
       if (returned.length === 0 && prevIds.size > 0) {
         returned = Array.from(prevIds).map((u) => ({ ...enrich(u), share: 1 }));
@@ -600,7 +735,7 @@ export default function TransactionEditPage() {
     try {
       setSaving(true);
       const gid = group.id;
-      const amtStr = toFixedSafe(amount || "0", currency.decimals); // строка
+      const amtStr = toFixedSafe(amount || "0", currency.decimals); // строка для стабильности
       const curr = currency.code || tx.currency || "";
 
       if (tx.type === "expense") {
