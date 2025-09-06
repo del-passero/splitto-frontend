@@ -49,6 +49,9 @@ type TxOut = {
   transfer_to?: number[] | null;
 
   created_at?: string;
+
+  // нередко приходит с бэка для расхода
+  split_type?: "equal" | "shares" | "custom";
 };
 
 export interface MinimalGroup {
@@ -336,14 +339,14 @@ export default function TransactionEditPage() {
     if (didPrefillRef.current) return;
     if (!tx || !group) return;
     try {
-      setDate((tx.date || (tx as any).created_at || new Date().toISOString()).slice(0, 10));
-
+      setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
 
       const dec = makeCurrency(group, tx.currency).decimals;
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
+        // Категория
         if (tx.category) {
           const rawColor =
             (tx.category as any).color ??
@@ -364,10 +367,12 @@ export default function TransactionEditPage() {
           setCategoryIcon(null);
         }
 
+        // Плательщик
         const payerId = Number(tx.paid_by ?? NaN);
         setPaidBy(Number.isFinite(payerId) ? payerId : undefined);
 
-        const parts: any[] = Array.isArray(tx.shares)
+        // Разделение
+        const baseParts: any[] = Array.isArray(tx.shares)
           ? tx.shares.map((s) => ({
               user_id: Number(s.user_id),
               name: "",
@@ -375,11 +380,44 @@ export default function TransactionEditPage() {
               amount: Number(s.amount) || 0,
             }))
           : [];
-        setSplitData({ type: "custom", participants: parts } as any);
+
+        // Сохраняем тип разделения из бэка (если есть), иначе пытаемся угадать
+        const initialSplitType: "equal" | "shares" | "custom" =
+          (tx.split_type as any) ||
+          "custom";
+
+        if (initialSplitType === "equal") {
+          // используем участников из транзакции, без автодобавления всех членов группы
+          setSplitData({
+            type: "equal",
+            participants: baseParts.map((p) => ({
+              user_id: p.user_id,
+              name: p.name,
+              avatar_url: p.avatar_url,
+            })),
+          } as any);
+        } else if (initialSplitType === "shares") {
+          // если с бэка не пришли сами "shares", выставим по 1 только у УЧАСТНИКОВ транзакции
+          setSplitData({
+            type: "shares",
+            participants: baseParts.map((p) => ({
+              user_id: p.user_id,
+              name: p.name,
+              avatar_url: p.avatar_url,
+              share: 1,
+            })),
+          } as any);
+        } else {
+          // custom — переносим суммы как есть
+          setSplitData({
+            type: "custom",
+            participants: baseParts,
+          } as any);
+        }
       } else {
         // === TRANSFER ===
-        const fromId = Number((tx as any).transfer_from ?? NaN);
-        const toArr = (tx as any).transfer_to as number[] | null | undefined;
+        const fromId = Number(tx.transfer_from ?? NaN);
+        const toArr = tx.transfer_to as number[] | null | undefined;
         const toId = Number(toArr && toArr.length ? toArr[0] : NaN);
 
         setPaidBy(Number.isFinite(fromId) ? fromId : undefined);
@@ -458,10 +496,14 @@ export default function TransactionEditPage() {
     decimals: number
   ): Array<{ user_id: number; amount: string; shares?: number | null }> {
     if (!sel) return [];
+    const toFixed = (x: number) => {
+      const n = Number(x);
+      return isFinite(n) ? n.toFixed(decimals) : (0).toFixed(decimals);
+    };
     if (sel.type === "custom") {
       return sel.participants.map((p: any) => ({
         user_id: Number(p.user_id),
-        amount: toFixedSafe(String(p.amount || 0), decimals),
+        amount: toFixed(Number(p.amount || 0)),
         shares: null,
       }));
     }
@@ -473,17 +515,40 @@ export default function TransactionEditPage() {
       }
       return list.map((p) => ({
         user_id: Number(p.user_id),
-        amount: toFixedSafe(String(p.amount || 0), decimals),
+        amount: toFixed(p.amount || 0),
         shares: sharesByUser.get(Number(p.user_id)) || null,
       }));
     }
     // equal
     return list.map((p) => ({
       user_id: Number(p.user_id),
-      amount: toFixedSafe(String(p.amount || 0), decimals),
+      amount: toFixed(p.amount || 0),
       shares: null,
     }));
   }
+
+  // локальная валидация split перед сохранением (как в create-модалке)
+  const validateSplitBeforeSave = (amtStr: string): boolean => {
+    if (!splitData) return true;
+    const total = Number(amtStr);
+    if (!isFinite(total) || total <= 0) return false;
+
+    if (splitData.type === "equal") {
+      return (splitData.participants?.length || 0) > 0;
+    }
+    if (splitData.type === "shares") {
+      const list = splitData.participants || [];
+      if (list.length === 0) return false;
+      const sumShares = list.reduce((s: number, p: any) => s + (Number(p.share || 0)), 0);
+      return sumShares > 0;
+    }
+    if (splitData.type === "custom") {
+      const sum = (splitData.participants || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+      const eps = 1 / Math.pow(10, currency.decimals);
+      return Math.abs(sum - total) <= eps;
+    }
+    return true;
+  };
 
   // SAVE (PUT /transactions/{id})
   const doSave = async () => {
@@ -492,7 +557,7 @@ export default function TransactionEditPage() {
     try {
       setSaving(true);
       const gid = group.id;
-      const amt = Number(toFixedSafe(amount || "0", currency.decimals));
+      const amtStr = toFixedSafe(amount || "0", currency.decimals); // строка как в create-модалке
       const curr = currency.code || tx.currency || "";
 
       if (tx.type === "expense") {
@@ -502,17 +567,26 @@ export default function TransactionEditPage() {
           setSaving(false);
           return;
         }
+
+        // проверка корректности split перед отправкой
+        if (!validateSplitBeforeSave(amtStr)) {
+          // Подсветим пользователю место правки
+          setSplitOpen(true);
+          setSaving(false);
+          return;
+        }
+
         const payload: any = {
           type: "expense",
           group_id: gid,
-          amount: amt,
+          amount: amtStr, // строкой
           currency: curr,
           date,
           comment: (comment || "").trim() || null,
           paid_by: payerId,
           category_id: categoryId ?? null,
-          split_type: splitData?.type || "equal",
-          shares: buildShares(splitData, amt, currency.decimals),
+          split_type: splitData?.type || tx.split_type || "equal",
+          shares: buildShares(splitData, Number(amtStr), currency.decimals),
         };
         await updateTransaction(tx.id, payload);
       } else {
@@ -525,7 +599,7 @@ export default function TransactionEditPage() {
         const payload: any = {
           type: "transfer",
           group_id: gid,
-          amount: amt,
+          amount: amtStr, // строкой
           currency: curr,
           date,
           comment: (comment || "").trim() || null,
@@ -617,8 +691,8 @@ export default function TransactionEditPage() {
           <div className="w-7" />
         </div>
 
-        {/* Content */}
-        <div className="p-3 flex flex-col gap-1 max-w-xl mx-auto">
+        {/* Content — как в CreateTransactionModal: внешний gap между секциями уменьшен */}
+        <div className="p-3 flex flex-col gap-0.5 max-w-xl mx-auto">
           {/* Сумма */}
           <div className="-mx-3">
             <CardSection className="py-0">
@@ -948,7 +1022,7 @@ export default function TransactionEditPage() {
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
+                    className="date-input-clean appearance-none w-full h-10 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] px-3 pr-8 text-[14px] focus:outline-none focus:border-[var(--tg-accent-color)]"
                   />
                   <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                 </div>
@@ -957,7 +1031,7 @@ export default function TransactionEditPage() {
           </div>
 
           {/* КНОПКИ */}
-          <div className="flex flex-col sm:flex-row gap-2 mt-1 w-full">
+          <div className="flex flex-col sm:flex-row gap-2 mt-0.5 w-full">
             <button
               type="button"
               onClick={doDelete}
@@ -1048,6 +1122,7 @@ export default function TransactionEditPage() {
           initial={splitData || { type: "equal", participants: [] as any[] }}
           paidById={paidBy}
           onSave={(sel) => {
+            // сохраняем тип разделения и текущий набор участников (не добавляем всех из группы)
             setSplitData(sel);
             setSplitOpen(false);
           }}
@@ -1055,4 +1130,25 @@ export default function TransactionEditPage() {
       </div>
     </div>
   );
+}
+
+/* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках (как в CreateTransactionModal) --- */
+const style = typeof document !== "undefined" ? document.createElement("style") : null;
+if (style) {
+  style.innerHTML = `
+  .date-input-clean {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    background-clip: padding-box;
+  }
+  .date-input-clean::-webkit-calendar-picker-indicator,
+  .date-input-clean::-webkit-clear-button,
+  .date-input-clean::-webkit-inner-spin-button {
+    display: none;
+    -webkit-appearance: none;
+  }
+  .date-input-clean::-ms-expand { display: none; }
+  `;
+  document.head.appendChild(style);
 }
