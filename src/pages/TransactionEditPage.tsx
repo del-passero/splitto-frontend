@@ -39,7 +39,7 @@ type TxOut = {
 
   // expense-only
   category?:
-    | { id: number; name: string; color?: string | null; icon?: string | null }
+    | { id: number; name?: string; color?: string | null; icon?: string | null }
     | null;
   paid_by?: number | null;
   shares?: TxShare[];
@@ -346,45 +346,43 @@ export default function TransactionEditPage() {
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
-        // Категория — сначала развёрнутая, иначе фолбэки из полей транзакции
-        if (tx.category) {
-          const rawColor =
-            (tx.category as any).color ??
-            (tx.category as any).bg_color ??
-            (tx.category as any).hex ??
-            (tx.category as any).background_color ??
-            (tx.category as any).color_hex ??
-            null;
-          const hex6 = to6Hex(rawColor) ?? rawColor ?? null;
-          setCategoryId(tx.category.id);
-          setCategoryName(tx.category.name || null);
-          setCategoryColor(hex6);
-          setCategoryIcon((tx.category as any).icon ?? null);
-        } else {
-          const rawId = Number((tx as any).category_id ?? NaN);
-          const rawName =
-            ((tx as any).category_name ??
-             (tx as any).categoryTitle ??
-             (tx as any).category_label ??
-             null) as string | null;
-          const rawIcon =
-            ((tx as any).category_icon ??
-             (tx as any).categoryEmoji ??
-             null) as string | null;
-          const rawColor =
-            (tx as any).category_color ??
-            (tx as any).category_hex ??
-            (tx as any).category_bg ??
-            (tx as any).category_background ??
-            null;
+        // Категория — объединяем развёрнутый объект и плоские фолбэки
+        const cat: any = (tx as any).category || {};
+        const idCandidate =
+          cat.id ??
+          (tx as any).category_id ??
+          undefined;
+        const nameCandidate: string | null =
+          cat.name ??
+          cat.title ??
+          cat.label ??
+          (tx as any).category_name ??
+          (tx as any).categoryTitle ??
+          (tx as any).category_label ??
+          null;
+        const iconCandidate: string | null =
+          cat.icon ??
+          (tx as any).category_icon ??
+          (tx as any).categoryEmoji ??
+          null;
+        const rawColorCandidate =
+          cat.color ??
+          cat.bg_color ??
+          cat.hex ??
+          cat.background_color ??
+          cat.color_hex ??
+          (tx as any).category_color ??
+          (tx as any).category_hex ??
+          (tx as any).category_bg ??
+          (tx as any).category_background ??
+          null;
 
-          const hex6 = to6Hex(rawColor as any) ?? (rawColor as any) ?? null;
+        const hex6 = to6Hex(rawColorCandidate as any) ?? (rawColorCandidate as any) ?? null;
 
-          setCategoryId(Number.isFinite(rawId) ? rawId : undefined);
-          setCategoryName(rawName || null);
-          setCategoryColor(hex6);
-          setCategoryIcon(rawIcon);
-        }
+        setCategoryId(Number.isFinite(Number(idCandidate)) ? Number(idCandidate) : undefined);
+        setCategoryName(nameCandidate || null);
+        setCategoryIcon(iconCandidate);
+        setCategoryColor(hex6);
 
         // Плательщик
         const payerId = Number(tx.paid_by ?? NaN);
