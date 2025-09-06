@@ -15,7 +15,7 @@ import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import { HandCoins } from "lucide-react"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
-import InviteGroupModal from "../components/group/InviteGroupModal" // ← ДОБАВЛЕНО
+import InviteGroupModal from "../components/group/InviteGroupModal"
 
 const PAGE_SIZE = 24
 
@@ -41,7 +41,7 @@ const GroupDetailsPageSettings = () => {
   // модалки
   const [addOpen, setAddOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
-  const [inviteOpen, setInviteOpen] = useState(false) // ← ДОБАВЛЕНО
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   // user/owner
   const user = useUserStore(s => s.user)
@@ -97,7 +97,7 @@ const GroupDetailsPageSettings = () => {
   const goToGroup = () => navigate(`/groups/${groupId}`)
   const handleLeave = () => {}
   const handleDelete = () => {}
-  const handleInvite = () => setInviteOpen(true)   // ← ИЗМЕНЕНО
+  const handleInvite = () => setInviteOpen(true)
   const handleAdd = () => setAddOpen(true)
   const handleRemove = (_userId: number) => {}
   const handleSaveAndExit = goToGroup
@@ -156,7 +156,7 @@ const GroupDetailsPageSettings = () => {
               loading={membersLoading}
               fetchMore={loadMembers}
               hasMore={hasMore}
-              ownerId={group.owner_id}   // ← НОВОЕ
+              ownerId={group.owner_id}
             />
           )}
         </div>
@@ -182,13 +182,6 @@ const GroupDetailsPageSettings = () => {
         <HandCoins size={24} strokeWidth={1.5} />
       </button>
 
-      {/* Модалка инвайта в группу */}
-      <InviteGroupModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        groupId={id}
-      />
-
       {/* Модалка создания транзакции: автоподставляем текущую группу */}
       <CreateTransactionModal
         open={createTxOpen}
@@ -196,6 +189,9 @@ const GroupDetailsPageSettings = () => {
         groups={[{ id: group.id, name: group.name, icon: (group as any).icon, color: (group as any).color }]}
         defaultGroupId={id}
       />
+
+      {/* Модалка инвайта в группу — 1:1 визуально с InviteFriendModal */}
+      <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
     </div>
   )
 }

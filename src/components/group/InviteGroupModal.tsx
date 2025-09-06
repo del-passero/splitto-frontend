@@ -1,7 +1,9 @@
 // frontend/src/components/group/InviteGroupModal.tsx
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { createGroupInvite } from "../../api/groupInvitesApi"
+
+const BOT_USERNAME = "Splitto_Bot"
 
 type Props = {
   open: boolean
@@ -9,110 +11,111 @@ type Props = {
   groupId: number
 }
 
-export default function InviteGroupModal({ open, onClose, groupId }: Props) {
+const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
   const { t } = useTranslation()
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState(false)
 
-  // Сборка ссылки: t.me/<bot>/app?startapp=<token> (если известен бот), иначе — fallback на origin
-  const link = useMemo(() => {
-    const tok = token || ""
-    const bot = import.meta.env.VITE_TG_BOT_USERNAME
-    if (bot) {
-      return `https://t.me/${bot}/app?startapp=${encodeURIComponent(tok)}`
-    }
-    return `${window.location.origin}?startapp=${encodeURIComponent(tok)}`
-  }, [token])
-
-  useEffect(() => {
-    if (!open || !groupId) return
-    let active = true
-    ;(async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const res = await createGroupInvite(groupId)
-        if (!active) return
-        setToken(res.token)
-      } catch (e: any) {
-        setError(e?.message || "invite_error")
-      } finally {
-        if (active) setLoading(false)
-      }
-    })()
-    return () => { active = false }
-  }, [open, groupId])
-
-  const handleCopy = async () => {
+  // Генерация инвайт-ссылки — ТОЧНО как в InviteFriendModal
+  const handleCreateInvite = async () => {
+    if (!groupId) return
+    setLoading(true)
+    setError(null)
     try {
-      await navigator.clipboard.writeText(link)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {/* ignore */}
+      const invite = await createGroupInvite(groupId)
+      const url = `https://t.me/${BOT_USERNAME}/?startapp=${invite.token}`
+      setInviteLink(url)
+    } catch (e: any) {
+      setError(e.message || t("invite_error"))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleShare = () => {
-    const tg = (window as any)?.Telegram?.WebApp
-    if (tg?.shareURL) {
-      tg.shareURL(link)
-      setShared(true)
-      setTimeout(() => setShared(false), 1500)
-      return
+  // Копировать полный текст приглашения
+  const handleCopy = () => {
+    if (inviteLink) {
+      const msg = t("invite_message", { link: inviteLink })
+      navigator.clipboard.writeText(msg)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     }
-    handleCopy()
+  }
+
+  // «Поделиться» — как в InviteFriendModal (классический clipboard)
+  const handleShare = () => {
+    if (inviteLink) {
+      const msg = t("invite_message", { link: inviteLink })
+      navigator.clipboard.writeText(msg)
+      setShared(true)
+      setTimeout(() => setShared(false), 1000)
+    }
   }
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50" />
-      <div
-        className="relative max-w-[92vw] w-[520px] rounded-2xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-[16px] font-semibold mb-2">{t("invite_by_link")}</div>
-
-        {loading ? (
-          <div className="text-[var(--tg-hint-color)] py-8">{t("loading")}</div>
-        ) : error ? (
-          <div className="text-red-500">{t("invite_error")}</div>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+      <div className="bg-[var(--tg-bg-color)] rounded-2xl shadow-xl w-[90vw] max-w-xs p-6 flex flex-col">
+        <div className="font-bold text-lg mb-3">{t("invite_friend")}</div>
+        {error && <div className="mb-2 text-red-500 text-sm">{error}</div>}
+        {inviteLink ? (
+          <>
+            <input
+              readOnly
+              className="w-full px-2 py-1 rounded-lg border bg-[var(--tg-card-bg)] mb-3 text-[var(--tg-text-color)]"
+              value={inviteLink}
+            />
+            <button
+              onClick={handleCopy}
+              className="w-full py-2 mb-2 rounded-xl font-medium bg-[var(--tg-link-color)] text-white hover:opacity-90 transition"
+            >
+              {copied ? t("copied") : t("copy_link")}
+            </button>
+            <button
+              onClick={handleShare}
+              disabled={!inviteLink}
+              className={`
+                w-full py-2 mb-2 rounded-xl font-medium border transition
+                ${
+                  inviteLink
+                    ? "bg-[var(--tg-bg-color)] text-[var(--tg-link-color)] border-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)]/10 active:bg-[var(--tg-link-color)]/20 hover:text-[var(--tg-link-color)]"
+                    : "bg-[var(--tg-bg-color)] text-[var(--tg-hint-color)] border-[var(--tg-hint-color)] opacity-50 cursor-not-allowed"
+                }
+              `}
+            >
+              {shared ? t("shared") : t("share_link")}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded-xl font-medium text-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)] hover:text-white transition"
+            >
+              {t("close")}
+            </button>
+          </>
         ) : (
           <>
-            <div className="text-[13px] opacity-80 mb-2 break-all">{link}</div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="flex-1 h-10 rounded-xl font-semibold bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[var(--tg-text-color)] active:scale-95 transition"
-              >
-                {copied ? t("copied") : t("copy_link")}
-              </button>
-              <button
-                type="button"
-                onClick={handleShare}
-                className="flex-1 h-10 rounded-xl font-semibold bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
-              >
-                {shared ? t("shared") : t("share_link")}
-              </button>
-            </div>
+            <button
+              onClick={handleCreateInvite}
+              className="w-full py-2 mb-2 rounded-xl font-medium bg-[var(--tg-link-color)] text-white hover:opacity-90 transition"
+              disabled={loading}
+            >
+              {loading ? t("loading") : t("create_invite_link")}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded-xl font-medium text-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)] hover:text-white transition"
+            >
+              {t("close")}
+            </button>
           </>
         )}
-
-        <div className="flex justify-end mt-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 px-4 rounded-xl bg-[var(--tg-secondary-bg-color,#e6e6e6)] text-[var(--tg-text-color)] font-semibold active:scale-95 transition"
-          >
-            {t("close")}
-          </button>
-        </div>
       </div>
     </div>
   )
 }
+
+export default InviteGroupModal
