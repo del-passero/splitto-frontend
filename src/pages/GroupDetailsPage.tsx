@@ -1,4 +1,4 @@
-// frontend/src/pages/GroupDetailsPage.tsx
+// src/pages/GroupDetailsPage.tsx
 import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -19,6 +19,9 @@ import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
+
+// ↓↓↓ ДОБАВЛЕНО: лёгкая модалка контакта
+import ContactQuickModal from "../components/contacts/ContactQuickModal"
 
 const PAGE_SIZE = 24
 
@@ -51,6 +54,10 @@ const GroupDetailsPage = () => {
   const [addOpen, setAddOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
+
+  // ↓↓↓ ДОБАВЛЕНО: состояние для ContactQuickModal
+  const [quickOpen, setQuickOpen] = useState(false)
+  const [quickUserId, setQuickUserId] = useState<number | null>(null)
 
   // Заглушка для списка транзакций (список здесь не грузим — грузит таб)
   const transactions: any[] = []
@@ -123,6 +130,18 @@ const GroupDetailsPage = () => {
   }
   const handleBalanceClick = () => setSelectedTab("balance")
 
+  // ↓↓↓ ДОБАВЛЕНО: клик по мини-карточке участника => лёгкая модалка
+  const handleParticipantClick = (userId: number) => {
+    if (!userId) return
+    // если кликнули по себе — в профиль, как и в остальном приложении
+    if (userId === currentUserId) {
+      navigate("/profile")
+      return
+    }
+    setQuickUserId(userId)
+    setQuickOpen(true)
+  }
+
   // Ошибки/загрузка
   if (loading) {
     return (
@@ -155,7 +174,7 @@ const GroupDetailsPage = () => {
       <ParticipantsScroller
         members={members}
         currentUserId={currentUserId}
-        onParticipantClick={handleBalanceClick}
+        onParticipantClick={handleParticipantClick}  // ← ЗДЕСЬ ОТКРЫВАЕМ МОДАЛКУ
         onInviteClick={() => setInviteOpen(true)}
         onAddClick={() => setAddOpen(true)}
         loadMore={loadMembers}
@@ -174,7 +193,7 @@ const GroupDetailsPage = () => {
         {selectedTab === "transactions" && (
           <GroupTransactionsTab
             loading={false}
-            transactions={transactions}
+            transactions={[]}
             onAddTransaction={() => setCreateTxOpen(true)}
           />
         )}
@@ -211,8 +230,11 @@ const GroupDetailsPage = () => {
         }] : []}
       />
 
-      {/* Модалка инвайта в группу — визуально 1:1 с InviteFriendModal */}
+      {/* Модалка инвайта в группу */}
       <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
+
+      {/* НОВОЕ: лёгкая модалка контакта */}
+      <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
     </div>
   )
 }
