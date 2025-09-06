@@ -1,11 +1,15 @@
 // src/store/friendsStore.ts
-
 import { create } from "zustand"
 import type { Friend } from "../types/friend"
-import { getFriends, searchFriends, getFriendDetail, getCommonGroupNames, getFriendsOfUser } from "../api/friendsApi"
+import {
+  getFriends,
+  searchFriends,
+  getFriendDetail,
+  getCommonGroupNames,
+  getFriendsOfUser
+} from "../api/friendsApi"
 
 interface FriendsStore {
-  // основной список друзей (как было)
   friends: Friend[]
   total: number
   loading: boolean
@@ -19,7 +23,7 @@ interface FriendsStore {
   searchFriends: (query: string, offset?: number, limit?: number) => Promise<void>
   clearFriends: () => void
 
-  // ===== страница контакта (НОВОЕ), отдельное состояние чтобы не ломать основное =====
+  // страница контакта
   contactFriend: Friend | null
   contactFriendLoading: boolean
   contactFriendError: string | null
@@ -44,7 +48,6 @@ interface FriendsStore {
 const PAGE_SIZE = 20
 
 export const useFriendsStore = create<FriendsStore>((set, get) => ({
-  // основной список
   friends: [],
   total: 0,
   loading: false,

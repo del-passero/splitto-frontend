@@ -7,6 +7,7 @@ import CardSection from "../components/CardSection"
 import UserCard from "../components/UserCard"
 import { useFriendsStore } from "../store/friendsStore"
 import ContactFriendsList from "../components/contacts/ContactFriendsList"
+import type { UserShort } from "../types/friend"
 
 const ContactDetailsPage = () => {
   const { t } = useTranslation()
@@ -28,10 +29,10 @@ const ContactDetailsPage = () => {
     return () => { clearContactFriends() }
   }, [friendId, fetchFriendById, fetchCommonGroupNames, clearContactFriends])
 
-  const contactUser = useMemo(() => {
+  const contactUser: UserShort | null = useMemo(() => {
     if (!contactFriend) return null
-    // В нашем контракте профиль контакта лежит в поле user
-    return contactFriend.user
+    const candidates = [contactFriend.user, contactFriend.friend].filter(Boolean) as UserShort[]
+    return candidates.find(u => u.id === contactFriend.friend_id) || candidates[0] || null
   }, [contactFriend])
 
   const onOpenProfile = () => {
@@ -86,7 +87,6 @@ const ContactDetailsPage = () => {
             )}
           </CardSection>
 
-          {/* Общие группы — псевдокарточки как у контактов */}
           <CardSection noPadding>
             <div className="px-3 pt-3 pb-2 font-semibold">{t("contact.mutual_groups")}</div>
 
@@ -105,7 +105,6 @@ const ContactDetailsPage = () => {
               <div>
                 {contactCommonGroupNames.map((name, idx) => (
                   <div key={`${name}-${idx}`} className="cursor-default">
-                    {/* используем UserCard как «псевдокарточку группы» */}
                     <UserCard name={name} />
                   </div>
                 ))}

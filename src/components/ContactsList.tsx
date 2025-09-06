@@ -5,14 +5,18 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useFriendsStore } from "../store/friendsStore"
 import UserCard from "./UserCard"
-import type { Friend } from "../types/friend"
+import type { Friend, UserShort } from "../types/friend"
 
 const PAGE_SIZE = 20
 
 type Props = {
-  // оставляем для совместимости (не используем внутри)
   isSearching?: boolean
   searchQuery?: string
+}
+
+function pickPerson(f: Friend): UserShort | undefined {
+  const candidates = [f.user, f.friend].filter(Boolean) as UserShort[]
+  return candidates.find(u => u.id === f.friend_id) || candidates[0]
 }
 
 const ContactsList = (_props: Props) => {
@@ -48,8 +52,7 @@ const ContactsList = (_props: Props) => {
   return (
     <div>
       {friends.map((f: Friend, idx: number) => {
-        // В текущем контракте профиль ДРУГА лежит в f.user
-        const person = f.user
+        const person = pickPerson(f)
         const displayName =
           person?.name ||
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||

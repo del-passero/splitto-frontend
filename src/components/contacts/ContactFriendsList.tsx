@@ -5,13 +5,18 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { useFriendsStore } from "../../store/friendsStore"
 import UserCard from "../UserCard"
-import type { Friend } from "../../types/friend"
+import type { Friend, UserShort } from "../../types/friend"
 
 type Props = {
   contactUserId: number
 }
 
 const PAGE_SIZE = 20
+
+function pickPerson(f: Friend): UserShort | undefined {
+  const candidates = [f.user, f.friend].filter(Boolean) as UserShort[]
+  return candidates.find(u => u.id === f.friend_id) || candidates[0]
+}
 
 const ContactFriendsList = ({ contactUserId }: Props) => {
   const { t } = useTranslation()
@@ -22,13 +27,11 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  // первая загрузка
   useEffect(() => {
     fetchFriendsOfUser(contactUserId, 0, PAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactUserId])
 
-  // бесконечная прокрутка
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
@@ -54,8 +57,7 @@ const ContactFriendsList = ({ contactUserId }: Props) => {
   return (
     <div>
       {contactFriends.map((f: Friend, idx: number) => {
-        // Контракт тот же: у каждой связи профиль «друга» в поле user
-        const person = f.user
+        const person = pickPerson(f)
         const displayName =
           person?.name ||
           `${person?.first_name || ""} ${person?.last_name || ""}`.trim() ||
