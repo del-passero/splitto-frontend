@@ -10,19 +10,18 @@ type User = {
   photo_url?: string;
 };
 
-export type MyDebt = { user: User; amount: number }; // >0 — вам должны, <0 — вы должны
-export type AllDebt = { from: User; to: User; amount: number };
+export type MyDebt = { user: User; amount: number; currency: string }; // >0 — вам должны, <0 — вы должны
+export type AllDebt = { from: User; to: User; amount: number; currency: string };
 
 type Props = {
-  myBalance: number;
+  myBalanceByCurrency: Record<string, number>;
   myDebts: MyDebt[];
   allDebts: AllDebt[];
   loading: boolean;
   onFabClick: () => void;
-  currency?: string | null;
 
-  onRepay?: (user: User, amount: number) => void;
-  onRemind?: (user: User, amount: number) => void;
+  onRepay?: (user: User, amount: number, currency: string) => void;
+  onRemind?: (user: User, amount: number, currency: string) => void;
 };
 
 /* ---------- utils ---------- */
@@ -93,13 +92,13 @@ function AutoScrollRow({ children, className = "", gap = 8 }: { children: React.
   );
 }
 
-/* ---------- constants для отрисовки ---------- */
-const ITEM_VPAD = 4;           // py-4 → карточки в 2 раза выше
-const SEP_LEFT_INSET = 18;     // уменьшили в 2 раза (было 36)
+/* ---------- constants ---------- */
+const ITEM_VPAD = 4;
+const SEP_LEFT_INSET = 18;
 
 /* ---------- main ---------- */
 export default function GroupBalanceTabSmart({
-  myBalance, myDebts, allDebts, loading, onFabClick, currency, onRepay, onRemind,
+  myBalanceByCurrency, myDebts, allDebts, loading, onFabClick, onRepay, onRemind,
 }: Props) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<"mine" | "all">("mine");
@@ -107,14 +106,17 @@ export default function GroupBalanceTabSmart({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selected, setSelected] = useState<MyDebt | null>(null);
 
-  // модалка-заглушка по центру
   const [stubOpen, setStubOpen] = useState(false);
 
-  const headerText = useMemo(() => {
-    if (myBalance > 0) return t("group_balance_you_get", { sum: fmtMoney(myBalance, currency) });
-    if (myBalance < 0) return t("group_balance_you_owe", { sum: fmtMoney(Math.abs(myBalance), currency) });
-    return t("group_balance_zero");
-  }, [myBalance, t, currency]);
+  const balanceLines = useMemo(() => {
+    const entries = Object.entries(myBalanceByCurrency).filter(([_, v]) => Math.abs(v) > 0);
+    if (entries.length === 0) return [t("group_balance_zero") as string];
+    return entries.map(([ccy, v]) =>
+      v > 0
+        ? (t("group_balance_you_get", { sum: fmtMoney(v, ccy) }) as string)
+        : (t("group_balance_you_owe", { sum: fmtMoney(Math.abs(v), ccy) }) as string)
+    );
+  }, [myBalanceByCurrency, t]);
 
   const owesWord = ((t("tx_modal.owes") as string) || "owes").toLowerCase();
 
@@ -125,7 +127,7 @@ export default function GroupBalanceTabSmart({
 
   return (
     <div className="w-full">
-      {/* микротабы */}
+      {/* микротабы — ЕДИНЫЕ для всех валют */}
       <div className="flex justify-center mt-1 mb-2">
         <div className="inline-flex rounded-xl border overflow-hidden" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
           <button
@@ -145,14 +147,18 @@ export default function GroupBalanceTabSmart({
         </div>
       </div>
 
-      {/* Контент напрямую внутри CardSection: уменьшенные горизонтальные отступы */}
+      {/* Контент */}
       <div className="px-2 py-2">
         {loading ? (
           <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
           <>
-            {/* заголовок */}
-            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">{headerText}</div>
+            {/* заголовок (многострочный, по валютам) */}
+            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">
+              {balanceLines.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
             {/* разделитель под заголовком */}
             <div className="h-px bg-[var(--tg-hint-color)] opacity-15 mb-1" />
 
@@ -164,7 +170,7 @@ export default function GroupBalanceTabSmart({
                   const iOwe = d.amount < 0;
                   const amountAbs = Math.abs(d.amount);
                   return (
-                    <div key={d.user.id} className="relative">
+                    <div key={`${d.user.id}-${idx}-${d.currency}`} className="relative">
                       <div
                         className={`py-${ITEM_VPAD}`}
                         onPointerDown={() => startPress(d)}
@@ -180,17 +186,15 @@ export default function GroupBalanceTabSmart({
                                 : (t("group_balance_get_from", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")}
                             </span>
                             <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
-                            {/* важно: НЕ обрезаем имя */}
                             <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">
                               {firstOnly(d.user)}
                             </span>
                           </AutoScrollRow>
                           <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                            {fmtMoney(amountAbs, currency)}
+                            {fmtMoney(amountAbs, d.currency)}
                           </div>
                         </div>
                       </div>
-                      {/* разделитель между карточками: от правого края до ПЕРВОЙ АВАТАРЫ (уменьшенный inset) */}
                       {idx !== myDebts.length - 1 && (
                         <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
                       )}
@@ -207,7 +211,7 @@ export default function GroupBalanceTabSmart({
             ) : (
               <div>
                 {allDebts.map((p, idx) => (
-                  <div key={idx} className="relative">
+                  <div key={`${idx}-${p.currency}`} className="relative">
                     <div className={`py-${ITEM_VPAD}`}>
                       <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
                         <AutoScrollRow className="min-w-0">
@@ -218,7 +222,7 @@ export default function GroupBalanceTabSmart({
                           <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">{firstOnly(p.to)}</span>
                         </AutoScrollRow>
                         <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                          {fmtMoney(p.amount, currency)}
+                          {fmtMoney(p.amount, p.currency)}
                         </div>
                       </div>
                     </div>
@@ -233,7 +237,7 @@ export default function GroupBalanceTabSmart({
         )}
       </div>
 
-      {/* контекстное меню по long-press — ТЕПЕРЬ ПО ЦЕНТРУ */}
+      {/* контекстное меню по long-press — по центру */}
       {sheetOpen && selected && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={() => setSheetOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
@@ -245,7 +249,7 @@ export default function GroupBalanceTabSmart({
               <button
                 type="button"
                 className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={() => { onRepay?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); }}
+                onClick={() => { onRepay?.(selected.user, Math.abs(selected.amount), selected.currency); setSheetOpen(false); }}
               >
                 {t("repay_debt")}
               </button>
@@ -253,7 +257,7 @@ export default function GroupBalanceTabSmart({
               <button
                 type="button"
                 className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={() => { onRemind?.(selected.user, Math.abs(selected.amount)); setSheetOpen(false); setStubOpen(true); }}
+                onClick={() => { onRemind?.(selected.user, Math.abs(selected.amount), selected.currency); setSheetOpen(false); setStubOpen(true); }}
               >
                 {t("remind_debt")}
               </button>
