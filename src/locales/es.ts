@@ -82,6 +82,7 @@ export default {
   group_members_empty: "Aún no hay miembros en el grupo",
   group_settings_close: "Cerrar",
   group_settings_save_and_exit: "Guardar y cerrar",
+  group_settings_cancel_changes: "Cancelar cambios",
 
   create_invite_link: "Crear enlace de invitación",
   invite_by_link: "Invitar por enlace",

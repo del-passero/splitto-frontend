@@ -93,6 +93,7 @@ export default {
   group_members_empty: "В группе пока нет участников",
   group_settings_close: "Закрыть",
   group_settings_save_and_exit: "Сохранить и закрыть",
+  group_settings_cancel_changes: "Отменить изменения", // ← ДОБАВЛЕНО
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",
