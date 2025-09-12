@@ -11,6 +11,7 @@ import SplitPickerModal, {
   PerPerson,
   computePerPerson,
 } from "../components/transactions/SplitPickerModal";
+import CurrencyPickerModal, { type CurrencyItem } from "../components/currency/CurrencyPickerModal";
 
 import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
@@ -34,8 +35,8 @@ type TxOut = {
   type: TxType;
   group_id: number;
   amount: number | string;
-  currency?: string; // может прийти как currency или currency_code
-  currency_code?: string;
+  currency?: string | null;        // на случай старых ответов
+  currency_code?: string | null;   // актуальное поле на бэке
   date: string;
   comment?: string | null;
 
@@ -90,16 +91,6 @@ function resolveCurrencyCodeFromGroup(g?: MinimalGroup | null): string | null {
     ? raw.trim().toUpperCase()
     : null;
 }
-function makeCurrency(g?: MinimalGroup | null, fallbackCode?: string | null) {
-  const code =
-    resolveCurrencyCodeFromGroup(g) ||
-    (fallbackCode ? fallbackCode.toUpperCase() : null);
-  return {
-    code,
-    symbol: code ? SYMBOL_BY_CODE[code] ?? code : "",
-    decimals: code ? DECIMALS_BY_CODE[code] ?? 2 : 2,
-  };
-}
 
 function parseAmountInput(raw: string, decimalsLimit = 2): string {
   let s = raw.replace(",", ".").replace(/[^\d.]/g, "");
@@ -122,15 +113,15 @@ function toFixedSafe(s: string, decimals = 2): string {
   if (!isFinite(n)) return decimals ? "" : "0";
   return n.toFixed(decimals);
 }
-function fmtMoney(n: number, decimals: number, symbol: string, locale: string) {
+function fmtMoney(n: number, decimals: number, symbolOrCode: string, locale: string) {
   try {
     const nf = new Intl.NumberFormat(locale, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
-    return `${nf.format(n)} ${symbol}`;
+    return `${nf.format(n)} ${symbolOrCode}`;
   } catch {
-    return `${n.toFixed(decimals)} ${symbol}`;
+    return `${n.toFixed(decimals)} ${symbolOrCode}`;
   }
 }
 
@@ -248,6 +239,7 @@ export default function TransactionEditPage() {
   const [payerOpen, setPayerOpen] = useState(false);
   const [recipientOpen, setRecipientOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [currencyModal, setCurrencyModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -258,11 +250,14 @@ export default function TransactionEditPage() {
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   };
 
-  // Валюта из группы + из транзакции (учитываем и currency, и currency_code)
-  const currency = useMemo(
-    () => makeCurrency(group, (tx as any)?.currency_code || tx?.currency || null),
-    [group, tx]
-  );
+  // Валюта как состояние (редактируемая)
+  const [currencyCode, setCurrencyCode] = useState<string | null>(null);
+  const currency = useMemo(() => {
+    const code = currencyCode || null;
+    const decimals = code ? (DECIMALS_BY_CODE[code] ?? 2) : 2;
+    const symbol = code ? (SYMBOL_BY_CODE[code] ?? code) : "";
+    return { code, symbol, decimals };
+  }, [currencyCode]);
 
   const amountNumber = useMemo(() => {
     const n = Number(amount);
@@ -286,10 +281,10 @@ export default function TransactionEditPage() {
         if (!alive) return;
         setTx(data as unknown as TxOut);
 
-        // группа — для валюты/участников
+        // группа — для участников; валюту НЕ берём из группы для префилла
         let g: MinimalGroup | null = null;
         try {
-          const gd = await getGroupDetails(data.group_id);
+          const gd = await getGroupDetails((data as any).group_id ?? data.group_id);
           g = {
             id: gd.id,
             name: gd.name,
@@ -306,9 +301,9 @@ export default function TransactionEditPage() {
           };
         } catch {
           g = {
-            id: data.group_id,
-            name: `#${data.group_id}`,
-            default_currency_code: (data as any).currency_code || (data as any).currency,
+            id: (data as any).group_id ?? data.group_id,
+            name: `#${(data as any).group_id ?? data.group_id}`,
+            default_currency_code: (data as any).currency_code ?? (data as any).currency,
           } as any;
         }
         if (!alive) return;
@@ -363,13 +358,23 @@ export default function TransactionEditPage() {
   const didPrefillRef = useRef(false);
   useEffect(() => {
     if (didPrefillRef.current) return;
-    if (!tx || !group) return;
+    if (!tx) return;
+
     try {
       setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
 
-      const preferCode = (tx as any).currency_code || tx.currency;
-      const dec = makeCurrency(group, preferCode).decimals;
+      // Валюта: БЕРЁМ из самой транзакции (а не из группы)
+      const txCodeRaw = (tx.currency_code ?? tx.currency) || null;
+      const txCode = typeof txCodeRaw === "string" && txCodeRaw.trim()
+        ? txCodeRaw.trim().toUpperCase()
+        : null;
+      // Если вдруг в транзакции нет валюты — мягкоfallback к валюте группы
+      const fallback = resolveCurrencyCodeFromGroup(group) || null;
+      const code = txCode || fallback || "USD";
+      setCurrencyCode(code);
+
+      const dec = DECIMALS_BY_CODE[code] ?? 2;
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
@@ -481,6 +486,16 @@ export default function TransactionEditPage() {
       didPrefillRef.current = true;
     } catch { /* ignore */ }
   }, [tx, group]);
+
+  /* ---------- 3.1) при смене валюты аккуратно нормализуем дробную часть ---------- */
+  useEffect(() => {
+    if (!currencyCode) return;
+    if (!amount) return;
+    const n = Number(amount);
+    if (!isFinite(n)) return;
+    const dec = DECIMALS_BY_CODE[currencyCode] ?? 2;
+    setAmount(n.toFixed(dec));
+  }, [currencyCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- 4) имена/аватарки после загрузки участников ---------- */
   useEffect(() => {
@@ -606,7 +621,7 @@ export default function TransactionEditPage() {
       setSaving(true);
       const gid = group.id;
       const amtStr = toFixedSafe(amount || "0", currency.decimals);
-      const curr = ((currency.code || (tx as any).currency_code || tx.currency || "") as string).toUpperCase();
+      const curr = (currency.code || tx.currency_code || tx.currency || "").toUpperCase();
 
       if (tx.type === "expense") {
         const payerId = paidBy ?? user?.id;
@@ -748,18 +763,20 @@ export default function TransactionEditPage() {
 
         {/* Content */}
         <div className="p-3 flex flex-col gap-0.5 max-w-xl mx-auto">
-          {/* Сумма */}
+          {/* Сумма + выбор валюты */}
           <div className="-mx-3">
             <CardSection className="py-0">
               <div className="px-3 pb-0">
                 <div className="flex items-center gap-2 mt-0.5">
                   {currency.code && (
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setCurrencyModal(true)}
                       className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
                       title={currency.code}
                     >
                       {currency.code}
-                    </div>
+                    </button>
                   )}
                   <input
                     inputMode="decimal"
@@ -1062,6 +1079,38 @@ export default function TransactionEditPage() {
                   </div>
                 </CardSection>
               </div>
+
+              {/* Превью строки перевода + сумма с валютой */}
+              {(paidBy || toUser) && amountNumber > 0 && (
+                <div className="-mx-3">
+                  <CardSection className="py-0">
+                    <div className="px-3 pb-2 mt-1">
+                      <div className="flex items-center gap-2 text-[13px]">
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                          {paidByAvatar ? (
+                            <img src={paidByAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                          )}
+                          <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : (locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From")}</strong>
+                        </span>
+                        <span className="opacity-60">→</span>
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                          {toUserAvatar ? (
+                            <img src={toUserAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
+                          )}
+                          <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : (locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To")}</strong>
+                        </span>
+                        <span className="ml-auto shrink-0 opacity-80">
+                          {fmtMoney(amountNumber, currency.decimals, currency.symbol, locale)}
+                        </span>
+                      </div>
+                    </div>
+                  </CardSection>
+                </div>
+              )}
             </>
           ) : null}
 
@@ -1206,6 +1255,17 @@ export default function TransactionEditPage() {
             }
             setSplitData(out);
             setSplitOpen(false);
+          }}
+        />
+
+        {/* Выбор валюты */}
+        <CurrencyPickerModal
+          open={currencyModal && !!group?.id}
+          onClose={() => setCurrencyModal(false)}
+          selectedCode={(currency.code || (tx.currency_code ?? tx.currency) || "USD") as string}
+          onSelect={(c: CurrencyItem) => {
+            setCurrencyCode((c.code || "USD").toUpperCase());
+            setCurrencyModal(false);
           }}
         />
 
