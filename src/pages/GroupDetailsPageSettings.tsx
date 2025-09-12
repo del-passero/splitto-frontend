@@ -3,11 +3,12 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { getGroupDetails } from "../api/groupsApi"
-import { getGroupMembers } from "../api/groupMembersApi"
+import { getGroupMembers, removeGroupMember, leaveGroup } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
-import GroupHeader from "../components/group/GroupHeader"
+
+import GroupSettingsHeader from "../components/group/GroupSettingsHeader"
 import GroupSettingsTabs from "../components/group/GroupSettingsTabs"
 import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
@@ -16,6 +17,7 @@ import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import { HandCoins } from "lucide-react"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
+import EditGroupModal from "../components/group/EditGroupModal"
 
 const PAGE_SIZE = 24
 
@@ -42,6 +44,7 @@ const GroupDetailsPageSettings = () => {
   const [addOpen, setAddOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
 
   // user/owner
   const user = useUserStore(s => s.user)
@@ -95,11 +98,33 @@ const GroupDetailsPageSettings = () => {
 
   // экшены
   const goToGroup = () => navigate(`/groups/${groupId}`)
-  const handleLeave = () => {}
-  const handleDelete = () => {}
+  const goToGroupsList = () => navigate(`/groups`)
+
   const handleInvite = () => setInviteOpen(true)
   const handleAdd = () => setAddOpen(true)
-  const handleRemove = (_userId: number) => {}
+
+  const handleRemove = async (memberId: number) => {
+    try {
+      await removeGroupMember(memberId)
+      setMembers(prev => prev.filter(m => m.id !== memberId))
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to remove member", e)
+    }
+  }
+
+  const handleLeave = async () => {
+    try {
+      if (!id) return
+      await leaveGroup(id)
+      goToGroupsList()
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to leave group", e)
+    }
+  }
+
+  const handleDelete = () => {}
   const handleSaveAndExit = goToGroup
 
   if (loading) {
@@ -121,11 +146,10 @@ const GroupDetailsPageSettings = () => {
 
   return (
     <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
-      <GroupHeader
+      <GroupSettingsHeader
         group={group}
-        onSettingsClick={() => setSelectedTab("settings")}
-        onBalanceClick={goToGroup}
-        isEdit
+        onEdit={() => setEditOpen(true)}
+        onBack={goToGroup}
       />
 
       <CardSection className="px-0 py-0 mb-2">
@@ -139,7 +163,7 @@ const GroupDetailsPageSettings = () => {
           {selectedTab === "settings" && (
             <GroupSettingsTab
               isOwner={isOwner}
-              onLeave={handleLeave}
+              onLeave={handleLeave}          // не используется тут; перенос в MembersTab
               onDelete={handleDelete}
               onSaveAndExit={handleSaveAndExit}
             />
@@ -149,10 +173,11 @@ const GroupDetailsPageSettings = () => {
             <GroupMembersTab
               members={members}
               isOwner={isOwner}
-              onRemove={handleRemove}
+              onRemove={handleRemove}       // принимает memberId!
               onInvite={handleInvite}
               onAdd={handleAdd}
               onSaveAndExit={handleSaveAndExit}
+              onLeave={handleLeave}
               loading={membersLoading}
               fetchMore={loadMembers}
               hasMore={hasMore}
@@ -190,8 +215,21 @@ const GroupDetailsPageSettings = () => {
         defaultGroupId={id}
       />
 
-      {/* Модалка инвайта в группу — 1:1 визуально с InviteFriendModal */}
+      {/* Модалка инвайта в группу */}
       <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
+
+      {/* Модалка редактирования названия/описания группы */}
+      <EditGroupModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        groupId={id}
+        initialName={group.name}
+        initialDescription={group.description || ""}
+        onSaved={(updated) => {
+          setGroup(prev => prev ? { ...prev, name: updated.name, description: updated.description ?? null } as Group : prev)
+          setEditOpen(false)
+        }}
+      />
     </div>
   )
 }

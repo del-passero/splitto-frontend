@@ -122,12 +122,27 @@ export async function patchGroupCurrency(groupId: number, code: string): Promise
   await fetchJson<void>(url, { method: "PATCH" })
 }
 
-/** NEW: обновление end_date / auto_archive */
+/** Обновление end_date / auto_archive */
 export async function patchGroupSchedule(
   groupId: number,
   payload: { end_date?: string | null; auto_archive?: boolean }
 ): Promise<Group> {
   const url = `${API_URL}/groups/${groupId}/schedule`
+  return await fetchJson<Group>(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+}
+
+/** ЧАСТИЧНОЕ обновление инфо группы (название/описание).
+ *  description допускает null для очистки описания на бэке.
+ */
+export async function patchGroupInfo(
+  groupId: number,
+  payload: { name?: string; description?: string | null }
+): Promise<Group> {
+  const url = `${API_URL}/groups/${groupId}`
   return await fetchJson<Group>(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

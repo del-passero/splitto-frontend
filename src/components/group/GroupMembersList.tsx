@@ -1,98 +1,105 @@
 // src/components/group/GroupMembersList.tsx
 
-import { useRef, useEffect, useMemo } from "react"
-import UserCard from "../UserCard"
-import EmptyContacts from "../EmptyContacts"
+import { useEffect, useMemo, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
+import UserCard from "../UserCard"
 import type { GroupMember } from "../../types/group_member"
+import { Trash2, UserMinus } from "lucide-react"
 
 type Props = {
   members: GroupMember[]
-  loading?: boolean
-  onRemove?: (userId: number) => void
   isOwner?: boolean
+  ownerId?: number
+  onRemove?: (memberId: number) => void
+  loading?: boolean
   fetchMore?: () => void
   hasMore?: boolean
-  /** Новый: точный владелец группы */
-  ownerId?: number
 }
 
 const GroupMembersList = ({
   members,
-  loading = false,
-  onRemove,
   isOwner = false,
+  ownerId,
+  onRemove,
+  loading = false,
   fetchMore,
   hasMore = false,
-  ownerId,
 }: Props) => {
-  const loaderRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation()
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  const canRemove = useMemo(() => isOwner && typeof onRemove === "function", [isOwner, onRemove])
 
   useEffect(() => {
-    if (!hasMore || loading || !loaderRef.current || !fetchMore) return
-    const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !loading) fetchMore()
+    if (!fetchMore) return
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(entries => {
+      const entry = entries[0]
+      if (entry.isIntersecting && hasMore && !loading) {
+        fetchMore()
+      }
     })
-    observer.observe(loaderRef.current)
-    return () => observer.disconnect()
-  }, [hasMore, loading, fetchMore])
-
-  if (!members.length && !loading) {
-    return (
-      <div className="w-full flex flex-col flex-1">
-        <EmptyContacts />
-      </div>
-    )
-  }
-
-  // Владелец первым, остальные по алфавиту
-  const sorted = useMemo(() => {
-    if (!members || members.length === 0) return members
-    const collator = new Intl.Collator(undefined, { sensitivity: "base" })
-    const key = (m: GroupMember) => {
-      const n = `${m.user?.first_name ?? ""} ${m.user?.last_name ?? ""}`.trim()
-      return n || m.user?.username || String(m.user?.id ?? "")
-    }
-    let ownerIdx = -1
-    if (typeof ownerId === "number") {
-      ownerIdx = members.findIndex(m => Number(m.user?.id) === Number(ownerId))
-    }
-    if (ownerIdx < 0) {
-      return [...members].sort((a, b) => collator.compare(key(a), key(b)))
-    }
-    const owner = members[ownerIdx]
-    const rest = members.filter((_, i) => i !== ownerIdx).sort((a, b) => collator.compare(key(a), key(b)))
-    return [owner, ...rest]
-  }, [members, ownerId])
+    io.observe(el)
+    return () => io.disconnect()
+  }, [fetchMore, hasMore, loading])
 
   return (
     <CardSection noPadding>
-      {sorted.map((m, idx) => (
-        <div key={m.user.id} className="relative flex items-center">
-          <UserCard
-            name={`${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim()}
-            username={m.user.username}
-            photo_url={m.user.photo_url}
-          />
-          {isOwner && onRemove && (
-            <button
-              className="ml-3 text-red-500 px-3 py-1 rounded-lg hover:bg-red-500/10 transition"
-              onClick={() => onRemove(m.user.id)}
-              type="button"
-              aria-label="Удалить участника"
-            >
-              ✕
-            </button>
-          )}
-          {idx !== sorted.length - 1 && (
-            <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
-          )}
+      {members.map((m: GroupMember, idx: number) => {
+        const u = m.user
+        const displayName =
+          (u.name && u.name.trim()) ||
+          `${u.first_name || ""} ${u.last_name || ""}`.trim() ||
+          (u.username ? `@${u.username}` : `#${u.id}`)
+
+        const showRemove =
+          canRemove && u.id !== ownerId // нельзя удалять владельца
+
+        return (
+          <div key={`${m.id}-${u.id}-${idx}`} className="relative">
+            <div className="block">
+              <UserCard
+                name={displayName}
+                username={u.username}
+                photo_url={(u as any).photo_url}
+              />
+            </div>
+
+            {/* Кнопка удаления — справа, на карточке */}
+            {showRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove && onRemove(m.id)} // ВАЖНО: member.id
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full
+                           hover:bg-red-500/10 active:scale-95 transition"
+                aria-label={t("delete")}
+                title={t("delete") as string}
+              >
+                {/* понятная иконка удаления участника */}
+                <UserMinus className="w-5 h-5 text-red-500" />
+              </button>
+            )}
+
+            {/* разделитель с отступом под аватар (как в ContactFriendsList) */}
+            {idx !== members.length - 1 && (
+              <div className="absolute left-16 right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+            )}
+          </div>
+        )
+      })}
+
+      {/* компактный якорь — без лишнего пустого места */}
+      <div ref={sentinelRef} className="h-px" />
+      {loading && (
+        <div className="px-3 py-2 text-sm text-[var(--tg-hint-color)]">
+          {t("loading")}
         </div>
-      ))}
-      {hasMore && !loading && <div ref={loaderRef} className="w-full h-2" />}
-      {loading && <div className="py-3 text-center text-[var(--tg-hint-color)]">Загрузка...</div>}
+      )}
     </CardSection>
   )
 }
 
 export default GroupMembersList
+
