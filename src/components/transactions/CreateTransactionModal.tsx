@@ -1,5 +1,5 @@
 // src/components/transactions/CreateTransactionModal.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   X, Layers, CalendarDays, ChevronRight,
@@ -144,17 +144,17 @@ function chipStyle(color?: string | null) {
     return {
       backgroundColor: hexWithAlpha(hex6, 0.13),
       border: `1px solid ${hexWithAlpha(hex6, 0.33)}`,
-    } as React.CSSProperties;
+    } as CSSProperties;
   }
-  return { backgroundColor: asRgbaFallback(color, 0.13) } as React.CSSProperties;
+  return { backgroundColor: asRgbaFallback(color, 0.13) } as CSSProperties;
 }
 function fillStyle(color?: string | null) {
   if (!color) return {};
   const hex6 = to6Hex(color);
   if (hex6) {
-    return { backgroundColor: hexWithAlpha(hex6, 0.10), borderRadius: 12 } as React.CSSProperties;
+    return { backgroundColor: hexWithAlpha(hex6, 0.10), borderRadius: 12 } as CSSProperties;
   }
-  return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as React.CSSProperties;
+  return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as CSSProperties;
 }
 
 const firstNameOnly = (s?: string) => {
