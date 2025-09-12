@@ -12,6 +12,7 @@ import { useGroupsStore } from "../../store/groupsStore";
 import CategoryPickerModal from "../category/CategoryPickerModal";
 import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
+import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal";
 import type { TransactionOut } from "../../types/transaction";
 import { createTransaction, updateTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
@@ -279,15 +280,20 @@ export default function CreateTransactionModal({
   }, [open, selectedGroupId]);
 
   /* ===== CURRENCY ===== */
+  const [currencyModal, setCurrencyModal] = useState(false);
   const selectedGroup = useMemo(
     () => localGroups.find((g) => g.id === selectedGroupId) || null,
     [localGroups, selectedGroupId]
   );
 
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
+  // Флаг-замок: если валюта установлена из транзакции (edit) или пользователем — не перезаписывать валютой группы
+  const currencyLockedRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (currencyLockedRef.current) return; // не трогаем валюту, если она уже «зафиксирована»
       const code = resolveCurrencyCodeFromGroup(selectedGroup);
       if (code) {
         if (!cancelled) setCurrencyCode(code);
@@ -311,6 +317,16 @@ export default function CreateTransactionModal({
     })();
     return () => { cancelled = true; };
   }, [selectedGroup, selectedGroupId]);
+
+  // При смене валюты — аккуратно нормализуем введённую сумму под новые decimals
+  useEffect(() => {
+    const dec = currencyCode ? (DECIMALS_BY_CODE[currencyCode] ?? 2) : 2;
+    if (!amount) return;
+    const n = Number(amount);
+    if (!isFinite(n)) return;
+    setAmount(n.toFixed(dec));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currencyCode]);
 
   const currency = useMemo(() => {
     const code = currencyCode || null;
@@ -548,7 +564,7 @@ export default function CreateTransactionModal({
           type: "expense",
           group_id: gid,
           amount: amtStr,
-          currency: currency.code || "USD",
+          currency_code: currency.code || "USD",
           date,
           comment: comment.trim() || null,
           category_id: categoryId ?? null,
@@ -564,7 +580,7 @@ export default function CreateTransactionModal({
           type: "transfer",
           group_id: gid,
           amount: amtStr,
-          currency: currency.code || "USD",
+          currency_code: currency.code || "USD",
           date,
           comment: comment.trim() || null,
           transfer_from: paidBy as number,
@@ -616,6 +632,7 @@ export default function CreateTransactionModal({
     setSplitOpen(false);
     setSaving(false);
     setCurrencyCode(null);
+    currencyLockedRef.current = false; // сбрасываем замок
   }, [open, defaultGroupId]);
 
   /* ===== PREFILL из initialTx (одноразово при открытии) ===== */
@@ -626,24 +643,48 @@ export default function CreateTransactionModal({
     if (!initialTx) return;
 
     // группа
-    const gid = Number(initialTx.groupId || defaultGroupId);
+    const gid = Number(initialTx.group_id ?? initialTx.groupId ?? defaultGroupId);
     if (gid) setSelectedGroupId(gid);
+
+    // валюта из транзакции (фиксируем, чтобы не затиралось валютой группы)
+    const rawCode = (initialTx.currency_code || initialTx.currency) as string | undefined;
+    if (typeof rawCode === "string" && rawCode.trim()) {
+      const codeUp = rawCode.trim().toUpperCase();
+      setCurrencyCode(codeUp);
+      currencyLockedRef.current = true;
+    }
 
     // тип
     if (initialTx.type === "transfer" || initialTx.type === "expense") {
       setType(initialTx.type);
     }
 
-    // сумма
-    if (typeof initialTx.amount === "number" && isFinite(initialTx.amount)) {
-      const d = currency.decimals ?? 2;
-      setAmount(initialTx.amount.toFixed(d));
+    // сумма (учитываем, что с бэка приходит строка)
+    if (initialTx.amount !== undefined && initialTx.amount !== null) {
+      const parsed = typeof initialTx.amount === "number"
+        ? initialTx.amount
+        : parseFloat(String(initialTx.amount));
+      if (isFinite(parsed)) {
+        // форматируем под известные decimals (если валюту только что зафиксировали — используем их,
+        // иначе fallback на текущие)
+        const dec =
+          (typeof rawCode === "string" && rawCode.trim())
+            ? (DECIMALS_BY_CODE[rawCode.trim().toUpperCase()] ?? 2)
+            : (currency.decimals ?? 2);
+        setAmount(parsed.toFixed(dec));
+      }
     }
 
-    // перевод
+    // перевод: берём нормальные поля с бэка, иначе фоллбэки
     if (initialTx.type === "transfer") {
-      const pb = Number(initialTx.paidBy || user?.id);
-      const tu = Number(initialTx.toUser);
+      const pb = Number(
+        initialTx.transfer_from ??
+        initialTx.paidBy ??
+        user?.id
+      );
+      const tu = Number(
+        Array.isArray(initialTx.transfer_to) ? initialTx.transfer_to[0] : (initialTx.toUser ?? undefined)
+      );
       if (isFinite(pb)) setPaidBy(pb);
       if (isFinite(tu)) setToUser(tu);
 
@@ -785,12 +826,14 @@ export default function CreateTransactionModal({
                     <div className="px-3 pb-0">
                       <div className="flex items-center gap-2 mt-0.5">
                         {currency.code && (
-                          <div
+                          <button
+                            type="button"
+                            onClick={() => setCurrencyModal(true)}
                             className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
                             title={currency.code}
                           >
                             {currency.code}
-                          </div>
+                          </button>
                         )}
                         <input
                           ref={amountInputRef}
@@ -970,8 +1013,7 @@ export default function CreateTransactionModal({
                               ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
                               : locale === "es"
                               ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
-                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
-                            }
+                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`}
                           </div>
                         )}
                       </CardSection>
@@ -1235,6 +1277,18 @@ export default function CreateTransactionModal({
         initial={splitData || { type: splitType, participants: [] as any[] }}
         paidById={paidBy}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
+      />
+
+      {/* Выбор валюты */}
+      <CurrencyPickerModal
+        open={currencyModal && !!selectedGroupId}
+        onClose={() => setCurrencyModal(false)}
+        selectedCode={currency.code || "USD"}
+        onSelect={(c: CurrencyItem) => {
+          setCurrencyCode(c.code || "USD");
+          currencyLockedRef.current = true; // пользователь явно выбрал валюту — фиксируем
+          setCurrencyModal(false);
+        }}
       />
     </div>
   );

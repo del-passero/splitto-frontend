@@ -27,7 +27,7 @@ export interface TransactionOut {
   created_by: number
   created_at: string // ISO
   updated_at: string // ISO
-  currency?: string | null
+  currency_code?: string | null
   is_deleted?: boolean
   receipt_url?: string | null
   receipt_data?: Record<string, unknown> | null
@@ -47,7 +47,7 @@ export interface TransactionCreateRequest {
   split_type?: SplitType | null
   transfer_from?: number | null
   transfer_to?: number[] | null
-  currency?: string | null
+  currency_code?: string | null
   shares?: Array<{
     user_id: number
     amount: string

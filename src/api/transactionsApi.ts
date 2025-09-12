@@ -100,7 +100,7 @@ export async function getTransaction(transactionId: number): Promise<Transaction
     },
   })
   if (!res.ok) throw new Error(await res.text())
-  return await res.json()
+  return await res.json() as TransactionOut
 }
 
 /** Создать транзакцию */
@@ -116,7 +116,7 @@ export async function createTransaction(payload: TransactionCreateRequest): Prom
     body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error(await res.text())
-  return await res.json()
+  return await res.json() as TransactionOut
 }
 
 /** Обновить транзакцию */
@@ -132,7 +132,7 @@ export async function updateTransaction(transactionId: number, payload: any): Pr
     body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error(await res.text())
-  return await res.json()
+  return await res.json() as TransactionOut
 }
 
 /** Удалить транзакцию (soft delete на бэке) */

@@ -96,7 +96,6 @@ function splitToBackend(
     if (k === 0) return { split_type: "equal", shares: [] };
     const base = r2(amount / k);
     const out: number[] = Array.from({ length: k }, () => base);
-    // подрезка/добивка, чтобы суммарно == amount
     const diff = r2(amount - out.reduce((s, v) => s + v, 0));
     out[k - 1] = r2(out[k - 1] + diff);
     return {
@@ -129,7 +128,6 @@ function splitToBackend(
   const parts = split.participants.map((p) => ({ uid: p.user_id, amt: Number(p.amount || 0) }));
   const sum = r2(parts.reduce((s, p) => s + p.amt, 0));
   let amounts = parts.map((p) => r2(p.amt));
-  // лёгкая коррекция последней доли, если сумму ввели с погрешностью
   const diff = r2(amount - sum);
   if (amounts.length) amounts[amounts.length - 1] = r2(amounts[amounts.length - 1] + diff);
 
@@ -194,28 +192,27 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
         type: "expense",
         group_id: input.group_id,
         amount: toMoneyStr(input.amount),
-        currency: (input.currency || "").toUpperCase(),
+        currency_code: (input.currency || "").toUpperCase(),
         date: input.date,
         comment: input.comment,
         category_id: input.category?.id ?? null,
         paid_by: input.paid_by ?? null,
         split_type,
-        shares: shares.length ? shares : undefined, // для equal можно и не слать
+        shares: shares.length ? shares : undefined,
       };
 
       const serverTx = await createTransaction(payload);
 
       const real: LocalExpenseTx = {
         ...localTx,
-        id: serverTx.id ?? localTx.id,
-        created_at: serverTx.created_at ?? localTx.created_at,
-        // нормализованные поля от бэка
+        id: (serverTx as any).id ?? localTx.id,
+        created_at: (serverTx as any).created_at ?? localTx.created_at,
         category: (serverTx as any).category ?? localTx.category,
-        split: localTx.split, // в ответе нет raw split, оставим локальное
-        comment: serverTx.comment ?? localTx.comment,
+        split: localTx.split,
+        comment: (serverTx as any).comment ?? localTx.comment,
         amount: Number((serverTx as any).amount ?? localTx.amount),
-        currency: serverTx.currency ?? localTx.currency,
-        date: serverTx.date ?? localTx.date,
+        currency: (serverTx as any).currency_code ?? (serverTx as any).currency ?? localTx.currency,
+        date: (serverTx as any).date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);
       return serverTx;
@@ -250,7 +247,7 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
         type: "transfer",
         group_id: input.group_id,
         amount: toMoneyStr(input.amount),
-        currency: (input.currency || "").toUpperCase(),
+        currency_code: (input.currency || "").toUpperCase(),
         date: input.date,
         transfer_from: input.from_user_id,
         transfer_to: [input.to_user_id],
@@ -259,12 +256,12 @@ export const useTransactionsStore = create<TxState>((set, get) => ({
       const serverTx = await createTransaction(payload);
 
       const real: LocalTransferTx = {
-        ...localTx, // оставляем локальные name/avatar для UI
-        id: serverTx.id ?? localTx.id,
-        created_at: serverTx.created_at ?? localTx.created_at,
+        ...localTx,
+        id: (serverTx as any).id ?? localTx.id,
+        created_at: (serverTx as any).created_at ?? localTx.created_at,
         amount: Number((serverTx as any).amount ?? localTx.amount),
-        currency: serverTx.currency ?? localTx.currency,
-        date: serverTx.date ?? localTx.date,
+        currency: (serverTx as any).currency_code ?? (serverTx as any).currency ?? localTx.currency,
+        date: (serverTx as any).date ?? localTx.date,
       };
       get()._replaceLocal(input.group_id, tempId, real);
       return serverTx;

@@ -34,7 +34,8 @@ type TxOut = {
   type: TxType;
   group_id: number;
   amount: number | string;
-  currency: string;
+  currency?: string; // может прийти как currency или currency_code
+  currency_code?: string;
   date: string;
   comment?: string | null;
 
@@ -257,7 +258,12 @@ export default function TransactionEditPage() {
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   };
 
-  const currency = useMemo(() => makeCurrency(group, tx?.currency || null), [group, tx?.currency]);
+  // Валюта из группы + из транзакции (учитываем и currency, и currency_code)
+  const currency = useMemo(
+    () => makeCurrency(group, (tx as any)?.currency_code || tx?.currency || null),
+    [group, tx]
+  );
+
   const amountNumber = useMemo(() => {
     const n = Number(amount);
     return isFinite(n) ? n : 0;
@@ -302,7 +308,7 @@ export default function TransactionEditPage() {
           g = {
             id: data.group_id,
             name: `#${data.group_id}`,
-            default_currency_code: (data as any).currency,
+            default_currency_code: (data as any).currency_code || (data as any).currency,
           } as any;
         }
         if (!alive) return;
@@ -362,7 +368,8 @@ export default function TransactionEditPage() {
       setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
 
-      const dec = makeCurrency(group, tx.currency).decimals;
+      const preferCode = (tx as any).currency_code || tx.currency;
+      const dec = makeCurrency(group, preferCode).decimals;
       setAmount(toFixedSafe(String(tx.amount ?? "0"), dec));
 
       if (tx.type === "expense") {
@@ -599,7 +606,7 @@ export default function TransactionEditPage() {
       setSaving(true);
       const gid = group.id;
       const amtStr = toFixedSafe(amount || "0", currency.decimals);
-      const curr = currency.code || tx.currency || "";
+      const curr = ((currency.code || (tx as any).currency_code || tx.currency || "") as string).toUpperCase();
 
       if (tx.type === "expense") {
         const payerId = paidBy ?? user?.id;
@@ -619,7 +626,7 @@ export default function TransactionEditPage() {
           type: "expense",
           group_id: gid,
           amount: amtStr,
-          currency: curr,
+          currency_code: curr,
           date,
           comment: (comment || "").trim() || null,
           paid_by: payerId,
@@ -639,7 +646,7 @@ export default function TransactionEditPage() {
           type: "transfer",
           group_id: gid,
           amount: amtStr,
-          currency: curr,
+          currency_code: curr,
           date,
           comment: (comment || "").trim() || null,
           transfer_from: paidBy,
@@ -965,7 +972,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg白/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                     >
                       {paidBy ? (
                         <>

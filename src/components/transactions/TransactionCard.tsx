@@ -396,14 +396,14 @@ export default function TransactionCard({
         const lent = Math.max(0, amountNum - payerShare);
         statusText =
           lent > 0
-            ? ((t && (t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency) }) as string)) ||
-              `Вам должны: ${fmtAmount(lent, tx.currency)}`)
+            ? ((t && (t("group_participant_owes_you", { sum: fmtAmount(lent, tx.currency_code) }) as string)) ||
+              `Вам должны: ${fmtAmount(lent, tx.currency_code)}`)
             : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
       } else {
         statusText =
           myShare > 0
-            ? ((t && (t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency) }) as string)) ||
-              `Вы должны: ${fmtAmount(myShare, tx.currency)}`)
+            ? ((t && (t("group_participant_you_owe", { sum: fmtAmount(myShare, tx.currency_code) }) as string)) ||
+              `Вы должны: ${fmtAmount(myShare, tx.currency_code)}`)
             : ((t && (t("group_participant_no_debt") as string)) || "Нет долга");
       }
     }
@@ -476,7 +476,7 @@ export default function TransactionCard({
         {/* Row1 / Col4 — AMOUNT */}
         <div className="col-start-4 row-start-1">
           <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-            {fmtAmount(amountNum, tx.currency)}
+            {fmtAmount(amountNum, tx.currency_code)}
           </div>
         </div>
 

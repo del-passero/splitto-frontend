@@ -124,7 +124,9 @@ export default function GroupBalanceTab() {
         };
 
         for (const tx of all) {
-          if (groupCcy && tx.currency && String(tx.currency).toUpperCase() !== String(groupCcy).toUpperCase()) continue;
+          const txCcy = (tx as any).currency_code ?? (tx as any).currency;
+		  if (groupCcy && txCcy && String(txCcy).toUpperCase() !== String(groupCcy).toUpperCase()) continue;
+
 
           if (tx.type === "expense") {
             const payer = Number(tx.paid_by ?? tx.created_by ?? NaN);
