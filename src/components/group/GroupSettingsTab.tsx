@@ -210,7 +210,7 @@ const GroupSettingsTab = ({
 
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
-      {/* Блок «Валюта + поездка» в том же стиле, что и в CreateGroupModal */}
+      {/* === Блок «Валюта + поездка» (edge-to-edge) === */}
       <div className="-mx-4">
         <CardSection className="py-0">
           <Row
@@ -271,60 +271,64 @@ const GroupSettingsTab = ({
         </CardSection>
       </div>
 
-      {/* Кнопки управления */}
-      <div className="flex flex-col gap-2">
-        {/* Сохранить и выйти — primary */}
-        <button
-          type="button"
-          onClick={handleSaveClick}
-          aria-label={t("group_settings_save_and_exit")}
-          className="w-full h-12 rounded-xl font-semibold
-                     text-white
-                     bg-[var(--tg-accent-color,#40A7E3)]
-                     hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
-                     active:scale-95 transition
-                     shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
-                     border border-[var(--tg-hint-color)]/20
-                     flex items-center justify-center gap-2"
-        >
-          <Save className="w-5 h-5" />
-          {t("group_settings_save_and_exit")}
-        </button>
+      {/* === Кнопки управления (edge-to-edge, так же обёрнуты в CardSection) === */}
+      <div className="-mx-4">
+        <CardSection className="px-4 py-3">
+          <div className="flex flex-col gap-2">
+            {/* Сохранить и выйти — primary */}
+            <button
+              type="button"
+              onClick={handleSaveClick}
+              aria-label={t("group_settings_save_and_exit")}
+              className="w-full h-12 rounded-xl font-semibold
+                         text-white
+                         bg-[var(--tg-accent-color,#40A7E3)]
+                         hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
+                         active:scale-95 transition
+                         shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
+                         border border-[var(--tg-hint-color)]/20
+                         flex items-center justify-center gap-2"
+            >
+              <Save className="w-5 h-5" />
+              {t("group_settings_save_and_exit")}
+            </button>
 
-        {/* Отменить изменения — вторичная, закрывает страницу */}
-        <button
-          type="button"
-          onClick={handleCancelClick}
-          aria-label={t("group_settings_cancel_changes")}
-          className="w-full h-12 rounded-xl font-semibold
-                     text-black
-                     bg-[var(--tg-secondary-bg-color,#e6e6e6)]
-                     hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
-                     active:scale-95 transition
-                     border border-[var(--tg-hint-color)]/30
-                     flex items-center justify-center gap-2"
-        >
-          <X className="w-5 h-5" />
-          {t("group_settings_cancel_changes")}
-        </button>
+            {/* Отменить изменения — вторичная, закрывает страницу */}
+            <button
+              type="button"
+              onClick={handleCancelClick}
+              aria-label={t("group_settings_cancel_changes")}
+              className="w-full h-12 rounded-xl font-semibold
+                         text-black
+                         bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                         hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                         active:scale-95 transition
+                         border border-[var(--tg-hint-color)]/30
+                         flex items-center justify-center gap-2"
+            >
+              <X className="w-5 h-5" />
+              {t("group_settings_cancel_changes")}
+            </button>
 
-        {/* Удалить группу — danger (только владелец) */}
-        {isOwner && (
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={t("group_settings_delete_group")}
-            className="w-full h-12 rounded-xl font-semibold
-                       text-white
-                       bg-red-500 hover:bg-red-500/90
-                       active:scale-95 transition
-                       border border-red-500/70
-                       flex items-center justify-center gap-2"
-          >
-            <Trash2 className="w-5 h-5" />
-            {t("group_settings_delete_group")}
-          </button>
-        )}
+            {/* Удалить группу — danger (только владелец) */}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={onDelete}
+                aria-label={t("group_settings_delete_group")}
+                className="w-full h-12 rounded-xl font-semibold
+                           text-white
+                           bg-red-500 hover:bg-red-500/90
+                           active:scale-95 transition
+                           border border-red-500/70
+                           flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-5 h-5" />
+                {t("group_settings_delete_group")}
+              </button>
+            )}
+          </div>
+        </CardSection>
       </div>
 
       {/* Модалка выбора валюты */}
@@ -340,3 +344,4 @@ const GroupSettingsTab = ({
 }
 
 export default GroupSettingsTab
+
