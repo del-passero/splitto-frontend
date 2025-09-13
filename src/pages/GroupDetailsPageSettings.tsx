@@ -8,7 +8,7 @@ import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
 
-import GroupSettingsHeader from "../components/group/GroupSettingsHeader"
+import GroupHeader from "../components/group/GroupHeader"
 import GroupSettingsTabs from "../components/group/GroupSettingsTabs"
 import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
@@ -145,13 +145,16 @@ const GroupDetailsPageSettings = () => {
   const existingMemberIds = members.map(m => m.user.id)
 
   return (
-    <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col items-center">
-      <GroupSettingsHeader
+    <div className="w-full min-h-screen bg-[var(--tg-bg-color)] flex flex-col">
+      {/* ЕДИНЫЙ хедер: тот же, что на GroupDetailsPage; здесь показываем карандаш */}
+      <GroupHeader
         group={group}
-        onEdit={() => setEditOpen(true)}
-        onBack={goToGroup}
+        onSettingsClick={() => setEditOpen(true)}
+        onBalanceClick={goToGroup}
+        isEdit
       />
 
+      {/* Табы — та же полоса, что в GroupTabs, без дополнительных боковых паддингов */}
       <CardSection className="px-0 py-0 mb-2">
         <GroupSettingsTabs
           selected={selectedTab}
@@ -159,11 +162,12 @@ const GroupDetailsPageSettings = () => {
           className="mb-0"
         />
 
-        <div className="w-full max-w-xl mx-auto flex-1 px-2 pb-12 mt-1">
+        {/* Контент вкладок — без max-w и боковых px, чтобы не было лишних «полей» */}
+        <div className="w-full flex-1 pb-12 mt-1">
           {selectedTab === "settings" && (
             <GroupSettingsTab
               isOwner={isOwner}
-              onLeave={handleLeave}          // не используется тут; перенос в MembersTab
+              onLeave={() => {}}            // перенесено на вкладку участников
               onDelete={handleDelete}
               onSaveAndExit={handleSaveAndExit}
             />

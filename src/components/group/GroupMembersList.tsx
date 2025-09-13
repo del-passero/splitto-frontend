@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
 import UserCard from "../UserCard"
 import type { GroupMember } from "../../types/group_member"
-import { Trash2, UserMinus } from "lucide-react"
+import { UserMinus } from "lucide-react"
 
 type Props = {
   members: GroupMember[]
@@ -102,4 +102,5 @@ const GroupMembersList = ({
 }
 
 export default GroupMembersList
+
 
