@@ -17,6 +17,8 @@ type Props = {
   fetchMore?: () => void
   hasMore?: boolean
   ownerId?: number
+  /** Можно скрыть кнопку «Выйти из группы», например, для владельца или архивной группы */
+  canLeave?: boolean
 }
 
 const GroupMembersTab = ({
@@ -31,6 +33,7 @@ const GroupMembersTab = ({
   fetchMore,
   hasMore,
   ownerId,
+  canLeave = true,
 }: Props) => {
   const { t } = useTranslation()
 
@@ -97,21 +100,23 @@ const GroupMembersTab = ({
         <CardSection className="px-4 py-3">
           <div className="flex flex-col gap-2">
             {/* Выйти из группы */}
-            <button
-              type="button"
-              onClick={onLeave}
-              aria-label={t("group_settings_leave_group")}
-              className="w-full h-12 rounded-xl font-semibold
-                         text-black
-                         bg-[var(--tg-secondary-bg-color,#e6e6e6)]
-                         hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
-                         active:scale-95 transition
-                         border border-[var(--tg-hint-color)]/30
-                         flex items-center justify-center gap-2"
-            >
-              <LogOut className="w-5 h-5" />
-              {t("group_settings_leave_group")}
-            </button>
+            {canLeave && (
+              <button
+                type="button"
+                onClick={onLeave}
+                aria-label={t("group_settings_leave_group")}
+                className="w-full h-12 rounded-xl font-semibold
+                           text-black
+                           bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                           hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                           active:scale-95 transition
+                           border border-[var(--tg-hint-color)]/30
+                           flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                {t("group_settings_leave_group")}
+              </button>
+            )}
 
             {/* Сохранить и выйти — primary */}
             <button
@@ -136,5 +141,3 @@ const GroupMembersTab = ({
 }
 
 export default GroupMembersTab
-
-

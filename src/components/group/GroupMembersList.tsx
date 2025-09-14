@@ -102,5 +102,3 @@ const GroupMembersList = ({
 }
 
 export default GroupMembersList
-
-

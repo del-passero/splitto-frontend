@@ -360,6 +360,10 @@ export default function TransactionEditPage() {
     if (didPrefillRef.current) return;
     if (!tx) return;
 
+    // если в tx нет валюты — ждём group для fallback
+    const hasTxCurrency = !!((tx as any).currency_code ?? (tx as any).currency);
+    if (!hasTxCurrency && !group) return;
+
     try {
       setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
@@ -369,7 +373,7 @@ export default function TransactionEditPage() {
       const txCode = typeof txCodeRaw === "string" && txCodeRaw.trim()
         ? txCodeRaw.trim().toUpperCase()
         : null;
-      // Если вдруг в транзакции нет валюты — мягкоfallback к валюте группы
+      // Если вдруг в транзакции нет валюты — мягко fallback к валюте группы
       const fallback = resolveCurrencyCodeFromGroup(group) || null;
       const code = txCode || fallback || "USD";
       setCurrencyCode(code);
@@ -495,7 +499,7 @@ export default function TransactionEditPage() {
     if (!isFinite(n)) return;
     const dec = DECIMALS_BY_CODE[currencyCode] ?? 2;
     setAmount(n.toFixed(dec));
-  }, [currencyCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currencyCode, amount]);
 
   /* ---------- 4) имена/аватарки после загрузки участников ---------- */
   useEffect(() => {
@@ -532,8 +536,8 @@ export default function TransactionEditPage() {
         JSON.stringify(updated) !== JSON.stringify(splitData.participants);
       if (needUpdate) setSplitData({ ...splitData, participants: updated });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [membersMap]);
+    // зависимостями страхуемся от гонок, но сеттеры вызываем только при реальном изменении
+  }, [membersMap, tx?.type, paidBy, toUser, splitData, paidByName, toUserName, paidByAvatar, toUserAvatar]);
 
   /* ---------- HELPERS ---------- */
   const goBack = () => navigate(-1);
@@ -621,6 +625,14 @@ export default function TransactionEditPage() {
       setSaving(true);
       const gid = group.id;
       const amtStr = toFixedSafe(amount || "0", currency.decimals);
+
+      // защита: сумма должна быть > 0
+      if (!isFinite(Number(amtStr)) || Number(amtStr) <= 0) {
+        showToast((t("errors.amount_positive") as string) || "Amount must be > 0");
+        setSaving(false);
+        return;
+      }
+
       const curr = (currency.code || tx.currency_code || tx.currency || "").toUpperCase();
 
       if (tx.type === "expense") {
@@ -728,7 +740,7 @@ export default function TransactionEditPage() {
           <button
             type="button"
             onClick={goBack}
-            style={{ color: "#000" }}
+            style={{ color: "var(--tg-text-color)" }}
             className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
             ← {t("cancel")}
@@ -1149,7 +1161,7 @@ export default function TransactionEditPage() {
               <button
                 type="button"
                 onClick={goBack}
-                style={{ color: "#000" }}
+                style={{ color: "var(--tg-text-color)" }}
                 className="flex-1 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 hover:bg-[var(--tg-theme-button-color,#40A7E3)]/10 active:scale-95 transition disabled:opacity-60"
                 disabled={saving}
               >
@@ -1285,9 +1297,13 @@ export default function TransactionEditPage() {
   );
 }
 
-/* --- локальный стиль --- */
-const style = typeof document !== "undefined" ? document.createElement("style") : null;
+/* --- локальный стиль (с защитой от повторной инъекции) --- */
+const style =
+  typeof document !== "undefined" && !document.getElementById("date-input-clean-style")
+    ? document.createElement("style")
+    : null;
 if (style) {
+  style.id = "date-input-clean-style";
   style.innerHTML = `
   .date-input-clean {
     appearance: none;

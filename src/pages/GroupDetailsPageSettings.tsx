@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { getGroupDetails } from "../api/groupsApi"
+import { getGroupDetails, softDeleteGroup } from "../api/groupsApi"
 import { getGroupMembers, removeGroupMember, leaveGroup } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
@@ -50,6 +50,8 @@ const GroupDetailsPageSettings = () => {
   const user = useUserStore(s => s.user)
   const currentUserId = user?.id ?? 0
   const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
+  const canManageMembers = !!(isOwner && group?.status === "active")
+  const canLeave = !!(!isOwner && group?.status === "active")
 
   // загрузка группы
   useEffect(() => {
@@ -105,26 +107,52 @@ const GroupDetailsPageSettings = () => {
 
   const handleRemove = async (memberId: number) => {
     try {
+      if (group?.status !== "active") {
+        alert("Группа архивирована — изменять состав нельзя")
+        return
+      }
       await removeGroupMember(memberId)
       setMembers(prev => prev.filter(m => m.id !== memberId))
-    } catch (e) {
-      // eslint-disable-next-line no-console
+    } catch (e: any) {
       console.error("Failed to remove member", e)
+      alert(e?.message || "Не удалось удалить участника")
     }
   }
 
   const handleLeave = async () => {
     try {
       if (!id) return
+      if (group?.status !== "active") {
+        alert("Группа архивирована — выйти нельзя")
+        return
+      }
+      const ok = window.confirm("Точно выйти из группы?")
+      if (!ok) return
       await leaveGroup(id)
       goToGroupsList()
-    } catch (e) {
-      // eslint-disable-next-line no-console
+    } catch (e: any) {
       console.error("Failed to leave group", e)
+      alert(e?.message || "Не удалось выйти из группы")
     }
   }
 
-  const handleDelete = () => {}
+  const handleDelete = async () => {
+    try {
+      if (!id) return
+      if (!isOwner) {
+        alert("Удалять группу может только владелец")
+        return
+      }
+      const ok = window.confirm("Удалить группу? Действие можно будет отменить через восстановление.")
+      if (!ok) return
+      await softDeleteGroup(id)
+      goToGroupsList()
+    } catch (e: any) {
+      console.error("Failed to delete group", e)
+      alert(e?.message || "Не удалось удалить группу")
+    }
+  }
+
   const handleSaveAndExit = goToGroup
 
   if (loading) {
@@ -176,7 +204,7 @@ const GroupDetailsPageSettings = () => {
           {selectedTab === "members" && (
             <GroupMembersTab
               members={members}
-              isOwner={isOwner}
+              isOwner={canManageMembers}
               onRemove={handleRemove}       // принимает memberId!
               onInvite={handleInvite}
               onAdd={handleAdd}
@@ -186,6 +214,7 @@ const GroupDetailsPageSettings = () => {
               fetchMore={loadMembers}
               hasMore={hasMore}
               ownerId={group.owner_id}
+              canLeave={canLeave}
             />
           )}
         </div>

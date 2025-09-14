@@ -344,4 +344,3 @@ const GroupSettingsTab = ({
 }
 
 export default GroupSettingsTab
-
