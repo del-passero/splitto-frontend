@@ -31,6 +31,16 @@ import {
 type TxType = "expense" | "transfer";
 type TxShare = { user_id: number; amount: number | string };
 
+type RelatedUser = {
+  id: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  photo_url?: string | null;
+  avatar_url?: string | null;
+  name?: string | null;
+};
+
 type TxOut = {
   id: number;
   type: TxType;
@@ -56,15 +66,8 @@ type TxOut = {
 
   split_type?: "equal" | "shares" | "custom";
 
-  // важно: бэкенд теперь кладёт сюда всех участников транзакции
-  related_users?: Array<{
-    id: number;
-    first_name?: string | null;
-    last_name?: string | null;
-    username?: string | null;
-    photo_url?: string | null;
-    name?: string | null;
-  }>;
+  // ДОБАВЛЕНО: участники транзакции (включая вышедших)
+  related_users?: RelatedUser[];
 };
 
 export interface MinimalGroup {
@@ -187,13 +190,104 @@ const firstNameOnly = (s?: string) => {
   const tok = (s || "").trim().split(/\s+/).filter(Boolean);
   return tok[0] || "";
 };
-const nameFromMember = (m?: MemberMini | null) => {
+const composeName = (m?: { first_name?: string | null; last_name?: string | null; username?: string | null; name?: string | null; id?: number }) => {
   if (!m) return "";
   const composed = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim();
-  return composed || (m as any).username || (m as any).name || `#${(m as any).id}`;
+  return composed || (m.name ?? "") || (m.username ?? "") || (m.id ? `#${m.id}` : "");
 };
+const nameFromMember = (m?: MemberMini) => composeName(m);
 
-// GCD helpers for deriving "shares" from amounts
+/** Парсим ошибки API и возвращаем { code?, message? } */
+function parseApiError(err: any): { code?: string; message?: string } {
+  // Популярные варианты: fetch -> e.message (строка с JSON), либо уже объект с detail
+  const tryExtract = (obj: any) => {
+    const d = obj?.detail ?? obj;
+    if (d && typeof d === "object") {
+      if (typeof d.code === "string") return { code: d.code, message: d.message };
+    }
+    if (typeof d === "string") return { message: d };
+    return {};
+  };
+
+  if (err?.response?.data) {
+    const r = tryExtract(err.response.data);
+    if (r.code || r.message) return r;
+  }
+  if (typeof err?.message === "string") {
+    try { const j = JSON.parse(err.message); const r = tryExtract(j); if (r.code || r.message) return r; } catch {}
+  }
+  if (typeof err === "string") {
+    try { const j = JSON.parse(err); const r = tryExtract(j); if (r.code || r.message) return r; } catch {}
+  }
+  if (err && typeof err === "object") {
+    const r = tryExtract(err);
+    if (r.code || r.message) return r;
+  }
+  return { message: err?.message || String(err ?? "") };
+}
+
+/** Собираем множество id участников транзакции */
+function collectInvolvedIds(tx: TxOut | null | undefined): Set<number> {
+  const ids = new Set<number>();
+  if (!tx) return ids;
+  if (tx.type === "expense") {
+    if (Number.isFinite(Number(tx.paid_by))) ids.add(Number(tx.paid_by));
+    (tx.shares || []).forEach(s => {
+      const uid = Number((s as any).user_id);
+      if (Number.isFinite(uid)) ids.add(uid);
+    });
+  } else {
+    if (Number.isFinite(Number(tx.transfer_from))) ids.add(Number(tx.transfer_from));
+    (tx.transfer_to || []).forEach(uid => {
+      const n = Number(uid);
+      if (Number.isFinite(n)) ids.add(n);
+    });
+  }
+  return ids;
+}
+
+/** Есть ли среди участников те, кого нет в membersMap (т.е. неактивные в группе) */
+function hasInactiveParticipants(tx: TxOut | null, membersMap: Map<number, MemberMini>): boolean {
+  if (!tx) return false;
+  const ids = collectInvolvedIds(tx);
+  for (const id of ids) {
+    if (!membersMap.has(id)) return true;
+  }
+  return false;
+}
+
+/** Мапа related_users по id → {name, avatar_url} */
+function buildRelatedMap(tx?: TxOut | null): Map<number, { name: string; avatar_url?: string }> {
+  const map = new Map<number, { name: string; avatar_url?: string }>();
+  const arr = tx?.related_users || [];
+  for (const u of arr) {
+    const name = composeName(u) || (u.id ? `#${u.id}` : "");
+    const avatar = (u.avatar_url || u.photo_url || undefined) || undefined;
+    if (Number.isFinite(Number(u.id))) map.set(Number(u.id), { name, avatar_url: avatar });
+  }
+  return map;
+}
+
+/** Получить имя/аватар по user_id — сначала из участников группы, иначе из related_users */
+function resolveUserFromMaps(
+  userId?: number,
+  membersMap?: Map<number, MemberMini>,
+  relatedMap?: Map<number, { name: string; avatar_url?: string }>
+): { name: string; avatar_url?: string; inactive: boolean } {
+  if (!Number.isFinite(Number(userId))) return { name: "", avatar_url: undefined, inactive: false };
+  const uid = Number(userId);
+  const m = membersMap?.get(uid);
+  if (m) {
+    return { name: nameFromMember(m), avatar_url: m.photo_url || undefined, inactive: false };
+  }
+  const r = relatedMap?.get(uid);
+  if (r) {
+    return { name: r.name, avatar_url: r.avatar_url, inactive: true };
+  }
+  return { name: `#${uid}`, avatar_url: undefined, inactive: true };
+}
+
+/* ====================== GCD helpers ====================== */
 const gcd2 = (a: number, b: number): number => (b ? gcd2(b, a % b) : Math.abs(a));
 const gcdArr = (arr: number[]): number =>
   arr.reduce((g, v) => gcd2(g, Math.abs(v)), arr.length ? Math.abs(arr[0]) : 0);
@@ -206,8 +300,38 @@ const deriveSharesFromAmounts = (amounts: number[], decimals: number): number[] 
   return ints.map((x) => (x > 0 ? x / g : 0));
 };
 
-// безопасно привести string|null к string|undefined
-const asStrUndef = (v?: string | null) => (typeof v === "string" ? v : undefined);
+/* ====================== Аватар с пометкой inactive ====================== */
+function AvatarWithStatus({
+  src,
+  size = 20,
+  inactive,
+  alt = "",
+}: { src?: string; size?: number; inactive: boolean; alt?: string }) {
+  return (
+    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      {src ? (
+        <img
+          src={src}
+          alt={alt}
+          className={`rounded-full object-cover ${inactive ? "grayscale opacity-70" : ""}`}
+          style={{ width: size, height: size }}
+        />
+      ) : (
+        <span
+          className={`rounded-full inline-block ${inactive ? "grayscale opacity-70" : ""}`}
+          style={{ width: size, height: size, background: "var(--tg-link-color)" }}
+        />
+      )}
+      {inactive && (
+        <UserX
+          size={Math.max(12, Math.round(size * 0.7))}
+          className="absolute"
+          style={{ color: "#ef4444" /* red-500 */ }}
+        />
+      )}
+    </span>
+  );
+}
 
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
@@ -228,6 +352,9 @@ export default function TransactionEditPage() {
     () => new Map()
   );
 
+  // Мапа related_users
+  const relatedMap = useMemo(() => buildRelatedMap(tx), [tx?.related_users]);
+
   // Форма
   const [amount, setAmount] = useState<string>("");
   const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -241,12 +368,14 @@ export default function TransactionEditPage() {
   const [paidBy, setPaidBy] = useState<number | undefined>(undefined);
   const [paidByName, setPaidByName] = useState<string>("");
   const [paidByAvatar, setPaidByAvatar] = useState<string | undefined>(undefined);
+  const [paidByInactive, setPaidByInactive] = useState<boolean>(false);
 
   const [splitData, setSplitData] = useState<SplitSelection | null>(null);
 
   const [toUser, setToUser] = useState<number | undefined>(undefined);
   const [toUserName, setToUserName] = useState<string>("");
   const [toUserAvatar, setToUserAvatar] = useState<string | undefined>(undefined);
+  const [toUserInactive, setToUserInactive] = useState<boolean>(false);
 
   // модалки
   const [categoryModal, setCategoryModal] = useState(false);
@@ -264,11 +393,15 @@ export default function TransactionEditPage() {
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   };
 
+  // Блокирующий диалог про неактивных участников
+  const [inactiveDialogOpen, setInactiveDialogOpen] = useState(false);
+
   // Валюта как состояние (редактируемая)
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
   const currency = useMemo(() => {
     const code = currencyCode || null;
     const decimals = code ? (DECIMALS_BY_CODE[code] ?? 2) : 2;
+    // ВАЖНО: дальше в превью долей используем именно CODE, а не SYMBOL
     const symbol = code ? (SYMBOL_BY_CODE[code] ?? code) : "";
     return { code, symbol, decimals };
   }, [currencyCode]);
@@ -282,30 +415,6 @@ export default function TransactionEditPage() {
     if (!splitData || amountNumber <= 0) return [];
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
-
-  /* ---------- быстрый словарь по related_users + резолвер участника ---------- */
-  const relatedById = useMemo(() => {
-    const m = new Map<number, any>();
-    for (const u of (tx?.related_users || [])) {
-      if (!u) continue;
-      m.set(Number((u as any).id), {
-        id: Number((u as any).id),
-        first_name: (u as any).first_name || undefined,
-        last_name: (u as any).last_name || undefined,
-        username: (u as any).username || undefined,
-        photo_url: (u as any).photo_url || undefined,
-        name: (u as any).name || undefined,
-      });
-    }
-    return m;
-  }, [tx?.related_users]);
-
-  const getPerson = (id?: number | null) => {
-    if (!id && id !== 0) return null;
-    return membersMap.get(Number(id)) || relatedById.get(Number(id)) || null;
-  };
-  const isInactive = (id?: number | null) =>
-    !!(id || id === 0) && !membersMap.has(Number(id)) && !!relatedById.get(Number(id));
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -539,43 +648,40 @@ export default function TransactionEditPage() {
     setAmount(n.toFixed(dec));
   }, [currencyCode, amount]);
 
-  /* ---------- 4) имена/аватарки после загрузки участников (с учётом related_users) ---------- */
+  /* ---------- 4) имена/аватарки после загрузки участников + related_users ---------- */
   useEffect(() => {
     if (!tx) return;
 
-    if (paidBy) {
-      const mPayer = getPerson(paidBy);
-      if (mPayer) {
-        if (!paidByName) setPaidByName(nameFromMember(mPayer));
-        if (!paidByAvatar && (mPayer as any).photo_url) setPaidByAvatar((mPayer as any).photo_url);
-      }
+    if (paidBy != null) {
+      const { name, avatar_url, inactive } = resolveUserFromMaps(paidBy, membersMap, relatedMap);
+      if (!paidByName && name) setPaidByName(name);
+      if (!paidByAvatar && avatar_url) setPaidByAvatar(avatar_url);
+      setPaidByInactive(inactive);
     }
 
-    if (tx.type === "transfer" && toUser) {
-      const mTo = getPerson(toUser);
-      if (mTo) {
-        if (!toUserName) setToUserName(nameFromMember(mTo));
-        if (!toUserAvatar && (mTo as any).photo_url) setToUserAvatar((mTo as any).photo_url);
-      }
+    if (tx.type === "transfer" && toUser != null) {
+      const { name, avatar_url, inactive } = resolveUserFromMaps(toUser, membersMap, relatedMap);
+      if (!toUserName && name) setToUserName(name);
+      if (!toUserAvatar && avatar_url) setToUserAvatar(avatar_url);
+      setToUserInactive(inactive);
     }
 
     if (tx.type === "expense" && splitData?.participants?.length) {
       const updated = splitData.participants.map((p: any) => {
         if (p.name && p.avatar_url) return p;
-        const m = getPerson(p.user_id);
-        if (!m) return p;
+        const { name, avatar_url } = resolveUserFromMaps(p.user_id, membersMap, relatedMap);
         return {
           ...p,
-          name: p.name || firstNameOnly(nameFromMember(m)),
-          avatar_url: p.avatar_url || (m as any).photo_url,
+          name: p.name || firstNameOnly(name),
+          avatar_url: p.avatar_url || avatar_url,
         };
       });
       const needUpdate =
         JSON.stringify(updated) !== JSON.stringify(splitData.participants);
       if (needUpdate) setSplitData({ ...splitData, participants: updated });
     }
-    // зависимостями страхуемся от гонок, но сеттеры вызываем только при реальном изменении
-  }, [membersMap, relatedById, tx?.type, paidBy, toUser, splitData, paidByName, toUserName, paidByAvatar, toUserAvatar]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [membersMap, relatedMap, tx?.type, paidBy, toUser, splitData, paidByName, toUserName, paidByAvatar, toUserAvatar]);
 
   /* ---------- HELPERS ---------- */
   const goBack = () => navigate(-1);
@@ -655,14 +761,15 @@ export default function TransactionEditPage() {
     return true;
   };
 
-  const parseApiError = (e: any) => {
-    let raw = typeof e === "string" ? e : e?.message || "";
-    try { const j = JSON.parse(raw); return j?.detail || j; } catch { return raw; }
-  };
-
   // SAVE (PUT /transactions/{id})
   const doSave = async () => {
     if (!tx || !group?.id) return;
+
+    // Локальный чек: если есть неактивные участники — сразу модалка, без сохранения
+    if (hasInactiveParticipants(tx, membersMap)) {
+      setInactiveDialogOpen(true);
+      return;
+    }
 
     try {
       setSaving(true);
@@ -726,11 +833,10 @@ export default function TransactionEditPage() {
       }
 
       goBack();
-    } catch (e: any) {
-      const det = parseApiError(e);
-      const code = (det && (det as any).code) || (typeof det === "object" ? (det as any)?.code : undefined);
+    } catch (e) {
+      const { code } = parseApiError(e);
       if (code === "tx_has_inactive_participants") {
-        showToast((t("errors.tx_has_inactive_participants") as string) || "You can't edit this transaction because one of its participants left the group.");
+        setInactiveDialogOpen(true);
       } else {
         setError(t("save_failed") || "Save failed");
         showToast((t("save_failed") as string) || "Save failed");
@@ -743,6 +849,13 @@ export default function TransactionEditPage() {
   // DELETE
   const doDelete = async () => {
     if (!tx) return;
+
+    // Локальный чек: если есть неактивные участники — сразу модалка, без confirm
+    if (hasInactiveParticipants(tx, membersMap)) {
+      setInactiveDialogOpen(true);
+      return;
+    }
+
     const yes = window.confirm(
       (t("tx_modal.delete_confirm") as string) ||
         "Удалить транзакцию? Это действие необратимо."
@@ -754,12 +867,11 @@ export default function TransactionEditPage() {
       await removeTransaction(tx.id);
       goBack();
     } catch (e: any) {
-      const det = parseApiError(e);
-      const code = (det && (det as any).code) || (typeof det === "object" ? (det as any)?.code : undefined);
+      const { code } = parseApiError(e);
       if (code === "tx_has_inactive_participants") {
-        showToast((t("errors.tx_has_inactive_participants") as string) || "You can't delete this transaction because one of its participants left the group.");
+        setInactiveDialogOpen(true);
       } else {
-        setError(t("delete_failed") || "Delete failed");
+        setError(t("delete_failed") as string);
         showToast((t("delete_failed") as string) || "Delete failed");
       }
     } finally {
@@ -779,14 +891,13 @@ export default function TransactionEditPage() {
     );
   }
   if (error || !tx) {
-    const go = () => navigate(-1);
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={go}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
         <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
-            onClick={go}
+            onClick={goBack}
             style={{ color: "var(--tg-text-color)" }}
             className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
@@ -909,18 +1020,13 @@ export default function TransactionEditPage() {
                     >
                       {paidBy ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
-                            {/* AVATAR with inactive overlay */}
-                            <span className="relative inline-block">
-                              <img
-                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
-                                alt=""
-                                className={`w-4 h-4 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
-                              />
-                              {isInactive(paidBy) && (
-                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                              )}
-                            </span>
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                            <AvatarWithStatus
+                              src={paidByAvatar}
+                              size={16}
+                              inactive={paidByInactive}
+                              alt=""
+                            />
                             <strong className="truncate">
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </strong>
@@ -935,6 +1041,7 @@ export default function TransactionEditPage() {
                               setPaidBy(undefined);
                               setPaidByName("");
                               setPaidByAvatar(undefined);
+                              setPaidByInactive(false);
                             }}
                           >
                             <X size={12} />
@@ -975,26 +1082,22 @@ export default function TransactionEditPage() {
                       <div className="flex flex-col gap-1">
                         {paidBy && (
                           <div className="flex items-center gap-2 text-[13px] font-medium">
-                            <span className="relative inline-block">
-                              <img
-                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
-                                alt=""
-                                className={`w-5 h-5 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
-                              />
-                              {isInactive(paidBy) && (
-                                <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                              )}
-                            </span>
+                            <AvatarWithStatus
+                              src={paidByAvatar}
+                              alt=""
+                              size={20}
+                              inactive={paidByInactive}
+                            />
                             <span className="truncate flex-1">
                               {t("tx_modal.paid_by_label")}:{" "}
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </span>
-                            {/* ВАЖНО: тут показываем КОД валюты, а не символ */}
                             <span className="shrink-0 opacity-80">
                               {fmtMoney(
                                 amountNumber,
                                 currency.decimals,
-                                currency.code || "", // <= код
+                                // ПО ТРЕБОВАНИЮ: показываем КОД валюты
+                                currency.code || "",
                                 locale
                               )}
                             </span>
@@ -1008,25 +1111,21 @@ export default function TransactionEditPage() {
                               key={p.user_id}
                               className="flex items-center gap-2 text-[13px]"
                             >
-                              <span className="relative inline-block">
-                                <img
-                                  src={asStrUndef((p as any).avatar_url) || asStrUndef(getPerson(p.user_id)?.photo_url)}
-                                  alt=""
-                                  className={`w-5 h-5 rounded-full object-cover ${isInactive(p.user_id) ? "grayscale" : ""}`}
-                                />
-                                {isInactive(p.user_id) && (
-                                  <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                                )}
-                              </span>
+                              <AvatarWithStatus
+                                src={(p as any).avatar_url || undefined}
+                                alt=""
+                                size={20}
+                                inactive={!membersMap.has(Number(p.user_id))}
+                              />
                               <span className="truncate flex-1">
-                                {t("tx_modal.owes_label")}: {(p as any).name || firstNameOnly(nameFromMember(getPerson(p.user_id) as any))}
+                                {t("tx_modal.owes_label")}: {p.name}
                               </span>
-                              {/* ВАЖНО: тут тоже код валюты */}
                               <span className="shrink-0 opacity-80">
                                 {fmtMoney(
                                   p.amount,
                                   currency.decimals,
-                                  currency.code || "", // <= код
+                                  // ПО ТРЕБОВАНИЮ: показываем КОД валюты
+                                  currency.code || "",
                                   locale
                                 )}
                               </span>
@@ -1054,21 +1153,17 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg:white/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
-                            <span className="relative inline-block">
-                              <img
-                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
-                                alt=""
-                                className={`w-4 h-4 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
-                              />
-                              {isInactive(paidBy) && (
-                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                              )}
-                            </span>
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                            <AvatarWithStatus
+                              src={paidByAvatar}
+                              size={16}
+                              inactive={paidByInactive}
+                              alt=""
+                            />
                             <strong className="truncate">
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </strong>
@@ -1076,13 +1171,14 @@ export default function TransactionEditPage() {
                           <span
                             role="button"
                             aria-label={t("clear") || "Очистить"}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg白/10 hover:bg-black/20"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               setPaidBy(undefined);
                               setPaidByName("");
                               setPaidByAvatar(undefined);
+                              setPaidByInactive(false);
                             }}
                           >
                             <X size={12} />
@@ -1107,17 +1203,13 @@ export default function TransactionEditPage() {
                     >
                       {toUser ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
-                            <span className="relative inline-block">
-                              <img
-                                src={asStrUndef(toUserAvatar) || asStrUndef(getPerson(toUser)?.photo_url)}
-                                alt=""
-                                className={`w-4 h-4 rounded-full object-cover ${isInactive(toUser) ? "grayscale" : ""}`}
-                              />
-                              {isInactive(toUser) && (
-                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                              )}
-                            </span>
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                            <AvatarWithStatus
+                              src={toUserAvatar}
+                              size={16}
+                              inactive={toUserInactive}
+                              alt=""
+                            />
                             <strong className="truncate">
                               {firstNameOnly(toUserName) || t("not_specified")}
                             </strong>
@@ -1132,6 +1224,7 @@ export default function TransactionEditPage() {
                               setToUser(undefined);
                               setToUserName("");
                               setToUserAvatar(undefined);
+                              setToUserInactive(false);
                             }}
                           >
                             <X size={12} />
@@ -1153,35 +1246,23 @@ export default function TransactionEditPage() {
                   <CardSection className="py-0">
                     <div className="px-3 pb-2 mt-1">
                       <div className="flex items-center gap-2 text-[13px]">
-                        <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
-                          <span className="relative inline-block">
-                            <img
-                              src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
-                              alt=""
-                              className={`w-5 h-5 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
-                            />
-                            {isInactive(paidBy) && (
-                              <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                            )}
-                          </span>
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                          <AvatarWithStatus src={paidByAvatar} alt="" size={20} inactive={paidByInactive} />
                           <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : (locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From")}</strong>
                         </span>
                         <span className="opacity-60">→</span>
-                        <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
-                          <span className="relative inline-block">
-                            <img
-                              src={asStrUndef(toUserAvatar) || asStrUndef(getPerson(toUser)?.photo_url)}
-                              alt=""
-                              className={`w-5 h-5 rounded-full object-cover ${isInactive(toUser) ? "grayscale" : ""}`}
-                            />
-                            {isInactive(toUser) && (
-                              <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
-                            )}
-                          </span>
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
+                          <AvatarWithStatus src={toUserAvatar} alt="" size={20} inactive={toUserInactive} />
                           <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : (locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To")}</strong>
                         </span>
                         <span className="ml-auto shrink-0 opacity-80">
-                          {fmtMoney(amountNumber, currency.decimals, currency.symbol, locale)}
+                          {fmtMoney(
+                            amountNumber,
+                            currency.decimals,
+                            // ПО ТРЕБОВАНИЮ: показываем КОД валюты
+                            currency.code || "",
+                            locale
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1272,6 +1353,7 @@ export default function TransactionEditPage() {
             setPaidByName(u.name || "");
             // @ts-ignore
             setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
+            setPaidByInactive(false);
           }}
           closeOnSelect
         />
@@ -1286,6 +1368,7 @@ export default function TransactionEditPage() {
             setToUserName(u.name || "");
             // @ts-ignore
             setToUserAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
+            setToUserInactive(false);
           }}
           closeOnSelect
         />
@@ -1311,20 +1394,31 @@ export default function TransactionEditPage() {
                 let participants: any[] = [];
                 if (prev.length > 0) {
                   participants = prev.map((p: any) => {
-                    const m = getPerson(p.user_id);
+                    const m = membersMap.get(p.user_id);
+                    const r = relatedMap.get(p.user_id);
                     return {
                       user_id: p.user_id,
-                      name: p.name || (m ? firstNameOnly(nameFromMember(m)) : ""),
-                      avatar_url: p.avatar_url || (m as any)?.photo_url,
+                      name: p.name || firstNameOnly(nameFromMember(m) || r?.name || ""),
+                      avatar_url: p.avatar_url || m?.photo_url || r?.avatar_url,
                     };
                   });
-                } else if (membersMap.size > 0 || relatedById.size > 0) {
-                  const pool = new Map<number, any>([...membersMap, ...relatedById]);
-                  participants = Array.from(pool.values()).map((m: any) => ({
-                    user_id: m.id,
-                    name: firstNameOnly(nameFromMember(m)),
-                    avatar_url: m.photo_url || undefined,
-                  }));
+                } else if (membersMap.size > 0 || relatedMap.size > 0) {
+                  const ids = new Set<number>();
+                  // участники группы
+                  for (const m of membersMap.values()) ids.add(m.id);
+                  // и все, кто есть в related
+                  for (const uid of Array.from(collectInvolvedIds(tx))) ids.add(uid);
+                  participants = Array.from(ids).map((uid) => {
+                    const m = membersMap.get(uid);
+                    const r = relatedMap.get(uid);
+                    const name = m ? nameFromMember(m) : (r?.name || `#${uid}`);
+                    const av = m?.photo_url || r?.avatar_url || undefined;
+                    return {
+                      user_id: uid,
+                      name: firstNameOnly(name),
+                      avatar_url: av,
+                    };
+                  });
                 } else {
                   participants = returned;
                 }
@@ -1346,6 +1440,31 @@ export default function TransactionEditPage() {
             setCurrencyModal(false);
           }}
         />
+
+        {/* === Блокирующая модалка про неактивных участников === */}
+        {inactiveDialogOpen && (
+          <div className="fixed inset-0 z-[1300] flex items-center justify-center" onClick={() => setInactiveDialogOpen(false)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
+              onClick={(e) => e.stopPropagation()}
+              style={{ color: "var(--tg-text-color)" }}
+            >
+              <div className="text-[14px]">
+                {t("cannot_edit_or_delete_inactive") as string}
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setInactiveDialogOpen(false)}
+                  className="h-9 px-3 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-bold text-[14px]"
+                >
+                  {t("close")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* === Центрированный тост === */}
         {toast.open && (

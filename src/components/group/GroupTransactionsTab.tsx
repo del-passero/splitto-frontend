@@ -51,6 +51,51 @@ async function apiListGroupCategoriesPage(params: {
   return res.json();
 }
 
+// -------- helpers --------
+function parseApiError(err: any): { code?: string; message?: string } {
+  // axios-like
+  const codeAxios = err?.response?.data?.detail?.code || err?.response?.data?.code;
+  if (codeAxios) return { code: codeAxios, message: err?.response?.data?.detail?.message || err?.message };
+  // fetch wrapper that throws JSON
+  if (err && typeof err === "object" && "detail" in err && (err as any).detail) {
+    const det = (err as any).detail;
+    if (typeof det === "object" && det.code) return { code: det.code, message: det.message };
+    if (typeof det === "string") return { message: det };
+  }
+  // stringified JSON in message
+  if (typeof err?.message === "string") {
+    try {
+      const j = JSON.parse(err.message);
+      const det = j?.detail;
+      if (det?.code) return { code: det.code, message: det.message };
+      if (typeof det === "string") return { message: det };
+    } catch {}
+  }
+  // raw string JSON
+  if (typeof err === "string") {
+    try {
+      const j = JSON.parse(err);
+      const det = j?.detail;
+      if (det?.code) return { code: det.code, message: det.message };
+      if (typeof det === "string") return { message: det };
+    } catch {}
+  }
+  return { message: err?.message || String(err ?? "") };
+}
+
+function collectInvolvedUserIds(tx: TransactionOut): number[] {
+  const ids = new Set<number>();
+  if (tx.type === "expense") {
+    if (tx.paid_by != null) ids.add(Number(tx.paid_by));
+    for (const s of (tx.shares || [])) if (s?.user_id != null) ids.add(Number(s.user_id));
+  } else if (tx.type === "transfer") {
+    if (tx.transfer_from != null) ids.add(Number(tx.transfer_from));
+    for (const uid of (tx.transfer_to || [])) if (uid != null) ids.add(Number(uid));
+  }
+  return Array.from(ids);
+}
+// -------------------------
+
 const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd }: Props) => {
   const { t, i18n } = useTranslation();
   const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
@@ -60,27 +105,25 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
-  // unified center toast
+  // center toast
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
   const showToast = useCallback((msg: string) => {
     setToast({ open: true, message: msg });
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   }, []);
 
-  // NEW: modal for inactive participants (block edit/delete)
+  // modal: cannot edit/delete because inactive participants
   const [inactiveBlockOpen, setInactiveBlockOpen] = useState(false);
   const inactiveMsg = useMemo(() => {
     const key = "cannot_edit_or_delete_inactive";
     const raw = (t(key) as string) || "";
     if (!raw || raw === key) {
-      // локализованный фолбэк
       if (locale === "en") {
         return "You can’t edit or delete this transaction because one of its participants has left the group.";
       }
       if (locale === "es") {
         return "No puedes editar ni eliminar esta transacción porque uno de sus participantes salió del grupo.";
       }
-      // ru (по умолчанию)
       return "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников уже вышел из группы.";
     }
     return raw;
@@ -227,39 +270,39 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
   const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
 
+  // локальная проверка «можно ли удалять»
+  const hasInactiveParticipantsLocal = useCallback((tx: TransactionOut | null) => {
+    if (!tx || !membersMap) return false;
+    const activeIds = new Set(Array.from(membersMap.keys()));
+    const involved = collectInvolvedUserIds(tx);
+    return involved.some((uid) => !activeIds.has(uid));
+  }, [membersMap]);
+
   const handleDelete = async () => {
     if (!txForActions?.id) return;
+
+    // 1) если нельзя удалять — сразу показываем блокирующую модалку и выходим
+    if (hasInactiveParticipantsLocal(txForActions)) {
+      setInactiveBlockOpen(true);
+      closeActions();
+      return;
+    }
+
+    // 2) спрашиваем подтверждение ТОЛЬКО если удалять можно
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
+
     try {
       setLoading(true);
       await removeTransaction(txForActions.id);
       setItems(prev => prev.filter(it => it.id !== txForActions.id));
     } catch (e: any) {
-      // Разбираем ответ:
-      let raw = typeof e === "string" ? e : e?.message || "";
-      let code: string | undefined;
-      try {
-        const j = JSON.parse(raw);
-        const detail = j?.detail;
-        if (typeof detail === "string") {
-          // совместимость со старыми сообщениями
-          raw = detail;
-        } else if (detail && typeof detail === "object") {
-          code = detail.code;
-        }
-      } catch {
-        // raw остаётся как есть
-      }
-
+      const { code } = parseApiError(e);
       if (code === "tx_has_inactive_participants") {
-        // Показать модалку-блокировку
+        // гонка: участник вышел после локальной проверки
         setInactiveBlockOpen(true);
       } else {
-        const msg =
-          (raw && raw.includes("Only author or payer"))
-            ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
-            : (t("delete_failed") as string);
+        const msg = (t("delete_failed") as string) || "Failed to delete";
         showToast(msg);
       }
     } finally {
