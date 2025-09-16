@@ -1,5 +1,6 @@
 // src/locales/es.ts
 export default {
+  // --- Navegación y secciones ---
   main: "Inicio",
   groups: "Grupos",
   group: "Grupo",
@@ -10,20 +11,21 @@ export default {
   contacts: "Contactos",
   profile: "Perfil",
 
+  // --- Grupos y miembros ---
   participants: "Participantes",
   members: "Miembros",
   owner: "Creador",
-  no_participants: "No hay participantes",
-  contacts_not_found: "No se encontró ningún contacto",
-  groups_not_found: "No se encontró ningún grupo",
+  no_participants: "Sin miembros",
+  contacts_not_found: "No se encontraron contactos",
+  groups_not_found: "No se encontraron grupos",
   group_name_placeholder: "Nombre del grupo",
-  group_description_placeholder: "Descripción del grupo",
+  group_description_placeholder: "Descripción",
   group_name_required: "Introduce el nombre del grupo",
   error_create_group: "Error al crear el grupo",
   error_edit_group: "Error al editar el grupo",
   saving: "Guardando...",
   add_participants: "Añadir participantes",
-  empty_members: "No hay miembros",
+  empty_members: "Sin miembros",
   groups_count: "Total de grupos: {{count}}",
   groups_top_info: "Tienes {{count}} grupos activos",
   empty_groups: "Aún no tienes ningún grupo",
@@ -37,53 +39,64 @@ export default {
   leave_group: "Salir del grupo",
   delete_group: "Eliminar grupo",
 
+  // --- Saldos ---
   group_balance_you_get: "Te deben {{sum}}",
   group_balance_you_owe: "Debes {{sum}}",
-  group_balance_zero: "Todo en cero",
+  group_balance_zero: "Todo saldado",
   group_header_settings: "Ajustes",
-  group_header_my_balance: "Mi balance",
+  group_header_my_balance: "Mi saldo",
   group_participant_no_debt: "Sin deuda",
   group_participant_you_owe: "Debes: {{sum}}",
-  group_participant_owes_you: "Te deben: {{sum}}",
+  group_participant_owes_you: "Te debe: {{sum}}",
 
+  // --- Carrusel de miembros ---
   group_invite: "Invitar",
   group_add_member: "Añadir",
 
+  // --- Pestañas del grupo ---
   group_tab_transactions: "Transacciones",
-  group_tab_balance: "Balance",
+  group_tab_balance: "Saldo",
   group_tab_analytics: "Analítica",
 
+  // --- FAB ---
   group_fab_add_transaction: "Añadir transacción",
 
-  group_transactions_empty: "En el grupo aún no hay gastos — ¡añade el primero!",
+  // --- Transacciones ---
+  group_transactions_empty:
+    "Aún no hay gastos en este grupo — ¡añade el primero!",
   group_transactions_not_found: "No se encontraron gastos",
   group_transactions_placeholder:
-    "Marcador de la lista de transacciones. Aquí aparecerán las transacciones de tu grupo.",
+    "Marcador de posición para la lista de transacciones. Aquí aparecerán las transacciones de tu grupo.",
 
-  group_balance_microtab_mine: "Mi balance",
-  group_balance_microtab_all: "Todos los balances",
+  // --- Pestaña Saldo ---
+  group_balance_microtab_mine: "Mi saldo",
+  group_balance_microtab_all: "Todos los saldos",
   group_balance_no_debts: "Sin deudas",
-  group_balance_get_from: "Te deben: {{sum}}",
+  group_balance_get_from: "Te debe: {{sum}}",
   group_balance_owe_to: "Debes: {{sum}}",
   group_balance_no_debt_with: "Sin deuda",
-  group_balance_no_debts_all: "En el grupo nadie debe a nadie",
+  group_balance_no_debts_all: "Nadie debe a nadie en este grupo",
 
-  repay_debt: "Pagar la deuda",
-  remind_debt: "Recordar la deuda",
+  // Acciones en tarjetas de saldo
+  repay_debt: "Saldar",
+  remind_debt: "Recordatorio",
 
-  group_analytics_coming_soon: "La analítica estará disponible pronto",
+  // --- Pestaña Analítica ---
+  group_analytics_coming_soon: "La analítica llegará pronto",
 
+  // --- Página de ajustes del grupo ---
   group_settings_tab_settings: "Ajustes",
   group_settings_tab_members: "Miembros",
   group_settings_leave_group: "Salir del grupo",
   group_settings_delete_group: "Eliminar grupo",
   group_members_invite: "Invitar",
   group_members_add: "Añadir",
-  group_members_empty: "Aún no hay miembros en el grupo",
+  group_members_empty: "Este grupo aún no tiene miembros",
   group_settings_close: "Cerrar",
   group_settings_save_and_exit: "Guardar y cerrar",
-  group_settings_cancel_changes: "Cancelar cambios",
+  group_settings_cancel_changes: "Descartar cambios",
 
+  // --- Invitaciones ---
   create_invite_link: "Crear enlace de invitación",
   invite_by_link: "Invitar por enlace",
   copy_link: "Copiar enlace",
@@ -94,16 +107,18 @@ export default {
   invite_friend: "Invitar a un amigo",
   invite_error: "No se pudo crear el enlace. Inténtalo más tarde.",
   invite_message:
-    "Únete conmigo en Splitto — una forma sencilla de gestionar gastos compartidos sin salir de Telegram.\nAquí tienes el enlace:\n{{link}}",
+    "Únete a mí en Splitto — una forma sencilla de gestionar gastos compartidos sin salir de Telegram.\nAquí tienes el enlace de invitación:\n{{link}}",
   error_invite_link: "No se pudo obtener el enlace",
 
-  empty_contacts: "Aún no tienes ningún contacto...",
+  // --- Contactos ---
+  empty_contacts: "Aún no tienes contactos...",
   contacts_count: "Total de contactos: {{count}}",
   search_placeholder: "Buscar contacto...",
   filter: "Filtro",
-  sort: "Ordenar",
+  sort: "Orden",
   no_friends: "No hay amigos para añadir",
 
+  // --- Perfil y ajustes ---
   account: "Cuenta",
   settings: "Ajustes",
   about: "Acerca de",
@@ -121,6 +136,7 @@ export default {
   language_es: "Español",
   version: "Versión",
 
+  // --- Botones y estados ---
   edit: "Editar",
   cancel: "Cancelar",
   save: "Guardar",
@@ -130,19 +146,22 @@ export default {
   save_failed: "No se pudo guardar",
   delete_failed: "No se pudo eliminar",
 
+  // --- Errores y sistema ---
   error: "Error",
   group_settings_cannot_leave_due_debt:
-    "No puedes salir de este grupo ahora porque tienes deudas pendientes con otros miembros. Asegúrate de liquidarlas y vuelve a intentarlo.",
+    "No puedes salir de este grupo ahora porque tienes deudas pendientes con otros miembros. Liquídalas y vuelve a intentarlo.",
 
+  // --- Monedas ---
   currency: {
     select_title: "Elegir moneda",
     search_placeholder: "Buscar moneda",
     not_found: "No se encontró nada",
     main_currency: "Moneda principal",
-    select_short: "Elige moneda",
+    select_short: "Seleccionar moneda",
     currency_popular: "Populares",
   },
 
+  // --- Comunes / formularios ---
   common: { yes: "Sí", no: "No" },
   errors: {
     group_name_required: "Introduce el nombre del grupo",
@@ -153,23 +172,28 @@ export default {
     contact_load: "No se pudo cargar el contacto",
     common_groups_load: "No se pudieron cargar los grupos en común",
     contact_friends_load: "No se pudieron cargar los amigos del contacto",
-    tx_delete_forbidden_expense: "Solo el autor o el pagador pueden eliminar este gasto",
-    tx_delete_forbidden_transfer: "Solo el autor o el remitente pueden eliminar esta transferencia",
+    tx_delete_forbidden_expense:
+      "Solo el autor o quien pagó puede eliminar el gasto",
+    tx_delete_forbidden_transfer:
+      "Solo el autor o el remitente puede eliminar la transferencia",
+    delete_forbidden:
+      "Solo el autor o el pagador/remitente puede eliminar esta transacción",
   },
 
   group_form: {
     name_placeholder: "Nombre del grupo",
-    description_placeholder: "Descripción del grupo",
+    description_placeholder: "Descripción",
     is_trip: "¿Grupo para viaje?",
     trip_date:
-      "Introduce la fecha a partir de la cual el grupo (si no hay deudas) se archivará automáticamente",
-    name_hint_initial: "Introduce el nombre (hasta {{max}} caracteres)",
+      "Introduce la fecha tras la cual el grupo pasará al archivo (si no hay deudas)",
+    name_hint_initial: "Introduce un nombre (hasta {{max}} caracteres)",
     name_hint_remaining: "Quedan {{n}} caracteres",
-    desc_hint_initial: "Introduce la descripción (hasta {{max}} caracteres)",
+    desc_hint_initial: "Introduce una descripción (hasta {{max}} caracteres)",
     desc_hint_remaining: "Quedan {{n}} caracteres",
     trip_date_placeholder: "DD.MM.AAAA",
   },
 
+  // --- Modales ---
   add_members_modal: {
     title: "Añadir participantes",
     search_placeholder: "Buscar contacto...",
@@ -182,7 +206,7 @@ export default {
   tx_modal: {
     title: "Nueva transacción",
     choose_group: "Elige un grupo",
-    group_placeholder: "Elegir…",
+    group_placeholder: "Seleccionar…",
     type: "Tipo",
     expense: "Gasto",
     transfer: "Transferencia",
@@ -193,9 +217,9 @@ export default {
     category: "Categoría",
     paid_by: "Pagó",
     participants: "Participantes",
-    split: "División",
-    split_equal: "A partes iguales",
-    split_shares: "Por cuotas",
+    split: "Reparto",
+    split_equal: "Por igual",
+    split_shares: "Por participaciones",
     split_custom: "Manual",
     transfer_from: "Remitente",
     transfer_to: "Destinatarios",
@@ -206,15 +230,16 @@ export default {
     choose_group_first: "Primero elige un grupo",
 
     amount_required: "Introduce el importe",
-    comment_required: "Introduce el comentario",
-    category_required: "Elige la categoría",
-    split_no_participants: "Elige participantes",
-    split_no_shares: "No se han definido las cuotas",
-    split_custom_mismatch: "La suma por participantes no coincide con el total",
-    per_share: "Por 1 cuota",
+    comment_required: "Introduce un comentario",
+    category_required: "Elige una categoría",
+    split_no_participants: "Selecciona participantes",
+    split_no_shares: "No se indicaron participaciones",
+    split_custom_mismatch:
+      "El total por participante no coincide con el importe",
+    per_share: "Por 1 participación",
     custom_amounts_set: "Importes por participante establecidos",
     totals_mismatch: "Los totales no coinciden",
-    each: "por cada uno:",
+    each: "cada uno:",
     create_and_new: "Crear y nueva",
 
     all: "TODOS",
@@ -222,37 +247,43 @@ export default {
     owes_label: "Debe",
     owes: "debe",
 
-    delete_confirm: "¿Eliminar la transacción? Esta acción es irreversible.",
+    delete_confirm: "¿Eliminar la transacción? Esta acción no se puede deshacer.",
 
-    // NUEVO: bloquear edición/eliminación si alguien salió del grupo
     cannot_edit_or_delete_inactive:
-      "No puedes editar ni eliminar esta transacción porque uno de sus participantes salió del grupo.",
+      "No puedes editar ni eliminar esta transacción porque uno de sus participantes ha salido del grupo.",
   },
 
+  // --- Tarjeta de transacción ---
   tx_card: {
     not_participant_expense: "No participas en este gasto",
   },
 
+  // --- Categorías ---
   category: {
     select_title: "Elegir categoría",
     search_placeholder: "Buscar categoría",
     not_found: "No se encontró nada",
   },
 
+  // --- Fecha en tarjetas ---
   date_card: {
     pattern: "{{day}} {{month}}",
-    months: ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"],
+    months: [
+      "ene", "feb", "mar", "abr", "may", "jun",
+      "jul", "ago", "sep", "oct", "nov", "dic",
+    ],
   },
 
   actions: "Acciones",
 
+  // --- Página de contacto ---
   contact: {
     tab_info: "Información del contacto",
     tab_contact_friends: "Amigos del contacto",
     in_friends_since: "Amigos desde",
     open_in_telegram: "Abrir en Telegram",
     mutual_groups: "Grupos en común",
-    no_common_groups: "No hay grupos en común",
+    no_common_groups: "Sin grupos en común",
     loading: "Cargando…",
     error_contact: "No se pudo cargar el contacto",
     error_common_groups: "No se pudieron cargar los grupos en común",
@@ -261,4 +292,8 @@ export default {
     shown_of_total: "{{shown}} de {{total}}",
     no_name: "Sin nombre",
   },
+
+  // --- Alias para el acceso desde el código ---
+  cannot_edit_or_delete_inactive:
+    "No puedes editar ni eliminar esta transacción porque uno de sus participantes ha salido del grupo.",
 }
