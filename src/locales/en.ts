@@ -153,7 +153,7 @@ export default {
     contact_load: "Failed to load contact",
     common_groups_load: "Failed to load mutual groups",
     contact_friends_load: "Failed to load contact's friends",
-	tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
+    tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
     tx_delete_forbidden_transfer: "Удалять перевод может только автор или отправитель",
   },
 
@@ -223,6 +223,10 @@ export default {
     owes: "owes",
 
     delete_confirm: "Delete the transaction? This action is irreversible.",
+
+    // NEW: block edit/delete when someone left the group
+    cannot_edit_or_delete_inactive:
+      "You cannot edit or delete this transaction because one of its participants has left the group.",
   },
 
   tx_card: {

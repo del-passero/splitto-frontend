@@ -11,6 +11,17 @@ export interface TransactionShareOut {
   shares?: number | null
 }
 
+/** Упрощённый User для подмешивания в транзакцию (включает вышедших из группы) */
+export interface RelatedUser {
+  id: number
+  first_name?: string | null
+  last_name?: string | null
+  username?: string | null
+  photo_url?: string | null
+  name?: string | null
+  avatar_url?: string | null
+}
+
 export interface TransactionOut {
   id: number
   group_id: number
@@ -34,6 +45,9 @@ export interface TransactionOut {
 
   category?: ExpenseCategoryOut | null
   shares: TransactionShareOut[]
+
+  /** ДОБАВЛЕНО: все участники транзакции, в т.ч. вышедшие из группы */
+  related_users?: RelatedUser[]
 }
 
 export interface TransactionCreateRequest {
@@ -59,3 +73,4 @@ export interface ListResponse<T> {
   items: T[]
   total: number
 }
+

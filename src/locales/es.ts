@@ -223,6 +223,10 @@ export default {
     owes: "debe",
 
     delete_confirm: "¿Eliminar la transacción? Esta acción es irreversible.",
+
+    // NUEVO: bloquear edición/eliminación si alguien salió del grupo
+    cannot_edit_or_delete_inactive:
+      "No puedes editar ni eliminar esta transacción porque uno de sus participantes salió del grupo.",
   },
 
   tx_card: {

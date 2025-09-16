@@ -1,6 +1,6 @@
 // src/components/transactions/TransactionCard.tsx
 import React, { useRef } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, UserX } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 
@@ -258,26 +258,38 @@ function RoundAvatar({
   alt,
   size = 18,
   className = "",
+  inactive = false, // ДОБАВЛЕНО: вышел/удалён из группы
 }: {
   src?: string;
   alt?: string;
   size?: number;
   className?: string;
+  inactive?: boolean;
 }) {
-  return src ? (
-    <img
-      src={src}
-      alt={alt || ""}
-      className={`rounded-full object-cover ${className}`}
-      style={{ width: size, height: size }}
-      loading="lazy"
-    />
-  ) : (
-    <span
-      className={`rounded-full inline-block ${className}`}
-      style={{ width: size, height: size, background: "var(--tg-link-color)" }}
-      aria-hidden
-    />
+  const dim = { width: size, height: size };
+  return (
+    <span className={`relative inline-flex ${className}`} style={dim} aria-label={alt || ""}>
+      {src ? (
+        <img
+          src={src}
+          alt={alt || ""}
+          className={`rounded-full object-cover ${inactive ? "grayscale" : ""}`}
+          style={{ ...dim, opacity: inactive ? 0.7 : 1 }}
+          loading="lazy"
+        />
+      ) : (
+        <span
+          className={`rounded-full inline-block ${inactive ? "grayscale" : ""}`}
+          style={{ ...dim, background: "var(--tg-link-color)", opacity: inactive ? 0.7 : 1 }}
+          aria-hidden
+        />
+      )}
+      {inactive && (
+        <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--tg-card-bg)] p-[1px]">
+          <UserX className="w-3 h-3 text-red-500" />
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -292,6 +304,22 @@ export default function TransactionCard({
   const isExpense = tx.type === "expense";
   const hasId = Number.isFinite(Number(tx?.id));
   const txId = hasId ? Number(tx.id) : undefined;
+
+  // Мап из related_users для фолбэков (вышедшие)
+  const related: any[] = Array.isArray(tx?.related_users) ? tx.related_users : [];
+  const relatedById = new Map<number, any>(related.map((u: any) => [Number(u?.id), u]));
+
+  // Сет вышедших: те, кого нет в membersById, но кто есть среди related_users
+  const inactiveIds = new Set<number>(
+    related
+      .map((u: any) => Number(u?.id))
+      .filter((id) => Number.isFinite(id) && !getFromMap(membersById, id))
+  );
+
+  const isInactive = (uid?: number | null) => {
+    if (!Number.isFinite(Number(uid))) return false;
+    return inactiveIds.has(Number(uid));
+  };
 
   const storeUserId = useUserStore((s: any) => s.user?.id) as number | undefined;
   const currentUserId =
@@ -319,17 +347,30 @@ export default function TransactionCard({
     : Number(tx.transfer_from ?? tx.from_user_id ?? NaN);
 
   const payerMember = getFromMap(membersById, payerId);
+  const payerRelated = Number.isFinite(Number(payerId)) ? relatedById.get(Number(payerId)) : undefined;
+
   const payerNameFull =
     firstName(tx.paid_by_name || tx.from_name) ||
     firstName(payerMember?.name) ||
     firstName(`${payerMember?.first_name ?? ""} ${payerMember?.last_name ?? ""}`.trim()) ||
     payerMember?.username ||
+    firstName(
+      `${payerRelated?.first_name ?? ""} ${payerRelated?.last_name ?? ""}`.trim() ||
+      payerRelated?.name ||
+      payerRelated?.username ||
+      ""
+    ) ||
     (payerId != null ? `#${payerId}` : "");
   const payerNameDisplayExpense = truncateGraphemes(payerNameFull, 14);
   const payerNameDisplayTransfer = truncateMiddleGraphemes(payerNameFull, 32);
 
   const payerAvatar =
-    tx.paid_by_avatar || tx.from_avatar || payerMember?.avatar_url || payerMember?.photo_url;
+    tx.paid_by_avatar ||
+    tx.from_avatar ||
+    payerMember?.avatar_url ||
+    payerMember?.photo_url ||
+    payerRelated?.avatar_url ||
+    payerRelated?.photo_url;
 
   // recipient (transfer only)
   let toId: number | undefined = undefined;
@@ -339,20 +380,50 @@ export default function TransactionCard({
     else if (raw != null) toId = Number(raw);
   }
   const toMember = getFromMap(membersById, toId);
+  const toRelated = Number.isFinite(Number(toId)) ? relatedById.get(Number(toId)) : undefined;
   const toNameFull =
     firstName(tx.to_name) ||
     firstName(toMember?.name) ||
     firstName(`${toMember?.first_name ?? ""} ${toMember?.last_name ?? ""}`.trim()) ||
     toMember?.username ||
+    firstName(
+      `${toRelated?.first_name ?? ""} ${toRelated?.last_name ?? ""}`.trim() ||
+      toRelated?.name ||
+      toRelated?.username ||
+      ""
+    ) ||
     (toId != null ? `#${toId}` : "");
   const toNameDisplayTransfer = truncateMiddleGraphemes(toNameFull, 32);
-  const toAvatar = tx.to_avatar || toMember?.avatar_url || toMember?.photo_url;
+  const toAvatar =
+    tx.to_avatar ||
+    toMember?.avatar_url ||
+    toMember?.photo_url ||
+    toRelated?.avatar_url ||
+    toRelated?.photo_url;
 
-  // participants (expense only)
+  // participants (expense only) — учитываем вышедших через related_users
   const participantsFromShares: GroupMemberLike[] = Array.isArray(tx?.shares)
-    ? (tx.shares as any[])
-        .map((s: any) => getFromMap(membersById, Number(s?.user_id ?? s?.user?.id)))
-        .filter(Boolean) as GroupMemberLike[]
+    ? (tx.shares as any[]).map((s: any) => {
+        const uid = Number(s?.user_id ?? s?.user?.id);
+        const m = getFromMap(membersById, uid);
+        if (m) return m;
+        const r = relatedById.get(uid);
+        if (!r) return undefined;
+        const name =
+          r.name ||
+          `${(r.first_name || "").trim()} ${(r.last_name || "").trim()}`.trim() ||
+          r.username ||
+          `#${uid}`;
+        return {
+          id: uid,
+          name,
+          first_name: r.first_name,
+          last_name: r.last_name,
+          username: r.username,
+          avatar_url: r.avatar_url || r.photo_url,
+          photo_url: r.photo_url || r.avatar_url,
+        } as GroupMemberLike;
+      }).filter(Boolean) as GroupMemberLike[]
     : [];
   const participantsExceptPayer = participantsFromShares.filter((m) => Number(m.id) !== Number(payerId));
 
@@ -505,26 +576,26 @@ export default function TransactionCard({
               <span className="text-[12px] text-[var(--tg-hint-color)] shrink-0">
                 {(t && (t("tx_modal.paid_by_label") as string)) || "Заплатил"}:
               </span>
-              <RoundAvatar src={payerAvatar} alt={payerNameFull} />
+              <RoundAvatar src={payerAvatar} alt={payerNameFull} inactive={isInactive(payerId)} />
               <span
                 className="text-[12px] text-[var(--tg-text-color)] font-medium truncate"
                 title={payerNameFull}
               >
-                {payerNameDisplayExpense}
+                {truncateGraphemes(payerNameFull, 14)}
               </span>
             </div>
           ) : (
             // трансфер: прижимаем влево и распределяем ширину имён поровну
             <div className="min-w-0 flex items-center gap-2 text-[12px] text-[var(--tg-text-color)]">
               <div className="min-w-0 flex items-center gap-2 flex-[1_1_0%]">
-                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} />
+                <RoundAvatar src={payerAvatar} alt={payerNameFull} size={18} inactive={isInactive(payerId)} />
                 <span className="font-medium truncate" title={payerNameFull}>
                   {payerNameDisplayTransfer}
                 </span>
               </div>
               <div className="shrink-0 opacity-60 px-1">→</div>
               <div className="min-w-0 flex items-center gap-2 flex-[1_1_0%]">
-                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} />
+                <RoundAvatar src={toAvatar} alt={toNameFull} size={18} inactive={isInactive(toId)} />
                 <span className="font-medium truncate" title={toNameFull}>
                   {toNameDisplayTransfer}
                 </span>
@@ -543,22 +614,34 @@ export default function TransactionCard({
               <div className="shrink-0 flex items-center justify-end -space-x-2">
                 {participantsExceptPayer.slice(0, 16).map((m, i) => {
                   const url = (m as any).photo_url || (m as any).avatar_url;
-                  return url ? (
-                    <img
-                      key={m.id}
-                      src={url}
-                      alt=""
-                      className="w-5 h-5 rounded-full object-cover border border-[var(--tg-card-bg)]"
-                      style={{ marginLeft: i === 0 ? 0 : -8 }}
-                      loading="lazy"
-                    />
-                  ) : (
+                  const inactive = isInactive(m.id);
+                  return (
                     <span
                       key={m.id}
-                      className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block border border-[var(--tg-card-bg)]"
+                      className="relative inline-flex border border-[var(--tg-card-bg)] rounded-full"
                       style={{ marginLeft: i === 0 ? 0 : -8 }}
-                      aria-hidden
-                    />
+                    >
+                      {url ? (
+                        <img
+                          src={url}
+                          alt=""
+                          className={`w-5 h-5 rounded-full object-cover ${inactive ? "grayscale" : ""}`}
+                          style={{ opacity: inactive ? 0.7 : 1 }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span
+                          className={`w-5 h-5 rounded-full inline-block bg-[var(--tg-link-color)] ${inactive ? "grayscale" : ""}`}
+                          style={{ opacity: inactive ? 0.7 : 1 }}
+                          aria-hidden
+                        />
+                      )}
+                      {inactive && (
+                        <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--tg-card-bg)] p-[1px]">
+                          <UserX className="w-2.5 h-2.5 text-red-500" />
+                        </span>
+                      )}
+                    </span>
                   );
                 })}
               </div>

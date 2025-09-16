@@ -93,7 +93,7 @@ export default {
   group_members_empty: "В группе пока нет участников",
   group_settings_close: "Закрыть",
   group_settings_save_and_exit: "Сохранить и закрыть",
-  group_settings_cancel_changes: "Отменить изменения", // ← ДОБАВЛЕНО
+  group_settings_cancel_changes: "Отменить изменения",
 
   // --- Приглашения (инвайты) ---
   create_invite_link: "Создать ссылку-приглашение",
@@ -171,7 +171,7 @@ export default {
     contact_load: "Не удалось загрузить контакт",
     common_groups_load: "Не удалось загрузить общие группы",
     contact_friends_load: "Не удалось загрузить друзей контакта",
-	tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
+    tx_delete_forbidden_expense: "Удалять расход может только автор или плативший",
     tx_delete_forbidden_transfer: "Удалять перевод может только автор или отправитель",
   },
 
@@ -242,6 +242,10 @@ export default {
     owes: "должен",
 
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
+
+    // ⟵ НОВОЕ: блокирующее сообщение при ушедшем участнике
+    cannot_edit_or_delete_inactive:
+      "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
   },
 
   // --- Карточка транзакции ---
