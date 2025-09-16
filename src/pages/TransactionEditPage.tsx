@@ -24,7 +24,7 @@ import {
   CalendarDays,
   FileText,
   ArrowLeft,
-  UserX, // ⟵ overlay на аватар для вышедших/удалённых
+  UserX,
 } from "lucide-react";
 
 /* ====================== ВАЛЮТА/ФОРМАТЫ ====================== */
@@ -55,6 +55,16 @@ type TxOut = {
   created_at?: string;
 
   split_type?: "equal" | "shares" | "custom";
+
+  // важно: бэкенд теперь кладёт сюда всех участников транзакции
+  related_users?: Array<{
+    id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+    photo_url?: string | null;
+    name?: string | null;
+  }>;
 };
 
 export interface MinimalGroup {
@@ -177,10 +187,10 @@ const firstNameOnly = (s?: string) => {
   const tok = (s || "").trim().split(/\s+/).filter(Boolean);
   return tok[0] || "";
 };
-const nameFromMember = (m?: MemberMini) => {
+const nameFromMember = (m?: MemberMini | null) => {
   if (!m) return "";
   const composed = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim();
-  return composed || m.username || m.name || `#${m.id}`;
+  return composed || (m as any).username || (m as any).name || `#${(m as any).id}`;
 };
 
 // GCD helpers for deriving "shares" from amounts
@@ -196,47 +206,8 @@ const deriveSharesFromAmounts = (amounts: number[], decimals: number): number[] 
   return ints.map((x) => (x > 0 ? x / g : 0));
 };
 
-/* ===== Аватар с пометкой "не в группе" (серый + UserX) ===== */
-function AvatarWithInactive({
-  src,
-  alt,
-  size,
-  inactive,
-}: {
-  src?: string;
-  alt?: string;
-  size: number; // px
-  inactive: boolean;
-}) {
-  const sz = `${size}px`;
-  return (
-    <span className="relative inline-flex items-center justify-center" style={{ width: sz, height: sz }}>
-      {src ? (
-        <img
-          src={src}
-          alt={alt || ""}
-          className={`rounded-full object-cover ${inactive ? "grayscale" : ""}`}
-          style={{ width: sz, height: sz }}
-          loading="lazy"
-        />
-      ) : (
-        <span
-          className={`rounded-full inline-block ${inactive ? "grayscale" : ""}`}
-          style={{ width: sz, height: sz, background: "var(--tg-link-color)" }}
-          aria-hidden
-        />
-      )}
-      {inactive && (
-        <UserX
-          size={Math.max(10, Math.floor(size * 0.6))}
-          className="absolute"
-          style={{ right: -2, bottom: -2, color: "#EF4444" }} // красный
-          aria-label="Not in group"
-        />
-      )}
-    </span>
-  );
-}
+// безопасно привести string|null к string|undefined
+const asStrUndef = (v?: string | null) => (typeof v === "string" ? v : undefined);
 
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
@@ -293,9 +264,6 @@ export default function TransactionEditPage() {
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   };
 
-  // Блокирующая модалка по участникам, вышедшим из группы
-  const [blockOpen, setBlockOpen] = useState(false);
-
   // Валюта как состояние (редактируемая)
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
   const currency = useMemo(() => {
@@ -315,27 +283,29 @@ export default function TransactionEditPage() {
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
 
-  // Помощник: активен ли участник (находится ли в текущем списке членов группы)
-  const isActiveMember = (uid?: number) => (typeof uid === "number" && membersMap.has(uid));
-
-  // Собираем всех участников транзакции и проверяем, есть ли ушедшие/удалённые
-  const hasInactiveParticipants = useMemo(() => {
-    if (!tx) return false;
-    const ids: number[] = [];
-    if (tx.type === "expense") {
-      if (paidBy != null) ids.push(paidBy);
-      const fromSplit = (splitData?.participants || []).map((p: any) => Number(p.user_id));
-      const fromShares = (tx.shares || []).map((s: any) => Number(s.user_id));
-      (fromSplit.length ? fromSplit : fromShares).forEach((id) => {
-        if (Number.isFinite(id)) ids.push(id);
+  /* ---------- быстрый словарь по related_users + резолвер участника ---------- */
+  const relatedById = useMemo(() => {
+    const m = new Map<number, any>();
+    for (const u of (tx?.related_users || [])) {
+      if (!u) continue;
+      m.set(Number((u as any).id), {
+        id: Number((u as any).id),
+        first_name: (u as any).first_name || undefined,
+        last_name: (u as any).last_name || undefined,
+        username: (u as any).username || undefined,
+        photo_url: (u as any).photo_url || undefined,
+        name: (u as any).name || undefined,
       });
-    } else {
-      if (paidBy != null) ids.push(paidBy);
-      if (toUser != null) ids.push(toUser);
     }
-    const uniq = Array.from(new Set(ids.filter((n) => Number.isFinite(n))));
-    return uniq.some((uid) => !isActiveMember(uid));
-  }, [tx, paidBy, toUser, splitData, membersMap]);
+    return m;
+  }, [tx?.related_users]);
+
+  const getPerson = (id?: number | null) => {
+    if (!id && id !== 0) return null;
+    return membersMap.get(Number(id)) || relatedById.get(Number(id)) || null;
+  };
+  const isInactive = (id?: number | null) =>
+    !!(id || id === 0) && !membersMap.has(Number(id)) && !!relatedById.get(Number(id));
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -569,35 +539,35 @@ export default function TransactionEditPage() {
     setAmount(n.toFixed(dec));
   }, [currencyCode, amount]);
 
-  /* ---------- 4) имена/аватарки после загрузки участников ---------- */
+  /* ---------- 4) имена/аватарки после загрузки участников (с учётом related_users) ---------- */
   useEffect(() => {
     if (!tx) return;
 
     if (paidBy) {
-      const m = membersMap.get(paidBy);
-      if (m) {
-        if (!paidByName) setPaidByName(nameFromMember(m));
-        if (!paidByAvatar && m.photo_url) setPaidByAvatar(m.photo_url);
+      const mPayer = getPerson(paidBy);
+      if (mPayer) {
+        if (!paidByName) setPaidByName(nameFromMember(mPayer));
+        if (!paidByAvatar && (mPayer as any).photo_url) setPaidByAvatar((mPayer as any).photo_url);
       }
     }
 
     if (tx.type === "transfer" && toUser) {
-      const m = membersMap.get(toUser);
-      if (m) {
-        if (!toUserName) setToUserName(nameFromMember(m));
-        if (!toUserAvatar && m.photo_url) setToUserAvatar(m.photo_url);
+      const mTo = getPerson(toUser);
+      if (mTo) {
+        if (!toUserName) setToUserName(nameFromMember(mTo));
+        if (!toUserAvatar && (mTo as any).photo_url) setToUserAvatar((mTo as any).photo_url);
       }
     }
 
     if (tx.type === "expense" && splitData?.participants?.length) {
       const updated = splitData.participants.map((p: any) => {
         if (p.name && p.avatar_url) return p;
-        const m = membersMap.get(p.user_id);
+        const m = getPerson(p.user_id);
         if (!m) return p;
         return {
           ...p,
           name: p.name || firstNameOnly(nameFromMember(m)),
-          avatar_url: p.avatar_url || m?.photo_url,
+          avatar_url: p.avatar_url || (m as any).photo_url,
         };
       });
       const needUpdate =
@@ -605,7 +575,7 @@ export default function TransactionEditPage() {
       if (needUpdate) setSplitData({ ...splitData, participants: updated });
     }
     // зависимостями страхуемся от гонок, но сеттеры вызываем только при реальном изменении
-  }, [membersMap, tx?.type, paidBy, toUser, splitData, paidByName, toUserName, paidByAvatar, toUserAvatar]);
+  }, [membersMap, relatedById, tx?.type, paidBy, toUser, splitData, paidByName, toUserName, paidByAvatar, toUserAvatar]);
 
   /* ---------- HELPERS ---------- */
   const goBack = () => navigate(-1);
@@ -685,15 +655,14 @@ export default function TransactionEditPage() {
     return true;
   };
 
+  const parseApiError = (e: any) => {
+    let raw = typeof e === "string" ? e : e?.message || "";
+    try { const j = JSON.parse(raw); return j?.detail || j; } catch { return raw; }
+  };
+
   // SAVE (PUT /transactions/{id})
   const doSave = async () => {
     if (!tx || !group?.id) return;
-
-    // Блокируем сохранение, если есть участники вне группы
-    if (hasInactiveParticipants) {
-      setBlockOpen(true);
-      return;
-    }
 
     try {
       setSaving(true);
@@ -757,10 +726,15 @@ export default function TransactionEditPage() {
       }
 
       goBack();
-    } catch (e) {
-      console.error("[TransactionEditPage] save error", e);
-      setError(t("save_failed") || "Save failed");
-      showToast((t("save_failed") as string) || "Save failed");
+    } catch (e: any) {
+      const det = parseApiError(e);
+      const code = (det && (det as any).code) || (typeof det === "object" ? (det as any)?.code : undefined);
+      if (code === "tx_has_inactive_participants") {
+        showToast((t("errors.tx_has_inactive_participants") as string) || "You can't edit this transaction because one of its participants left the group.");
+      } else {
+        setError(t("save_failed") || "Save failed");
+        showToast((t("save_failed") as string) || "Save failed");
+      }
     } finally {
       setSaving(false);
     }
@@ -769,13 +743,6 @@ export default function TransactionEditPage() {
   // DELETE
   const doDelete = async () => {
     if (!tx) return;
-
-    // Блокируем удаление, если есть участники вне группы
-    if (hasInactiveParticipants) {
-      setBlockOpen(true);
-      return;
-    }
-
     const yes = window.confirm(
       (t("tx_modal.delete_confirm") as string) ||
         "Удалить транзакцию? Это действие необратимо."
@@ -787,16 +754,14 @@ export default function TransactionEditPage() {
       await removeTransaction(tx.id);
       goBack();
     } catch (e: any) {
-      console.error("[TransactionEditPage] delete error", e);
-      // Разбираем, чтобы показать корректный перевод
-      let raw = typeof e === "string" ? e : e?.message || "";
-      try { const j = JSON.parse(raw); raw = j?.detail || raw; } catch {}
-      const msg =
-        (raw && raw.includes("Only author or payer"))
-          ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
-          : (t("delete_failed") as string);
-      setError(msg);
-      showToast(msg);
+      const det = parseApiError(e);
+      const code = (det && (det as any).code) || (typeof det === "object" ? (det as any)?.code : undefined);
+      if (code === "tx_has_inactive_participants") {
+        showToast((t("errors.tx_has_inactive_participants") as string) || "You can't delete this transaction because one of its participants left the group.");
+      } else {
+        setError(t("delete_failed") || "Delete failed");
+        showToast((t("delete_failed") as string) || "Delete failed");
+      }
     } finally {
       setSaving(false);
     }
@@ -814,13 +779,14 @@ export default function TransactionEditPage() {
     );
   }
   if (error || !tx) {
+    const go = () => navigate(-1);
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={go}>
         <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
-            onClick={goBack}
+            onClick={go}
             style={{ color: "var(--tg-text-color)" }}
             className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
@@ -943,13 +909,18 @@ export default function TransactionEditPage() {
                     >
                       {paidBy ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                            <AvatarWithInactive
-                              src={paidByAvatar}
-                              alt=""
-                              size={16} // w-4 h-4
-                              inactive={!isActiveMember(paidBy)}
-                            />
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
+                            {/* AVATAR with inactive overlay */}
+                            <span className="relative inline-block">
+                              <img
+                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
+                                alt=""
+                                className={`w-4 h-4 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
+                              />
+                              {isInactive(paidBy) && (
+                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                              )}
+                            </span>
                             <strong className="truncate">
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </strong>
@@ -1004,21 +975,26 @@ export default function TransactionEditPage() {
                       <div className="flex flex-col gap-1">
                         {paidBy && (
                           <div className="flex items-center gap-2 text-[13px] font-medium">
-                            <AvatarWithInactive
-                              src={paidByAvatar}
-                              alt=""
-                              size={20} // w-5 h-5
-                              inactive={!isActiveMember(paidBy)}
-                            />
+                            <span className="relative inline-block">
+                              <img
+                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
+                                alt=""
+                                className={`w-5 h-5 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
+                              />
+                              {isInactive(paidBy) && (
+                                <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                              )}
+                            </span>
                             <span className="truncate flex-1">
                               {t("tx_modal.paid_by_label")}:{" "}
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </span>
+                            {/* ВАЖНО: тут показываем КОД валюты, а не символ */}
                             <span className="shrink-0 opacity-80">
                               {fmtMoney(
                                 amountNumber,
                                 currency.decimals,
-                                currency.symbol,
+                                currency.code || "", // <= код
                                 locale
                               )}
                             </span>
@@ -1032,20 +1008,25 @@ export default function TransactionEditPage() {
                               key={p.user_id}
                               className="flex items-center gap-2 text-[13px]"
                             >
-                              <AvatarWithInactive
-                                src={p.avatar_url ?? undefined}  // <-- важно: приводим null к undefined
-                                alt=""
-                                size={20} // w-5 h-5
-                                inactive={!isActiveMember(p.user_id)}
-                              />
-                              <span className="truncate flex-1">
-                                {t("tx_modal.owes_label")}: {p.name}
+                              <span className="relative inline-block">
+                                <img
+                                  src={asStrUndef((p as any).avatar_url) || asStrUndef(getPerson(p.user_id)?.photo_url)}
+                                  alt=""
+                                  className={`w-5 h-5 rounded-full object-cover ${isInactive(p.user_id) ? "grayscale" : ""}`}
+                                />
+                                {isInactive(p.user_id) && (
+                                  <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                                )}
                               </span>
+                              <span className="truncate flex-1">
+                                {t("tx_modal.owes_label")}: {(p as any).name || firstNameOnly(nameFromMember(getPerson(p.user_id) as any))}
+                              </span>
+                              {/* ВАЖНО: тут тоже код валюты */}
                               <span className="shrink-0 opacity-80">
                                 {fmtMoney(
                                   p.amount,
                                   currency.decimals,
-                                  currency.symbol,
+                                  currency.code || "", // <= код
                                   locale
                                 )}
                               </span>
@@ -1073,17 +1054,21 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg:white/5 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                            <AvatarWithInactive
-                              src={paidByAvatar}
-                              alt=""
-                              size={16} // w-4 h-4
-                              inactive={!isActiveMember(paidBy)}
-                            />
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
+                            <span className="relative inline-block">
+                              <img
+                                src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
+                                alt=""
+                                className={`w-4 h-4 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
+                              />
+                              {isInactive(paidBy) && (
+                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                              )}
+                            </span>
                             <strong className="truncate">
                               {firstNameOnly(paidByName) || t("not_specified")}
                             </strong>
@@ -1122,13 +1107,17 @@ export default function TransactionEditPage() {
                     >
                       {toUser ? (
                         <>
-                          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                            <AvatarWithInactive
-                              src={toUserAvatar}
-                              alt=""
-                              size={16} // w-4 h-4
-                              inactive={!isActiveMember(toUser)}
-                            />
+                          <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
+                            <span className="relative inline-block">
+                              <img
+                                src={asStrUndef(toUserAvatar) || asStrUndef(getPerson(toUser)?.photo_url)}
+                                alt=""
+                                className={`w-4 h-4 rounded-full object-cover ${isInactive(toUser) ? "grayscale" : ""}`}
+                              />
+                              {isInactive(toUser) && (
+                                <UserX size={12} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                              )}
+                            </span>
                             <strong className="truncate">
                               {firstNameOnly(toUserName) || t("not_specified")}
                             </strong>
@@ -1164,23 +1153,31 @@ export default function TransactionEditPage() {
                   <CardSection className="py-0">
                     <div className="px-3 pb-2 mt-1">
                       <div className="flex items-center gap-2 text-[13px]">
-                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                          <AvatarWithInactive
-                            src={paidByAvatar}
-                            alt=""
-                            size={20} // w-5 h-5
-                            inactive={!isActiveMember(paidBy)}
-                          />
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
+                          <span className="relative inline-block">
+                            <img
+                              src={asStrUndef(paidByAvatar) || asStrUndef(getPerson(paidBy)?.photo_url)}
+                              alt=""
+                              className={`w-5 h-5 rounded-full object-cover ${isInactive(paidBy) ? "grayscale" : ""}`}
+                            />
+                            {isInactive(paidBy) && (
+                              <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                            )}
+                          </span>
                           <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : (locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From")}</strong>
                         </span>
                         <span className="opacity-60">→</span>
-                        <span className="inline-flex items-center gap-1 min-w-0 truncate">
-                          <AvatarWithInactive
-                            src={toUserAvatar}
-                            alt=""
-                            size={20} // w-5 h-5
-                            inactive={!isActiveMember(toUser)}
-                          />
+                        <span className="inline-flex items-center gap-1 min-w-0 truncate relative">
+                          <span className="relative inline-block">
+                            <img
+                              src={asStrUndef(toUserAvatar) || asStrUndef(getPerson(toUser)?.photo_url)}
+                              alt=""
+                              className={`w-5 h-5 rounded-full object-cover ${isInactive(toUser) ? "grayscale" : ""}`}
+                            />
+                            {isInactive(toUser) && (
+                              <UserX size={14} className="absolute -right-1 -bottom-1 text-red-500 drop-shadow" />
+                            )}
+                          </span>
                           <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : (locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To")}</strong>
                         </span>
                         <span className="ml-auto shrink-0 opacity-80">
@@ -1314,15 +1311,16 @@ export default function TransactionEditPage() {
                 let participants: any[] = [];
                 if (prev.length > 0) {
                   participants = prev.map((p: any) => {
-                    const m = membersMap.get(p.user_id);
+                    const m = getPerson(p.user_id);
                     return {
                       user_id: p.user_id,
                       name: p.name || (m ? firstNameOnly(nameFromMember(m)) : ""),
-                      avatar_url: p.avatar_url || m?.photo_url,
+                      avatar_url: p.avatar_url || (m as any)?.photo_url,
                     };
                   });
-                } else if (membersMap.size > 0) {
-                  participants = Array.from(membersMap.values()).map((m) => ({
+                } else if (membersMap.size > 0 || relatedById.size > 0) {
+                  const pool = new Map<number, any>([...membersMap, ...relatedById]);
+                  participants = Array.from(pool.values()).map((m: any) => ({
                     user_id: m.id,
                     name: firstNameOnly(nameFromMember(m)),
                     avatar_url: m.photo_url || undefined,
@@ -1357,29 +1355,6 @@ export default function TransactionEditPage() {
               style={{ color: "var(--tg-text-color)" }}
             >
               {toast.message}
-            </div>
-          </div>
-        )}
-
-        {/* === Блокирующая модалка при попытке редактировать/удалять с ушедшими участниками === */}
-        {blockOpen && (
-          <div className="fixed inset-0 z-[1350] bg-black/40 flex items-center justify-center" onClick={() => setBlockOpen(false)}>
-            <div
-              className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl"
-              onClick={(e)=>e.stopPropagation()}
-            >
-              <div className="text-[var(--tg-text-color)] text-[14px]">
-                {t("tx_modal.cannot_edit_or_delete_inactive")}
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setBlockOpen(false)}
-                  className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white"
-                >
-                  {t("close")}
-                </button>
-              </div>
             </div>
           </div>
         )}

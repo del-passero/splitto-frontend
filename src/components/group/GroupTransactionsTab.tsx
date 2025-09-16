@@ -60,12 +60,31 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
-  // ---- unified center toast ----
+  // unified center toast
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
   const showToast = useCallback((msg: string) => {
     setToast({ open: true, message: msg });
     window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
   }, []);
+
+  // NEW: modal for inactive participants (block edit/delete)
+  const [inactiveBlockOpen, setInactiveBlockOpen] = useState(false);
+  const inactiveMsg = useMemo(() => {
+    const key = "cannot_edit_or_delete_inactive";
+    const raw = (t(key) as string) || "";
+    if (!raw || raw === key) {
+      // локализованный фолбэк
+      if (locale === "en") {
+        return "You can’t edit or delete this transaction because one of its participants has left the group.";
+      }
+      if (locale === "es") {
+        return "No puedes editar ni eliminar esta transacción porque uno de sus participantes salió del grupo.";
+      }
+      // ru (по умолчанию)
+      return "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников уже вышел из группы.";
+    }
+    return raw;
+  }, [t, locale]);
 
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
@@ -207,6 +226,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
   const handleLongPress = (tx: TransactionOut) => { setTxForActions(tx); setActionsOpen(true); };
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
   const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
+
   const handleDelete = async () => {
     if (!txForActions?.id) return;
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
@@ -216,14 +236,32 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       await removeTransaction(txForActions.id);
       setItems(prev => prev.filter(it => it.id !== txForActions.id));
     } catch (e: any) {
-      // Разбираем ответ, чтобы показать корректный перевод
+      // Разбираем ответ:
       let raw = typeof e === "string" ? e : e?.message || "";
-      try { const j = JSON.parse(raw); raw = j?.detail || raw; } catch {}
-      const msg =
-        (raw && raw.includes("Only author or payer"))
-          ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
-          : (t("delete_failed") as string);
-      showToast(msg);
+      let code: string | undefined;
+      try {
+        const j = JSON.parse(raw);
+        const detail = j?.detail;
+        if (typeof detail === "string") {
+          // совместимость со старыми сообщениями
+          raw = detail;
+        } else if (detail && typeof detail === "object") {
+          code = detail.code;
+        }
+      } catch {
+        // raw остаётся как есть
+      }
+
+      if (code === "tx_has_inactive_participants") {
+        // Показать модалку-блокировку
+        setInactiveBlockOpen(true);
+      } else {
+        const msg =
+          (raw && raw.includes("Only author or payer"))
+            ? (t("errors.delete_forbidden") as string) || (t("delete_failed") as string)
+            : (t("delete_failed") as string);
+        showToast(msg);
+      }
     } finally {
       setLoading(false);
       closeActions();
@@ -321,6 +359,29 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           </div>
         )}
 
+        {/* === Модалка-блокировка (участник вышел/удалён) === */}
+        {inactiveBlockOpen && (
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setInactiveBlockOpen(false)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
+              style={{ color: "var(--tg-text-color)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-[14px] leading-snug mb-3">{inactiveMsg}</div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-4 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
+                  onClick={() => setInactiveBlockOpen(false)}
+                >
+                  {t("close")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* === Центрированный тост === */}
         {toast.open && (
           <div className="fixed inset-0 z-[1200] pointer-events-none flex items-center justify-center">
@@ -338,4 +399,3 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 };
 
 export default GroupTransactionsTab;
-
