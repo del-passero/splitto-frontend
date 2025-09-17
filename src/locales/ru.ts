@@ -48,6 +48,11 @@ export default {
   group_participant_no_debt: "Нет долга",
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
+  // Новые короткие подписи и пустые состояния колонок
+  i_owe: "Я должен",
+  they_owe_me: "Мне должны",
+  group_balance_no_debts_left: "Вам никто не должен",
+  group_balance_no_debts_right: "Вы никому не должны",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",
@@ -106,7 +111,7 @@ export default {
   invite_friend: "Пригласить друга",
   invite_error: "Не удалось создать ссылку. Попробуйте позже.",
   invite_message:
-    "Присоединяйся ко мне в Splitto — удобный способ управлять совместными расходами не выходя из Telegram.\nВот ссылка для входа:\n{{link}}",
+    "Присоединияйся ко мне в Splitto — удобный способ управлять совместными расходами не выходя из Telegram.\nВот ссылка для входа:\n{{link}}",
   error_invite_link: "Не удалось получить ссылку",
 
   // --- Контакты ---
@@ -141,6 +146,7 @@ export default {
   save: "Сохранить",
   close: "Закрыть",
   delete: "Удалить",
+  clear: "Очистить",
   loading: "Загрузка...",
   save_failed: "Не удалось сохранить",
   delete_failed: "Не удалось удалить",
@@ -149,19 +155,6 @@ export default {
   error: "Ошибка",
   group_settings_cannot_leave_due_debt:
     "Сейчас Вы не можете покинуть эту группу, поскольку у вас есть непогашенные долги перед другими участниками группы. Пожалуйста, убедитесь, что все ваши долги погашены, и повторите попытку",
-
-  // --- Валюты ---
-  currency: {
-    select_title: "Выбор валюты",
-    search_placeholder: "Поиск валюты",
-    not_found: "Ничего не найдено",
-    main_currency: "Основная валюта",
-    select_short: "Выберите валюту",
-    currency_popular: "Популярные",
-  },
-
-  // --- Общие и форма группы ---
-  common: { yes: "Да", no: "Нет" },
   errors: {
     group_name_required: "Введите название группы",
     group_trip_date_required: "Укажите дату поездки",
@@ -175,8 +168,21 @@ export default {
     tx_delete_forbidden_transfer: "Удалять перевод может только автор или отправитель",
     delete_forbidden:
       "Удалять транзакцию может только автор или плативший/отправитель",
+    amount_positive: "Сумма должна быть больше 0",
   },
 
+  // --- Валюты ---
+  currency: {
+    select_title: "Выбор валюты",
+    search_placeholder: "Поиск валюты",
+    not_found: "Ничего не найдено",
+    main_currency: "Основная валюта",
+    select_short: "Выберите валюту",
+    currency_popular: "Популярные",
+  },
+
+  // --- Общие и форма группы ---
+  common: { yes: "Да", no: "Нет" },
   group_form: {
     name_placeholder: "Название группы",
     description_placeholder: "Описание группы",
@@ -245,7 +251,6 @@ export default {
 
     delete_confirm: "Удалить транзакцию? Это действие необратимо.",
 
-    // Блокирующее сообщение при ушедшем участнике
     cannot_edit_or_delete_inactive:
       "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
   },
@@ -273,7 +278,7 @@ export default {
 
   actions: "Действия",
 
-  // --- Страница контакта (singular namespace) ---
+  // --- Страница контакта ---
   contact: {
     tab_info: "Информация о контакте",
     tab_contact_friends: "Друзья контакта",
@@ -290,7 +295,8 @@ export default {
     no_name: "Без имени",
   },
 
-  // --- Алиас для удобного доступа из кода ---
+  // --- Алиас (используем и в корне) ---
   cannot_edit_or_delete_inactive:
     "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
-}
+};
+

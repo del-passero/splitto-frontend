@@ -1,8 +1,9 @@
 // src/components/group/GroupBalanceTabSmart.tsx
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Banknote, MessageCircle } from "lucide-react";
+import { HandCoins, Bell } from "lucide-react";
 
+/* ===== Types (совпадают с тем, как их формирует GroupBalanceTab.tsx) ===== */
 type User = {
   id: number;
   first_name?: string;
@@ -11,8 +12,8 @@ type User = {
   photo_url?: string;
 };
 
-export type MyDebt = { user: User; amount: number; currency: string }; // >0 — вам должны, <0 — вы должны
-export type AllDebt  = { from: User; to: User; amount: number; currency: string };
+export type MyDebt = { user: User; amount: number; currency: string }; // >0 — мне должны, <0 — я должен
+export type AllDebt = { from: User; to: User; amount: number; currency: string };
 
 type Props = {
   myBalanceByCurrency: Record<string, number>;
@@ -21,28 +22,33 @@ type Props = {
   loading: boolean;
   onFabClick: () => void;
 
-  onRepay?:  (user: User, amount: number, currency: string) => void;
-  onRemind?: (user: User, amount: number, currency: string) => void;
+  onRepay: (user: User, amount: number, currency: string) => void;
+  onRemind: (user: User, amount: number, currency: string) => void;
 };
 
 /* ---------- utils ---------- */
-const DECLESS = new Set(["JPY", "KRW", "VND"]);
-const decimalsByCode = (c?: string | null) => (c && DECLESS.has(c) ? 0 : 2);
-const fmtMoney = (n: number, code?: string | null) => {
-  const d = decimalsByCode(code);
-  const num =
-    new Intl.NumberFormat(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
-  // неразрывный пробел между суммой и валютой
-  return `${num}\u00A0${code || ""}`.trim();
-};
 const firstOnly = (u?: User) => {
   if (!u) return "";
   const name = (u.first_name || "").trim();
   return name || u.username || `#${u.id}`;
 };
 
-function Avatar({ url, alt }: { url?: string; alt?: string }) {
-  const size = 56; // в 2 раза больше прежнего
+/** Формат «550 TRY» или «45,50 USD»: без копеек, если дробная часть = 0 */
+const fmtNoTrailing = (n: number, code: string, locale?: string) => {
+  const rounded = Math.round(n * 100) / 100;
+  const hasCents = Math.round((rounded % 1) * 100) !== 0;
+  try {
+    const nf = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: hasCents ? 2 : 0,
+    });
+    return `${nf.format(rounded)}\u00A0${code}`;
+  } catch {
+    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}\u00A0${code}`;
+  }
+};
+
+function Avatar({ url, alt, size = 56 }: { url?: string; alt?: string; size?: number }) {
   return url ? (
     <img
       src={url}
@@ -63,25 +69,33 @@ function Avatar({ url, alt }: { url?: string; alt?: string }) {
 type CurrencyLine = { currency: string; amount: number }; // абсолют
 type CardItem = { user: User; lines: CurrencyLine[]; total: number };
 
-function totalsToInline(by: Record<string, number>) {
-  // "100 RUB; 28 BYN; 5 USD"  (перенос возможен только после '; ')
-  const parts = Object.entries(by).map(([ccy, sum]) => fmtMoney(sum, ccy));
+function totalsToInline(by: Record<string, number>, locale?: string) {
+  const parts = Object.entries(by)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([ccy, sum]) => fmtNoTrailing(sum, ccy, locale));
+  // перенос возможен только после '; '
   return parts.join("; ");
 }
 
-/* ---------- main ---------- */
+/* ================= main ================= */
 export default function GroupBalanceTabSmart({
-  myBalanceByCurrency, myDebts, allDebts, loading, onFabClick, onRepay, onRemind,
+  myBalanceByCurrency, // не используем прямо сейчас, оставлен для совместимости пропсов
+  myDebts,
+  allDebts,
+  loading,
+  onFabClick,
+  onRepay,
+  onRemind,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = (i18n.language || "ru").split("-")[0];
   const [tab, setTab] = useState<"mine" | "all">("mine");
-  const [stubOpen, setStubOpen] = useState(false);
 
   /* подготовка данных для двух колонок */
   const { leftCards, rightCards, leftTotalsInline, rightTotalsInline } = useMemo(() => {
-    const leftMap  = new Map<number, CardItem>(); // я должен
+    const leftMap = new Map<number, CardItem>(); // я должен
     const rightMap = new Map<number, CardItem>(); // мне должны
-    const leftTotals:  Record<string, number> = {};
+    const leftTotals: Record<string, number> = {};
     const rightTotals: Record<string, number> = {};
 
     for (const d of myDebts) {
@@ -107,22 +121,26 @@ export default function GroupBalanceTabSmart({
     const sortCards = (a: CardItem, b: CardItem) => b.total - a.total;
     const sortLines = (a: CurrencyLine, b: CurrencyLine) => a.currency.localeCompare(b.currency);
 
-    const leftCards  = Array.from(leftMap.values()).map(ci => ({ ...ci,  lines: ci.lines.sort(sortLines) })).sort(sortCards);
-    const rightCards = Array.from(rightMap.values()).map(ci => ({ ...ci, lines: ci.lines.sort(sortLines) })).sort(sortCards);
+    const leftCards = Array.from(leftMap.values())
+      .map((ci) => ({ ...ci, lines: ci.lines.sort(sortLines) }))
+      .sort(sortCards);
+    const rightCards = Array.from(rightMap.values())
+      .map((ci) => ({ ...ci, lines: ci.lines.sort(sortLines) }))
+      .sort(sortCards);
 
     return {
       leftCards,
       rightCards,
-      leftTotalsInline:  totalsToInline(leftTotals),
-      rightTotalsInline: totalsToInline(rightTotals),
+      leftTotalsInline: totalsToInline(leftTotals, locale),
+      rightTotalsInline: totalsToInline(rightTotals, locale),
     };
-  }, [myDebts]);
+  }, [myDebts, locale]);
 
-  /* стили кнопок (3D-эффект) */
-  const btn3D = "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
-                "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
-                "hover:brightness-105";
+  /* стили кнопок (не увеличивают высоту карточки) */
+  const btn = "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
+              "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
+              "hover:brightness-105";
 
   return (
     <div className="w-full">
@@ -163,7 +181,6 @@ export default function GroupBalanceTabSmart({
                   className="text-[12px] mb-2"
                   style={{
                     color: "var(--tg-hint-color)",
-                    // перенос только после "; "
                     whiteSpace: "pre-wrap",
                     wordBreak: "keep-all",
                   }}
@@ -173,16 +190,18 @@ export default function GroupBalanceTabSmart({
               )}
 
               {leftCards.length === 0 ? (
-                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left") || "Нет долгов"}</div>
+                <div className="text-[13px] text-[var(--tg-hint-color)]">
+                  {t("group_balance_no_debts_left") || "Нет долгов"}
+                </div>
               ) : (
                 <div className="grid gap-2">
-                  {leftCards.map((card) => (
+                  {leftCards.map((card, cardIdx) => (
                     <div
                       key={card.user.id + "-L"}
                       className="rounded-xl border p-2"
                       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
                     >
-                      {/* шапка карточки: аватар + имя в одной строке */}
+                      {/* шапка карточки: аватар + имя */}
                       <div className="flex items-center gap-2 mb-1">
                         <Avatar url={card.user.photo_url} alt={firstOnly(card.user)} />
                         <div className="text-[14px] font-medium" style={{ color: "var(--tg-text-color)" }}>
@@ -190,31 +209,43 @@ export default function GroupBalanceTabSmart({
                         </div>
                       </div>
 
-                      {/* строки валют: сумма (красная) + кнопка погасить справа */}
+                      {/* строки валют: сумма (красная) + кнопка «Выплатить/Settle Up/Pagar» справа;
+                          Только на самой верхней кнопке колонки — подпись над кнопкой */}
                       <div className="flex flex-col gap-1">
-                        {card.lines.map((ln, i) => (
-                          <div
-                            key={card.user.id + "-L-" + ln.currency + "-" + i}
-                            className="grid items-center"
-                            style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                          >
+                        {card.lines.map((ln, lineIdx) => {
+                          const showTopLabel = cardIdx === 0 && lineIdx === 0;
+                          return (
                             <div
-                              className="text-[14px] font-semibold"
-                              style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
+                              key={card.user.id + "-L-" + ln.currency + "-" + lineIdx}
+                              className="grid items-center relative"
+                              style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
                             >
-                              {fmtMoney(ln.amount, ln.currency)}
+                              <div
+                                className="text-[14px] font-semibold"
+                                style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
+                              >
+                                {fmtNoTrailing(ln.amount, ln.currency, locale)}
+                              </div>
+
+                              <div className="relative flex items-center justify-end">
+                                {showTopLabel && (
+                                  <div className="absolute -top-3 right-0 text-[11px] opacity-75 leading-none">
+                                    {t("repay_debt")}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => onRepay(card.user, ln.amount, ln.currency)}
+                                  className={btn}
+                                  aria-label={t("repay_debt") as string}
+                                  title={t("repay_debt") as string}
+                                >
+                                  <HandCoins size={18} />
+                                </button>
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
-                              className={btn3D}
-                              aria-label="Repay"
-                              title={t("repay_debt") as string}
-                            >
-                              <Banknote size={18} />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
@@ -241,7 +272,9 @@ export default function GroupBalanceTabSmart({
               )}
 
               {rightCards.length === 0 ? (
-                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right") || "Никто не должен"}</div>
+                <div className="text-[13px] text-[var(--tg-hint-color)]">
+                  {t("group_balance_no_debts_right") || "Никто не должен"}
+                </div>
               ) : (
                 <div className="grid gap-2">
                   {rightCards.map((card) => (
@@ -258,7 +291,7 @@ export default function GroupBalanceTabSmart({
                         </div>
                       </div>
 
-                      {/* строки валют (зелёные) + одна кнопка справа по центру */}
+                      {/* строки валют (зелёные) + одна кнопка «Напомнить/Bell» справа по центру */}
                       <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
                         <div className="flex flex-col gap-1">
                           {card.lines.map((ln, i) => (
@@ -267,19 +300,22 @@ export default function GroupBalanceTabSmart({
                               className="text-[14px] font-semibold"
                               style={{ color: "var(--tg-success-text,#2ecc71)" }}
                             >
-                              {fmtMoney(ln.amount, ln.currency)}
+                              {fmtNoTrailing(ln.amount, ln.currency, locale)}
                             </div>
                           ))}
                         </div>
-                        <div className="flex items-center">
+                        <div className="relative flex items-center justify-end">
+                          <div className="absolute -top-3 right-0 text-[11px] opacity-75 leading-none">
+                            {t("remind_debt")}
+                          </div>
                           <button
                             type="button"
-                            onClick={() => setStubOpen(true)}
-                            className={btn3D}
-                            aria-label="Remind"
+                            onClick={() => onRemind(card.user, card.lines[0]?.amount ?? 0, card.lines[0]?.currency ?? "")}
+                            className={btn}
+                            aria-label={t("remind_debt") as string}
                             title={t("remind_debt") as string}
                           >
-                            <MessageCircle size={18} />
+                            <Bell size={18} />
                           </button>
                         </div>
                       </div>
@@ -290,58 +326,59 @@ export default function GroupBalanceTabSmart({
             </div>
           </div>
         ) : (
-          /* ================= Все балансы (без изменений визуально) ================= */
+          /* ================= Все балансы: группировка по валютам + аватары ================= */
           <div>
             {allDebts.length === 0 ? (
-              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
+              <div className="text-[13px] text-[var(--tg-hint-color)]">
+                {t("group_balance_no_debts_all")}
+              </div>
             ) : (
-              allDebts.map((p, idx) => (
-                <div key={`${idx}-${p.currency}`} className="relative">
-                  <div className="py-2">
-                    <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                      <div className="min-w-0 flex items-center gap-8">
-                        <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.from)}</span>
-                        <span className="text-[14px] text-[var(--tg-hint-color)]">{(t("tx_modal.owes") as string) || "owes"}</span>
-                        <span className="text-[14px] text-[var(--tg-text-color)] font-medium">{firstOnly(p.to)}</span>
-                      </div>
-                      <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                        {fmtMoney(p.amount, p.currency)}
-                      </div>
+              (() => {
+                const byCcy = new Map<string, AllDebt[]>();
+                for (const p of allDebts) {
+                  const arr = byCcy.get(p.currency) || [];
+                  arr.push(p);
+                  byCcy.set(p.currency, arr);
+                }
+                return Array.from(byCcy.entries())
+                  .sort((a, b) => a[0].localeCompare(b[0]))
+                  .map(([ccy, arr]) => (
+                    <div key={ccy} className="mb-3">
+                      <div className="px-1 mb-1 text-[12px] uppercase tracking-wide opacity-70">{ccy}</div>
+                      {arr.map((p, idx) => (
+                        <div key={`${ccy}-${idx}-${p.from.id}-${p.to.id}`} className="relative">
+                          <div className="py-2">
+                            <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                              <div className="min-w-0 flex items-center gap-2">
+                                <Avatar url={p.from.photo_url} alt={firstOnly(p.from)} size={36} />
+                                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                                  {firstOnly(p.from)}
+                                </span>
+                                <span className="text-[14px] text-[var(--tg-hint-color)]">
+                                  {(t("tx_modal.owes") as string) || "owes"}
+                                </span>
+                                <Avatar url={p.to.photo_url} alt={firstOnly(p.to)} size={36} />
+                                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                                  {firstOnly(p.to)}
+                                </span>
+                              </div>
+                              <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
+                                {fmtNoTrailing(p.amount, p.currency, locale)}
+                              </div>
+                            </div>
+                          </div>
+                          {idx !== arr.length - 1 && (
+                            <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  {idx !== allDebts.length - 1 && (
-                    <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
-                  )}
-                </div>
-              ))
+                  ));
+              })()
             )}
           </div>
         )}
       </div>
-
-      {/* Временная модалка-заглушка для "напомнить" */}
-      {stubOpen && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setStubOpen(false)}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div
-            className="relative max-w-[84vw] w-[420px] rounded-xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
-            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-[15px] font-semibold mb-2">{t("remind_debt")}</div>
-            <div className="text-[14px] opacity-80 mb-3">{t("debts_reserved")}</div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setStubOpen(false)}
-                className="h-9 px-4 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* скрытая кнопка для FAB */}
       <div className="hidden"><button type="button" onClick={onFabClick} /></div>
