@@ -52,7 +52,7 @@ export default {
   i_owe: "Я должен",
   they_owe_me: "Мне должны",
   group_balance_no_debts_left: "Я никому не должен",
-  group_balance_no_debts_right: "Мне никто не должны",
+  group_balance_no_debts_right: "Мне никто не должен",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",

@@ -90,17 +90,18 @@ export default function GroupBalanceTabSmart({
   const locale = (i18n.language || "ru").split("-")[0];
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
-  // локальная заглушка для «Напомнить», если onRemind не передали
+  // локальная заглушка для «Напомнить»
   const [stubOpen, setStubOpen] = useState(false);
 
-  // короткая подпись для «Settle up» (не переносится)
+  // короткая подпись «Settle up / Выплатить / Pagar»
   const settleLabel = (() => {
     const tr = t("balance_settle_up_label");
     if (tr && tr !== "balance_settle_up_label") return tr as string;
     return locale === "ru" ? "Выплатить" : locale === "es" ? "Pagar" : "Settle up";
   })();
-
-  const remindLabel = t("remind_debt") || (locale === "ru" ? "Напомнить" : locale === "es" ? "Recordar" : "Remind");
+  const remindLabel =
+    (t("remind_debt") as string) ||
+    (locale === "ru" ? "Напомнить" : locale === "es" ? "Recordar" : "Remind");
 
   /* подготовка данных для двух колонок */
   const { leftCards, rightCards, leftTotalsInline, rightTotalsInline } = useMemo(() => {
@@ -165,14 +166,18 @@ export default function GroupBalanceTabSmart({
           <button
             type="button"
             onClick={() => setTab("mine")}
-            className={`px-3 h-9 text-[13px] ${tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+            className={`px-3 h-9 text-[13px] ${
+              tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+            }`}
           >
             {t("group_balance_microtab_mine")}
           </button>
           <button
             type="button"
             onClick={() => setTab("all")}
-            className={`px-3 h-9 text-[13px] ${tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+            className={`px-3 h-9 text-[13px] ${
+              tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+            }`}
           >
             {t("group_balance_microtab_all")}
           </button>
@@ -227,40 +232,38 @@ export default function GroupBalanceTabSmart({
                         </div>
                       </div>
 
-                      {/* ЕДИНАЯ подпись для карточки — по нижнему краю аватара, не растягивает карточку */}
-                      {card.lines.length > 0 && (
-                        <div
-                          className="absolute right-2 text-[11px] opacity-75 leading-none whitespace-nowrap pointer-events-none"
-                          style={{ top: 56 /* высота аватара */ }}
-                        >
-                          {settleLabel}
-                        </div>
-                      )}
-
-                      {/* строки валют: сумма (красная) + кнопка справа */}
-                      <div className="flex flex-col gap-1">
-                        {card.lines.map((ln, lineIdx) => (
-                          <div
-                            key={card.user.id + "-L-" + ln.currency + "-" + lineIdx}
-                            className="grid items-center"
-                            style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                          >
-                            <div
-                              className="text-[14px] font-semibold"
-                              style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
-                            >
-                              {fmtNoTrailing(ln.amount, ln.currency, locale)}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
-                              className={btn}
-                              aria-label={(t("repay_debt") as string) || settleLabel}
-                              title={(t("repay_debt") as string) || settleLabel}
-                            >
-                              <HandCoins size={18} />
-                            </button>
-                          </div>
+                      {/* строки валют: каждая строка — 2 колонки; у первой строки справа — кнопка + подпись */}
+                      <div className="grid gap-1" style={{ gridTemplateColumns: "1fr auto" }}>
+                        {card.lines.map((ln, i) => (
+                          <FragmentRow
+                            key={card.user.id + "-L-" + ln.currency + "-" + i}
+                            left={
+                              <div
+                                className="text-[14px] font-semibold"
+                                style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
+                              >
+                                {fmtNoTrailing(ln.amount, ln.currency, locale)}
+                              </div>
+                            }
+                            right={
+                              <div className="relative flex items-start justify-end">
+                                {i === 0 && (
+                                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[11px] opacity-75 leading-none whitespace-nowrap pointer-events-none">
+                                    {settleLabel}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
+                                  className={btn}
+                                  aria-label={(t("repay_debt") as string) || settleLabel}
+                                  title={(t("repay_debt") as string) || settleLabel}
+                                >
+                                  <HandCoins size={18} />
+                                </button>
+                              </div>
+                            }
+                          />
                         ))}
                       </div>
                     </div>
@@ -310,43 +313,48 @@ export default function GroupBalanceTabSmart({
                         </div>
                       </div>
 
-                      {/* Подпись для «Напомнить» — по нижнему краю аватара */}
-                      {card.lines.length > 0 && (
-                        <div
-                          className="absolute right-2 text-[11px] opacity-75 leading-none whitespace-nowrap pointer-events-none"
-                          style={{ top: 56 }}
-                        >
-                          {remindLabel}
-                        </div>
-                      )}
-
-                      {/* строки валют (зелёные) + одна кнопка справа по центру */}
-                      <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
-                        <div className="flex flex-col gap-1">
-                          {card.lines.map((ln, i) => (
-                            <div
-                              key={card.user.id + "-R-" + ln.currency + "-" + i}
-                              className="text-[14px] font-semibold"
-                              style={{ color: "var(--tg-success-text,#2ecc71)" }}
-                            >
-                              {fmtNoTrailing(ln.amount, ln.currency, locale)}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onRemind) onRemind(card.user, card.lines[0]?.amount ?? 0, card.lines[0]?.currency ?? "");
-                              else setStubOpen(true);
-                            }}
-                            className={btn}
-                            aria-label={remindLabel}
-                            title={remindLabel}
-                          >
-                            <Bell size={18} />
-                          </button>
-                        </div>
+                      {/* строки валют: у первой строки справа — кнопка «Напомнить» + подпись; у остальных — пусто */}
+                      <div className="grid gap-1" style={{ gridTemplateColumns: "1fr auto" }}>
+                        {card.lines.map((ln, i) => (
+                          <FragmentRow
+                            key={card.user.id + "-R-" + ln.currency + "-" + i}
+                            left={
+                              <div
+                                className="text-[14px] font-semibold"
+                                style={{ color: "var(--tg-success-text,#2ecc71)" }}
+                              >
+                                {fmtNoTrailing(ln.amount, ln.currency, locale)}
+                              </div>
+                            }
+                            right={
+                              i === 0 ? (
+                                <div className="relative flex items-start justify-end">
+                                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[11px] opacity-75 leading-none whitespace-nowrap pointer-events-none">
+                                    {remindLabel}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // Всегда показываем заглушку, чтобы «модалка» открывалась.
+                                      setStubOpen(true);
+                                      // И дополнительно дергаем внешний обработчик, если он есть.
+                                      if (onRemind) {
+                                        setTimeout(() => onRemind(card.user, ln.amount, ln.currency), 0);
+                                      }
+                                    }}
+                                    className={btn}
+                                    aria-label={remindLabel}
+                                    title={remindLabel}
+                                  >
+                                    <Bell size={18} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div />
+                              )
+                            }
+                          />
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -409,7 +417,7 @@ export default function GroupBalanceTabSmart({
         )}
       </div>
 
-      {/* Временная модалка-заглушка для "Напомнить" (если onRemind не передали) */}
+      {/* Временная модалка-заглушка для "Напомнить" */}
       {stubOpen && (
         <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setStubOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
@@ -438,5 +446,21 @@ export default function GroupBalanceTabSmart({
         <button type="button" onClick={onFabClick} />
       </div>
     </div>
+  );
+}
+
+/* ===== Вспомогательный компонент для строки 2-колоночной сетки ===== */
+function FragmentRow({
+  left,
+  right,
+}: {
+  left: React.ReactNode;
+  right: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="min-w-0">{left}</div>
+      <div>{right}</div>
+    </>
   );
 }
