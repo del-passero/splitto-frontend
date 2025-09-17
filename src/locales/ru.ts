@@ -51,8 +51,8 @@ export default {
   // Новые короткие подписи и пустые состояния колонок
   i_owe: "Я должен",
   they_owe_me: "Мне должны",
-  group_balance_no_debts_left: "Вам никто не должен",
-  group_balance_no_debts_right: "Вы никому не должны",
+  group_balance_no_debts_left: "Я никому не должен",
+  group_balance_no_debts_right: "Мне никто не должны",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",

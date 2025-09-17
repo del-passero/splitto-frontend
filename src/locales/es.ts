@@ -50,8 +50,8 @@ export default {
   group_participant_owes_you: "Te deben: {{sum}}",
   i_owe: "Debo",
   they_owe_me: "Me deben",
-  group_balance_no_debts_left: "Nadie te debe",
-  group_balance_no_debts_right: "No debes a nadie",
+  group_balance_no_debts_left: "No debes a nadie",
+  group_balance_no_debts_right: "Nadie te debe",
 
   // --- Carrusel de miembros ---
   group_invite: "Invitar",

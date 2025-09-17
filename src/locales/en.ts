@@ -50,8 +50,8 @@ export default {
   group_participant_owes_you: "Owes you: {{sum}}",
   i_owe: "I owe",
   they_owe_me: "They owe me",
-  group_balance_no_debts_left: "No one owes you",
-  group_balance_no_debts_right: "You owe no one",
+  group_balance_no_debts_left: "You owe no one",
+  group_balance_no_debts_right: "No one owes you",
 
   // --- Members scroller ---
   group_invite: "Invite",
