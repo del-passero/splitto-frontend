@@ -1,6 +1,8 @@
 // src/components/group/GroupBalanceTabSmart.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+// если используете lucide-react — можно импортить иконки, но тут я сделал текстовые кнопки 💵/💬,
+// чтобы не тащить зависимость в пример. При желании замените на <Banknote/> и <MessageCircle/>.
 
 type User = {
   id: number;
@@ -41,7 +43,7 @@ const firstOnly = (u?: User) => {
   return name || u.username || `#${u.id}`;
 };
 
-function MiniAvatar({ url, alt, size = 18 }: { url?: string; alt?: string; size?: number }) {
+function MiniAvatar({ url, alt, size = 28 }: { url?: string; alt?: string; size?: number }) {
   return url ? (
     <img src={url} alt={alt || ""} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
   ) : (
@@ -49,52 +51,27 @@ function MiniAvatar({ url, alt, size = 18 }: { url?: string; alt?: string; size?
   );
 }
 
-/** Автопрокрутка строки при переполнении */
-function AutoScrollRow({ children, className = "", gap = 8 }: { children: React.ReactNode; className?: string; gap?: number }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [need, setNeed] = useState(false);
-  const [dist, setDist] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => {
-      const n = el.scrollWidth > el.clientWidth + 2;
-      setNeed(n);
-      if (n) setDist(el.scrollWidth - el.clientWidth + gap * 2);
-    };
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    window.addEventListener("resize", check);
-    return () => { ro.disconnect(); window.removeEventListener("resize", check); };
-  }, [gap, children]);
-  const duration = Math.max(6, Math.min(24, dist / 40));
-  return (
-    <div className={`relative overflow-hidden ${className}`}>
-      <style>{`@keyframes gbs-auto-x{0%{transform:translateX(0)}12%{transform:translateX(0)}88%{transform:translateX(calc(-1*var(--gbs-dist,0px)))}100%{transform:translateX(calc(-1*var(--gbs-dist,0px)))}}`}</style>
-      <div
-        ref={ref}
-        className="whitespace-nowrap flex items-center"
-        style={need
-          ? {
-              columnGap: gap,
-              animation: `gbs-auto-x ${duration}s linear infinite`,
-              WebkitMaskImage: "linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%)",
-              maskImage: "linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%)",
-              // @ts-ignore
-              ["--gbs-dist" as any]: `${dist}px`,
-            }
-          : { columnGap: gap }}
-      >
-        {children}
-      </div>
-    </div>
-  );
+/* ---------- helpers для «двух колонок» ---------- */
+type CurrencyLine = { currency: string; amount: number }; // всегда абсолют
+type CardItem = { user: User; lines: CurrencyLine[]; total: number };
+
+function aggregateTotals(lines: CurrencyLine[]) {
+  const by: Record<string, number> = {};
+  for (const l of lines) by[l.currency] = (by[l.currency] || 0) + l.amount;
+  return by;
+}
+function totalsToInline(by: Record<string, number>) {
+  // "100 RUB, 28 BYN, 5 USD"
+  const entries = Object.entries(by);
+  if (entries.length === 0) return "";
+  return entries
+    .map(([ccy, sum]) => fmtMoney(sum, ccy))
+    .join(", ");
 }
 
 /* ---------- constants ---------- */
-const ITEM_VPAD = 4;
-const SEP_LEFT_INSET = 18;
+const ITEM_VPAD = 6;
+const SEP_LEFT_INSET = 12;
 
 /* ---------- main ---------- */
 export default function GroupBalanceTabSmart({
@@ -103,31 +80,66 @@ export default function GroupBalanceTabSmart({
   const { t } = useTranslation();
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
+  // long-press для контекстного меню (оставил — пригодится)
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [selected, setSelected] = useState<MyDebt | null>(null);
+  const [selectedForMenu, setSelectedForMenu] = useState<{ user: User; amount: number; currency: string; direction: "owe" | "get" } | null>(null);
+  const timer = useRef<number | null>(null);
+  const startPress = (payload: { user: User; amount: number; currency: string; direction: "owe" | "get" }) => {
+    clearPress();
+    timer.current = window.setTimeout(() => { setSelectedForMenu(payload); setSheetOpen(true); }, 420);
+  };
+  const clearPress = () => { if (timer.current) window.clearTimeout(timer.current); timer.current = null; };
 
-  const [stubOpen, setStubOpen] = useState(false);
+  /* ===== подготавливаем данные для двух колонок (только для mine) =====
+     leftCards  — Я должен (amount < 0)
+     rightCards — Мне должны (amount > 0)
+  */
+  const { leftCards, rightCards, leftTotalsInline, rightTotalsInline } = useMemo(() => {
+    const leftMap = new Map<number, CardItem>();
+    const rightMap = new Map<number, CardItem>();
 
-  const balanceLines = useMemo(() => {
-    const entries = Object.entries(myBalanceByCurrency).filter(([_, v]) => Math.abs(v) > 0);
-    if (entries.length === 0) return [t("group_balance_zero") as string];
-    return entries.map(([ccy, v]) =>
-      v > 0
-        ? (t("group_balance_you_get", { sum: fmtMoney(v, ccy) }) as string)
-        : (t("group_balance_you_owe", { sum: fmtMoney(Math.abs(v), ccy) }) as string)
-    );
-  }, [myBalanceByCurrency, t]);
+    const leftTotals: Record<string, number> = {};
+    const rightTotals: Record<string, number> = {};
+
+    for (const d of myDebts) {
+      const abs = Math.abs(d.amount);
+      if (abs <= 0) continue;
+      const key = d.user.id;
+      if (d.amount < 0) {
+        // я должен этому пользователю
+        const ci = leftMap.get(key) || { user: d.user, lines: [], total: 0 };
+        ci.lines.push({ currency: d.currency, amount: abs });
+        ci.total += abs;
+        leftMap.set(key, ci);
+        leftTotals[d.currency] = (leftTotals[d.currency] || 0) + abs;
+      } else {
+        // этот пользователь должен мне
+        const ci = rightMap.get(key) || { user: d.user, lines: [], total: 0 };
+        ci.lines.push({ currency: d.currency, amount: abs });
+        ci.total += abs;
+        rightMap.set(key, ci);
+        rightTotals[d.currency] = (rightTotals[d.currency] || 0) + abs;
+      }
+    }
+
+    // сортируем карточки по убыванию total
+    const sortCards = (a: CardItem, b: CardItem) => b.total - a.total;
+    const leftCards = Array.from(leftMap.values()).map(ci => ({ ...ci, lines: ci.lines.sort((a,b)=>a.currency.localeCompare(b.currency)) })).sort(sortCards);
+    const rightCards = Array.from(rightMap.values()).map(ci => ({ ...ci, lines: ci.lines.sort((a,b)=>a.currency.localeCompare(b.currency)) })).sort(sortCards);
+
+    return {
+      leftCards,
+      rightCards,
+      leftTotalsInline: totalsToInline(leftTotals),
+      rightTotalsInline: totalsToInline(rightTotals),
+    };
+  }, [myDebts]);
 
   const owesWord = ((t("tx_modal.owes") as string) || "owes").toLowerCase();
 
-  // long-press
-  const timer = useRef<number | null>(null);
-  const startPress = (d: MyDebt) => { clearPress(); timer.current = window.setTimeout(() => { setSelected(d); setSheetOpen(true); }, 420); };
-  const clearPress = () => { if (timer.current) window.clearTimeout(timer.current); timer.current = null; };
-
   return (
     <div className="w-full">
-      {/* микротабы — ЕДИНЫЕ для всех валют */}
+      {/* микротабы */}
       <div className="flex justify-center mt-1 mb-2">
         <div className="inline-flex rounded-xl border overflow-hidden" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
           <button
@@ -152,59 +164,127 @@ export default function GroupBalanceTabSmart({
         {loading ? (
           <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
-          <>
-            {/* заголовок (многострочный, по валютам) */}
-            <div className="text-[14px] font-semibold text-[var(--tg-text-color)] mb-2">
-              {balanceLines.map((line, i) => (
-                <div key={i}>{line}</div>
-              ))}
-            </div>
-            {/* разделитель под заголовком */}
-            <div className="h-px bg-[var(--tg-hint-color)] opacity-15 mb-1" />
-
-            {myDebts.length === 0 ? (
-              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts")}</div>
-            ) : (
-              <div>
-                {myDebts.map((d, idx) => {
-                  const iOwe = d.amount < 0;
-                  const amountAbs = Math.abs(d.amount);
-                  return (
-                    <div key={`${d.user.id}-${idx}-${d.currency}`} className="relative">
-                      <div
-                        className={`py-${ITEM_VPAD}`}
-                        onPointerDown={() => startPress(d)}
-                        onPointerUp={clearPress}
-                        onPointerLeave={clearPress}
-                      >
-                        {/* 2 колонки: бегущая строка слева + сумма справа */}
-                        <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                          <AutoScrollRow className="min-w-0">
-                            <span className="text-[14px] text-[var(--tg-text-color)]">
-                              {iOwe
-                                ? (t("group_balance_owe_to", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")
-                                : (t("group_balance_get_from", { sum: "" }) as string).replace(/\s*[:：]\s*$/, "")}
-                            </span>
-                            <MiniAvatar url={d.user.photo_url} alt={firstOnly(d.user)} />
-                            <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">
-                              {firstOnly(d.user)}
-                            </span>
-                          </AutoScrollRow>
-                          <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
-                            {fmtMoney(amountAbs, d.currency)}
-                          </div>
-                        </div>
-                      </div>
-                      {idx !== myDebts.length - 1 && (
-                        <div className="absolute right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" style={{ left: SEP_LEFT_INSET }} />
-                      )}
-                    </div>
-                  );
-                })}
+          /* ================= Мой баланс: две колонки ================= */
+          <div className="grid gap-3"
+               style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Левая колонка — Я должен */}
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                {t("i_owe") || "Я должен"}
               </div>
-            )}
-          </>
+              {leftTotalsInline && (
+                <div className="text-[12px] mb-2" style={{ color: "var(--tg-hint-color)" }}>
+                  {leftTotalsInline}
+                </div>
+              )}
+
+              {leftCards.length === 0 ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left") || "Нет долгов"}</div>
+              ) : (
+                leftCards.map((card, ci) => (
+                  <div key={card.user.id + "-L"} className="rounded-2xl border mb-2 p-10 pb-2 pt-2"
+                       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
+                    {/* шапка карточки: аватар + имя в одной строке */}
+                    <div className="flex items-center gap-2 pb-2">
+                      <MiniAvatar url={card.user.photo_url} alt={firstOnly(card.user)} />
+                      <div className="text-[14px] font-medium" style={{ color: "var(--tg-text-color)" }}>
+                        {firstOnly(card.user)}
+                      </div>
+                    </div>
+
+                    {/* строки валют: сумма (красная) + кнопка погасить справа */}
+                    <div className="flex flex-col gap-2">
+                      {card.lines.map((ln, i) => (
+                        <div
+                          key={card.user.id + "-L-" + ln.currency + "-" + i}
+                          className="grid items-center"
+                          style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}
+                          onPointerDown={() => startPress({ user: card.user, amount: ln.amount, currency: ln.currency, direction: "owe" })}
+                          onPointerUp={clearPress}
+                          onPointerLeave={clearPress}
+                        >
+                          <div className="text-[14px] font-semibold"
+                               style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}>
+                            {fmtMoney(ln.amount, ln.currency)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
+                            className="h-8 px-3 rounded-xl text-[13px] font-semibold bg-[color:var(--tg-secondary-bg-color,#e7e7e7)] hover:opacity-90 active:scale-95 transition"
+                            aria-label="Repay"
+                          >
+                            💵
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Правая колонка — Мне должны */}
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                {t("they_owe_me") || "Мне должны"}
+              </div>
+              {rightTotalsInline && (
+                <div className="text-[12px] mb-2" style={{ color: "var(--tg-hint-color)" }}>
+                  {rightTotalsInline}
+                </div>
+              )}
+
+              {rightCards.length === 0 ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right") || "Никто не должен"}</div>
+              ) : (
+                rightCards.map((card) => (
+                  <div key={card.user.id + "-R"} className="rounded-2xl border mb-2 p-10 pb-2 pt-2"
+                       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
+                    {/* шапка карточки: аватар + имя */}
+                    <div className="flex items-center gap-2 pb-2">
+                      <MiniAvatar url={card.user.photo_url} alt={firstOnly(card.user)} />
+                      <div className="text-[14px] font-medium" style={{ color: "var(--tg-text-color)" }}>
+                        {firstOnly(card.user)}
+                      </div>
+                    </div>
+
+                    {/* строки валют (зелёные) + одна кнопка справа по центру */}
+                    <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                      <div className="flex flex-col gap-2">
+                        {card.lines.map((ln, i) => (
+                          <div key={card.user.id + "-R-" + ln.currency + "-" + i}
+                               className="text-[14px] font-semibold"
+                               style={{ color: "var(--tg-success-text,#2ecc71)" }}
+                               onPointerDown={() => startPress({ user: card.user, amount: ln.amount, currency: ln.currency, direction: "get" })}
+                               onPointerUp={clearPress}
+                               onPointerLeave={clearPress}
+                          >
+                            {fmtMoney(ln.amount, ln.currency)}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // одна кнопка на всю карточку — передадим суммарную информацию
+                            const totalFirst = card.lines[0];
+                            onRemind?.(card.user, totalFirst?.amount ?? 0, totalFirst?.currency ?? "");
+                          }}
+                          className="h-8 px-3 rounded-xl text-[13px] font-semibold bg-[color:var(--tg-secondary-bg-color,#e7e7e7)] hover:opacity-90 active:scale-95 transition"
+                          aria-label="Remind"
+                        >
+                          💬
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         ) : (
+          /* ================= Все балансы: прежний список ================= */
           <>
             {allDebts.length === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
@@ -214,13 +294,13 @@ export default function GroupBalanceTabSmart({
                   <div key={`${idx}-${p.currency}`} className="relative">
                     <div className={`py-${ITEM_VPAD}`}>
                       <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                        <AutoScrollRow className="min-w-0">
-                          <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} />
+                        <div className="min-w-0 flex items-center gap-2">
+                          <MiniAvatar url={p.from.photo_url} alt={firstOnly(p.from)} size={22} />
                           <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">{firstOnly(p.from)}</span>
                           <span className="text-[14px] text-[var(--tg-text-color)] opacity-90">{owesWord}</span>
-                          <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} />
+                          <MiniAvatar url={p.to.photo_url} alt={firstOnly(p.to)} size={22} />
                           <span className="text-[14px] text-[var(--tg-text-color)] font-medium overflow-visible">{firstOnly(p.to)}</span>
-                        </AutoScrollRow>
+                        </div>
                         <div className="text-[14px] font-semibold text-[var(--tg-text-color)] text-right">
                           {fmtMoney(p.amount, p.currency)}
                         </div>
@@ -237,19 +317,19 @@ export default function GroupBalanceTabSmart({
         )}
       </div>
 
-      {/* контекстное меню по long-press — по центру */}
-      {sheetOpen && selected && (
+      {/* простое контекстное меню по long-press (для будущих действий) */}
+      {sheetOpen && selectedForMenu && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={() => setSheetOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
           <div
             className="relative max-w-[84vw] w-[420px] rounded-2xl bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] p-2"
             onClick={(e) => e.stopPropagation()}
           >
-            {selected.amount < 0 ? (
+            {selectedForMenu.direction === "owe" ? (
               <button
                 type="button"
                 className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={() => { onRepay?.(selected.user, Math.abs(selected.amount), selected.currency); setSheetOpen(false); }}
+                onClick={() => { onRepay?.(selectedForMenu.user, selectedForMenu.amount, selectedForMenu.currency); setSheetOpen(false); }}
               >
                 {t("repay_debt")}
               </button>
@@ -257,7 +337,7 @@ export default function GroupBalanceTabSmart({
               <button
                 type="button"
                 className="w-full text-left px-4 py-3 rounded-xl text-[14px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
-                onClick={() => { onRemind?.(selected.user, Math.abs(selected.amount), selected.currency); setSheetOpen(false); setStubOpen(true); }}
+                onClick={() => { onRemind?.(selectedForMenu.user, selectedForMenu.amount, selectedForMenu.currency); setSheetOpen(false); }}
               >
                 {t("remind_debt")}
               </button>
@@ -270,30 +350,6 @@ export default function GroupBalanceTabSmart({
             >
               {t("cancel")}
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* центр-модалка-заглушка */}
-      {stubOpen && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setStubOpen(false)}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div
-            className="relative max-w-[84vw] w-[420px] rounded-2xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
-            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-[15px] font-semibold mb-2">{t("remind_debt")}</div>
-            <div className="text-[14px] opacity-80 mb-3">{t("debts_reserved")}</div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setStubOpen(false)}
-                className="h-9 px-4 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
-              >
-                OK
-              </button>
-            </div>
           </div>
         </div>
       )}
