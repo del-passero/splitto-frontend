@@ -82,8 +82,8 @@ export default {
   group_balance_no_debts_all: "В группе никто никому не должен",
 
   // Новые подписи для кнопок действий на карточках баланса
-  repay_debt: "Погасить долг",
-  remind_debt: "Напомнить о долге",
+  repay_debt: "Рассчитаться",
+  remind_debt: "Напомнить",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",

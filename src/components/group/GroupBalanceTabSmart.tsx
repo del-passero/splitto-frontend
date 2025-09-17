@@ -97,7 +97,7 @@ export default function GroupBalanceTabSmart({
   const settleLabel = (() => {
     const tr = t("balance_settle_up_label");
     if (tr && tr !== "balance_settle_up_label") return tr as string;
-    return locale === "ru" ? "Выплатить" : locale === "es" ? "Pagar" : "Settle up";
+    return locale === "ru" ? "Рассчитаться" : locale === "es" ? "Pagar" : "Settle up";
   })();
   const remindLabel =
     (t("remind_debt") as string) ||
