@@ -499,6 +499,8 @@ export default function CreateTransactionModal({
     if (type === "expense") {
       if (!categoryId) { setCategoryModal(true); return false; }
       if (errors.split) { setSplitOpen(true); return false; }
+      // ⬇️ НОВОЕ: для расхода обязуем выбрать плательщика
+      if (!paidBy) { setPayerOpen(true); return false; }
       return true;
     }
     if (!paidBy) { setPayerOpen(true); return false; }
@@ -557,7 +559,8 @@ export default function CreateTransactionModal({
       let saved: TransactionOut | undefined;
 
       if (type === "expense") {
-        const payerId = paidBy ?? user?.id;
+        // ⬇️ НОВОЕ: для расхода больше нет фолбэка на текущего пользователя — нужен явный выбор
+        const payerId = paidBy;
         if (!payerId) { setPayerOpen(true); setShowErrors(true); setSaving(false); return; }
 
         const payload: any = {
@@ -1181,7 +1184,7 @@ export default function CreateTransactionModal({
                       >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
                           onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
