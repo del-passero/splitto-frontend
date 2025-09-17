@@ -16,7 +16,6 @@ import CurrencyPickerModal, { type CurrencyItem } from "../components/currency/C
 import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
 import { getTransaction, updateTransaction, removeTransaction } from "../api/transactionsApi";
-import { useUserStore } from "../store/userStore";
 
 import {
   X,
@@ -340,7 +339,6 @@ export default function TransactionEditPage() {
   const { txId } = useParams();
   const id = Number(txId);
 
-  const user = useUserStore((s) => s.user);
   const locale = (i18n.language || "ru").split("-")[0];
 
   const [loading, setLoading] = useState(true);
@@ -786,7 +784,8 @@ export default function TransactionEditPage() {
       const curr = (currency.code || tx.currency_code || tx.currency || "").toUpperCase();
 
       if (tx.type === "expense") {
-        const payerId = paidBy ?? user?.id;
+        // ⬇️ Без фолбэка: плательщик должен быть выбран явно
+        const payerId = paidBy;
         if (!payerId) {
           setPayerOpen(true);
           setSaving(false);
@@ -1153,7 +1152,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg白/10 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
