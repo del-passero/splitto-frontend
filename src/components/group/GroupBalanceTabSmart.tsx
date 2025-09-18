@@ -184,6 +184,7 @@ export default function GroupBalanceTabSmart({
     const map = new Map<PairKey, PairCard>();
 
     for (const p of allDebts) {
+      // Общая сводка: суммируем все положительные величины как «объём долгов»
       totalByCcy[p.currency] = (totalByCcy[p.currency] || 0) + Math.max(0, p.amount);
 
       const idA = Math.min(p.from.id, p.to.id);
@@ -218,6 +219,22 @@ export default function GroupBalanceTabSmart({
 
     return { allSummaryInline, pairCards };
   }, [allDebts, locale]);
+
+  // === ВАЖНО: состояние разворотов для карточек на вкладке «Все балансы» (вынесено наружу) ===
+  const [expandedPairsA, setExpandedPairsA] = useState<Set<string>>(() => new Set()); // раскрытие левой колонки (b->a)
+  const [expandedPairsB, setExpandedPairsB] = useState<Set<string>>(() => new Set()); // раскрытие правой колонки (a->b)
+  const togglePairA = (key: string) => {
+    const s = new Set(expandedPairsA);
+    if (s.has(key)) s.delete(key);
+    else s.add(key);
+    setExpandedPairsA(s);
+  };
+  const togglePairB = (key: string) => {
+    const s = new Set(expandedPairsB);
+    if (s.has(key)) s.delete(key);
+    else s.add(key);
+    setExpandedPairsB(s);
+  };
 
   /* стили кнопок (без подписей) */
   const btn =
@@ -268,7 +285,7 @@ export default function GroupBalanceTabSmart({
                 {t("i_owe") || "Я должен"}
               </div>
 
-              {/* Итоги / пустое состояние */}
+              {/* Итоги / пустое состояние — только здесь горизонтальный скролл */}
               {leftTotalsInline ? (
                 <div
                   className="mb-2 overflow-x-auto no-scrollbar"
@@ -320,7 +337,6 @@ export default function GroupBalanceTabSmart({
                             className="flex flex-col"
                             style={{
                               gap: V_GAP,
-                              // базовая высота под видимые строки; остальное доберётся естественно
                               minHeight: heightFor(linesVisible),
                             }}
                           >
@@ -385,7 +401,7 @@ export default function GroupBalanceTabSmart({
                 {t("they_owe_me") || "Мне должны"}
               </div>
 
-              {/* Итоги / пустое состояние */}
+              {/* Итоги / пустое состояние — только здесь горизонтальный скролл */}
               {rightTotalsInline ? (
                 <div
                   className="mb-2 overflow-x-auto no-scrollbar"
@@ -530,16 +546,16 @@ export default function GroupBalanceTabSmart({
                   .filter(([, v]) => v > 0)
                   .sort((a, b) => a[0].localeCompare(b[0]));
 
-                // локальные раскрытия для этой карточки
-                const [expA, setExpA] = useState(false);
-                const [expB, setExpB] = useState(false);
+                const pairKey = `${pair.a.id}-${pair.b.id}`;
+                const isAExpanded = expandedPairsA.has(pairKey);
+                const isBExpanded = expandedPairsB.has(pairKey);
 
-                const visA = expA ? toALines.length : Math.min(2, toALines.length);
-                const visB = expB ? toBLines.length : Math.min(2, toBLines.length);
+                const showALines = isAExpanded ? toALines : toALines.slice(0, 2);
+                const showBLines = isBExpanded ? toBLines : toBLines.slice(0, 2);
 
                 return (
                   <div
-                    key={`pair-${idx}-${pair.a.id}-${pair.b.id}`}
+                    key={`pair-${idx}-${pairKey}`}
                     className="rounded-xl border p-2"
                     style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
                   >
@@ -561,16 +577,15 @@ export default function GroupBalanceTabSmart({
                       {/* b → a (мне должны, зелёный, стрелка влево) */}
                       <div>
                         <div className="text-[12px] mb-1 opacity-80" style={{ color: "var(--tg-text-color)" }}>
-                          {/* визуальная подсказка колонки, без слова «должен» */}
                           <span className="inline-flex items-center gap-1">
                             <ArrowLeft size={14} />
                             {firstOnly(pair.b)} → {firstOnly(pair.a)}
                           </span>
                         </div>
                         <div className="flex flex-col" style={{ gap: V_GAP }}>
-                          {(expA ? toALines : toALines.slice(0, 2)).map(([ccy, sum]) => (
+                          {showALines.map(([ccy, sum]) => (
                             <div
-                              key={`toA-${ccy}`}
+                              key={`toA-${pairKey}-${ccy}`}
                               className="flex items-center gap-2 text-[14px] font-semibold"
                               style={{ color: "var(--tg-success-text,#2ecc71)" }}
                             >
@@ -581,11 +596,11 @@ export default function GroupBalanceTabSmart({
                           {toALines.length > 2 && (
                             <button
                               type="button"
-                              onClick={() => setExpA(!expA)}
+                              onClick={() => togglePairA(pairKey)}
                               className="self-start text-[12px] opacity-80 hover:opacity-100 underline"
                               style={{ color: "var(--tg-text-color)" }}
                             >
-                              {expA ? "Свернуть" : `и ещё ${toALines.length - 2}`}
+                              {isAExpanded ? "Свернуть" : `и ещё ${toALines.length - 2}`}
                             </button>
                           )}
                         </div>
@@ -600,9 +615,9 @@ export default function GroupBalanceTabSmart({
                           </span>
                         </div>
                         <div className="flex flex-col" style={{ gap: V_GAP }}>
-                          {(expB ? toBLines : toBLines.slice(0, 2)).map(([ccy, sum]) => (
+                          {showBLines.map(([ccy, sum]) => (
                             <div
-                              key={`toB-${ccy}`}
+                              key={`toB-${pairKey}-${ccy}`}
                               className="flex items-center gap-2 text-[14px] font-semibold"
                               style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
                             >
@@ -613,11 +628,11 @@ export default function GroupBalanceTabSmart({
                           {toBLines.length > 2 && (
                             <button
                               type="button"
-                              onClick={() => setExpB(!expB)}
+                              onClick={() => togglePairB(pairKey)}
                               className="self-start text-[12px] opacity-80 hover:opacity-100 underline"
                               style={{ color: "var(--tg-text-color)" }}
                             >
-                              {expB ? "Свернуть" : `и ещё ${toBLines.length - 2}`}
+                              {isBExpanded ? "Свернуть" : `и ещё ${toBLines.length - 2}`}
                             </button>
                           )}
                         </div>
