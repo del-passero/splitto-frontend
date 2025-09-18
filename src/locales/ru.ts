@@ -48,11 +48,15 @@ export default {
   group_participant_no_debt: "Нет долга",
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
+
   // Новые короткие подписи и пустые состояния колонок
   i_owe: "Я должен",
   they_owe_me: "Мне должны",
   group_balance_no_debts_left: "Я никому не должен",
   group_balance_no_debts_right: "Мне никто не должен",
+  group_balance_no_debts_all: "В группе никто никому не должен",
+  // aria-лейбл для горизонтального скролла итогов
+  group_balance_totals_aria: "Итого по валютам",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",
@@ -71,19 +75,6 @@ export default {
   group_transactions_not_found: "Траты не найдены",
   group_transactions_placeholder:
     "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
-
-  // --- Вкладка Баланс ---
-  group_balance_microtab_mine: "Мой баланс",
-  group_balance_microtab_all: "Все балансы",
-  group_balance_no_debts: "Нет долгов",
-  group_balance_get_from: "Вам должны: {{sum}}",
-  group_balance_owe_to: "Вы должны: {{sum}}",
-  group_balance_no_debt_with: "Нет долга",
-  group_balance_no_debts_all: "В группе никто никому не должен",
-
-  // Новые подписи для кнопок действий на карточках баланса
-  repay_debt: "Рассчитаться",
-  remind_debt: "Напомнить",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",
@@ -299,4 +290,3 @@ export default {
   cannot_edit_or_delete_inactive:
     "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
 };
-
