@@ -24,7 +24,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const debtsPreview = useGroupsStore((s) => s.debtsPreviewByGroupId)
   const fetchDebtsPreview = useGroupsStore((s) => s.fetchDebtsPreview)
 
-  // при появлении новых групп — запрашиваем превью по свежим id
   const visibleIds = useMemo(() => groups.map((g) => g.id), [groups])
 
   useEffect(() => {
@@ -36,7 +35,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
 
   useEffect(() => {
     const el = loaderRef.current
-    // если нет loadMore — нечего наблюдать
     if (!el || !loadMore) return
 
     const io = new IntersectionObserver(
@@ -52,7 +50,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
         if (p && typeof (p as any).finally === "function") {
           ;(p as Promise<unknown>).finally(unlock)
         } else {
-          // на всякий случай — короткая задержка, чтобы стейт успел обновиться
           setTimeout(unlock, 120)
         }
       },
@@ -79,7 +76,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
           />
         ))}
       </div>
-      {/* Сентинел */}
       <div ref={loaderRef} aria-hidden style={{ height: 1, width: "100%", opacity: 0 }} />
     </CardSection>
   )

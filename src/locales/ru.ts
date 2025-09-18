@@ -36,6 +36,8 @@ export default {
   and_more_members: "и ещё {{count}}",
   group_members_count: "{{count}} участников",
   group_status_archived: "Архив",
+  group_status_deleted: "Удалена",
+  group_linked_telegram: "Связана с Telegram",
   leave_group: "Выйти из группы",
   delete_group: "Удалить группу",
 
@@ -49,12 +51,20 @@ export default {
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
 
+  // Новые короткие подписи и пустые состояния колонок
   i_owe: "Я должен",
   they_owe_me: "Мне должны",
   group_balance_no_debts_left: "Я никому не должен",
   group_balance_no_debts_right: "Мне никто не должен",
   group_balance_no_debts_all: "В группе никто никому не должен",
   group_balance_totals_aria: "Итого по валютам",
+
+  // --- Последняя активность (новые ключи) ---
+  last_activity_label: "Последняя активность",
+  last_activity_today: "Сегодня",
+  last_activity_yesterday: "Вчера",
+  last_activity_days_ago: "{{count}} дн. назад",
+  last_activity_inactive: "Неактивна",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",
@@ -73,6 +83,18 @@ export default {
   group_transactions_not_found: "Траты не найдены",
   group_transactions_placeholder:
     "Заглушка для списка транзакций. Тут появятся транзакции вашей группы.",
+
+  // --- Вкладка Баланс ---
+  group_balance_microtab_mine: "Мой баланс",
+  group_balance_microtab_all: "Все балансы",
+  group_balance_no_debts: "Нет долгов",
+  group_balance_get_from: "Вам должны: {{sum}}",
+  group_balance_owe_to: "Вы должны: {{sum}}",
+  group_balance_no_debt_with: "Нет долга",
+
+  // Новые подписи для кнопок действий на карточках баланса
+  repay_debt: "Рассчитаться",
+  remind_debt: "Напомнить",
 
   // --- Вкладка Аналитика ---
   group_analytics_coming_soon: "Аналитика скоро появится",
@@ -110,6 +132,34 @@ export default {
   filter: "Фильтр",
   sort: "Сортировка",
   no_friends: "Нет друзей для добавления",
+
+  // --- Фильтр групп (новые ключи) ---
+  groups_filter_title: "Фильтр групп",
+  groups_filter_status: "Статус",
+  groups_filter_status_active: "Активные",
+  groups_filter_status_archived: "Архивные",
+  groups_filter_status_deleted: "Удалённые",
+  groups_filter_hidden: "Скрытые мной",
+  groups_filter_hidden_hidden: "Скрытые",
+  groups_filter_hidden_visible: "Видимые",
+  groups_filter_activity: "Активность",
+  groups_filter_activity_recent: "Недавняя",
+  groups_filter_activity_inactive: "Неактивная",
+  groups_filter_activity_empty: "Без транзакций",
+  groups_filter_all: "ВСЕ",
+  apply: "Применить",
+  reset_filters: "Сбросить",
+
+  // --- Сортировка групп (новые ключи) ---
+  groups_sort_title: "Сортировка",
+  groups_sort_by: "Поле сортировки",
+  groups_sort_by_last_activity: "Последняя активность",
+  groups_sort_by_name: "Название",
+  groups_sort_by_created_at: "Дата создания",
+  groups_sort_by_members_count: "Число участников",
+  groups_sort_dir: "Направление",
+  groups_sort_dir_asc: "По возрастанию",
+  groups_sort_dir_desc: "По убыванию",
 
   // --- Профиль и настройки ---
   account: "Аккаунт",
@@ -284,6 +334,7 @@ export default {
     no_name: "Без имени",
   },
 
+  // --- Алиас (используем и в корне) ---
   cannot_edit_or_delete_inactive:
     "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
-};
+}

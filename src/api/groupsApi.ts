@@ -25,7 +25,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return res.status === 204 ? undefined : await res.json()
 }
 
-/** Список групп пользователя: расширяем параметры под будущие фильтры/сортировку (бэк — best-effort). */
+/** Список групп пользователя c фильтрами/сортировкой */
 export async function getUserGroups(
   userId: number,
   params?: {
@@ -34,9 +34,6 @@ export async function getUserGroups(
     includeHidden?: boolean
     includeArchived?: boolean
     q?: string
-    // новые (бэк может игнорировать — не сломает)
-    status?: ("active" | "archived" | "deleted")[]  // пока deleted бэком не отдается
-    hiddenFilter?: "all" | "hidden" | "visible"
     sortBy?: "last_activity" | "name" | "created_at" | "members_count"
     sortDir?: "asc" | "desc"
   }
@@ -53,14 +50,8 @@ export async function getUserGroups(
   sp.set("include_hidden", includeHidden)
   sp.set("include_archived", includeArchived)
   if (q.length > 0) sp.set("q", q)
-
-  // Доп.параметры — бэк частично проигнорирует, но пусть едут для совместимости будущей
   if (params?.sortBy) sp.set("sort_by", params.sortBy)
   if (params?.sortDir) sp.set("sort_dir", params.sortDir)
-  if (params?.hiddenFilter) sp.set("hidden_filter", params.hiddenFilter)
-  if (params?.status && params.status.length) {
-    params.status.forEach(s => sp.append("status", s))
-  }
 
   const url = `${API_URL}/groups/user/${userId}?` + sp.toString()
 
@@ -117,8 +108,6 @@ export async function archiveGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/archive`
   await fetchJson<void>(url, { method: "POST" })
 }
-
-/** Разархивировать; при returnFull=true вернёт Group */
 export async function unarchiveGroup(groupId: number, returnFull: boolean = false): Promise<Group | void> {
   const url = `${API_URL}/groups/${groupId}/unarchive?return_full=${returnFull ? "true" : "false"}`
   return await fetchJson<Group | void>(url, { method: "POST" })
@@ -128,8 +117,6 @@ export async function softDeleteGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}`
   await fetchJson<void>(url, { method: "DELETE" })
 }
-
-/** Восстановить; toActive — попытаться сразу активировать; returnFull — вернуть Group */
 export async function restoreGroup(groupId: number, opts?: { toActive?: boolean; returnFull?: boolean }): Promise<Group | void> {
   const sp = new URLSearchParams()
   if (opts?.toActive) sp.set("to_active", "true")
@@ -137,8 +124,6 @@ export async function restoreGroup(groupId: number, opts?: { toActive?: boolean;
   const url = `${API_URL}/groups/${groupId}/restore` + (sp.toString() ? `?${sp.toString()}` : "")
   return await fetchJson<Group | void>(url, { method: "POST" })
 }
-
-/** Жёсткое удаление — если нет транзакций и группа уже soft-deleted */
 export async function hardDeleteGroup(groupId: number): Promise<void> {
   const url = `${API_URL}/groups/${groupId}/hard`
   await fetchJson<void>(url, { method: "DELETE" })
@@ -149,7 +134,7 @@ export async function patchGroupCurrency(groupId: number, code: string): Promise
   await fetchJson<void>(url, { method: "PATCH" })
 }
 
-/** Обновление end_date / auto_archive */
+/** end_date / auto_archive */
 export async function patchGroupSchedule(
   groupId: number,
   payload: { end_date?: string | null; auto_archive?: boolean }
@@ -162,7 +147,7 @@ export async function patchGroupSchedule(
   })
 }
 
-/** Частичное обновление инфо группы (название/описание). */
+/** Частичное обновление инфо группы */
 export async function patchGroupInfo(
   groupId: number,
   payload: { name?: string; description?: string | null }
@@ -175,7 +160,7 @@ export async function patchGroupInfo(
   })
 }
 
-/** Батч-превью долгов: { "<id>": { owe: {...}, owed: {...} } } */
+/** Батч-превью долгов */
 export async function getDebtsPreview(userId: number, groupIds: number[]): Promise<Record<string, { owe?: Record<string, number>; owed?: Record<string, number> }>> {
   if (!groupIds.length) return {}
   const sp = new URLSearchParams()

@@ -23,26 +23,41 @@ type Props = {
 
 const AVATAR_SIZE = 72
 const PARTICIPANT_SIZE = 24
-const MAX_DISPLAYED = 6
+const MAX_DISPLAYED = 5 // (п.4) показываем 5 + при необходимости "+N" отдельным кружком
 
-const HorizontalSums = ({ title, sums, emptyKey }: { title: string; sums?: Record<string, number>; emptyKey: string }) => {
+const SumsRow = ({
+  labelKey,
+  sums,
+  emptyKey,
+  red = false,
+}: {
+  labelKey: string
+  sums?: Record<string, number>
+  emptyKey: string
+  red?: boolean
+}) => {
   const { t } = useTranslation()
   const entries = Object.entries(sums || {})
+  // (п.2) две строки, суммы ПОД фразой; суммы: сначала число, потом валюта; красный текст
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="text-[12px] text-[var(--tg-hint-color)] whitespace-nowrap">{title}</div>
-      {entries.length === 0 ? (
-        <div className="text-[12px] text-[var(--tg-hint-color)] truncate">{t(emptyKey) || ""}</div>
-      ) : (
-        <div className="flex gap-2 overflow-x-auto no-scrollbar text-[12px]">
-          {entries.map(([ccy, amt]) => (
-            <div key={ccy} className="shrink-0">
-              {/* Формат: USD 12.34 */}
-              <span className="font-medium">{ccy}</span>&nbsp;{amt}
+    <div className="min-w-0">
+      <div className="text-[12px] leading-[14px] text-[var(--tg-hint-color)] whitespace-nowrap">
+        {t(labelKey) || ""}
+      </div>
+      <div className={`text-[12px] leading-[14px] ${red ? "text-red-500" : "text-[var(--tg-text-color)]"} truncate`}>
+        {entries.length === 0
+          ? (t(emptyKey) || "")
+          : (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              {entries.map(([ccy, amt]) => (
+                <div key={ccy} className="shrink-0">
+                  {/* сначала сумма, потом валюта */}
+                  <span className="font-semibold">{amt}</span>&nbsp;{ccy}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+      </div>
     </div>
   )
 }
@@ -56,7 +71,6 @@ const GroupCard = ({
 }: Props) => {
   const { t } = useTranslation()
 
-  // Универсально достаем участников (детали или превью)
   const members: GroupMember[] = useMemo(() => {
     if ("members" in group && Array.isArray((group as any).members) && (group as any).members.length > 0) {
       return (group as any).members
@@ -67,7 +81,6 @@ const GroupCard = ({
     return []
   }, [group])
 
-  // Владелец первым
   const sortedMembers = useMemo(() => {
     if (!members.length) return []
     return [
@@ -82,32 +95,31 @@ const GroupCard = ({
   const isArchived = (group as any).status === "archived"
   const isDeleted = !!(group as any).deleted_at
 
-  // Последняя активность (короткий формат)
+  // Последняя активность (п.3) — две строки: label + value, минимальные отступы
   const lastActivity = (group as any).last_activity_at
-  let lastActivityLabel = ""
-  if (lastActivity) {
+  const toRel = (iso?: string | null): string => {
+    if (!iso) return t("last_activity_inactive") || "Неактивна"
     try {
-      const d = new Date(lastActivity)
+      const d = new Date(iso)
       const now = new Date()
-      const days = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-      if (days <= 0) lastActivityLabel = "Сегодня"
-      else if (days === 1) lastActivityLabel = "Вчера"
-      else lastActivityLabel = `${days} дн. назад`
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+      if (diffDays <= 0) return t("last_activity_today") || "Сегодня"
+      if (diffDays === 1) return t("last_activity_yesterday") || "Вчера"
+      return (t("last_activity_days_ago", { count: diffDays }) || `${diffDays} дн. назад`)
     } catch {
-      lastActivityLabel = ""
+      return t("last_activity_inactive") || "Неактивна"
     }
-  } else {
-    lastActivityLabel = "Неактивна"
   }
+  const lastActivityLabel = toRel(lastActivity)
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={`
-        w-full flex items-stretch gap-3 relative
-        rounded-xl
-        p-3
+        w-full flex items-stretch gap-2 relative
+        rounded-lg       /* (п.5) скругление меньше */
+        p-1.5            /* (п.5) отступы в 2 раза меньше, было p-3 */
         border bg-[var(--tg-card-bg)]
         border-[var(--tg-hint-color)]
         shadow-[0_4px_18px_-10px_rgba(83,147,231,0.14)]
@@ -120,7 +132,7 @@ const GroupCard = ({
       `}
       aria-label={(group as any).name}
     >
-      {/* Квадратный аватар на всю высоту карточки */}
+      {/* Квадратный аватар */}
       <div className="flex-shrink-0 relative">
         <GroupAvatar
           name={(group as any).name}
@@ -142,31 +154,31 @@ const GroupCard = ({
 
       {/* Контент: 3 строки */}
       <div className="flex flex-col justify-between flex-1 min-w-0">
-        {/* 1 строка: Название (на всю ширину) */}
+        {/* 1 строка: Название */}
         <div className="flex items-center justify-between w-full">
           <div className="text-base font-semibold text-[var(--tg-text-color)] truncate">
             {(group as any).name}
           </div>
-          {/* Зарезервировано под ⋮ (пока без логики, чтобы ничего не сломать) */}
-          {/* <MoreVertical size={18} className="text-[var(--tg-hint-color)]" /> */}
         </div>
 
-        {/* 2 строка: два столбца с горизонтальными скроллами сумм */}
-        <div className="grid grid-cols-2 gap-3 mt-2">
-          <HorizontalSums
-            title={t("i_owe") || "Я должен"}
+        {/* 2 строка: две колонки с суммами под подписями (п.2) */}
+        <div className="grid grid-cols-2 gap-2 mt-1">
+          <SumsRow
+            labelKey="i_owe"
             sums={debts?.owe}
             emptyKey="group_balance_no_debts_left"
+            red
           />
-          <HorizontalSums
-            title={t("they_owe_me") || "Мне должны"}
+          <SumsRow
+            labelKey="they_owe_me"
             sums={debts?.owed}
             emptyKey="group_balance_no_debts_right"
+            red
           />
         </div>
 
-        {/* 3 строка: участники (до 6) + последняя активность */}
-        <div className="flex items-center justify-between mt-2 min-h-[24px]">
+        {/* 3 строка: участники (5) + последняя активность (две строки, п.3) */}
+        <div className="flex items-center justify-between mt-1 min-h-[24px]">
           <div className="flex items-center">
             {displayedMembers.map((member, idx) => (
               <div
@@ -197,15 +209,30 @@ const GroupCard = ({
               </div>
             ))}
 
+            {/* (п.4) +N как «аватар» */}
             {hiddenCount > 0 && (
-              <span className="ml-2 text-[11px] text-[var(--tg-hint-color)]">
-                {t("and_more_members", { count: hiddenCount }) || `и ещё ${hiddenCount}`}
-              </span>
+              <div
+                className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
+                style={{
+                  borderColor: "var(--tg-card-bg)",
+                  width: PARTICIPANT_SIZE,
+                  height: PARTICIPANT_SIZE,
+                }}
+                title={(t("and_more_members", { count: hiddenCount }) || `+${hiddenCount}`) as string}
+              >
+                +{hiddenCount}
+              </div>
             )}
           </div>
 
-          <div className="text-[11px] text-[var(--tg-hint-color)] ml-3 shrink-0">
-            Последняя активность: {lastActivityLabel}
+          {/* Последняя активность — две строки, минимальные отступы (п.3) */}
+          <div className="text-right leading-[14px]">
+            <div className="text-[11px] text-[var(--tg-hint-color)]">
+              {t("last_activity_label") || "Последняя активность"}
+            </div>
+            <div className="text-[11px] text-[var(--tg-hint-color)]">
+              {lastActivityLabel}
+            </div>
           </div>
         </div>
       </div>

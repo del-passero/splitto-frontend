@@ -11,7 +11,7 @@ export default {
   contacts: "Contacts",
   profile: "Profile",
 
-  // --- Groups / Members ---
+  // --- Groups & members ---
   participants: "Participants",
   members: "Members",
   owner: "Owner",
@@ -19,7 +19,7 @@ export default {
   contacts_not_found: "No contacts found",
   groups_not_found: "No groups found",
   group_name_placeholder: "Group name",
-  group_description_placeholder: "Description",
+  group_description_placeholder: "Group description",
   group_name_required: "Enter a group name",
   error_create_group: "Failed to create group",
   error_edit_group: "Failed to edit group",
@@ -28,18 +28,20 @@ export default {
   empty_members: "No members",
   groups_count: "Total groups: {{count}}",
   groups_top_info: "You have {{count}} active groups",
-  empty_groups: "You don't have any groups yet",
+  empty_groups: "You don’t have any groups yet",
   empty_groups_hint:
-    "Create your first group to manage shared expenses without leaving Telegram.",
+    "Create your first group to manage shared expenses right in Telegram.",
   search_group_placeholder: "Search group...",
   debts_reserved: "Debts — coming soon!",
   and_more_members: "and {{count}} more",
   group_members_count: "{{count}} members",
   group_status_archived: "Archived",
+  group_status_deleted: "Deleted",
+  group_linked_telegram: "Linked to Telegram",
   leave_group: "Leave group",
   delete_group: "Delete group",
 
-  // --- Balances ---
+  // --- Balances & debts ---
   group_balance_you_get: "You are owed {{sum}}",
   group_balance_you_owe: "You owe {{sum}}",
   group_balance_zero: "All settled",
@@ -48,16 +50,26 @@ export default {
   group_participant_no_debt: "No debt",
   group_participant_you_owe: "You owe: {{sum}}",
   group_participant_owes_you: "Owes you: {{sum}}",
+
   i_owe: "I owe",
   they_owe_me: "They owe me",
-  group_balance_no_debts_left: "You owe no one",
-  group_balance_no_debts_right: "No one owes you",
+  group_balance_no_debts_left: "I owe no one",
+  group_balance_no_debts_right: "No one owes me",
+  group_balance_no_debts_all: "No debts in this group",
+  group_balance_totals_aria: "Totals by currency",
 
-  // --- Members scroller ---
+  // --- Last activity ---
+  last_activity_label: "Last activity",
+  last_activity_today: "Today",
+  last_activity_yesterday: "Yesterday",
+  last_activity_days_ago: "{{count}} days ago",
+  last_activity_inactive: "Inactive",
+
+  // --- Members list ---
   group_invite: "Invite",
   group_add_member: "Add",
 
-  // --- Tabs ---
+  // --- Group tabs ---
   group_tab_transactions: "Transactions",
   group_tab_balance: "Balance",
   group_tab_analytics: "Analytics",
@@ -69,19 +81,17 @@ export default {
   group_transactions_empty: "No expenses yet — add the first one!",
   group_transactions_not_found: "No expenses found",
   group_transactions_placeholder:
-    "Placeholder for the list of transactions of your group.",
+    "Placeholder for the transaction list. Your group transactions will appear here.",
 
   // --- Balance tab ---
   group_balance_microtab_mine: "My balance",
   group_balance_microtab_all: "All balances",
   group_balance_no_debts: "No debts",
-  group_balance_get_from: "You should get: {{sum}}",
+  group_balance_get_from: "You are owed: {{sum}}",
   group_balance_owe_to: "You owe: {{sum}}",
   group_balance_no_debt_with: "No debt",
-  group_balance_no_debts_all: "Nobody owes anybody in this group",
 
-  // Action labels on balance cards
-  repay_debt: "Settle Up",
+  repay_debt: "Settle up",
   remind_debt: "Remind",
 
   // --- Analytics tab ---
@@ -94,7 +104,7 @@ export default {
   group_settings_delete_group: "Delete group",
   group_members_invite: "Invite",
   group_members_add: "Add",
-  group_members_empty: "This group has no members yet",
+  group_members_empty: "No members yet",
   group_settings_close: "Close",
   group_settings_save_and_exit: "Save & close",
   group_settings_cancel_changes: "Discard changes",
@@ -106,12 +116,12 @@ export default {
   copied: "Copied!",
   share_link: "Share (in Telegram)",
   share: "Share",
-  shared: "The link is ready to paste!",
+  shared: "Link is ready to paste!",
   invite_friend: "Invite a friend",
-  invite_error: "Failed to create link. Try again later.",
+  invite_error: "Could not create a link. Try again later.",
   invite_message:
-    "Join me on Splitto — an easy way to manage shared expenses without leaving Telegram.\nHere’s your invite link:\n{{link}}",
-  error_invite_link: "Failed to fetch invite link",
+    "Join me in Splitto — the easiest way to manage shared expenses right in Telegram.\nHere’s your link:\n{{link}}",
+  error_invite_link: "Could not get invite link",
 
   // --- Contacts ---
   empty_contacts: "You don’t have any contacts yet...",
@@ -121,12 +131,40 @@ export default {
   sort: "Sort",
   no_friends: "No friends to add",
 
-  // --- Profile / Settings ---
+  // --- Groups filter (new) ---
+  groups_filter_title: "Filter groups",
+  groups_filter_status: "Status",
+  groups_filter_status_active: "Active",
+  groups_filter_status_archived: "Archived",
+  groups_filter_status_deleted: "Deleted",
+  groups_filter_hidden: "Hidden by me",
+  groups_filter_hidden_hidden: "Hidden",
+  groups_filter_hidden_visible: "Visible",
+  groups_filter_activity: "Activity",
+  groups_filter_activity_recent: "Recent",
+  groups_filter_activity_inactive: "Inactive",
+  groups_filter_activity_empty: "No transactions",
+  groups_filter_all: "ALL",
+  apply: "Apply",
+  reset_filters: "Reset",
+
+  // --- Groups sort (new) ---
+  groups_sort_title: "Sort",
+  groups_sort_by: "Sort by",
+  groups_sort_by_last_activity: "Last activity",
+  groups_sort_by_name: "Name",
+  groups_sort_by_created_at: "Created at",
+  groups_sort_by_members_count: "Members count",
+  groups_sort_dir: "Direction",
+  groups_sort_dir_asc: "Ascending",
+  groups_sort_dir_desc: "Descending",
+
+  // --- Profile & settings ---
   account: "Account",
   settings: "Settings",
   about: "About",
   theme: "Theme",
-  choose_theme: "Choose a theme",
+  choose_theme: "Choose theme",
   language: "Language",
   choose_language: "Choose language",
   not_specified: "Not specified",
@@ -139,7 +177,7 @@ export default {
   language_es: "Spanish",
   version: "Version",
 
-  // --- Buttons / statuses ---
+  // --- Buttons & statuses ---
   edit: "Edit",
   cancel: "Cancel",
   save: "Save",
@@ -153,7 +191,7 @@ export default {
   // --- Errors & system ---
   error: "Error",
   group_settings_cannot_leave_due_debt:
-    "You can't leave this group right now because you have outstanding debts to other members. Please settle your debts and try again.",
+    "You cannot leave this group now because you have outstanding debts to other members. Please settle your debts and try again.",
   errors: {
     group_name_required: "Enter a group name",
     group_trip_date_required: "Enter a trip date",
@@ -165,13 +203,14 @@ export default {
     contact_friends_load: "Failed to load contact’s friends",
     tx_delete_forbidden_expense: "Only the author or payer can delete an expense",
     tx_delete_forbidden_transfer: "Only the author or sender can delete a transfer",
-    delete_forbidden: "Only the author or payer/sender can delete the transaction",
+    delete_forbidden:
+      "Only the author or payer/sender can delete the transaction",
     amount_positive: "Amount must be greater than 0",
   },
 
   // --- Currency ---
   currency: {
-    select_title: "Choose currency",
+    select_title: "Select currency",
     search_placeholder: "Search currency",
     not_found: "Nothing found",
     main_currency: "Main currency",
@@ -179,18 +218,18 @@ export default {
     currency_popular: "Popular",
   },
 
-  // --- Common / Group form ---
+  // --- Common & group form ---
   common: { yes: "Yes", no: "No" },
   group_form: {
     name_placeholder: "Group name",
-    description_placeholder: "Description",
-    is_trip: "Is this a trip group?",
+    description_placeholder: "Group description",
+    is_trip: "Trip group?",
     trip_date:
-      "Enter a date after which the group (if there are no debts) will be archived automatically",
-    name_hint_initial: "Enter a group name (up to {{max}} chars)",
-    name_hint_remaining: "{{n}} characters left",
+      "Enter a date after which the group will be auto-archived (if there are no debts).",
+    name_hint_initial: "Enter a name (up to {{max}} chars)",
+    name_hint_remaining: "{{n}} chars left",
     desc_hint_initial: "Enter a description (up to {{max}} chars)",
-    desc_hint_remaining: "{{n}} characters left",
+    desc_hint_remaining: "{{n}} chars left",
     trip_date_placeholder: "DD.MM.YYYY",
   },
 
@@ -207,7 +246,7 @@ export default {
   tx_modal: {
     title: "New transaction",
     choose_group: "Choose a group",
-    group_placeholder: "Select…",
+    group_placeholder: "Choose…",
     type: "Type",
     expense: "Expense",
     transfer: "Transfer",
@@ -221,7 +260,7 @@ export default {
     split: "Split",
     split_equal: "Equally",
     split_shares: "By shares",
-    split_custom: "Custom",
+    split_custom: "Manually",
     transfer_from: "Sender",
     transfer_to: "Recipients",
     cancel: "Cancel",
@@ -230,27 +269,27 @@ export default {
     back: "Back",
     choose_group_first: "Choose a group first",
 
-    amount_required: "Enter an amount",
-    comment_required: "Enter a comment",
+    amount_required: "Enter amount",
+    comment_required: "Enter comment",
     category_required: "Choose a category",
     split_no_participants: "Choose participants",
-    split_no_shares: "Shares are not set",
-    split_custom_mismatch: "Sum by participants doesn't match the total",
+    split_no_shares: "Shares not set",
+    split_custom_mismatch: "Participants’ totals don’t match the total",
     per_share: "Per share",
     custom_amounts_set: "Custom amounts set",
     totals_mismatch: "Totals mismatch",
     each: "each:",
-    create_and_new: "Create & new",
+    create_and_new: "Create and new",
 
     all: "ALL",
     paid_by_label: "Paid by",
     owes_label: "Owes",
     owes: "owes",
 
-    delete_confirm: "Delete this transaction? This action cannot be undone.",
+    delete_confirm: "Delete transaction? This cannot be undone.",
 
     cannot_edit_or_delete_inactive:
-      "You can’t edit or delete this transaction because one of its participants has left the group.",
+      "You cannot edit or delete this transaction because one of its participants left the group.",
   },
 
   // --- Transaction card ---
@@ -258,19 +297,19 @@ export default {
     not_participant_expense: "You are not a participant of this expense",
   },
 
-  // --- Categories ---
+  // --- Category ---
   category: {
-    select_title: "Choose category",
+    select_title: "Select category",
     search_placeholder: "Search category",
     not_found: "Nothing found",
   },
 
-  // --- Date on cards ---
+  // --- Date format for cards ---
   date_card: {
     pattern: "{{day}} {{month}}",
     months: [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      "Jan","Feb","Mar","Apr","May","Jun",
+      "Jul","Aug","Sep","Oct","Nov","Dec",
     ],
   },
 
@@ -294,6 +333,5 @@ export default {
   },
 
   cannot_edit_or_delete_inactive:
-    "You can’t edit or delete this transaction because one of its participants has left the group.",
-};
-
+    "You cannot edit or delete this transaction because one of its participants left the group.",
+}
