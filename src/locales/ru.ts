@@ -49,13 +49,11 @@ export default {
   group_participant_you_owe: "Вы должны: {{sum}}",
   group_participant_owes_you: "Вам должны: {{sum}}",
 
-  // Новые короткие подписи и пустые состояния колонок
   i_owe: "Я должен",
   they_owe_me: "Мне должны",
   group_balance_no_debts_left: "Я никому не должен",
   group_balance_no_debts_right: "Мне никто не должен",
   group_balance_no_debts_all: "В группе никто никому не должен",
-  // aria-лейбл для горизонтального скролла итогов
   group_balance_totals_aria: "Итого по валютам",
 
   // --- Список участников (скролл) ---
@@ -286,7 +284,6 @@ export default {
     no_name: "Без имени",
   },
 
-  // --- Алиас (используем и в корне) ---
   cannot_edit_or_delete_inactive:
     "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
 };
