@@ -59,7 +59,7 @@ export default {
   group_balance_no_debts_all: "В группе никто никому не должен",
   group_balance_totals_aria: "Итого по валютам",
 
-  // --- Последняя активность (новые ключи) ---
+  // --- Последняя активность ---
   last_activity_label: "Последняя активность",
   last_activity_today: "Сегодня",
   last_activity_yesterday: "Вчера",
@@ -133,7 +133,7 @@ export default {
   sort: "Сортировка",
   no_friends: "Нет друзей для добавления",
 
-  // --- Фильтр групп (новые ключи) ---
+  // --- Фильтр групп ---
   groups_filter_title: "Фильтр групп",
   groups_filter_status: "Статус",
   groups_filter_status_active: "Активные",
@@ -150,7 +150,7 @@ export default {
   apply: "Применить",
   reset_filters: "Сбросить",
 
-  // --- Сортировка групп (новые ключи) ---
+  // --- Сортировка групп ---
   groups_sort_title: "Сортировка",
   groups_sort_by: "Поле сортировки",
   groups_sort_by_last_activity: "Последняя активность",

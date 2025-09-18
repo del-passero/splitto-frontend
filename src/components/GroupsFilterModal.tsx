@@ -1,130 +1,141 @@
 // src/components/GroupsFilterModal.tsx
-// Модалка фильтров: в каждом разделе чекбоксы, "ВСЕ" — радио-сброс (см. договорённости).
-
-import { useState } from "react"
-import { X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+
+export type FiltersState = {
+  includeArchived: boolean
+  includeHidden: boolean
+}
 
 type Props = {
   open: boolean
+  initial: FiltersState
+  onApply: (f: FiltersState) => void
   onClose: () => void
-  onApply: (filters: {
-    status: { active: boolean; archived: boolean; deleted: boolean; all: boolean }
-    hidden: { hidden: boolean; visible: boolean; all: boolean }
-    activity: { recent: boolean; inactive: boolean; empty: boolean; all: boolean }
-  }) => void
-  initial?: {
-    status?: { active: boolean; archived: boolean; deleted: boolean; all: boolean }
-    hidden?: { hidden: boolean; visible: boolean; all: boolean }
-    activity?: { recent: boolean; inactive: boolean; empty: boolean; all: boolean }
-  }
 }
 
-export default function GroupsFilterModal({ open, onClose, onApply, initial }: Props) {
-  const { t } = useTranslation()
-  const [status, setStatus] = useState(initial?.status || { active: true, archived: false, deleted: false, all: false })
-  const [hidden, setHidden] = useState(initial?.hidden || { hidden: false, visible: true, all: false })
-  const [activity, setActivity] = useState(initial?.activity || { recent: false, inactive: false, empty: false, all: true })
-
+const ModalShell = ({
+  open,
+  children,
+}: {
+  open: boolean
+  children: React.ReactNode
+}) => {
   if (!open) return null
-
-  const resetAll = () => {
-    setStatus({ active: true, archived: false, deleted: false, all: false })
-    setHidden({ hidden: false, visible: true, all: false })
-    setActivity({ recent: false, inactive: false, empty: false, all: true })
-  }
-
-  const radioAll = (section: "status" | "hidden" | "activity") => {
-    if (section === "status") setStatus({ active: false, archived: false, deleted: false, all: true })
-    if (section === "hidden") setHidden({ hidden: false, visible: false, all: true })
-    if (section === "activity") setActivity({ recent: false, inactive: false, empty: false, all: true })
-  }
-
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-      <div className="w-full bg-[var(--tg-card-bg)] rounded-t-2xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-lg font-semibold">{t("filter") || "Фильтр"}</div>
-          <button className="p-2 rounded-xl hover:bg-black/5" onClick={onClose}><X size={18} /></button>
-        </div>
-
-        {/* Статус */}
-        <div className="mb-4">
-          <div className="text-sm font-medium mb-2">Статус</div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={status.active && !status.all} onChange={e => setStatus(s => ({ ...s, active: e.target.checked, all: false }))} />
-              <span>Активные</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={status.archived && !status.all} onChange={e => setStatus(s => ({ ...s, archived: e.target.checked, all: false }))} />
-              <span>Архивные</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={status.deleted && !status.all} onChange={e => setStatus(s => ({ ...s, deleted: e.target.checked, all: false }))} />
-              <span>Удалённые</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" name="status_all" checked={status.all} onChange={() => radioAll("status")} />
-              <span>ВСЕ</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Скрытие */}
-        <div className="mb-4">
-          <div className="text-sm font-medium mb-2">Скрытие</div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={hidden.visible && !hidden.all} onChange={e => setHidden(s => ({ ...s, visible: e.target.checked, all: false }))} />
-              <span>Не скрытые</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={hidden.hidden && !hidden.all} onChange={e => setHidden(s => ({ ...s, hidden: e.target.checked, all: false }))} />
-              <span>Скрытые мной</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" name="hidden_all" checked={hidden.all} onChange={() => radioAll("hidden")} />
-              <span>ВСЕ</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Активность */}
-        <div className="mb-4">
-          <div className="text-sm font-medium mb-2">Активность</div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={activity.recent && !activity.all} onChange={e => setActivity(s => ({ ...s, recent: e.target.checked, all: false }))} />
-              <span>Недавно активные</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={activity.inactive && !activity.all} onChange={e => setActivity(s => ({ ...s, inactive: e.target.checked, all: false }))} />
-              <span>Неактивные</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={activity.empty && !activity.all} onChange={e => setActivity(s => ({ ...s, empty: e.target.checked, all: false }))} />
-              <span>Без транзакций</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" name="activity_all" checked={activity.all} onChange={() => radioAll("activity")} />
-              <span>ВСЕ</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <button className="px-4 py-2 rounded-xl bg-[var(--tg-secondary-bg-color)]" onClick={resetAll}>
-            Очистить
-          </button>
-          <button
-            className="px-4 py-2 rounded-xl bg-[var(--tg-link-color)] text-white"
-            onClick={() => { onApply({ status, hidden, activity }); onClose(); }}
-          >
-            Применить
-          </button>
-        </div>
+    <div
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full sm:max-w-md sm:rounded-2xl sm:shadow-xl bg-[var(--tg-bg-color)] border border-[var(--tg-secondary-bg-color)]">
+        {children}
       </div>
     </div>
+  )
+}
+
+const Row = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--tg-secondary-bg-color)] last:border-b-0">
+    {children}
+  </div>
+)
+
+const Switch = ({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  ariaLabel?: string
+}) => (
+  <button
+    type="button"
+    aria-label={ariaLabel}
+    onClick={() => onChange(!checked)}
+    className={`relative h-6 w-11 rounded-full transition ${
+      checked ? "bg-[var(--tg-link-color)]" : "bg-[var(--tg-secondary-bg-color)]"
+    }`}
+  >
+    <span
+      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+        checked ? "right-0.5" : "left-0.5"
+      }`}
+    />
+  </button>
+)
+
+export default function GroupsFilterModal({
+  open,
+  initial,
+  onApply,
+  onClose,
+}: Props) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<FiltersState>(initial)
+
+  useEffect(() => {
+    if (open) setState(initial)
+  }, [open, initial])
+
+  return (
+    <ModalShell open={open}>
+      <div className="px-4 py-3 border-b border-[var(--tg-secondary-bg-color)]">
+        <div className="text-base font-semibold text-[var(--tg-text-color)]">
+          {t("groups_filter_title")}
+        </div>
+      </div>
+
+      {/* Статус: просто переключатель "Архивные" включено/выключено */}
+      <Row>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_filter_status_archived")}
+        </div>
+        <Switch
+          checked={state.includeArchived}
+          onChange={(v) => setState((s) => ({ ...s, includeArchived: v }))}
+          ariaLabel={t("groups_filter_status_archived") || "Archived"}
+        />
+      </Row>
+
+      {/* Скрытые мной */}
+      <Row>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_filter_hidden")}
+        </div>
+        <Switch
+          checked={state.includeHidden}
+          onChange={(v) => setState((s) => ({ ...s, includeHidden: v }))}
+          ariaLabel={t("groups_filter_hidden") || "Hidden by me"}
+        />
+      </Row>
+
+      {/* Кнопки */}
+      <div className="flex items-center justify-end gap-2 px-4 py-3">
+        <button
+          type="button"
+          className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)]"
+          onClick={() =>
+            setState({
+              includeArchived: false,
+              includeHidden: false,
+            })
+          }
+        >
+          {t("reset_filters")}
+        </button>
+        <button
+          type="button"
+          className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-link-color)] text-white"
+          onClick={() => {
+            onApply(state)
+            onClose()
+          }}
+        >
+          {t("apply")}
+        </button>
+      </div>
+    </ModalShell>
   )
 }

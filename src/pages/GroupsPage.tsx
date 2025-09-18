@@ -15,60 +15,53 @@ import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
-// Новые модалки
-import GroupsFilterModal from "../components/GroupsFilterModal"
-import GroupsSortModal from "../components/GroupsSortModal"
+// Новые модалки (и типы — используем их же, чтобы не было конфликтов)
+import GroupsFilterModal, {
+  FiltersState as GroupsFilterState,
+} from "../components/GroupsFilterModal"
+import GroupsSortModal, {
+  SortBy,
+  SortDir,
+} from "../components/GroupsSortModal"
 
-type SortBy = "last_activity" | "name" | "created_at" | "members_count"
-type SortDir = "asc" | "desc"
-
-type FiltersState = {
-  status: { active: boolean; archived: boolean; deleted: boolean; all: boolean }
-  hidden: { hidden: boolean; visible: boolean; all: boolean }
-  activity: { recent: boolean; inactive: boolean; empty: boolean; all: boolean }
-}
-
-const defaultFilters: FiltersState = {
-  status: { active: true, archived: false, deleted: false, all: false },
-  hidden: { hidden: false, visible: true, all: false },
-  activity: { recent: false, inactive: false, empty: false, all: true },
+const defaultFilters: GroupsFilterState = {
+  includeArchived: false,
+  includeHidden: false,
 }
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const {
-    groups, groupsLoading, groupsError,
-    groupsHasMore, groupsTotal,
-    fetchGroups, loadMoreGroups, clearGroups
+    groups,
+    groupsLoading,
+    groupsError,
+    groupsHasMore,
+    groupsTotal,
+    fetchGroups,
+    loadMoreGroups,
+    clearGroups,
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Новое: состояние фильтра и сортировки
+  // Фильтр/сортировка
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
-  const [filters, setFilters] = useState<FiltersState>(defaultFilters)
+  const [filters, setFilters] = useState<GroupsFilterState>(defaultFilters)
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Производим серверные параметры из фильтров (только те, что поддерживаются бэком)
-  const includeArchived = useMemo(() => {
-    // Если включены архивные явно или выбран "ВСЕ" — просим бэк включить архив
-    return filters.status.all || filters.status.archived
-  }, [filters.status])
-
-  const includeHidden = useMemo(() => {
-    // Бэк умеет только "include_hidden=true/false", без раздельной фильтрации
-    return filters.hidden.all || filters.hidden.hidden
-  }, [filters.hidden])
+  // Производные серверные параметры
+  const includeArchived = filters.includeArchived
+  const includeHidden = filters.includeHidden
 
   // Поисковая строка
   const q = useMemo(() => search.trim(), [search])
 
-  // Первая загрузка и при смене параметров — как в ContactsPage
+  // Первая загрузка и при изменении параметров
   useEffect(() => {
     if (!user?.id) return
     clearGroups()
@@ -180,16 +173,24 @@ const GroupsPage = () => {
         <GroupsList
           groups={groups}
           loading={groupsLoading}
-          loadMore={groupsHasMore ? () => {
-            if (!user?.id) return
-            loadMoreGroups(user.id, q.length ? q : undefined)
-          } : undefined}
+          loadMore={
+            groupsHasMore
+              ? () => {
+                  if (!user?.id) return
+                  // Пагинация: в сторе loadMoreGroups сейчас умеет только q,
+                  // фильтры и сортировка зашиты в текущем серверном окне
+                  loadMoreGroups(user.id, q.length ? q : undefined)
+                }
+              : undefined
+          }
         />
       </CardSection>
 
       {groupsLoading && (
         <CardSection>
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">
+            {t("loading")}
+          </div>
         </CardSection>
       )}
       {groupsError && (
