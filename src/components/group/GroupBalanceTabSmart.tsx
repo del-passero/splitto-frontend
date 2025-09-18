@@ -88,17 +88,6 @@ function collapseLabel(locale: string) {
   return "Collapse";
 }
 
-/* ===== Бегущая строка для длинных имён (только если реально не помещается) ===== */
-function MarqueeName({ text, maxWidth = 120 }: { text: string; maxWidth?: number }) {
-  return (
-    <span className="relative inline-block overflow-hidden" style={{ maxWidth }}>
-      <span className="inline-block whitespace-nowrap marquee-run" title={text}>
-        {text}
-      </span>
-    </span>
-  );
-}
-
 /* ================= main ================= */
 export default function GroupBalanceTabSmart({
   myBalanceByCurrency, // оставлен для совместимости
@@ -116,6 +105,9 @@ export default function GroupBalanceTabSmart({
 
   // локальная заглушка для «Напомнить»
   const [stubOpen, setStubOpen] = useState(false);
+
+  // вкладки: mine / all
+  const [tab, setTab] = useState<"mine" | "all">("mine");
 
   // раскрытие карточек по user.id
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
@@ -175,7 +167,7 @@ export default function GroupBalanceTabSmart({
     "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
     "hover:brightness-105";
 
-  /* ====== ПАРНАЯ ВЫСОТА: рендерим ПО РЯДАМ (индексам), карточки в строке растягиваются по высоте ====== */
+  /* ====== ПАРНАЯ ВЫСОТА: рендерим ПО РЯДАМ (индексам) ====== */
   const pairsCount = Math.max(leftCards.length, rightCards.length);
 
   return (
@@ -188,15 +180,15 @@ export default function GroupBalanceTabSmart({
         >
           <button
             type="button"
-            onClick={() => { /* mine */ }}
-            className={`px-3 h-9 text-[13px] bg-[var(--tg-accent-color,#40A7E3)] text-white`}
+            onClick={() => setTab("mine")}
+            className={`px-3 h-9 text-[13px] ${tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
           >
             {t("group_balance_microtab_mine")}
           </button>
           <button
             type="button"
-            onClick={() => { /* all - переключение делает родитель вкладки, оставляем как было */ }}
-            className={`px-3 h-9 text-[13px] text-[var(--tg-text-color)]`}
+            onClick={() => setTab("all")}
+            className={`px-3 h-9 text-[13px] ${tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
           >
             {t("group_balance_microtab_all")}
           </button>
@@ -207,10 +199,9 @@ export default function GroupBalanceTabSmart({
       <div className="px-2 py-2">
         {loading ? (
           <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
-        ) : (
+        ) : tab === "mine" ? (
           <>
-            {/* ====== Мой баланс: пары карточек ====== */}
-            {/* верхние заголовки и итоги со скроллом и визуальным хинтом */}
+            {/* ====== Мой баланс: заголовки + итоги со скроллом (только здесь) ====== */}
             <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {/* Левая колонка заголовок+итоги */}
               <div className="min-w-0">
@@ -223,9 +214,9 @@ export default function GroupBalanceTabSmart({
                       role="region"
                       tabIndex={0}
                       aria-label={(t("group_balance_totals_aria") as string) || "Totals by currency"}
-                      className="text-[12px] overflow-x-auto overflow-y-hidden"
+                      className="text-[12px] overflow-x-auto overflow-y-hidden px-3"
                       style={{
-                        color: "var(--tg-hint-color)",
+                        color: "var(--tg-text-color)",       // чёрный/белый по теме
                         whiteSpace: "nowrap",
                         WebkitOverflowScrolling: "touch",
                       }}
@@ -247,9 +238,9 @@ export default function GroupBalanceTabSmart({
                       role="region"
                       tabIndex={0}
                       aria-label={(t("group_balance_totals_aria") as string) || "Totals by currency"}
-                      className="text-[12px] overflow-x-auto overflow-y-hidden"
+                      className="text-[12px] overflow-x-auto overflow-y-hidden px-3"
                       style={{
-                        color: "var(--tg-hint-color)",
+                        color: "var(--tg-text-color)",
                         whiteSpace: "nowrap",
                         WebkitOverflowScrolling: "touch",
                       }}
@@ -261,7 +252,7 @@ export default function GroupBalanceTabSmart({
               </div>
             </div>
 
-            {/* Пары карточек */}
+            {/* Пары карточек: по рядам. Если в паре есть раскрытая карточка — НЕ выравниваем высоту в этой строке */}
             {pairsCount === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts_left") || "Нет долгов"}
@@ -270,21 +261,31 @@ export default function GroupBalanceTabSmart({
               Array.from({ length: pairsCount }).map((_, idx) => {
                 const L = leftCards[idx];
                 const R = rightCards[idx];
+                const leftExpanded  = L ? !!expanded[L.user.id] : false;
+                const rightExpanded = R ? !!expanded[R.user.id] : false;
+                const pairAlign = !(leftExpanded || rightExpanded); // если кто-то раскрыт — перестаём матчить высоту
 
                 return (
-                  <div key={`pair-${idx}`} className="flex gap-2 mb-2 items-stretch">
+                  <div
+                    key={`pair-${idx}`}
+                    className={`flex gap-2 mb-2 ${pairAlign ? "items-stretch" : "items-start"}`}
+                  >
                     {/* LEFT */}
                     <div className="flex-1">
                       {L ? (
                         <DebtCardLeft
                           card={L}
-                          expanded={!!expanded[L.user.id]}
+                          expanded={leftExpanded}
                           onToggle={() => toggleExpanded(L.user.id)}
                           locale={locale}
                           onRepay={onRepay}
+                          matchHeight={pairAlign}
                         />
                       ) : (
-                        <div className="rounded-xl border p-2 opacity-30" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }} />
+                        <div
+                          className="rounded-xl border p-2 opacity-30"
+                          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+                        />
                       )}
                     </div>
 
@@ -293,38 +294,40 @@ export default function GroupBalanceTabSmart({
                       {R ? (
                         <DebtCardRight
                           card={R}
-                          expanded={!!expanded[R.user.id]}
+                          expanded={rightExpanded}
                           onToggle={() => toggleExpanded(R.user.id)}
                           locale={locale}
                           onRemind={(user, amount, currency) => {
-                            // центрированная кнопка: модалка должна гарантировано открываться
-                            setStubOpen(true);
+                            setStubOpen(true); // чтобы модалка гарантированно показалась
                             onRemind?.(user, amount, currency);
                           }}
+                          matchHeight={pairAlign}
                         />
                       ) : (
-                        <div className="rounded-xl border p-2 opacity-30" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }} />
+                        <div
+                          className="rounded-xl border p-2 opacity-30"
+                          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+                        />
                       )}
                     </div>
                   </div>
                 );
               })
             )}
-
-            {/* ====== Вкладка «Все балансы»: шапка-сводка + список ====== */}
-            <AllBalances
-              allDebts={allDebts}
-              locale={locale}
-              myId={myId}
-              onRepay={onRepay}
-              onRemind={(user, amount, currency) => {
-                setStubOpen(true);
-                onRemind?.(user, amount, currency);
-              }}
-              t_owes={(t("tx_modal.owes") as string) || "owes"}
-              t_totals_aria={(t("group_balance_totals_aria") as string) || "Totals by currency"}
-            />
           </>
+        ) : (
+          /* ================= Все балансы: 2 строки на элемент ================= */
+          <AllBalances
+            allDebts={allDebts}
+            locale={locale}
+            myId={myId}
+            onRepay={onRepay}
+            onRemind={(user, amount, currency) => {
+              setStubOpen(true);
+              onRemind?.(user, amount, currency);
+            }}
+            t_owes={(t("tx_modal.owes") as string) || "owes"}
+          />
         )}
       </div>
 
@@ -357,13 +360,13 @@ export default function GroupBalanceTabSmart({
         <button type="button" onClick={onFabClick} />
       </div>
 
-      {/* Стили для бегущей строки имён и теней скролла (инъекция один раз) */}
+      {/* стили для скролл-хинтов и т.п. */}
       <StyleOnce />
     </div>
   );
 }
 
-/* ====== Компоненты карточек ====== */
+/* ====== Компоненты карточек (левая/правая) ====== */
 
 function DebtCardLeft({
   card,
@@ -371,12 +374,14 @@ function DebtCardLeft({
   onToggle,
   locale,
   onRepay,
+  matchHeight,
 }: {
   card: CardItem;
   expanded: boolean;
   onToggle: () => void;
   locale: string;
   onRepay?: (user: User, amount: number, currency: string) => void;
+  matchHeight: boolean;
 }) {
   const btn =
     "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
@@ -389,7 +394,7 @@ function DebtCardLeft({
 
   return (
     <div
-      className="rounded-xl border p-2 h-full flex flex-col"
+      className={`rounded-xl border p-2 flex flex-col ${matchHeight ? "h-full" : ""}`}
       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
     >
       {/* шапка */}
@@ -427,9 +432,9 @@ function DebtCardLeft({
         ))}
       </div>
 
-      {/* «и ещё N / Свернуть» — отдельно, чтобы не влиять на вертикальную центровку в правой колонке у пары */}
+      {/* «и ещё N / Свернуть» — ближе к сумме */}
       {card.lines.length > 2 && (
-        <div className="mt-1">
+        <div className="mt-0.5">
           {!expanded ? (
             <button
               type="button"
@@ -461,12 +466,14 @@ function DebtCardRight({
   onToggle,
   locale,
   onRemind,
+  matchHeight,
 }: {
   card: CardItem;
   expanded: boolean;
   onToggle: () => void;
   locale: string;
   onRemind?: (user: User, amount: number, currency: string) => void;
+  matchHeight: boolean;
 }) {
   const btn =
     "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
@@ -479,7 +486,7 @@ function DebtCardRight({
 
   return (
     <div
-      className="rounded-xl border p-2 h-full flex flex-col"
+      className={`rounded-xl border p-2 flex flex-col ${matchHeight ? "h-full" : ""}`}
       style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
     >
       {/* шапка */}
@@ -490,7 +497,7 @@ function DebtCardRight({
         </div>
       </div>
 
-      {/* сетка: слева суммы (колонка auto-height), справа ЕДИНСТВЕННАЯ кнопка по вертикальному центру видимых строк */}
+      {/* сетка: слева суммы, справа ЕДИНСТВЕННАЯ кнопка по вертикальному центру видимых строк */}
       <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
         <div className="flex flex-col gap-1">
           {visible.map((ln, i) => (
@@ -520,7 +527,7 @@ function DebtCardRight({
       </div>
 
       {card.lines.length > 2 && (
-        <div className="mt-1">
+        <div className="mt-0.5">
           {!expanded ? (
             <button
               type="button"
@@ -546,7 +553,7 @@ function DebtCardRight({
   );
 }
 
-/* ====== Вкладка «Все балансы» — улучшенный UI ====== */
+/* ===== Вкладка «Все балансы» — 2 строки, без бегущих имён ===== */
 function AllBalances({
   allDebts,
   locale,
@@ -554,7 +561,6 @@ function AllBalances({
   onRepay,
   onRemind,
   t_owes,
-  t_totals_aria,
 }: {
   allDebts: AllDebt[];
   locale: string;
@@ -562,41 +568,9 @@ function AllBalances({
   onRepay?: (user: User, amount: number, currency: string) => void;
   onRemind?: (user: User, amount: number, currency: string) => void;
   t_owes: string;
-  t_totals_aria: string;
 }) {
-  // сводка по валютам (горизонтальный скролл)
-  const totals = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const d of allDebts) {
-      m.set(d.currency, (m.get(d.currency) || 0) + Math.abs(d.amount));
-    }
-    return Array.from(m.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([ccy, sum]) => fmtNoTrailing(sum, ccy, locale))
-      .join("; ");
-  }, [allDebts, locale]);
-
   return (
-    <div className="mt-4">
-      {/* Хедер «Все балансы» + скролл-сводка */}
-      {totals && (
-        <ScrollHint className="mb-2">
-          <div
-            role="region"
-            tabIndex={0}
-            aria-label={t_totals_aria}
-            className="text-[12px] overflow-x-auto overflow-y-hidden"
-            style={{
-              color: "var(--tg-hint-color)",
-              whiteSpace: "nowrap",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
-            {totals}
-          </div>
-        </ScrollHint>
-      )}
-
+    <div>
       {allDebts.length === 0 ? (
         <div className="text-[13px] text-[var(--tg-hint-color)]">—</div>
       ) : (
@@ -604,26 +578,35 @@ function AllBalances({
           const iAmDebtor = myId != null && p.from.id === myId;
           const iAmCreditor = myId != null && p.to.id === myId;
 
-          const color =
+          const amountColor =
             iAmDebtor ? "var(--tg-destructive-text,#ff5a5f)" :
             iAmCreditor ? "var(--tg-success-text,#2ecc71)" :
             "var(--tg-text-color)";
 
           return (
-            <div key={`${idx}-${p.currency}-${p.from.id}-${p.to.id}`} className="rounded-xl border mb-2 p-2"
-                 style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
+            <div
+              key={`${idx}-${p.currency}-${p.from.id}-${p.to.id}`}
+              className="rounded-xl border mb-2 p-2"
+              style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
+            >
               {/* Строка 1: аватар должника + имя + owes + аватар кредитора + имя */}
               <div className="flex items-center gap-2 min-w-0">
                 <Avatar url={p.from.photo_url} alt={firstOnly(p.from)} size={36} />
-                <MarqueeName text={firstOnly(p.from)} />
-                <span className="text-[14px] text-[var(--tg-hint-color)] mx-1">{t_owes}</span>
+                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                  {firstOnly(p.from)}
+                </span>
+                <span className="text-[14px] mx-1" style={{ color: "var(--tg-text-color)" }}>
+                  {t_owes}
+                </span>
                 <Avatar url={p.to.photo_url} alt={firstOnly(p.to)} size={36} />
-                <MarqueeName text={firstOnly(p.to)} />
+                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
+                  {firstOnly(p.to)}
+                </span>
               </div>
 
-              {/* Строка 2: сумма (по цвету роли) + справа кнопка в зависимости от роли */}
+              {/* Строка 2: сумма под «owes», кнопка справа от суммы */}
               <div className="grid mt-1 items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                <div className="text-[14px] font-semibold" style={{ color }}>
+                <div className="text-[14px] font-semibold" style={{ color: amountColor }}>
                   {fmtNoTrailing(p.amount, p.currency, locale)}
                 </div>
                 <div className="flex items-center justify-end">
@@ -658,13 +641,13 @@ function AllBalances({
   );
 }
 
-/* ===== Хинт-обёртка для горизонтального скролла: мягкие тени по краям ===== */
+/* ===== Хинт-обёртка для горизонтального скролла: мягкие тени по краям + внутренние отступы ===== */
 function ScrollHint({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={`relative ${className || ""}`}>
-      {children}
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-[color:var(--tg-bg-color,#111)] to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-[color:var(--tg-bg-color,#111)] to-transparent" />
+      {children /* у детей уже есть padding-inline: 12px */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[color:var(--tg-bg-color,#111)] to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[color:var(--tg-bg-color,#111)] to-transparent" />
     </div>
   );
 }
@@ -683,23 +666,14 @@ function FragmentRow({ left, right }: { left: ReactNode; right: ReactNode }) {
 function StyleOnce() {
   useEffect(() => {
     if (typeof document === "undefined") return;
-    if (document.getElementById("gbts-marquee-style")) return;
+    if (document.getElementById("gbts-scrollhint-style")) return;
     const style = document.createElement("style");
-    style.id = "gbts-marquee-style";
+    style.id = "gbts-scrollhint-style";
     style.innerHTML = `
-      @keyframes gbts-marquee {
-        0% { transform: translateX(0); }
-        15% { transform: translateX(0); }
-        85% { transform: translateX(-50%); }
-        100% { transform: translateX(-50%); }
-      }
-      .marquee-run {
-        display: inline-block;
-        padding-right: 32px; /* зазор для зацикливания */
-        animation: gbts-marquee 6s linear infinite;
-      }
+      /* можно добавить дополнительные мелочи при необходимости */
     `;
     document.head.appendChild(style);
   }, []);
   return null;
 }
+

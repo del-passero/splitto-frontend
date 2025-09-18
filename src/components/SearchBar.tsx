@@ -1,3 +1,4 @@
+// src/components/SeachBar.tsx
 type Props = {
     value: string
     onChange: (v: string) => void

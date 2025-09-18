@@ -1,3 +1,5 @@
+// src/components/SortButton.tsx
+
 import { ArrowDownUp } from "lucide-react"
 type Props = { onClick: () => void }
 const SortButton = ({ onClick }: Props) => (
