@@ -1,11 +1,12 @@
 // src/components/GroupsList.tsx
 // Рендер и инфинити-скролл. Без “самоотключения” на нулевом приросте.
 
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import CardSection from "./CardSection"
 import GroupCard from "./GroupCard"
 import type { GroupPreview } from "../types/group"
+import { useGroupsStore } from "../store/groupsStore"
 
 type Props = {
   groups: GroupPreview[]
@@ -18,6 +19,20 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const loaderRef = useRef<HTMLDivElement>(null)
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
+
+  // debts preview из стора
+  const debtsPreview = useGroupsStore((s) => s.debtsPreviewByGroupId)
+  const fetchDebtsPreview = useGroupsStore((s) => s.fetchDebtsPreview)
+
+  // при появлении новых групп — запрашиваем превью по свежим id
+  const visibleIds = useMemo(() => groups.map((g) => g.id), [groups])
+
+  useEffect(() => {
+    if (visibleIds.length > 0) {
+      fetchDebtsPreview(visibleIds)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIds.join(",")])
 
   useEffect(() => {
     const el = loaderRef.current
@@ -60,6 +75,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
             key={g.id}
             group={g as any}
             onClick={() => navigate(`/groups/${g.id}`)}
+            debts={debtsPreview[g.id]}
           />
         ))}
       </div>

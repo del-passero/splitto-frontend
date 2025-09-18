@@ -1,6 +1,6 @@
 // src/types/group.ts
 // Типы групп: дополнили полями статуса/архива/удаления/валюты.
-// Формат превью-группы (для /groups/user/{id}) — БЕЗ изменений.
+// Формат превью-группы — дополнен ТОЛЬКО опциональными полями (чтобы не ломать существующий код).
 
 import type { GroupMember } from "./group_member"
 
@@ -28,11 +28,17 @@ export interface Group {
   // В деталях можем получить состав/счётчик
   members_count?: number
   members?: GroupMember[]
+
+  // (опционально) последняя активность
+  last_activity_at?: string | null
+
+  // (опционально) признак телеграм-связи — на будущее
+  is_telegram_linked?: boolean
 }
 
 /**
  * Описание группы для превью/списка (не полные данные).
- * ВНИМАНИЕ: этот тип оставляем как есть — backend сохраняет прежний формат тела.
+ * Добавли опциональные поля статуса/активности — чтобы карточка могла показать бейджи/активность.
  */
 export interface GroupPreview {
   id: number
@@ -41,4 +47,12 @@ export interface GroupPreview {
   owner_id: number
   members_count: number
   preview_members: GroupMember[]
+
+  // опциональные новые поля (бэк может их прислать)
+  status?: GroupStatus
+  archived_at?: string | null
+  deleted_at?: string | null
+  default_currency_code?: string
+  last_activity_at?: string | null
+  is_telegram_linked?: boolean
 }

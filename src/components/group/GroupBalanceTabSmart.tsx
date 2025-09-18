@@ -1,8 +1,7 @@
 // src/components/group/GroupBalanceTabSmart.tsx
-import { useMemo, useState, useCallback, type ReactNode, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { HandCoins, Bell } from "lucide-react";
-import { useUserStore } from "../../store/userStore";
+import { HandCoins, Bell, ArrowLeft, ArrowRight } from "lucide-react";
 
 /* ===== Types (как в старом рабочем коде) ===== */
 type User = {
@@ -23,7 +22,7 @@ type Props = {
   loading: boolean;
   onFabClick: () => void;
 
-  onRepay?:  (user: User, amount: number, currency: string) => void;
+  onRepay?: (user: User, amount: number, currency: string) => void;
   onRemind?: (user: User, amount: number, currency: string) => void;
 };
 
@@ -66,31 +65,22 @@ function Avatar({ url, alt, size = 56 }: { url?: string; alt?: string; size?: nu
   );
 }
 
-/* ---------- helpers ---------- */
+/* ---------- helpers для «двух колонок» ---------- */
 type CurrencyLine = { currency: string; amount: number }; // абсолют
 type CardItem = { user: User; lines: CurrencyLine[]; total: number };
 
 function totalsToInline(by: Record<string, number>, locale?: string) {
-  const parts = Object.entries(by)
+  const entries = Object.entries(by).filter(([, v]) => v > 0);
+  if (!entries.length) return "";
+  const parts = entries
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([ccy, sum]) => fmtNoTrailing(sum, ccy, locale));
-  return parts.join("; ");
-}
-
-function moreLabel(n: number, locale: string) {
-  if (locale === "ru") return `и ещё ${n}`;
-  if (locale === "es") return `y ${n} más`;
-  return `and ${n} more`;
-}
-function collapseLabel(locale: string) {
-  if (locale === "ru") return "Свернуть";
-  if (locale === "es") return "Contraer";
-  return "Collapse";
+  return parts.join("; "); // перенос только после "; "
 }
 
 /* ================= main ================= */
 export default function GroupBalanceTabSmart({
-  myBalanceByCurrency, // оставлен для совместимости
+  myBalanceByCurrency, // не используется сейчас; оставлен для совместимости
   myDebts,
   allDebts,
   loading,
@@ -100,23 +90,18 @@ export default function GroupBalanceTabSmart({
 }: Props) {
   const { t, i18n } = useTranslation();
   const locale = (i18n.language || "ru").split("-")[0];
-  const me = useUserStore((s) => s.user);
-  const myId = me?.id;
+  const [tab, setTab] = useState<"mine" | "all">("mine");
 
   // локальная заглушка для «Напомнить»
   const [stubOpen, setStubOpen] = useState(false);
 
-  // вкладки: mine / all
-  const [tab, setTab] = useState<"mine" | "all">("mine");
-
-  // раскрытие карточек по user.id
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
-  const toggleExpanded = useCallback((uid: number) => {
-    setExpanded((prev) => ({ ...prev, [uid]: !prev[uid] }));
-  }, []);
-
-  /* подготовка данных для двух колонок */
-  const { leftCards, rightCards, leftTotalsInline, rightTotalsInline } = useMemo(() => {
+  /* ======================= МОЙ БАЛАНС ======================= */
+  const {
+    leftCards,
+    rightCards,
+    leftTotalsInline,
+    rightTotalsInline,
+  } = useMemo(() => {
     const leftMap = new Map<number, CardItem>(); // я должен
     const rightMap = new Map<number, CardItem>(); // мне должны
     const leftTotals: Record<string, number> = {};
@@ -160,15 +145,86 @@ export default function GroupBalanceTabSmart({
     };
   }, [myDebts, locale]);
 
-  /* стили кнопок */
+  // раскрытия: показываем >2 строк
+  const [expandedLeft, setExpandedLeft] = useState<Set<number>>(() => new Set());
+  const [expandedRight, setExpandedRight] = useState<Set<number>>(() => new Set());
+  const toggleLeft = (id: number) => {
+    const s = new Set(expandedLeft);
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
+    setExpandedLeft(s);
+  };
+  const toggleRight = (id: number) => {
+    const s = new Set(expandedRight);
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
+    setExpandedRight(s);
+  };
+
+  // параметры для вычислений высот
+  const LINE_H = 22; // px на строку суммы
+  const V_GAP = 6; // вертикальный гап между строками
+
+  const visibleCount = (total: number, expanded: boolean) => (expanded ? total : Math.min(2, total));
+  const heightFor = (vis: number) => (vis > 0 ? vis * LINE_H + (vis - 1) * V_GAP : 0);
+
+  /* ======================= ВСЕ БАЛАНСЫ ======================= */
+  type PairKey = string; // `${minId}-${maxId}`
+  type PairCard = {
+    a: User; // тот, у кого id меньше — левый
+    b: User; // правый
+    toA: Record<string, number>; // что b должен a (зелёный левый столбец)
+    toB: Record<string, number>; // что a должен b (красный правый столбец)
+  };
+
+  const { allSummaryInline, pairCards } = useMemo(() => {
+    // сводка по валютам сверху (вся вкладка)
+    const totalByCcy: Record<string, number> = {};
+    // пары
+    const map = new Map<PairKey, PairCard>();
+
+    for (const p of allDebts) {
+      totalByCcy[p.currency] = (totalByCcy[p.currency] || 0) + Math.max(0, p.amount);
+
+      const idA = Math.min(p.from.id, p.to.id);
+      const idB = Math.max(p.from.id, p.to.id);
+      const key: PairKey = `${idA}-${idB}`;
+
+      let pc = map.get(key);
+      if (!pc) {
+        const aUser = p.from.id === idA ? p.from : p.to;
+        const bUser = p.from.id === idB ? p.from : p.to;
+        pc = { a: aUser, b: bUser, toA: {}, toB: {} };
+        map.set(key, pc);
+      }
+
+      // Если from -> to: кто кому
+      if (p.from.id === idA && p.to.id === idB) {
+        // a должен b
+        pc.toB[p.currency] = (pc.toB[p.currency] || 0) + p.amount;
+      } else {
+        // b должен a
+        pc.toA[p.currency] = (pc.toA[p.currency] || 0) + p.amount;
+      }
+    }
+
+    const allSummaryInline = totalsToInline(totalByCcy, locale);
+    const pairCards = Array.from(map.values()).sort((x, y) => {
+      const sum = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
+      const yTotal = sum(y.toA) + sum(y.toB);
+      const xTotal = sum(x.toA) + sum(x.toB);
+      return yTotal - xTotal;
+    });
+
+    return { allSummaryInline, pairCards };
+  }, [allDebts, locale]);
+
+  /* стили кнопок (без подписей) */
   const btn =
-    "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
+    "h-8 w-9 rounded-xl active:scale-95 transition " +
     "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
     "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
-    "hover:brightness-105";
-
-  /* ====== ПАРНАЯ ВЫСОТА: рендерим ПО РЯДАМ (индексам) ====== */
-  const pairsCount = Math.max(leftCards.length, rightCards.length);
+    "hover:brightness-105 flex items-center justify-center";
 
   return (
     <div className="w-full">
@@ -181,14 +237,18 @@ export default function GroupBalanceTabSmart({
           <button
             type="button"
             onClick={() => setTab("mine")}
-            className={`px-3 h-9 text-[13px] ${tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+            className={`px-3 h-9 text-[13px] ${
+              tab === "mine" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+            }`}
           >
             {t("group_balance_microtab_mine")}
           </button>
           <button
             type="button"
             onClick={() => setTab("all")}
-            className={`px-3 h-9 text-[13px] ${tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+            className={`px-3 h-9 text-[13px] ${
+              tab === "all" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"
+            }`}
           >
             {t("group_balance_microtab_all")}
           </button>
@@ -200,134 +260,374 @@ export default function GroupBalanceTabSmart({
         {loading ? (
           <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
-          <>
-            {/* ====== Мой баланс: заголовки + итоги со скроллом (только здесь) ====== */}
-            <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {/* Левая колонка заголовок+итоги */}
-              <div className="min-w-0">
-                <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
-                  {t("i_owe") || "Я должен"}
-                </div>
-                {leftTotalsInline && (
-                  <ScrollHint>
-                    <div
-                      role="region"
-                      tabIndex={0}
-                      aria-label={(t("group_balance_totals_aria") as string) || "Totals by currency"}
-                      className="text-[12px] overflow-x-auto overflow-y-hidden px-3"
-                      style={{
-                        color: "var(--tg-text-color)",       // чёрный/белый по теме
-                        whiteSpace: "nowrap",
-                        WebkitOverflowScrolling: "touch",
-                      }}
-                    >
-                      {leftTotalsInline}
-                    </div>
-                  </ScrollHint>
-                )}
+          /* ================= Мой баланс: две колонки ================= */
+          <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Левая колонка — Я должен */}
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                {t("i_owe") || "Я должен"}
               </div>
 
-              {/* Правая колонка заголовок+итоги */}
-              <div className="min-w-0">
-                <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
-                  {t("they_owe_me") || "Мне должны"}
+              {/* Итоги / пустое состояние */}
+              {leftTotalsInline ? (
+                <div
+                  className="mb-2 overflow-x-auto no-scrollbar"
+                  style={{
+                    WebkitOverflowScrolling: "touch",
+                    color: "var(--tg-text-color)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {leftTotalsInline}
                 </div>
-                {rightTotalsInline && (
-                  <ScrollHint>
-                    <div
-                      role="region"
-                      tabIndex={0}
-                      aria-label={(t("group_balance_totals_aria") as string) || "Totals by currency"}
-                      className="text-[12px] overflow-x-auto overflow-y-hidden px-3"
-                      style={{
-                        color: "var(--tg-text-color)",
-                        whiteSpace: "nowrap",
-                        WebkitOverflowScrolling: "touch",
-                      }}
-                    >
-                      {rightTotalsInline}
-                    </div>
-                  </ScrollHint>
-                )}
-              </div>
+              ) : (
+                <div className="text-[12px] mb-2" style={{ color: "var(--tg-hint-color)" }}>
+                  {t("group_balance_no_debts_left")}
+                </div>
+              )}
+
+              {leftCards.length === 0 ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{/* пусто */}</div>
+              ) : (
+                <div className="grid gap-2">
+                  {leftCards.map((card) => {
+                    const id = card.user.id;
+                    const isExpanded = expandedLeft.has(id);
+                    const totalLines = card.lines.length;
+                    const visCollapsed = Math.min(2, totalLines);
+                    const linesVisible = isExpanded ? totalLines : visCollapsed;
+                    return (
+                      <div
+                        key={id + "-L"}
+                        className="relative rounded-xl border p-2"
+                        style={{
+                          borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                          background: "var(--tg-card-bg)",
+                        }}
+                      >
+                        {/* шапка карточки: аватар + имя */}
+                        <div className="flex items-center gap-2 mb-1">
+                          <Avatar url={card.user.photo_url} alt={firstOnly(card.user)} />
+                          <div className="text-[14px] font-medium" style={{ color: "var(--tg-text-color)" }}>
+                            {firstOnly(card.user)}
+                          </div>
+                        </div>
+
+                        {/* строки валют: левая колонка (суммы + стрелка вправо), правая колонка — кнопки для каждой строки */}
+                        <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                          {/* СУММЫ */}
+                          <div
+                            className="flex flex-col"
+                            style={{
+                              gap: V_GAP,
+                              // базовая высота под видимые строки; остальное доберётся естественно
+                              minHeight: heightFor(linesVisible),
+                            }}
+                          >
+                            {(isExpanded ? card.lines : card.lines.slice(0, 2)).map((ln, i) => (
+                              <div
+                                key={id + "-L-" + ln.currency + "-" + i}
+                                className="flex items-center gap-2 text-[14px] font-semibold"
+                                style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
+                              >
+                                <ArrowRight size={16} />
+                                {fmtNoTrailing(ln.amount, ln.currency, locale)}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* КНОПКИ — для каждой видимой строки */}
+                          <div
+                            className="flex flex-col items-end"
+                            style={{
+                              gap: V_GAP,
+                              minHeight: heightFor(linesVisible),
+                            }}
+                          >
+                            {(isExpanded ? card.lines : card.lines.slice(0, 2)).map((ln, i) => (
+                              <button
+                                key={id + "-L-btn-" + ln.currency + "-" + i}
+                                type="button"
+                                onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
+                                className={btn}
+                                aria-label="Settle up"
+                                title="Settle up"
+                              >
+                                <HandCoins size={18} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* «и ещё N» (подбираем ближе к суммам) */}
+                        {totalLines > 2 && (
+                          <div className="mt-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleLeft(id)}
+                              className="text-[12px] opacity-80 hover:opacity-100 underline"
+                              style={{ color: "var(--tg-text-color)" }}
+                            >
+                              {isExpanded ? "Свернуть" : `и ещё ${totalLines - 2}`}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Пары карточек: по рядам. Если в паре есть раскрытая карточка — НЕ выравниваем высоту в этой строке */}
-            {pairsCount === 0 ? (
-              <div className="text-[13px] text-[var(--tg-hint-color)]">
-                {t("group_balance_no_debts_left") || "Нет долгов"}
+            {/* Правая колонка — Мне должны */}
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                {t("they_owe_me") || "Мне должны"}
               </div>
+
+              {/* Итоги / пустое состояние */}
+              {rightTotalsInline ? (
+                <div
+                  className="mb-2 overflow-x-auto no-scrollbar"
+                  style={{
+                    WebkitOverflowScrolling: "touch",
+                    color: "var(--tg-text-color)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {rightTotalsInline}
+                </div>
+              ) : (
+                <div className="text-[12px] mb-2" style={{ color: "var(--tg-hint-color)" }}>
+                  {t("group_balance_no_debts_right")}
+                </div>
+              )}
+
+              {rightCards.length === 0 ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{/* пусто */}</div>
+              ) : (
+                <div className="grid gap-2">
+                  {rightCards.map((card) => {
+                    const id = card.user.id;
+                    const isExpanded = expandedRight.has(id);
+                    const totalLines = card.lines.length;
+                    const visCollapsed = Math.min(2, totalLines);
+                    const linesVisible = isExpanded ? totalLines : visCollapsed;
+
+                    return (
+                      <div
+                        key={id + "-R"}
+                        className="relative rounded-xl border p-2"
+                        style={{
+                          borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                          background: "var(--tg-card-bg)",
+                        }}
+                      >
+                        {/* шапка карточки: аватар + имя */}
+                        <div className="flex items-center gap-2 mb-1">
+                          <Avatar url={card.user.photo_url} alt={firstOnly(card.user)} />
+                          <div className="text-[14px] font-medium" style={{ color: "var(--tg-text-color)" }}>
+                            {firstOnly(card.user)}
+                          </div>
+                        </div>
+
+                        {/* строки валют: слева суммы + стрелка влево; справа — ОДНА кнопка по вертикальному центру видимых строк */}
+                        <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
+                          {/* СУММЫ */}
+                          <div
+                            className="flex flex-col"
+                            style={{
+                              gap: V_GAP,
+                              minHeight: heightFor(linesVisible),
+                            }}
+                          >
+                            {(isExpanded ? card.lines : card.lines.slice(0, 2)).map((ln, i) => (
+                              <div
+                                key={id + "-R-" + ln.currency + "-" + i}
+                                className="flex items-center gap-2 text-[14px] font-semibold"
+                                style={{ color: "var(--tg-success-text,#2ecc71)" }}
+                              >
+                                <ArrowLeft size={16} />
+                                {fmtNoTrailing(ln.amount, ln.currency, locale)}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* ЕДИНСТВЕННАЯ КНОПКА — по вертикальному центру видимых строк */}
+                          <div
+                            className="flex items-center justify-end"
+                            style={{
+                              minHeight: heightFor(linesVisible),
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const first = card.lines[0];
+                                // всегда открываем локальную «модалку», плюс, если есть внешний обработчик — дергаем его
+                                setStubOpen(true);
+                                if (onRemind && first) {
+                                  setTimeout(() => onRemind(card.user, first.amount, first.currency), 0);
+                                }
+                              }}
+                              className={btn}
+                              aria-label="Remind"
+                              title="Remind"
+                            >
+                              <Bell size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* «и ещё N» */}
+                        {totalLines > 2 && (
+                          <div className="mt-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleRight(id)}
+                              className="text-[12px] opacity-80 hover:opacity-100 underline"
+                              style={{ color: "var(--tg-text-color)" }}
+                            >
+                              {isExpanded ? "Свернуть" : `и ещё ${totalLines - 2}`}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* ================= Все балансы: сводка + карточки-пары пользователей ================= */
+          <div className="flex flex-col gap-3">
+            {/* Сводный горизонтальный бар валют со скроллом */}
+            {allSummaryInline && (
+              <div
+                className="overflow-x-auto no-scrollbar px-1 py-1 rounded-lg"
+                style={{
+                  WebkitOverflowScrolling: "touch",
+                  whiteSpace: "nowrap",
+                  color: "var(--tg-text-color)",
+                  border: "1px solid var(--tg-secondary-bg-color,#e7e7e7)",
+                  background: "var(--tg-card-bg)",
+                }}
+              >
+                {allSummaryInline}
+              </div>
+            )}
+
+            {/* Карточки-пары */}
+            {pairCards.length === 0 ? (
+              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
             ) : (
-              Array.from({ length: pairsCount }).map((_, idx) => {
-                const L = leftCards[idx];
-                const R = rightCards[idx];
-                const leftExpanded  = L ? !!expanded[L.user.id] : false;
-                const rightExpanded = R ? !!expanded[R.user.id] : false;
-                const pairAlign = !(leftExpanded || rightExpanded); // если кто-то раскрыт — перестаём матчить высоту
+              pairCards.map((pair, idx) => {
+                const toALines = Object.entries(pair.toA)
+                  .filter(([, v]) => v > 0)
+                  .sort((a, b) => a[0].localeCompare(b[0]));
+                const toBLines = Object.entries(pair.toB)
+                  .filter(([, v]) => v > 0)
+                  .sort((a, b) => a[0].localeCompare(b[0]));
+
+                // локальные раскрытия для этой карточки
+                const [expA, setExpA] = useState(false);
+                const [expB, setExpB] = useState(false);
+
+                const visA = expA ? toALines.length : Math.min(2, toALines.length);
+                const visB = expB ? toBLines.length : Math.min(2, toBLines.length);
 
                 return (
                   <div
-                    key={`pair-${idx}`}
-                    className={`flex gap-2 mb-2 ${pairAlign ? "items-stretch" : "items-start"}`}
+                    key={`pair-${idx}-${pair.a.id}-${pair.b.id}`}
+                    className="rounded-xl border p-2"
+                    style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
                   >
-                    {/* LEFT */}
-                    <div className="flex-1">
-                      {L ? (
-                        <DebtCardLeft
-                          card={L}
-                          expanded={leftExpanded}
-                          onToggle={() => toggleExpanded(L.user.id)}
-                          locale={locale}
-                          onRepay={onRepay}
-                          matchHeight={pairAlign}
-                        />
-                      ) : (
-                        <div
-                          className="rounded-xl border p-2 opacity-30"
-                          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-                        />
-                      )}
+                    {/* шапка: два аватара и имена */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Avatar url={pair.a.photo_url} alt={firstOnly(pair.a)} size={36} />
+                      <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }}>
+                        {firstOnly(pair.a)}
+                      </div>
+                      <span className="opacity-60 mx-1">↔</span>
+                      <Avatar url={pair.b.photo_url} alt={firstOnly(pair.b)} size={36} />
+                      <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }}>
+                        {firstOnly(pair.b)}
+                      </div>
                     </div>
 
-                    {/* RIGHT */}
-                    <div className="flex-1">
-                      {R ? (
-                        <DebtCardRight
-                          card={R}
-                          expanded={rightExpanded}
-                          onToggle={() => toggleExpanded(R.user.id)}
-                          locale={locale}
-                          onRemind={(user, amount, currency) => {
-                            setStubOpen(true); // чтобы модалка гарантированно показалась
-                            onRemind?.(user, amount, currency);
-                          }}
-                          matchHeight={pairAlign}
-                        />
-                      ) : (
-                        <div
-                          className="rounded-xl border p-2 opacity-30"
-                          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-                        />
-                      )}
+                    {/* тело: две колонки — b → a (зелёный слева), a → b (красный справа) */}
+                    <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                      {/* b → a (мне должны, зелёный, стрелка влево) */}
+                      <div>
+                        <div className="text-[12px] mb-1 opacity-80" style={{ color: "var(--tg-text-color)" }}>
+                          {/* визуальная подсказка колонки, без слова «должен» */}
+                          <span className="inline-flex items-center gap-1">
+                            <ArrowLeft size={14} />
+                            {firstOnly(pair.b)} → {firstOnly(pair.a)}
+                          </span>
+                        </div>
+                        <div className="flex flex-col" style={{ gap: V_GAP }}>
+                          {(expA ? toALines : toALines.slice(0, 2)).map(([ccy, sum]) => (
+                            <div
+                              key={`toA-${ccy}`}
+                              className="flex items-center gap-2 text-[14px] font-semibold"
+                              style={{ color: "var(--tg-success-text,#2ecc71)" }}
+                            >
+                              <ArrowLeft size={16} />
+                              {fmtNoTrailing(sum, ccy, locale)}
+                            </div>
+                          ))}
+                          {toALines.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => setExpA(!expA)}
+                              className="self-start text-[12px] opacity-80 hover:opacity-100 underline"
+                              style={{ color: "var(--tg-text-color)" }}
+                            >
+                              {expA ? "Свернуть" : `и ещё ${toALines.length - 2}`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* a → b (я должен, красный, стрелка вправо) */}
+                      <div>
+                        <div className="text-[12px] mb-1 opacity-80" style={{ color: "var(--tg-text-color)" }}>
+                          <span className="inline-flex items-center gap-1">
+                            <ArrowRight size={14} />
+                            {firstOnly(pair.a)} → {firstOnly(pair.b)}
+                          </span>
+                        </div>
+                        <div className="flex flex-col" style={{ gap: V_GAP }}>
+                          {(expB ? toBLines : toBLines.slice(0, 2)).map(([ccy, sum]) => (
+                            <div
+                              key={`toB-${ccy}`}
+                              className="flex items-center gap-2 text-[14px] font-semibold"
+                              style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}
+                            >
+                              <ArrowRight size={16} />
+                              {fmtNoTrailing(sum, ccy, locale)}
+                            </div>
+                          ))}
+                          {toBLines.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => setExpB(!expB)}
+                              className="self-start text-[12px] opacity-80 hover:opacity-100 underline"
+                              style={{ color: "var(--tg-text-color)" }}
+                            >
+                              {expB ? "Свернуть" : `и ещё ${toBLines.length - 2}`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
               })
             )}
-          </>
-        ) : (
-          /* ================= Все балансы: 2 строки на элемент ================= */
-          <AllBalances
-            allDebts={allDebts}
-            locale={locale}
-            myId={myId}
-            onRepay={onRepay}
-            onRemind={(user, amount, currency) => {
-              setStubOpen(true);
-              onRemind?.(user, amount, currency);
-            }}
-            t_owes={(t("tx_modal.owes") as string) || "owes"}
-          />
+          </div>
         )}
       </div>
 
@@ -340,7 +640,7 @@ export default function GroupBalanceTabSmart({
             style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[15px] font-semibold mb-2">{t("remind_debt")}</div>
+            <div className="text-[15px] font-semibold mb-2">{t("remind_debt") || "Напомнить"}</div>
             <div className="text-[14px] opacity-80 mb-3">{t("debts_reserved")}</div>
             <div className="flex justify-end">
               <button
@@ -355,325 +655,17 @@ export default function GroupBalanceTabSmart({
         </div>
       )}
 
-      {/* скрытая кнопка для FAB (совместимость со старым кодом) */}
+      {/* скрытая кнопка для FAB */}
       <div className="hidden">
         <button type="button" onClick={onFabClick} />
       </div>
-
-      {/* стили для скролл-хинтов и т.п. */}
-      <StyleOnce />
     </div>
   );
 }
 
-/* ====== Компоненты карточек (левая/правая) ====== */
-
-function DebtCardLeft({
-  card,
-  expanded,
-  onToggle,
-  locale,
-  onRepay,
-  matchHeight,
-}: {
-  card: CardItem;
-  expanded: boolean;
-  onToggle: () => void;
-  locale: string;
-  onRepay?: (user: User, amount: number, currency: string) => void;
-  matchHeight: boolean;
-}) {
-  const btn =
-    "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
-    "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
-    "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
-    "hover:brightness-105";
-
-  const visible = expanded ? card.lines : card.lines.slice(0, 2);
-  const rest = Math.max(0, card.lines.length - visible.length);
-
-  return (
-    <div
-      className={`rounded-xl border p-2 flex flex-col ${matchHeight ? "h-full" : ""}`}
-      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
-    >
-      {/* шапка */}
-      <div className="flex items-center gap-2 mb-1">
-        <Avatar url={card.user.photo_url} alt={firstOnly(card.user)} />
-        <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(card.user)}>
-          {firstOnly(card.user)}
-        </div>
-      </div>
-
-      {/* строки валют: грид 2 колонки */}
-      <div className="grid gap-1" style={{ gridTemplateColumns: "1fr auto" }}>
-        {visible.map((ln, i) => (
-          <FragmentRow
-            key={card.user.id + "-L-" + ln.currency + "-" + i}
-            left={
-              <div className="text-[14px] font-semibold" style={{ color: "var(--tg-destructive-text,#ff5a5f)" }}>
-                {fmtNoTrailing(ln.amount, ln.currency, locale)}
-              </div>
-            }
-            right={
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => onRepay?.(card.user, ln.amount, ln.currency)}
-                  className={btn}
-                  aria-label="Settle up"
-                  title="Settle up"
-                >
-                  <HandCoins size={18} />
-                </button>
-              </div>
-            }
-          />
-        ))}
-      </div>
-
-      {/* «и ещё N / Свернуть» — ближе к сумме */}
-      {card.lines.length > 2 && (
-        <div className="mt-0.5">
-          {!expanded ? (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="text-[12px] opacity-80 hover:opacity-100"
-              style={{ color: "var(--tg-link-color)" }}
-            >
-              {moreLabel(rest, locale)}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="text-[12px] opacity-80 hover:opacity-100"
-              style={{ color: "var(--tg-link-color)" }}
-            >
-              {collapseLabel(locale)}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+/* ===== (вспомогательное) скрываем нативный скроллбар по возможности ===== */
+declare global {
+  interface CSSProperties {
+    [key: `--${string}`]: string | number;
+  }
 }
-
-function DebtCardRight({
-  card,
-  expanded,
-  onToggle,
-  locale,
-  onRemind,
-  matchHeight,
-}: {
-  card: CardItem;
-  expanded: boolean;
-  onToggle: () => void;
-  locale: string;
-  onRemind?: (user: User, amount: number, currency: string) => void;
-  matchHeight: boolean;
-}) {
-  const btn =
-    "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
-    "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
-    "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
-    "hover:brightness-105";
-
-  const visible = expanded ? card.lines : card.lines.slice(0, 2);
-  const rest = Math.max(0, card.lines.length - visible.length);
-
-  return (
-    <div
-      className={`rounded-xl border p-2 flex flex-col ${matchHeight ? "h-full" : ""}`}
-      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
-    >
-      {/* шапка */}
-      <div className="flex items-center gap-2 mb-1">
-        <Avatar url={card.user.photo_url} alt={firstOnly(card.user)} />
-        <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(card.user)}>
-          {firstOnly(card.user)}
-        </div>
-      </div>
-
-      {/* сетка: слева суммы, справа ЕДИНСТВЕННАЯ кнопка по вертикальному центру видимых строк */}
-      <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
-        <div className="flex flex-col gap-1">
-          {visible.map((ln, i) => (
-            <div
-              key={card.user.id + "-R-" + ln.currency + "-" + i}
-              className="text-[14px] font-semibold"
-              style={{ color: "var(--tg-success-text,#2ecc71)" }}
-            >
-              {fmtNoTrailing(ln.amount, ln.currency, locale)}
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              const first = visible[0];
-              if (first) onRemind?.(card.user, first.amount, first.currency);
-            }}
-            className={btn}
-            aria-label="Remind"
-            title="Remind"
-          >
-            <Bell size={18} />
-          </button>
-        </div>
-      </div>
-
-      {card.lines.length > 2 && (
-        <div className="mt-0.5">
-          {!expanded ? (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="text-[12px] opacity-80 hover:opacity-100"
-              style={{ color: "var(--tg-link-color)" }}
-            >
-              {moreLabel(rest, locale)}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="text-[12px] opacity-80 hover:opacity-100"
-              style={{ color: "var(--tg-link-color)" }}
-            >
-              {collapseLabel(locale)}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ===== Вкладка «Все балансы» — 2 строки, без бегущих имён ===== */
-function AllBalances({
-  allDebts,
-  locale,
-  myId,
-  onRepay,
-  onRemind,
-  t_owes,
-}: {
-  allDebts: AllDebt[];
-  locale: string;
-  myId?: number;
-  onRepay?: (user: User, amount: number, currency: string) => void;
-  onRemind?: (user: User, amount: number, currency: string) => void;
-  t_owes: string;
-}) {
-  return (
-    <div>
-      {allDebts.length === 0 ? (
-        <div className="text-[13px] text-[var(--tg-hint-color)]">—</div>
-      ) : (
-        allDebts.map((p, idx) => {
-          const iAmDebtor = myId != null && p.from.id === myId;
-          const iAmCreditor = myId != null && p.to.id === myId;
-
-          const amountColor =
-            iAmDebtor ? "var(--tg-destructive-text,#ff5a5f)" :
-            iAmCreditor ? "var(--tg-success-text,#2ecc71)" :
-            "var(--tg-text-color)";
-
-          return (
-            <div
-              key={`${idx}-${p.currency}-${p.from.id}-${p.to.id}`}
-              className="rounded-xl border mb-2 p-2"
-              style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
-            >
-              {/* Строка 1: аватар должника + имя + owes + аватар кредитора + имя */}
-              <div className="flex items-center gap-2 min-w-0">
-                <Avatar url={p.from.photo_url} alt={firstOnly(p.from)} size={36} />
-                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
-                  {firstOnly(p.from)}
-                </span>
-                <span className="text-[14px] mx-1" style={{ color: "var(--tg-text-color)" }}>
-                  {t_owes}
-                </span>
-                <Avatar url={p.to.photo_url} alt={firstOnly(p.to)} size={36} />
-                <span className="text-[14px] text-[var(--tg-text-color)] font-medium truncate">
-                  {firstOnly(p.to)}
-                </span>
-              </div>
-
-              {/* Строка 2: сумма под «owes», кнопка справа от суммы */}
-              <div className="grid mt-1 items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 8 }}>
-                <div className="text-[14px] font-semibold" style={{ color: amountColor }}>
-                  {fmtNoTrailing(p.amount, p.currency, locale)}
-                </div>
-                <div className="flex items-center justify-end">
-                  {iAmDebtor ? (
-                    <button
-                      type="button"
-                      onClick={() => onRepay?.(p.to, Math.abs(p.amount), p.currency)}
-                      className="h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] hover:brightness-105"
-                      aria-label="Settle up"
-                      title="Settle up"
-                    >
-                      <HandCoins size={18} />
-                    </button>
-                  ) : iAmCreditor ? (
-                    <button
-                      type="button"
-                      onClick={() => onRemind?.(p.from, Math.abs(p.amount), p.currency)}
-                      className="h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] hover:brightness-105"
-                      aria-label="Remind"
-                      title="Remind"
-                    >
-                      <Bell size={18} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
-
-/* ===== Хинт-обёртка для горизонтального скролла: мягкие тени по краям + внутренние отступы ===== */
-function ScrollHint({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`relative ${className || ""}`}>
-      {children /* у детей уже есть padding-inline: 12px */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[color:var(--tg-bg-color,#111)] to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[color:var(--tg-bg-color,#111)] to-transparent" />
-    </div>
-  );
-}
-
-/* ===== Вспомогательная строка 2-колоночной сетки ===== */
-function FragmentRow({ left, right }: { left: ReactNode; right: ReactNode }) {
-  return (
-    <>
-      <div className="min-w-0">{left}</div>
-      <div>{right}</div>
-    </>
-  );
-}
-
-/* ===== Инъекция стилей один раз ===== */
-function StyleOnce() {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (document.getElementById("gbts-scrollhint-style")) return;
-    const style = document.createElement("style");
-    style.id = "gbts-scrollhint-style";
-    style.innerHTML = `
-      /* можно добавить дополнительные мелочи при необходимости */
-    `;
-    document.head.appendChild(style);
-  }, []);
-  return null;
-}
-

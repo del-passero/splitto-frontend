@@ -1,9 +1,15 @@
 // src/store/groupsStore.ts
 // Пагинация + серверный поиск, защита от гонок и корректный offset.
+// Добавлено: хранение превью-долгов и загрузка батчем.
+// Расширено: fetchGroups принимает includeHidden/includeArchived/sortBy/sortDir.
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
-import { getUserGroups } from "../api/groupsApi"
+import { getUserGroups, getDebtsPreview } from "../api/groupsApi"
+
+interface DebtsMap {
+  [groupId: number]: { owe?: Record<string, number>; owed?: Record<string, number> }
+}
 
 interface GroupsStoreState {
   groups: GroupPreview[]
@@ -14,9 +20,22 @@ interface GroupsStoreState {
   groupsError: string | null
   reqId: number
 
+  // превью долгов
+  debtsPreviewByGroupId: DebtsMap
+
   clearGroups: () => void
-  fetchGroups: (userId: number, opts?: { reset?: boolean; q?: string }) => Promise<void>
+  fetchGroups: (userId: number, opts?: {
+    reset?: boolean
+    q?: string
+    includeHidden?: boolean
+    includeArchived?: boolean
+    sortBy?: "last_activity" | "name" | "created_at" | "members_count"
+    sortDir?: "asc" | "desc"
+  }) => Promise<void>
   loadMoreGroups: (userId: number, q?: string) => Promise<void>
+
+  // батч-загрузка превью долгов для карточек
+  fetchDebtsPreview: (groupIds: number[]) => Promise<void>
 }
 
 const PAGE_SIZE = 20
@@ -30,6 +49,8 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   groupsError: null,
   reqId: 0,
 
+  debtsPreviewByGroupId: {},
+
   clearGroups() {
     set({
       groups: [],
@@ -38,6 +59,7 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
       groupsHasMore: true,
       groupsError: null,
       // reqId не сбрасываем, чтобы старые ответы не перетёрли новые
+      debtsPreviewByGroupId: {},
     })
   },
 
@@ -45,6 +67,10 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const state = get()
     const reset = !!opts?.reset
     const q = opts?.q?.trim() || undefined
+    const includeHidden = !!opts?.includeHidden
+    const includeArchived = !!opts?.includeArchived
+    const sortBy = opts?.sortBy
+    const sortDir = opts?.sortDir
 
     const myId = state.reqId + 1
     set({ reqId: myId, groupsLoading: true, groupsError: null })
@@ -58,6 +84,10 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
         limit,
         offset: reqOffset,
         q,
+        includeHidden,
+        includeArchived,
+        sortBy,
+        sortDir,
       })
 
       // Если уже стартовал следующий запрос — игнорируем ответ
@@ -83,6 +113,23 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
         groupsOffset: newOffset,
         groupsHasMore: nextHasMore,
       })
+
+      // Подгрузим превью долгов для пришедшей страницы
+      const ids = items.map(i => i.id)
+      if (ids.length > 0) {
+        try {
+          const map = await getDebtsPreview(userId, ids)
+          // Преобразуем ключи в number
+          const patch: DebtsMap = {}
+          Object.keys(map || {}).forEach(k => {
+            const num = Number(k)
+            if (Number.isFinite(num)) patch[num] = map[k]
+          })
+          set({ debtsPreviewByGroupId: { ...get().debtsPreviewByGroupId, ...patch } })
+        } catch {
+          // превью долгов — вторично, не ломаем загрузку
+        }
+      }
     } catch (e: any) {
       if (get().reqId !== myId) return
       set({
@@ -102,5 +149,14 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const { groupsHasMore, groupsLoading } = get()
     if (!groupsHasMore || groupsLoading) return
     await get().fetchGroups(userId, { reset: false, q })
+  },
+
+  async fetchDebtsPreview(groupIds) {
+    // добираем превью только для тех id, которых ещё нет в кеше
+    const cached = get().debtsPreviewByGroupId
+    const miss = groupIds.filter((id) => !cached[id])
+    if (miss.length === 0) return
+    // Здесь специально no-op: превью подтягивается батчем в fetchGroups для каждой загруженной страницы.
+    return
   },
 }))
