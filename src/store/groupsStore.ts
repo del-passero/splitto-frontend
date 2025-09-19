@@ -123,7 +123,7 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
           const patch: DebtsMap = {}
           Object.keys(map || {}).forEach(k => {
             const num = Number(k)
-            if (Number.isFinite(num)) patch[num] = map[k]
+            if (Number.isFinite(num)) patch[num] = (map as any)[k]
           })
           set({ debtsPreviewByGroupId: { ...get().debtsPreviewByGroupId, ...patch } })
         } catch {
@@ -156,7 +156,8 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const cached = get().debtsPreviewByGroupId
     const miss = groupIds.filter((id) => !cached[id])
     if (miss.length === 0) return
-    // Здесь специально no-op: превью подтягивается батчем в fetchGroups для каждой загруженной страницы.
+    // Превью фактически подгружается в fetchGroups для каждой пришедшей страницы.
+    // Здесь no-op для совместимости с циклом видимости карточек.
     return
   },
 }))

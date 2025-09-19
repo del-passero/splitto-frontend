@@ -40,6 +40,14 @@ export default {
   group_linked_telegram: "Vinculado a Telegram",
   leave_group: "Salir del grupo",
   delete_group: "Eliminar grupo",
+  archive: "Archivar",
+  unarchive: "Desarchivar",
+  hide: "Ocultar",
+  unhide: "Mostrar",
+  restore: "Restaurar",
+  delete_hard_note: "Se eliminará permanentemente",
+  delete_soft_note: "Se eliminará con posibilidad de restaurar",
+  delete_forbidden_debts_note: "No se puede eliminar: hay deudas pendientes",
 
   // --- Saldos y deudas ---
   group_balance_you_get: "Te deben {{sum}}",

@@ -40,6 +40,14 @@ export default {
   group_linked_telegram: "Связана с Telegram",
   leave_group: "Выйти из группы",
   delete_group: "Удалить группу",
+  archive: "Архивировать",
+  unarchive: "Разархивировать",
+  hide: "Скрыть",
+  unhide: "Показать",
+  restore: "Восстановить",
+  delete_hard_note: "Будет удалено безвозвратно",
+  delete_soft_note: "Будет удалено с возможностью восстановления",
+  delete_forbidden_debts_note: "Нельзя удалить: есть непогашенные долги",
 
   // --- Балансы и долги ---
   group_balance_you_get: "Тебе должны {{sum}}",

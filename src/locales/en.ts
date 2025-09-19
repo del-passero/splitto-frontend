@@ -40,6 +40,14 @@ export default {
   group_linked_telegram: "Linked to Telegram",
   leave_group: "Leave group",
   delete_group: "Delete group",
+  archive: "Archive",
+  unarchive: "Unarchive",
+  hide: "Hide",
+  unhide: "Show",
+  restore: "Restore",
+  delete_hard_note: "Will be deleted permanently",
+  delete_soft_note: "Will be deleted with possibility to restore",
+  delete_forbidden_debts_note: "Cannot delete: there are unsettled debts",
 
   // --- Balances & debts ---
   group_balance_you_get: "You are owed {{sum}}",
