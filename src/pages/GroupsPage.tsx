@@ -22,7 +22,6 @@ import GroupsSortModal from "../components/GroupsSortModal"
 type SortBy = "last_activity" | "name" | "created_at" | "members_count"
 type SortDir = "asc" | "desc"
 
-// Фильтры теперь составные — совпадают с GroupsFilterModal
 type FiltersState = ModalFiltersState
 
 const defaultFilters: FiltersState = {
@@ -37,34 +36,34 @@ const GroupsPage = () => {
   const {
     groups, groupsLoading, groupsError,
     groupsHasMore, groupsTotal,
-    fetchGroups, clearGroups,
+    fetchGroups, loadMoreGroups, clearGroups
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Новое: состояние фильтра и сортировки
+  // Состояние фильтра и сортировки
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const [filters, setFilters] = useState<FiltersState>(defaultFilters)
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Производим серверные параметры из фильтров (только те, что поддерживаются бэком)
+  // Параметры для API — из фильтров
   const includeArchived = useMemo(
-    () => filters.status.all || filters.status.archived,
+    () => filters.status.archived || filters.status.all,
     [filters.status]
   )
   const includeHidden = useMemo(
-    () => filters.hidden.all || filters.hidden.hidden,
+    () => filters.hidden.hidden || filters.hidden.all,
     [filters.hidden]
   )
 
   // Поисковая строка
   const q = useMemo(() => search.trim(), [search])
 
-  // Унифицированная загрузка (используется и для дозагрузки страниц)
+  // Единая функция загрузки
   const loadPage = (reset: boolean) => {
     if (!user?.id) return
     fetchGroups(user.id, {
@@ -77,7 +76,7 @@ const GroupsPage = () => {
     })
   }
 
-  // Первая загрузка / перезагрузка при смене параметров
+  // Первая загрузка / перезагрузка при изменении зависимостей
   useEffect(() => {
     if (!user?.id) return
     clearGroups()
@@ -124,7 +123,6 @@ const GroupsPage = () => {
           ownerId={user?.id || 0}
           onCreated={() => loadPage(true)}
         />
-        {/* Модалка создания транзакции (общая) */}
         <CreateTransactionModal
           open={createTxOpen}
           onOpenChange={setCreateTxOpen}
@@ -136,12 +134,12 @@ const GroupsPage = () => {
           }))}
         />
 
-        {/* Новые модалки */}
+        {/* Фильтр/Сортировка */}
         <GroupsFilterModal
           open={filtersOpen}
           onClose={() => setFiltersOpen(false)}
           initial={filters}
-          onApply={(f) => setFilters(f)}
+          onApply={setFilters}
         />
         <GroupsSortModal
           open={sortOpen}
@@ -167,7 +165,6 @@ const GroupsPage = () => {
       />
 
       <CardSection noPadding>
-        {/* ВАЖНО: считаем по total, а не по длине текущей страницы */}
         <TopInfoRow count={groupsTotal} labelKey="groups_count" />
         <GroupsList
           groups={groups}
@@ -175,7 +172,16 @@ const GroupsPage = () => {
           loadMore={
             groupsLoading || !user?.id
               ? undefined
-              : () => loadPage(false) // дозагрузка с теми же параметрами
+              : () => {
+                  // дозагрузка следующей страницы: ВАЖНО — передаём те же фильтры/сортировку
+                  return useGroupsStore.getState().loadMoreGroups(user!.id, {
+                    q: q.length ? q : undefined,
+                    includeHidden,
+                    includeArchived,
+                    sortBy,
+                    sortDir,
+                  })
+                }
           }
         />
       </CardSection>
@@ -198,7 +204,6 @@ const GroupsPage = () => {
         onCreated={() => loadPage(true)}
       />
 
-      {/* Модалка создания транзакции (общая) */}
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}
@@ -210,12 +215,11 @@ const GroupsPage = () => {
         }))}
       />
 
-      {/* Новые модалки */}
       <GroupsFilterModal
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         initial={filters}
-        onApply={(f) => setFilters(f)}
+        onApply={setFilters}
       />
       <GroupsSortModal
         open={sortOpen}

@@ -69,9 +69,9 @@ export default {
 
   // --- Última actividad ---
   last_activity_label: "Última actividad",
-  last_activity_today: "Hoy",
-  last_activity_yesterday: "Ayer",
-  last_activity_days_ago: "Hace {{count}} días",
+  last_activity_today: "hoy",
+  last_activity_yesterday: "ayer",
+  last_activity_days_ago: "hace {{count}} días",
   last_activity_inactive: "Inactiva",
 
   // --- Lista de miembros (scroll) ---

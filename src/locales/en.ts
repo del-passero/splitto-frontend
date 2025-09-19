@@ -69,8 +69,8 @@ export default {
 
   // --- Last activity ---
   last_activity_label: "Last activity",
-  last_activity_today: "Today",
-  last_activity_yesterday: "Yesterday",
+  last_activity_today: "today",
+  last_activity_yesterday: "yesterday",
   last_activity_days_ago: "{{count}} days ago",
   last_activity_inactive: "Inactive",
 

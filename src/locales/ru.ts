@@ -68,11 +68,11 @@ export default {
   group_balance_totals_aria: "Итого по валютам",
 
   // --- Последняя активность ---
-  last_activity_label: "Последняя активность",
-  last_activity_today: "Сегодня",
-  last_activity_yesterday: "Вчера",
+  last_activity_label: "Активность была",
+  last_activity_today: "сегодня",
+  last_activity_yesterday: "вчера",
   last_activity_days_ago: "{{count}} дн. назад",
-  last_activity_inactive: "Неактивна",
+  last_activity_inactive: "Активности не было",
 
   // --- Список участников (скролл) ---
   group_invite: "Пригласить",

@@ -1,7 +1,7 @@
 // src/store/groupsStore.ts
 // Пагинация + серверный поиск, защита от гонок и корректный offset.
 // Добавлено: хранение превью-долгов и загрузка батчем.
-// Расширено: fetchGroups принимает includeHidden/includeArchived/sortBy/sortDir.
+// ВАЖНО: loadMoreGroups теперь тоже принимает includeHidden/includeArchived/sortBy/sortDir.
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
@@ -9,6 +9,23 @@ import { getUserGroups, getDebtsPreview } from "../api/groupsApi"
 
 interface DebtsMap {
   [groupId: number]: { owe?: Record<string, number>; owed?: Record<string, number> }
+}
+
+interface FetchOpts {
+  reset?: boolean
+  q?: string
+  includeHidden?: boolean
+  includeArchived?: boolean
+  sortBy?: "last_activity" | "name" | "created_at" | "members_count"
+  sortDir?: "asc" | "desc"
+}
+
+interface LoadMoreOpts {
+  q?: string
+  includeHidden?: boolean
+  includeArchived?: boolean
+  sortBy?: "last_activity" | "name" | "created_at" | "members_count"
+  sortDir?: "asc" | "desc"
 }
 
 interface GroupsStoreState {
@@ -20,21 +37,12 @@ interface GroupsStoreState {
   groupsError: string | null
   reqId: number
 
-  // превью долгов
   debtsPreviewByGroupId: DebtsMap
 
   clearGroups: () => void
-  fetchGroups: (userId: number, opts?: {
-    reset?: boolean
-    q?: string
-    includeHidden?: boolean
-    includeArchived?: boolean
-    sortBy?: "last_activity" | "name" | "created_at" | "members_count"
-    sortDir?: "asc" | "desc"
-  }) => Promise<void>
-  loadMoreGroups: (userId: number, q?: string) => Promise<void>
+  fetchGroups: (userId: number, opts?: FetchOpts) => Promise<void>
+  loadMoreGroups: (userId: number, opts?: LoadMoreOpts) => Promise<void>
 
-  // батч-загрузка превью долгов для карточек
   fetchDebtsPreview: (groupIds: number[]) => Promise<void>
 }
 
@@ -58,7 +66,6 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
       groupsOffset: 0,
       groupsHasMore: true,
       groupsError: null,
-      // reqId не сбрасываем, чтобы старые ответы не перетёрли новые
       debtsPreviewByGroupId: {},
     })
   },
@@ -75,7 +82,6 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const myId = state.reqId + 1
     set({ reqId: myId, groupsLoading: true, groupsError: null })
 
-    // ВАЖНО: offset для запроса — от предыдущего запроса, а не от длины merged
     const reqOffset = reset ? 0 : state.groupsOffset
     const limit = PAGE_SIZE
 
@@ -90,22 +96,15 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
         sortDir,
       })
 
-      // Если уже стартовал следующий запрос — игнорируем ответ
       if (get().reqId !== myId) return
 
       const prev = reset ? [] : state.groups
-      // защитимся от дублей в UI
       const uniq = items.filter((i) => !prev.some((g) => g.id === i.id))
       const merged = reset ? uniq : [...prev, ...uniq]
-
-      // Новый offset считаем ПО ПРИШЕДШЕЙ СТРАНИЦЕ, а не по merged:
-      // так мы продвинемся дальше, даже если часть элементов повторилась.
       const newOffset = reqOffset + items.length
 
       const t = Number.isFinite(total) ? (total as number) : newOffset
-      const nextHasMore = Number.isFinite(total)
-        ? newOffset < (total as number)
-        : items.length === limit
+      const nextHasMore = Number.isFinite(total) ? newOffset < (total as number) : items.length === limit
 
       set({
         groups: merged,
@@ -115,19 +114,18 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
       })
 
       // Подгрузим превью долгов для пришедшей страницы
-      const ids = items.map(i => i.id)
+      const ids = items.map((i) => i.id)
       if (ids.length > 0) {
         try {
           const map = await getDebtsPreview(userId, ids)
-          // Преобразуем ключи в number
           const patch: DebtsMap = {}
-          Object.keys(map || {}).forEach(k => {
+          Object.keys(map || {}).forEach((k) => {
             const num = Number(k)
             if (Number.isFinite(num)) patch[num] = (map as any)[k]
           })
           set({ debtsPreviewByGroupId: { ...get().debtsPreviewByGroupId, ...patch } })
         } catch {
-          // превью долгов — вторично, не ломаем загрузку
+          // превью долгов вторично — не ломаем загрузку
         }
       }
     } catch (e: any) {
@@ -145,19 +143,24 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     }
   },
 
-  async loadMoreGroups(userId, q) {
+  async loadMoreGroups(userId, opts) {
     const { groupsHasMore, groupsLoading } = get()
     if (!groupsHasMore || groupsLoading) return
-    await get().fetchGroups(userId, { reset: false, q })
+    await get().fetchGroups(userId, {
+      reset: false,
+      q: opts?.q,
+      includeHidden: opts?.includeHidden,
+      includeArchived: opts?.includeArchived,
+      sortBy: opts?.sortBy,
+      sortDir: opts?.sortDir,
+    })
   },
 
   async fetchDebtsPreview(groupIds) {
-    // добираем превью только для тех id, которых ещё нет в кеше
     const cached = get().debtsPreviewByGroupId
     const miss = groupIds.filter((id) => !cached[id])
     if (miss.length === 0) return
-    // Превью фактически подгружается в fetchGroups для каждой пришедшей страницы.
-    // Здесь no-op для совместимости с циклом видимости карточек.
+    // превью долгов тянется в fetchGroups для каждой загруженной страницы — здесь no-op
     return
   },
 }))

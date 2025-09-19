@@ -1,8 +1,8 @@
 // src/components/GroupsFilterModal.tsx
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-/** Полная структура фильтров (как обсуждали) */
+/** Полная структура фильтров (как договаривались) */
 export type FiltersState = {
   status: { active: boolean; archived: boolean; deleted: boolean; all: boolean }
   hidden: { hidden: boolean; visible: boolean; all: boolean }
@@ -16,13 +16,7 @@ type Props = {
   onClose: () => void
 }
 
-const ModalShell = ({
-  open,
-  children,
-}: {
-  open: boolean
-  children: React.ReactNode
-}) => {
+const ModalShell = ({ open, children }: { open: boolean; children: React.ReactNode }) => {
   if (!open) return null
   return (
     <div
@@ -44,66 +38,83 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </div>
 )
 
-/** Пилюля-кнопка для выбора */
 const Chip = ({
   active,
   onClick,
   label,
-  disabled,
   title,
 }: {
   active: boolean
   onClick: () => void
   label: string
-  disabled?: boolean
   title?: string
 }) => (
   <button
     type="button"
     onClick={onClick}
     title={title}
-    disabled={disabled}
     className={`
       px-3 py-1.5 rounded-full text-sm border transition
       ${active ? "bg-[var(--tg-link-color)] text-white border-[var(--tg-link-color)]" : "bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)] border-[var(--tg-secondary-bg-color)]"}
-      ${disabled ? "opacity-60 cursor-not-allowed" : "hover:brightness-105 active:scale-[0.99]"}
+      hover:brightness-105 active:scale-[0.99]
     `}
   >
     {label}
   </button>
 )
 
-function only<K extends string>(keys: K[], pick: K) {
-  const o = {} as Record<K, boolean>
-  keys.forEach(k => (o[k] = k === pick))
-  return o
-}
-
-export default function GroupsFilterModal({
-  open,
-  initial,
-  onApply,
-  onClose,
-}: Props) {
+export default function GroupsFilterModal({ open, initial, onApply, onClose }: Props) {
   const { t } = useTranslation()
   const [state, setState] = useState<FiltersState>(initial)
 
+  // Сбрасываем состояние модалки при каждом открытии
   useEffect(() => {
     if (open) setState(initial)
   }, [open, initial])
 
-  // Сброс ко «всем активным и видимым»
+  // Поддержка «ВСЕ» — вычисляется автоматически из текущих флагов
+  const normalized: FiltersState = useMemo(() => {
+    const s = state
+    const statusAll = s.status.active && s.status.archived && s.status.deleted
+    const hiddenAll = s.hidden.hidden && s.hidden.visible
+    const activityAll = s.activity.recent && s.activity.inactive && s.activity.empty
+    return {
+      status: { ...s.status, all: statusAll },
+      hidden: { ...s.hidden, all: hiddenAll },
+      activity: { ...s.activity, all: activityAll },
+    }
+  }, [state])
+
+  const toggle = <K extends keyof FiltersState, F extends keyof FiltersState[K]>(
+    block: K,
+    flag: F
+  ) => {
+    setState((prev) => {
+      const next = { ...prev, [block]: { ...(prev[block] as any) } } as FiltersState
+      ;(next[block] as any)[flag] = !(prev[block] as any)[flag]
+      // выключаем «all» при любом ручном клике (ниже оно пересчитается)
+      ;(next[block] as any).all = false
+      return next
+    })
+  }
+
+  const selectAll = <K extends keyof FiltersState>(block: K, value: boolean) => {
+    setState((prev) => {
+      const flags = Object.keys(prev[block]) as (keyof FiltersState[K])[]
+      const next = { ...prev, [block]: { ...(prev[block] as any) } } as FiltersState
+      flags.forEach((f) => {
+        ;(next[block] as any)[f] = value
+      })
+      return next
+    })
+  }
+
   const reset = () =>
     setState({
       status: { active: true, archived: false, deleted: false, all: false },
       hidden: { hidden: false, visible: true, all: false },
       activity: { recent: false, inactive: false, empty: false, all: true },
     })
-
-  // === ВНИМАНИЕ: что реально уходит на сервер ===
-  // includeArchived -> true, если выбран "архивные" или "все" (в статусе)
-  // includeHidden   -> true, если выбраны "скрытые" или "все" (в скрытых)
-  // Остальное (deleted, activity) — сейчас НЕ поддерживается беком этого эндпоинта.
 
   return (
     <ModalShell open={open}>
@@ -114,79 +125,71 @@ export default function GroupsFilterModal({
         </div>
       </div>
 
-      {/* Статус */}
+      {/* Статус (мультивыбор) */}
       <Section title={t("groups_filter_status") || "Статус"}>
         <Chip
           label={t("groups_filter_status_active") || "Активные"}
-          active={state.status.active}
-          onClick={() => setState(s => ({ ...s, status: only(["active","archived","deleted","all"] as const, "active") }))}
+          active={normalized.status.active}
+          onClick={() => toggle("status", "active")}
         />
         <Chip
           label={t("groups_filter_status_archived") || "Архивные"}
-          active={state.status.archived}
-          onClick={() => setState(s => ({ ...s, status: only(["active","archived","deleted","all"] as const, "archived") }))}
+          active={normalized.status.archived}
+          onClick={() => toggle("status", "archived")}
         />
-        {/* Удалённые — показываем, но отключаем: бэкенд-эндпоинт не возвращает deleted */}
         <Chip
           label={t("groups_filter_status_deleted") || "Удалённые"}
-          active={state.status.deleted}
-          onClick={() => {}}
-          disabled
-          title="Недоступно: текущий список не отдаёт удалённые группы"
+          active={normalized.status.deleted}
+          onClick={() => toggle("status", "deleted")}
+          title="Пункт интерфейса; серверный список удалённых групп этим API не поддерживает"
         />
         <Chip
           label={t("groups_filter_all") || "ВСЕ"}
-          active={state.status.all}
-          onClick={() => setState(s => ({ ...s, status: only(["active","archived","deleted","all"] as const, "all") }))}
+          active={normalized.status.all}
+          onClick={() => selectAll("status", !normalized.status.all)}
         />
       </Section>
 
-      {/* Скрытые мной */}
+      {/* Скрытые мной (мультивыбор) */}
       <Section title={t("groups_filter_hidden") || "Скрытые мной"}>
         <Chip
           label={t("groups_filter_hidden_visible") || "Видимые"}
-          active={state.hidden.visible}
-          onClick={() => setState(s => ({ ...s, hidden: only(["hidden","visible","all"] as const, "visible") }))}
+          active={normalized.hidden.visible}
+          onClick={() => toggle("hidden", "visible")}
         />
         <Chip
           label={t("hide") || "Скрытые"}
-          active={state.hidden.hidden}
-          onClick={() => setState(s => ({ ...s, hidden: only(["hidden","visible","all"] as const, "hidden") }))}
+          active={normalized.hidden.hidden}
+          onClick={() => toggle("hidden", "hidden")}
         />
         <Chip
           label={t("groups_filter_all") || "ВСЕ"}
-          active={state.hidden.all}
-          onClick={() => setState(s => ({ ...s, hidden: only(["hidden","visible","all"] as const, "all") }))}
+          active={normalized.hidden.all}
+          onClick={() => selectAll("hidden", !normalized.hidden.all)}
         />
       </Section>
 
-      {/* Активность — пока только UI (не поддерживается сервером в этом списке) */}
+      {/* Активность (мультивыбор; UI-уровень) */}
       <Section title={t("groups_filter_activity") || "Активность"}>
         <Chip
           label={t("groups_filter_activity_recent") || "Недавняя"}
-          active={state.activity.recent}
-          onClick={() => {}}
-          disabled
-          title="Недоступно для серверной фильтрации в этом API"
+          active={normalized.activity.recent}
+          onClick={() => toggle("activity", "recent")}
         />
         <Chip
           label={t("groups_filter_activity_inactive") || "Неактивная"}
-          active={state.activity.inactive}
-          onClick={() => {}}
-          disabled
-          title="Недоступно для серверной фильтрации в этом API"
+          active={normalized.activity.inactive}
+          onClick={() => toggle("activity", "inactive")}
         />
         <Chip
           label={t("groups_filter_activity_empty") || "Без транзакций"}
-          active={state.activity.empty}
-          onClick={() => {}}
-          disabled
-          title="Недоступно для серверной фильтрации в этом API"
+          active={normalized.activity.empty}
+          onClick={() => toggle("activity", "empty")}
         />
         <Chip
           label={t("groups_filter_all") || "ВСЕ"}
-          active={state.activity.all}
-          onClick={() => setState(s => ({ ...s, activity: only(["recent","inactive","empty","all"] as const, "all") }))}
+          active={normalized.activity.all}
+          onClick={() => selectAll("activity", !normalized.activity.all)}
         />
       </Section>
 
@@ -203,7 +206,7 @@ export default function GroupsFilterModal({
           type="button"
           className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-link-color)] text-white"
           onClick={() => {
-            onApply(state)
+            onApply(normalized)
             onClose()
           }}
         >
