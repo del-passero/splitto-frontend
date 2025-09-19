@@ -1,192 +1,174 @@
 // src/components/GroupCardMenu.tsx
 
-import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { Archive, ArchiveRestore, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from "lucide-react"
-
-type GroupContext = {
-  id: number
-  name: string
-  isOwner: boolean
-  isArchived: boolean
-  isDeleted: boolean // soft-deleted
-  isHidden: boolean // персонально скрыта для текущего пользователя
-  hasDebts?: boolean
-  hasTransactions?: boolean
-}
+import { Archive, RotateCw, Trash2, EyeOff, Eye, Pencil } from "lucide-react"
 
 type Props = {
   open: boolean
   onClose: () => void
-  /** Координаты якоря — куда «приклеить» меню */
-  anchor?: { x: number; y: number }
-  /** Данные о группе и правах */
-  context: GroupContext | null
 
-  // Коллбэки действий
-  onEdit: (id: number) => void
-  onToggleHide: (id: number, hide: boolean) => void
-  onToggleArchive: (id: number, toArchive: boolean) => void
-  onDeleteSoft: (id: number) => void
-  onDeleteHard: (id: number) => void
-  onRestore: (id: number, toActive: boolean) => void
+  // факты о группе/правах
+  isOwner: boolean
+  isArchived: boolean
+  isDeleted: boolean // soft
+  isHiddenForMe?: boolean
+
+  // колбэки-операции — РЕАЛЬНО ВЫПОЛНЯЮТ действия (дергают API) во внешнем коде
+  onEdit?: () => Promise<void> | void
+
+  onHide?: () => Promise<void> | void
+  onUnhide?: () => Promise<void> | void
+
+  onArchive?: () => Promise<void> | void
+  onUnarchive?: () => Promise<void> | void
+
+  onSoftDelete?: () => Promise<void> | void
+  onHardDelete?: () => Promise<void> | void
+
+  onRestore?: (opts?: { toActive?: boolean }) => Promise<void> | void
 }
 
-const Item = ({
-  icon,
-  label,
-  onClick,
-  danger = false,
-  disabled = false,
-  hint,
-}: {
-  icon: React.ReactNode
-  label: string
-  onClick: () => void
-  danger?: boolean
-  disabled?: boolean
-  hint?: string
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    className={`
-      w-full flex items-center gap-2 px-3 py-2 text-left
-      ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-[var(--tg-secondary-bg-color)]"}
-      ${danger ? "text-red-500" : "text-[var(--tg-text-color)]"}
-    `}
-    title={hint}
-    role="menuitem"
-  >
-    <span className="shrink-0">{icon}</span>
-    <span className="truncate">{label}</span>
-  </button>
-)
-
+/** Простой BottomSheet без сторонних библиотек */
 export default function GroupCardMenu({
   open,
   onClose,
-  anchor,
-  context,
+  isOwner,
+  isArchived,
+  isDeleted,
+  isHiddenForMe,
   onEdit,
-  onToggleHide,
-  onToggleArchive,
-  onDeleteSoft,
-  onDeleteHard,
+  onHide,
+  onUnhide,
+  onArchive,
+  onUnarchive,
+  onSoftDelete,
+  onHardDelete,
   onRestore,
 }: Props) {
   const { t } = useTranslation()
+  if (!open) return null
 
-  const style = useMemo<React.CSSProperties>(() => {
-    if (!anchor) return { position: "fixed", right: 12, top: 12 }
-    // Простейшее позиционирование без порталов/попперов
-    return { position: "fixed", left: anchor.x, top: anchor.y + 8, transform: "translate(-100%, 0)" }
-  }, [anchor])
+  // матрица пунктов
 
-  if (!open || !context) return null
+  const showEdit = true // всем участникам доступно
+  const showHide = !isOwner && !isDeleted // участник (не владелец), пока не удалена
+  const showArchive = isOwner && !isDeleted && !isArchived
+  const showUnarchive = isOwner && !isDeleted && isArchived
+  const showSoftDelete = isOwner && !isDeleted // на активной/архивной
+  const showRestore = isOwner && isDeleted // только из soft-delete
+  const showHardDelete = isOwner && isDeleted // финальное удаление из soft
 
-  const {
-    id,
-    isOwner,
-    isArchived,
-    isDeleted,
-    isHidden,
-    hasDebts = false,
-    hasTransactions = false,
-  } = context
-
-  const canArchiveToggle = isOwner && !isDeleted
-  const canDelete = isOwner && !isDeleted
-  const canRestore = isOwner && isDeleted
-  const canHideToggle = !isOwner && !isDeleted // владелец скрывать/показывать не может
-
-  const hardDeletePossible = canDelete && !hasTransactions
-  const softDeletePossible = canDelete && !hasDebts && hasTransactions
+  // клики
+  const click = async (fn?: () => Promise<void> | void) => {
+    if (!fn) return
+    await fn()
+    onClose()
+  }
 
   return (
-    <>
-      {/* затемнение для клика вне меню */}
+    <div
+      className="fixed inset-0 z-[999] flex items-end justify-center"
+      onClick={onClose}
+    >
+      {/* фон */}
+      <div className="absolute inset-0 bg-black/30" />
+
+      {/* лист */}
       <div
-        onClick={onClose}
-        className="fixed inset-0 z-40 bg-black/20"
-        aria-hidden
-      />
-      <div
-        className="z-50 min-w-[220px] rounded-xl border bg-[var(--tg-card-bg)] border-[var(--tg-secondary-bg-color)] shadow-lg overflow-hidden"
-        style={style}
-        role="menu"
+        className="relative w-full max-w-md rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color)] p-1 pb-3 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Редактировать — всем участникам (кроме soft-deleted) */}
-        {!isDeleted && (
-          <Item
-            icon={<Pencil size={16} />}
-            label={t("edit") || "Редактировать"}
-            onClick={() => { onClose(); onEdit(id) }}
-          />
-        )}
+        <div className="mx-auto mt-2 mb-1 h-1.5 w-12 rounded-full bg-[var(--tg-secondary-bg-color)]" />
 
-        {/* Скрыть/Показать — участник (не владелец), не soft-deleted */}
-        {canHideToggle && (
-          <Item
-            icon={isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
-            label={
-              isHidden
-                ? (t("groups_filter_hidden_visible") || "Показать")
-                : (t("groups_filter_hidden_hidden") || "Скрыть")
-            }
-            onClick={() => { onClose(); onToggleHide(id, !isHidden) }}
-          />
-        )}
+        <div className="flex flex-col py-1">
+          {showEdit && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              onClick={() => click(onEdit)}
+            >
+              <Pencil size={18} />
+              <span>{t("edit") || "Редактировать"}</span>
+            </button>
+          )}
 
-        {/* Архивировать/Разархивировать — владелец, не soft-deleted */}
-        {canArchiveToggle && (
-          <Item
-            icon={isArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-            label={isArchived ? (t("unarchive") as any) || "Разархивировать"
-                              : (t("archive") as any) || "Архивировать"}
-            onClick={() => { onClose(); onToggleArchive(id, !isArchived) }}
-          />
-        )}
+          {showHide && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              onClick={() => click(isHiddenForMe ? onUnhide : onHide)}
+            >
+              {isHiddenForMe ? <Eye size={18} /> : <EyeOff size={18} />}
+              <span>{isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}</span>
+            </button>
+          )}
 
-        {!isDeleted && <div className="h-px my-1 bg-[var(--tg-secondary-bg-color)]" />}
+          {showArchive && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              onClick={() => click(onArchive)}
+            >
+              <Archive size={18} />
+              <span>{t("groups_sort_by_last_activity") ? t("group_status_archived") : "Архивировать"}</span>
+            </button>
+          )}
 
-        {/* Удаление (soft/hard) — владелец, не soft-deleted */}
-        {!isDeleted && canDelete && (
-          <Item
-            icon={<Trash2 size={16} />}
-            label={t("delete") || "Удалить"}
-            danger
-            disabled={!(hardDeletePossible || softDeletePossible)}
-            hint={
-              hardDeletePossible
-                ? undefined
-                : softDeletePossible
-                  ? (t("errors.delete_forbidden") || "Безвозвратное удаление недоступно — есть транзакции. Будет выполнено обычное удаление.")
-                  : hasDebts
-                    ? (t("group_settings_cannot_leave_due_debt") || "Есть непогашенные долги")
-                    : undefined
-            }
-            onClick={() => {
-              onClose()
-              if (!hasTransactions) {
-                onDeleteHard(id)   // hard delete
-              } else {
-                onDeleteSoft(id)   // soft delete
-              }
-            }}
-          />
-        )}
+          {showUnarchive && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              onClick={() => click(onUnarchive)}
+            >
+              <RotateCw size={18} />
+              <span>{t("groups_sort_by_last_activity") ? t("groups_sort_by_last_activity") && (t("group_status_archived") || "Разархивировать") : "Разархивировать"}</span>
+            </button>
+          )}
 
-        {/* Восстановить — владелец, если soft-deleted */}
-        {isDeleted && canRestore && (
-          <Item
-            icon={<RotateCcw size={16} />}
-            label={(t("restore") as any) || "Восстановить"}
-            onClick={() => { onClose(); onRestore(id, false) /* -> архив */ }}
-          />
-        )}
+          {showSoftDelete && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
+              onClick={() => click(onSoftDelete)}
+            >
+              <Trash2 size={18} />
+              <span>{t("delete") || "Удалить"}</span>
+            </button>
+          )}
+
+          {showRestore && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              onClick={() => click(() => onRestore?.({ toActive: false }))}
+            >
+              <RotateCw size={18} />
+              <span>{t("restore") || "Восстановить"}</span>
+            </button>
+          )}
+
+          {showHardDelete && (
+            <button
+              type="button"
+              className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
+              onClick={() => click(onHardDelete)}
+            >
+              <Trash2 size={18} />
+              <span>{t("delete") || "Удалить"} (hard)</span>
+            </button>
+          )}
+        </div>
+
+        <div className="px-4 pt-2">
+          <button
+            type="button"
+            className="w-full h-10 rounded-xl bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)] hover:bg-[var(--tg-link-color)] hover:text-white transition"
+            onClick={onClose}
+          >
+            {t("close") || "Закрыть"}
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   )
 }

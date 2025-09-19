@@ -1,6 +1,5 @@
 // src/components/GroupsList.tsx
-// Рендер и инфинити-скролл. Без “самоотключения” на нулевом приросте.
-// Добавлено: контекстное меню карточки (⋮).
+// Рендер и инфинити-скролл + подключение превью долгов + полнофункциональное меню ⋮
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -32,24 +31,15 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const ioRef = useRef<IntersectionObserver | null>(null)
   const lockRef = useRef(false)
 
-  // debts preview из стора
+  // user & store
+  const { user } = useUserStore()
   const debtsPreview = useGroupsStore((s) => s.debtsPreviewByGroupId)
   const fetchDebtsPreview = useGroupsStore((s) => s.fetchDebtsPreview)
+  const fetchGroups = useGroupsStore((s) => s.fetchGroups)
+  const clearGroups = useGroupsStore((s) => s.clearGroups)
 
-  // меню
-  const { user } = useUserStore()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [anchor, setAnchor] = useState<{ x: number; y: number } | undefined>(undefined)
-  const [menuCtx, setMenuCtx] = useState<{
-    id: number
-    name: string
-    isOwner: boolean
-    isArchived: boolean
-    isDeleted: boolean
-    isHidden: boolean
-    hasDebts?: boolean
-    hasTransactions?: boolean
-  } | null>(null)
+  // локальный стейт меню
+  const [menuOpenForId, setMenuOpenForId] = useState<number | null>(null)
 
   const visibleIds = useMemo(() => groups.map((g) => g.id), [groups])
 
@@ -91,68 +81,80 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
     }
   }, [loadMore, loading])
 
-  // Открытие меню: собираем минимальный контекст (если есть дополнительные флаги — подставьте)
-  const openMenu = useCallback((g: any, e?: MouseEvent) => {
-    const ctx = {
-      id: g.id,
-      name: g.name,
-      isOwner: user?.id === g.owner_id,
-      isArchived: g.status === "archived",
-      isDeleted: !!g.deleted_at,
-      isHidden: !!g.is_hidden,        // если бек отдаёт персональную скрытость
-      hasDebts: !!g.has_debts,        // если бек отдаёт этот флаг
-      hasTransactions: !!g.has_tx,    // если бек отдаёт этот флаг
-    }
-    setMenuCtx(ctx)
-    if (e) setAnchor({ x: (e as any).clientX, y: (e as any).clientY })
-    else setAnchor(undefined)
-    setMenuOpen(true)
-  }, [user?.id])
+  // утилита обновления списка (простой способ без передачи фильтров):
+  const refetch = useCallback(async () => {
+    if (!user?.id) return
+    // мягкий рефреш: сброс и первичная загрузка с дефолтными параметрами
+    clearGroups()
+    await fetchGroups(user.id, { reset: true })
+  }, [user?.id, clearGroups, fetchGroups])
 
-  // Действия меню (минимальные, можно заменить на вашу логику с подтверждениями и обновлением стора)
-  const handleEdit = (id: number) => {
-    window.location.href = `/groups/${id}/edit`
-  }
+  const currentGroup = useMemo(
+    () => groups.find((g) => g.id === menuOpenForId),
+    [groups, menuOpenForId]
+  )
 
-  const handleToggleHide = async (id: number, hide: boolean) => {
-    try {
-      hide ? await hideGroup(id) : await unhideGroup(id)
-    } finally {
-      setMenuOpen(false)
-    }
-  }
+  const isOwner = useMemo(() => {
+    if (!currentGroup || !user?.id) return false
+    return (currentGroup as any).owner_id === user.id
+  }, [currentGroup, user?.id])
 
-  const handleToggleArchive = async (id: number, toArchive: boolean) => {
-    try {
-      toArchive ? await archiveGroup(id) : await unarchiveGroup(id)
-    } finally {
-      setMenuOpen(false)
-    }
-  }
+  const isArchived = (currentGroup as any)?.status === "archived"
+  const isDeleted = !!(currentGroup as any)?.deleted_at
+  const isHiddenForMe = false // можно подставлять из локального кеша, если храните
 
-  const handleDeleteSoft = async (id: number) => {
-    try {
-      await softDeleteGroup(id)
-    } finally {
-      setMenuOpen(false)
-    }
-  }
+  // handlers (все реальные API-вызовы — здесь)
+  const onEdit = useCallback(async () => {
+    if (!currentGroup) return
+    // маршрут редактирования — под ваш роут
+    navigate(`/groups/${currentGroup.id}/settings`)
+  }, [currentGroup, navigate])
 
-  const handleDeleteHard = async (id: number) => {
-    try {
-      await hardDeleteGroup(id)
-    } finally {
-      setMenuOpen(false)
-    }
-  }
+  const onHide = useCallback(async () => {
+    if (!currentGroup) return
+    await hideGroup(currentGroup.id)
+    await refetch()
+  }, [currentGroup, refetch])
 
-  const handleRestore = async (id: number, toActive: boolean) => {
-    try {
-      await restoreGroup(id, { toActive, returnFull: false })
-    } finally {
-      setMenuOpen(false)
-    }
-  }
+  const onUnhide = useCallback(async () => {
+    if (!currentGroup) return
+    await unhideGroup(currentGroup.id)
+    await refetch()
+  }, [currentGroup, refetch])
+
+  const onArchive = useCallback(async () => {
+    if (!currentGroup) return
+    await archiveGroup(currentGroup.id)
+    await refetch()
+  }, [currentGroup, refetch])
+
+  const onUnarchive = useCallback(async () => {
+    if (!currentGroup) return
+    // хотим сразу обновлённую группу — можно вернуть full на бэке, но здесь просто рефрешим
+    await unarchiveGroup(currentGroup.id, true)
+    await refetch()
+  }, [currentGroup, refetch])
+
+  const onSoftDelete = useCallback(async () => {
+    if (!currentGroup) return
+    await softDeleteGroup(currentGroup.id)
+    await refetch()
+  }, [currentGroup, refetch])
+
+  const onHardDelete = useCallback(async () => {
+    if (!currentGroup) return
+    await hardDeleteGroup(currentGroup.id)
+    await refetch()
+  }, [currentGroup, refetch])
+
+  const onRestore = useCallback(async (_opts?: { toActive?: boolean }) => {
+    if (!currentGroup) return
+    await restoreGroup(currentGroup.id, {
+      toActive: _opts?.toActive ?? false,
+      returnFull: false,
+    })
+    await refetch()
+  }, [currentGroup, refetch])
 
   return (
     <CardSection noPadding>
@@ -162,26 +164,31 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
             key={g.id}
             group={g as any}
             onClick={() => navigate(`/groups/${g.id}`)}
-            onMenuClick={(id, e) => openMenu(g, e as any)}
+            onMenuClick={(id) => setMenuOpenForId(id)}
             debts={debtsPreview[g.id]}
           />
         ))}
       </div>
 
+      {/* Сенсинел для инфинити-скролла */}
       <div ref={loaderRef} aria-hidden style={{ height: 1, width: "100%", opacity: 0 }} />
 
-      {/* Меню действий */}
+      {/* Меню карточки */}
       <GroupCardMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        anchor={anchor}
-        context={menuCtx}
-        onEdit={handleEdit}
-        onToggleHide={handleToggleHide}
-        onToggleArchive={handleToggleArchive}
-        onDeleteSoft={handleDeleteSoft}
-        onDeleteHard={handleDeleteHard}
-        onRestore={handleRestore}
+        open={menuOpenForId != null}
+        onClose={() => setMenuOpenForId(null)}
+        isOwner={!!isOwner}
+        isArchived={!!isArchived}
+        isDeleted={!!isDeleted}
+        isHiddenForMe={!!isHiddenForMe}
+        onEdit={onEdit}
+        onHide={onHide}
+        onUnhide={onUnhide}
+        onArchive={onArchive}
+        onUnarchive={onUnarchive}
+        onSoftDelete={onSoftDelete}
+        onHardDelete={onHardDelete}
+        onRestore={onRestore}
       />
     </CardSection>
   )
