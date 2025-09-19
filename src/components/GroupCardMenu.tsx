@@ -13,7 +13,7 @@ type Props = {
   isDeleted: boolean // soft
   isHiddenForMe?: boolean
 
-  // колбэки-операции — РЕАЛЬНО ВЫПОЛНЯЮТ действия (дергают API) во внешнем коде
+  // колбэки-операции
   onEdit?: () => Promise<void> | void
 
   onHide?: () => Promise<void> | void
@@ -28,7 +28,6 @@ type Props = {
   onRestore?: (opts?: { toActive?: boolean }) => Promise<void> | void
 }
 
-/** Простой BottomSheet без сторонних библиотек */
 export default function GroupCardMenu({
   open,
   onClose,
@@ -48,21 +47,31 @@ export default function GroupCardMenu({
   const { t } = useTranslation()
   if (!open) return null
 
-  // матрица пунктов
-
+  // матрица показа
   const showEdit = true // всем участникам доступно
-  const showHide = !isOwner && !isDeleted // участник (не владелец), пока не удалена
+  const showHide = !isOwner && !isDeleted // участник (не владелец)
   const showArchive = isOwner && !isDeleted && !isArchived
   const showUnarchive = isOwner && !isDeleted && isArchived
-  const showSoftDelete = isOwner && !isDeleted // на активной/архивной
-  const showRestore = isOwner && isDeleted // только из soft-delete
-  const showHardDelete = isOwner && isDeleted // финальное удаление из soft
+  const showSoftDelete = isOwner && !isDeleted // активная/архивная
+  const showRestore = isOwner && isDeleted
+  const showHardDelete = isOwner && isDeleted
 
-  // клики
-  const click = async (fn?: () => Promise<void> | void) => {
-    if (!fn) return
-    await fn()
-    onClose()
+  // helper: клик с confirm + ловим ошибки (и показываем их)
+  const click = async (
+    fn: (() => Promise<void> | void) | undefined,
+    { confirmText, errorTitle }: { confirmText?: string; errorTitle?: string } = {}
+  ) => {
+    try {
+      if (confirmText) {
+        const ok = window.confirm(confirmText)
+        if (!ok) return
+      }
+      await fn?.()
+      onClose()
+    } catch (e: any) {
+      const msg = e?.message || "Action failed"
+      window.alert(`${errorTitle || t("error") || "Ошибка"}: ${msg}`)
+    }
   }
 
   return (
@@ -70,10 +79,10 @@ export default function GroupCardMenu({
       className="fixed inset-0 z-[999] flex items-end justify-center"
       onClick={onClose}
     >
-      {/* фон */}
+      {/* overlay */}
       <div className="absolute inset-0 bg-black/30" />
 
-      {/* лист */}
+      {/* sheet */}
       <div
         className="relative w-full max-w-md rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color)] p-1 pb-3 shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -85,6 +94,7 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
+              title={t("edit") || "Редактировать"}
               onClick={() => click(onEdit)}
             >
               <Pencil size={18} />
@@ -96,7 +106,12 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              onClick={() => click(isHiddenForMe ? onUnhide : onHide)}
+              title={isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}
+              onClick={() =>
+                click(isHiddenForMe ? onUnhide : onHide, {
+                  confirmText: isHiddenForMe ? undefined : undefined, // без подтверждения
+                })
+              }
             >
               {isHiddenForMe ? <Eye size={18} /> : <EyeOff size={18} />}
               <span>{isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}</span>
@@ -107,10 +122,16 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              onClick={() => click(onArchive)}
+              title={t("group_status_archived") || "Архивировать"}
+              onClick={() =>
+                click(onArchive, {
+                  confirmText: t("group_status_archived") || "Архивировать группу?",
+                  errorTitle: t("error") || "Ошибка",
+                })
+              }
             >
               <Archive size={18} />
-              <span>{t("groups_sort_by_last_activity") ? t("group_status_archived") : "Архивировать"}</span>
+              <span>{t("group_status_archived") || "Архивировать"}</span>
             </button>
           )}
 
@@ -118,10 +139,16 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              onClick={() => click(onUnarchive)}
+              title={t("groups_sort_dir_asc") ? "Разархивировать" : "Разархивировать"}
+              onClick={() =>
+                click(onUnarchive, {
+                  confirmText: "Разархивировать группу?",
+                  errorTitle: t("error") || "Ошибка",
+                })
+              }
             >
               <RotateCw size={18} />
-              <span>{t("groups_sort_by_last_activity") ? t("groups_sort_by_last_activity") && (t("group_status_archived") || "Разархивировать") : "Разархивировать"}</span>
+              <span>Разархивировать</span>
             </button>
           )}
 
@@ -129,7 +156,14 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
-              onClick={() => click(onSoftDelete)}
+              title={(t("delete") || "Удалить") + " — если есть долги, операция невозможна"}
+              onClick={() =>
+                click(onSoftDelete, {
+                  confirmText:
+                    "Удалить группу? Если в группе есть долги — операция будет отклонена. Если транзакции есть, но долгов нет — будет мягкое удаление.",
+                  errorTitle: t("error") || "Ошибка",
+                })
+              }
             >
               <Trash2 size={18} />
               <span>{t("delete") || "Удалить"}</span>
@@ -140,7 +174,13 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              onClick={() => click(() => onRestore?.({ toActive: false }))}
+              title={t("restore") || "Восстановить"}
+              onClick={() =>
+                click(() => onRestore?.({ toActive: false }), {
+                  confirmText: "Восстановить группу (переведём в архив)?",
+                  errorTitle: t("error") || "Ошибка",
+                })
+              }
             >
               <RotateCw size={18} />
               <span>{t("restore") || "Восстановить"}</span>
@@ -151,10 +191,17 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
-              onClick={() => click(onHardDelete)}
+              title="Жёсткое удаление — только если в группе нет транзакций"
+              onClick={() =>
+                click(onHardDelete, {
+                  confirmText:
+                    "Удаление без возможности восстановления. Продолжить? (Операция доступна только если в группе нет транзакций.)",
+                  errorTitle: t("error") || "Ошибка",
+                })
+              }
             >
               <Trash2 size={18} />
-              <span>{t("delete") || "Удалить"} (hard)</span>
+              <span>{(t("delete") || "Удалить") + " (hard)"}</span>
             </button>
           )}
         </div>

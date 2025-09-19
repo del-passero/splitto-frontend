@@ -1,5 +1,5 @@
 // src/components/GroupsList.tsx
-// Рендер и инфинити-скролл + подключение превью долгов + полнофункциональное меню ⋮
+// Рендер и инфинити-скролл + превью долгов + полнофункциональное меню ⋮
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -81,10 +81,9 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
     }
   }, [loadMore, loading])
 
-  // утилита обновления списка (простой способ без передачи фильтров):
+  // простой рефреш после действий
   const refetch = useCallback(async () => {
     if (!user?.id) return
-    // мягкий рефреш: сброс и первичная загрузка с дефолтными параметрами
     clearGroups()
     await fetchGroups(user.id, { reset: true })
   }, [user?.id, clearGroups, fetchGroups])
@@ -101,12 +100,11 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
 
   const isArchived = (currentGroup as any)?.status === "archived"
   const isDeleted = !!(currentGroup as any)?.deleted_at
-  const isHiddenForMe = false // можно подставлять из локального кеша, если храните
+  const isHiddenForMe = false // при необходимости можно пробросить из API
 
-  // handlers (все реальные API-вызовы — здесь)
+  // handlers
   const onEdit = useCallback(async () => {
     if (!currentGroup) return
-    // маршрут редактирования — под ваш роут
     navigate(`/groups/${currentGroup.id}/settings`)
   }, [currentGroup, navigate])
 
@@ -130,7 +128,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
 
   const onUnarchive = useCallback(async () => {
     if (!currentGroup) return
-    // хотим сразу обновлённую группу — можно вернуть full на бэке, но здесь просто рефрешим
     await unarchiveGroup(currentGroup.id, true)
     await refetch()
   }, [currentGroup, refetch])
@@ -169,8 +166,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
           />
         ))}
       </div>
-
-      {/* Сенсинел для инфинити-скролла */}
       <div ref={loaderRef} aria-hidden style={{ height: 1, width: "100%", opacity: 0 }} />
 
       {/* Меню карточки */}

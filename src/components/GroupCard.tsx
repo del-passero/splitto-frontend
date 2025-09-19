@@ -18,7 +18,7 @@ type DebtsPreview = {
 type Props = {
   group: GroupPreview | Group
   onClick: () => void
-  /** Клик по кнопке меню ⋮ (открыть BottomSheet/Popover с пунктами) */
+  /** Клик по кнопке меню ⋮ */
   onMenuClick?: (groupId: number) => void
   /** Превью долгов для карточки */
   debts?: DebtsPreview
@@ -43,6 +43,7 @@ function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | nu
   }
 }
 
+// Суммы в одну строку, горизонтальный скролл
 function MoneyScroller({
   entries,
   colorClass,
@@ -50,13 +51,12 @@ function MoneyScroller({
   entries: [string, number][]
   colorClass: string
 }) {
-  // горизонтальный скролл, останавливаем всплытие, чтобы не запускать навигацию
   const stop = useCallback((e: React.UIEvent | React.MouseEvent) => {
-    e.stopPropagation()
+    e.stopPropagation() // чтобы скролл не запускал навигацию карточки
   }, [])
   return (
-    <div
-      className="inline-flex gap-2 overflow-x-auto no-scrollbar whitespace-nowrap align-baseline"
+    <span
+      className="inline-flex gap-2 overflow-x-auto no-scrollbar whitespace-nowrap align-baseline max-w-full"
       onMouseDown={stop}
       onClickCapture={stop}
     >
@@ -65,7 +65,7 @@ function MoneyScroller({
           <span className="font-semibold">{amt}</span>&nbsp;{ccy}
         </span>
       ))}
-    </div>
+    </span>
   )
 }
 
@@ -111,7 +111,7 @@ export default function GroupCard({
   const isDeleted = !!(group as any).deleted_at
   const isTelegramLinked = !!(group as any).is_telegram_linked
 
-  // активность (строка 4, одна строка текста, но с префиксом "Последняя активность")
+  // активность (строка 4)
   const lastActivity = (group as any).last_activity_at
   const activityText = lastActivity
     ? formatLastActivity(t, lastActivity)
@@ -120,7 +120,6 @@ export default function GroupCard({
   const oweEntries = Object.entries(debts?.owe || {})
   const owedEntries = Object.entries(debts?.owed || {})
 
-  // обработчик ⋮
   const handleMenuClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     onMenuClick?.((group as any).id)
@@ -148,7 +147,7 @@ export default function GroupCard({
         <GroupAvatar name={(group as any).name} size={AVATAR_SIZE} className="relative" />
       </button>
 
-      {/* Средняя широкая колонка — 4 строки (вся карточка кликабельна, кроме скроллеров и ⋮) */}
+      {/* Средняя колонка — 4 строки (карточка кликабельна) */}
       <button
         type="button"
         onClick={onClick}
@@ -156,14 +155,16 @@ export default function GroupCard({
         aria-label={(group as any).name}
       >
         {/* 1-я строка: название (2/3) + участники (1/3) */}
-        <div className="w-full grid grid-cols-3 gap-2 items-center">
-          <div className="col-span-2 min-w-0">
-            <div className="text-[16px] font-semibold text-[var(--tg-text-color)] truncate">
+        <div className="w-full grid grid-cols-12 gap-2 items-center">
+          <div className="col-span-8 min-w-0">
+            <div className="text-[17px] font-semibold text-[var(--tg-text-color)] truncate">
               {(group as any).name}
             </div>
           </div>
-          <div className="col-span-1 flex items-center justify-end pr-3">
-            <div className="flex items-center">
+          <div className="col-span-4 min-w-0">
+            {/* Контейнер аватаров с собственным локальным стеком, прижали вправо */}
+            <div className="relative flex items-center justify-end">
+              {/* видимые аватары */}
               {displayedMembers.map((m, idx) => (
                 <div
                   key={m.id}
@@ -173,8 +174,7 @@ export default function GroupCard({
                     width: PARTICIPANT_SIZE,
                     height: PARTICIPANT_SIZE,
                     marginLeft: idx > 0 ? -8 : 0,
-                    // порядок перекрытия: чем дальше вправо, тем выше
-                    zIndex: 100 + idx,
+                    zIndex: 1 + idx, // правый — чуть выше левого, но локально
                   }}
                   title={
                     m.user.first_name
@@ -194,7 +194,7 @@ export default function GroupCard({
                 </div>
               ))}
 
-              {/* "+N" поверх 4-го аватара */}
+              {/* "+N" поверх 4-го аватара (но только внутри локального стека) */}
               {showPlus && hiddenCount > 0 && (
                 <div
                   className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
@@ -202,7 +202,7 @@ export default function GroupCard({
                     borderColor: "var(--tg-card-bg)",
                     width: PARTICIPANT_SIZE,
                     height: PARTICIPANT_SIZE,
-                    zIndex: 100 + maxVisible, // поверх последнего видимого
+                    zIndex: 1 + maxVisible, // просто чуть выше последнего, без глобального 100+
                   }}
                   title={t("and_more_members", { count: hiddenCount }) || `+${hiddenCount}`}
                 >
@@ -213,7 +213,7 @@ export default function GroupCard({
           </div>
         </div>
 
-        {/* 2-я строка — “Я должен: <суммы …>” (одна строка, суммы скроллятся) */}
+        {/* 2-я строка — Я должен: … (одна строка, суммы скроллятся) */}
         <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0">
           {oweEntries.length === 0 ? (
             <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
@@ -225,7 +225,7 @@ export default function GroupCard({
           )}
         </div>
 
-        {/* 3-я строка — “Мне должны: <суммы …>” (одна строка, суммы скроллятся) */}
+        {/* 3-я строка — Мне должны: … (одна строка, суммы скроллятся) */}
         <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0">
           {owedEntries.length === 0 ? (
             <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</span>
@@ -238,16 +238,17 @@ export default function GroupCard({
         </div>
 
         {/* 4-я строка — Активность (3/4) + Статусы (1/4) */}
-        <div className="w-full grid grid-cols-4 gap-2 items-center">
-          {/* слева — 3/4, текст активности с префиксом */}
-          <div className="col-span-3 min-w-0">
-            <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate" title={activityText}>
+        <div className="w-full grid grid-cols-12 gap-2 items-center">
+          <div className="col-span-9 min-w-0">
+            <div
+              className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate"
+              title={activityText}
+            >
               {activityText}
             </div>
           </div>
 
-          {/* справа — до двух иконок статусов (удалено/архив + telegram) */}
-          <div className="col-span-1 flex items-center justify-end gap-2">
+          <div className="col-span-3 flex items-center justify-end gap-2">
             {isDeleted ? (
               <div className="flex items-center gap-1 text-[var(--tg-hint-color)]" title={t("group_status_deleted") || "Удалена"}>
                 <Trash2 size={16} />
@@ -267,8 +268,8 @@ export default function GroupCard({
         </div>
       </button>
 
-      {/* Правая узкая колонка — кнопка “⋮” только на высоту строк 2–3 */}
-      <div className="flex flex-col items-center justify-center ml-1.5">
+      {/* Правая узкая колонка — кнопка “⋮” на высоту строк 2–3, чуть вправо */}
+      <div className="flex flex-col items-center justify-center ml-2 mr-1">
         <button
           type="button"
           aria-label={t("actions") || "Действия"}
