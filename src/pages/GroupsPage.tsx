@@ -14,14 +14,11 @@ import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
-
-// Новые модалки
 import GroupsFilterModal, { FiltersState as ModalFiltersState } from "../components/GroupsFilterModal"
 import GroupsSortModal from "../components/GroupsSortModal"
 
 type SortBy = "last_activity" | "name" | "created_at" | "members_count"
 type SortDir = "asc" | "desc"
-
 type FiltersState = ModalFiltersState
 
 const defaultFilters: FiltersState = {
@@ -43,14 +40,13 @@ const GroupsPage = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Состояние фильтра и сортировки
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const [filters, setFilters] = useState<FiltersState>(defaultFilters)
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Параметры для API — из фильтров
+  // Параметры для API — из фильтров (только то, что сервер понимает)
   const includeArchived = useMemo(
     () => filters.status.archived || filters.status.all,
     [filters.status]
@@ -60,10 +56,8 @@ const GroupsPage = () => {
     [filters.hidden]
   )
 
-  // Поисковая строка
   const q = useMemo(() => search.trim(), [search])
 
-  // Единая функция загрузки
   const loadPage = (reset: boolean) => {
     if (!user?.id) return
     fetchGroups(user.id, {
@@ -76,7 +70,6 @@ const GroupsPage = () => {
     })
   }
 
-  // Первая загрузка / перезагрузка при изменении зависимостей
   useEffect(() => {
     if (!user?.id) return
     clearGroups()
@@ -84,8 +77,53 @@ const GroupsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, q, includeHidden, includeArchived, sortBy, sortDir])
 
+  // Клиентская дофильтрация (статус/скрытые/активность) поверх пришедших страниц
+  const filteredGroups = useMemo(() => {
+    let arr = groups as any[]
+
+    // Статус
+    const s = filters.status
+    const statusAll = s.all || (s.active && s.archived) || (!s.active && !s.archived)
+    if (!statusAll) {
+      arr = arr.filter((g) => {
+        const st = (g as any).status
+        return (s.active && st === "active") || (s.archived && st === "archived")
+      })
+    }
+
+    // Скрытые/Видимые (требует флага is_hidden с сервера)
+    const h = filters.hidden
+    const hiddenAll = h.all || (h.hidden && h.visible) || (!h.hidden && !h.visible)
+    if (!hiddenAll) {
+      arr = arr.filter((g) => {
+        const hidden = !!((g as any).is_hidden || (g as any).is_hidden_for_me || (g as any).hidden_for_me)
+        return (h.hidden && hidden) || (h.visible && !hidden)
+      })
+    }
+
+    // Активность (UI-уровень; при необходимости зададим пороги)
+    const a = filters.activity
+    const activityAll = a.all || (a.recent && a.inactive && a.empty) || (!a.recent && !a.inactive && !a.empty)
+    if (!activityAll) {
+      const now = Date.now()
+      const day = 24 * 60 * 60 * 1000
+      const RECENT_DAYS = 7
+      const INACTIVE_DAYS = 30
+      arr = arr.filter((g) => {
+        const val = (g as any).last_activity_at
+        const ts = val ? new Date(val).getTime() : NaN
+        const empty = !val
+        const recent = !!val && now - ts <= RECENT_DAYS * day
+        const inactive = !!val && now - ts >= INACTIVE_DAYS * day
+        return (a.empty && empty) || (a.recent && recent) || (a.inactive && inactive)
+      })
+    }
+
+    return arr
+  }, [groups, filters])
+
   const isSearching = q.length > 0
-  const nothingLoaded = !groupsLoading && !groupsError && groups.length === 0
+  const nothingLoaded = !groupsLoading && !groupsError && filteredGroups.length === 0
   const notFound = isSearching && nothingLoaded
   const noGroups = !isSearching && nothingLoaded
 
@@ -126,7 +164,7 @@ const GroupsPage = () => {
         <CreateTransactionModal
           open={createTxOpen}
           onOpenChange={setCreateTxOpen}
-          groups={(groups ?? []).map((g: any) => ({
+          groups={(filteredGroups ?? []).map((g: any) => ({
             id: g.id,
             name: g.name,
             icon: g.icon,
@@ -134,7 +172,6 @@ const GroupsPage = () => {
           }))}
         />
 
-        {/* Фильтр/Сортировка */}
         <GroupsFilterModal
           open={filtersOpen}
           onClose={() => setFiltersOpen(false)}
@@ -165,16 +202,16 @@ const GroupsPage = () => {
       />
 
       <CardSection noPadding>
+        {/* счётчик — как договаривались, из total */}
         <TopInfoRow count={groupsTotal} labelKey="groups_count" />
         <GroupsList
-          groups={groups}
+          groups={filteredGroups as any}
           loading={groupsLoading}
           loadMore={
             groupsLoading || !user?.id
               ? undefined
               : () => {
-                  // дозагрузка следующей страницы: ВАЖНО — передаём те же фильтры/сортировку
-                  return useGroupsStore.getState().loadMoreGroups(user!.id, {
+                  return loadMoreGroups(user!.id, {
                     q: q.length ? q : undefined,
                     includeHidden,
                     includeArchived,
@@ -203,11 +240,10 @@ const GroupsPage = () => {
         ownerId={user?.id || 0}
         onCreated={() => loadPage(true)}
       />
-
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}
-        groups={(groups ?? []).map((g: any) => ({
+        groups={(filteredGroups ?? []).map((g: any) => ({
           id: g.id,
           name: g.name,
           icon: g.icon,
