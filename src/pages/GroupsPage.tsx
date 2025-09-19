@@ -15,65 +15,74 @@ import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
-// Новые модалки (и типы — используем их же, чтобы не было конфликтов)
-import GroupsFilterModal, {
-  FiltersState as GroupsFilterState,
-} from "../components/GroupsFilterModal"
-import GroupsSortModal, {
-  SortBy,
-  SortDir,
-} from "../components/GroupsSortModal"
+// Новые модалки
+import GroupsFilterModal, { FiltersState as ModalFiltersState } from "../components/GroupsFilterModal"
+import GroupsSortModal from "../components/GroupsSortModal"
 
-const defaultFilters: GroupsFilterState = {
-  includeArchived: false,
-  includeHidden: false,
+type SortBy = "last_activity" | "name" | "created_at" | "members_count"
+type SortDir = "asc" | "desc"
+
+// Фильтры теперь составные — совпадают с GroupsFilterModal
+type FiltersState = ModalFiltersState
+
+const defaultFilters: FiltersState = {
+  status: { active: true, archived: false, deleted: false, all: false },
+  hidden: { hidden: false, visible: true, all: false },
+  activity: { recent: false, inactive: false, empty: false, all: true },
 }
 
 const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const {
-    groups,
-    groupsLoading,
-    groupsError,
-    groupsHasMore,
-    groupsTotal,
-    fetchGroups,
-    loadMoreGroups,
-    clearGroups,
+    groups, groupsLoading, groupsError,
+    groupsHasMore, groupsTotal,
+    fetchGroups, clearGroups,
   } = useGroupsStore()
 
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // Фильтр/сортировка
+  // Новое: состояние фильтра и сортировки
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
-  const [filters, setFilters] = useState<GroupsFilterState>(defaultFilters)
+  const [filters, setFilters] = useState<FiltersState>(defaultFilters)
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Производные серверные параметры
-  const includeArchived = filters.includeArchived
-  const includeHidden = filters.includeHidden
+  // Производим серверные параметры из фильтров (только те, что поддерживаются бэком)
+  const includeArchived = useMemo(
+    () => filters.status.all || filters.status.archived,
+    [filters.status]
+  )
+  const includeHidden = useMemo(
+    () => filters.hidden.all || filters.hidden.hidden,
+    [filters.hidden]
+  )
 
   // Поисковая строка
   const q = useMemo(() => search.trim(), [search])
 
-  // Первая загрузка и при изменении параметров
-  useEffect(() => {
+  // Унифицированная загрузка (используется и для дозагрузки страниц)
+  const loadPage = (reset: boolean) => {
     if (!user?.id) return
-    clearGroups()
     fetchGroups(user.id, {
-      reset: true,
+      reset,
       q: q.length ? q : undefined,
       includeHidden,
       includeArchived,
       sortBy,
       sortDir,
     })
-    // eslint-disable-next-line
+  }
+
+  // Первая загрузка / перезагрузка при смене параметров
+  useEffect(() => {
+    if (!user?.id) return
+    clearGroups()
+    loadPage(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, q, includeHidden, includeArchived, sortBy, sortDir])
 
   const isSearching = q.length > 0
@@ -113,17 +122,7 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={() =>
-            user?.id &&
-            fetchGroups(user.id, {
-              reset: true,
-              q: search.trim() || undefined,
-              includeHidden,
-              includeArchived,
-              sortBy,
-              sortDir,
-            })
-          }
+          onCreated={() => loadPage(true)}
         />
         {/* Модалка создания транзакции (общая) */}
         <CreateTransactionModal
@@ -174,23 +173,16 @@ const GroupsPage = () => {
           groups={groups}
           loading={groupsLoading}
           loadMore={
-            groupsHasMore
-              ? () => {
-                  if (!user?.id) return
-                  // Пагинация: в сторе loadMoreGroups сейчас умеет только q,
-                  // фильтры и сортировка зашиты в текущем серверном окне
-                  loadMoreGroups(user.id, q.length ? q : undefined)
-                }
-              : undefined
+            groupsLoading || !user?.id
+              ? undefined
+              : () => loadPage(false) // дозагрузка с теми же параметрами
           }
         />
       </CardSection>
 
       {groupsLoading && (
         <CardSection>
-          <div className="text-center py-6 text-[var(--tg-hint-color)]">
-            {t("loading")}
-          </div>
+          <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
         </CardSection>
       )}
       {groupsError && (
@@ -203,17 +195,7 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={() =>
-          user?.id &&
-          fetchGroups(user.id, {
-            reset: true,
-            q: search.trim() || undefined,
-            includeHidden,
-            includeArchived,
-            sortBy,
-            sortDir,
-          })
-        }
+        onCreated={() => loadPage(true)}
       />
 
       {/* Модалка создания транзакции (общая) */}
