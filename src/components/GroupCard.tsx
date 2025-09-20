@@ -6,7 +6,7 @@ import GroupAvatar from "./GroupAvatar"
 import Avatar from "./Avatar"
 import type { Group, GroupPreview } from "../types/group"
 import type { GroupMember } from "../types/group_member"
-import { Archive, Trash2, Send, MoreVertical } from "lucide-react"
+import { Archive, Trash2, Send, MoreVertical, EyeOff } from "lucide-react"
 
 type DebtsPreview = {
   /** Я должен (по модулю): { "USD": 12.34, "RUB": 350 } */
@@ -108,7 +108,8 @@ export default function GroupCard({
 
   // статусы
   const isArchived = (group as any).status === "archived"
-  const isDeleted = !!(group as any).deleted_at
+  const isDeleted  = !!(group as any).deleted_at
+  const isHidden   = !!(group as any).is_hidden
   const isTelegramLinked = !!(group as any).is_telegram_linked
 
   // активность (строка 4)
@@ -162,9 +163,8 @@ export default function GroupCard({
             </div>
           </div>
           <div className="col-span-4 min-w-0">
-            {/* Контейнер аватаров с собственным локальным стеком, прижали вправо */}
+            {/* Контейнер аватаров */}
             <div className="relative flex items-center justify-end">
-              {/* видимые аватары */}
               {displayedMembers.map((m, idx) => (
                 <div
                   key={m.id}
@@ -174,7 +174,7 @@ export default function GroupCard({
                     width: PARTICIPANT_SIZE,
                     height: PARTICIPANT_SIZE,
                     marginLeft: idx > 0 ? -8 : 0,
-                    zIndex: 1 + idx, // правый — чуть выше левого, но локально
+                    zIndex: 1 + idx,
                   }}
                   title={
                     m.user.first_name
@@ -194,7 +194,6 @@ export default function GroupCard({
                 </div>
               ))}
 
-              {/* "+N" поверх 4-го аватара (но только внутри локального стека) */}
               {showPlus && hiddenCount > 0 && (
                 <div
                   className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
@@ -202,7 +201,7 @@ export default function GroupCard({
                     borderColor: "var(--tg-card-bg)",
                     width: PARTICIPANT_SIZE,
                     height: PARTICIPANT_SIZE,
-                    zIndex: 1 + maxVisible, // просто чуть выше последнего, без глобального 100+
+                    zIndex: 1 + maxVisible,
                   }}
                   title={t("and_more_members", { count: hiddenCount }) || `+${hiddenCount}`}
                 >
@@ -213,31 +212,31 @@ export default function GroupCard({
           </div>
         </div>
 
-        {/* 2-я строка — Я должен: … (одна строка, суммы скроллятся) */}
+        {/* 2-я строка — Я должен */}
         <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0">
           {oweEntries.length === 0 ? (
             <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
           ) : (
             <>
               <span>{t("i_owe")}: </span>
-              <MoneyScroller entries={oweEntries} colorClass="text-red-500" />
+              <MoneyScroller entries={oweEntries as [string, number][]} colorClass="text-red-500" />
             </>
           )}
         </div>
 
-        {/* 3-я строка — Мне должны: … (одна строка, суммы скроллятся) */}
+        {/* 3-я строка — Мне должны */}
         <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0">
           {owedEntries.length === 0 ? (
             <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</span>
           ) : (
             <>
               <span>{t("they_owe_me")}: </span>
-              <MoneyScroller entries={owedEntries} colorClass="text-green-600" />
+              <MoneyScroller entries={owedEntries as [string, number][]} colorClass="text-green-600" />
             </>
           )}
         </div>
 
-        {/* 4-я строка — Активность (3/4) + Статусы (1/4) */}
+        {/* 4-я строка — Активность + Статусы */}
         <div className="w-full grid grid-cols-12 gap-2 items-center">
           <div className="col-span-9 min-w-0">
             <div
@@ -259,6 +258,12 @@ export default function GroupCard({
               </div>
             ) : null}
 
+            {isHidden && (
+              <div className="flex items-center gap-1 text-[var(--tg-hint-color)]" title={t("hidden") || "Скрыта"}>
+                <EyeOff size={16} />
+              </div>
+            )}
+
             {isTelegramLinked && (
               <div className="flex items-center gap-1 text-[var(--tg-hint-color)]" title={t("group_linked_telegram") || "Связана с Telegram"}>
                 <Send size={16} />
@@ -268,7 +273,7 @@ export default function GroupCard({
         </div>
       </button>
 
-      {/* Правая узкая колонка — кнопка “⋮” на высоту строк 2–3, чуть вправо */}
+      {/* Правая узкая колонка — кнопка “⋮” */}
       <div className="flex flex-col items-center justify-center ml-2 mr-1">
         <button
           type="button"

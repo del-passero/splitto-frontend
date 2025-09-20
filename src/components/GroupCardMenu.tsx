@@ -47,16 +47,15 @@ export default function GroupCardMenu({
   const { t } = useTranslation()
   if (!open) return null
 
-  // матрица показа
-  const showEdit = true // всем участникам доступно
-  const showHide = !isOwner && !isDeleted // участник (не владелец)
-  const showArchive = isOwner && !isDeleted && !isArchived
-  const showUnarchive = isOwner && !isDeleted && isArchived
-  const showSoftDelete = isOwner && !isDeleted // активная/архивная
-  const showRestore = isOwner && isDeleted
-  const showHardDelete = isOwner && isDeleted
+  // матрица показа (по целевой логике)
+  const showEdit       = !isDeleted && !isArchived                // редактируем только активные
+  const showHide       = !isOwner                                 // скрытие доступно не-владельцу во всех состояниях
+  const showArchive    = isOwner && !isDeleted && !isArchived
+  const showUnarchive  = isOwner && !isDeleted && isArchived
+  const showSoftDelete = isOwner && !isDeleted                    // soft только из не-удалённой
+  const showRestore    = isOwner && isDeleted                     // восстановление только для soft
+  const showHardDelete = isOwner && !isDeleted                    // hard доступен для актив/архив/скрытых, но НЕ soft
 
-  // helper: клик с confirm + ловим ошибки (и показываем их)
   const click = async (
     fn: (() => Promise<void> | void) | undefined,
     { confirmText, errorTitle }: { confirmText?: string; errorTitle?: string } = {}
@@ -108,9 +107,7 @@ export default function GroupCardMenu({
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}
               onClick={() =>
-                click(isHiddenForMe ? onUnhide : onHide, {
-                  confirmText: isHiddenForMe ? undefined : undefined, // без подтверждения
-                })
+                click(isHiddenForMe ? onUnhide : onHide)
               }
             >
               {isHiddenForMe ? <Eye size={18} /> : <EyeOff size={18} />}
@@ -139,7 +136,7 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              title={t("groups_sort_dir_asc") ? "Разархивировать" : "Разархивировать"}
+              title="Разархивировать"
               onClick={() =>
                 click(onUnarchive, {
                   confirmText: "Разархивировать группу?",
@@ -160,7 +157,7 @@ export default function GroupCardMenu({
               onClick={() =>
                 click(onSoftDelete, {
                   confirmText:
-                    "Удалить группу? Если в группе есть долги — операция будет отклонена. Если транзакции есть, но долгов нет — будет мягкое удаление.",
+                    "Удалить группу? Если в группе есть долги — операция будет отклонена. Если транзакций нет — группа будет удалена безвозвратно.",
                   errorTitle: t("error") || "Ошибка",
                 })
               }
@@ -176,8 +173,8 @@ export default function GroupCardMenu({
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("restore") || "Восстановить"}
               onClick={() =>
-                click(() => onRestore?.({ toActive: false }), {
-                  confirmText: "Восстановить группу (переведём в архив)?",
+                click(() => onRestore?.({ toActive: true }), {
+                  confirmText: "Восстановить группу (вернём в активную)?",
                   errorTitle: t("error") || "Ошибка",
                 })
               }
@@ -195,7 +192,7 @@ export default function GroupCardMenu({
               onClick={() =>
                 click(onHardDelete, {
                   confirmText:
-                    "Удаление без возможности восстановления. Продолжить? (Операция доступна только если в группе нет транзакций.)",
+                    "Удаление без возможности восстановления. Продолжить? (Доступно только если в группе нет транзакций и долгов.)",
                   errorTitle: t("error") || "Ошибка",
                 })
               }

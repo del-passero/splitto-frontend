@@ -1,7 +1,7 @@
 // src/store/groupsStore.ts
 // Пагинация + серверный поиск, защита от гонок и корректный offset.
+// Храним фильтры/сорт/поиск в сторе. fetchGroups/рефреш используют текущие значения.
 // Добавлено: хранение превью-долгов и загрузка батчем.
-// Расширено: fetchGroups принимает includeHidden/includeArchived/includeDeleted/sortBy/sortDir.
 
 import { create } from "zustand"
 import type { GroupPreview } from "../types/group"
@@ -30,6 +30,18 @@ interface GroupsStoreState {
   groupsError: string | null
   reqId: number
 
+  // фильтры/сорт/поиск
+  includeHidden: boolean
+  includeArchived: boolean
+  includeDeleted: boolean
+  sortBy: "last_activity" | "name" | "created_at" | "members_count"
+  sortDir: "asc" | "desc"
+  search: string
+
+  setFilters: (f: { includeHidden?: boolean; includeArchived?: boolean; includeDeleted?: boolean }) => void
+  setSort: (s: { sortBy?: GroupsStoreState["sortBy"]; sortDir?: GroupsStoreState["sortDir"] }) => void
+  setSearch: (q: string) => void
+
   // превью долгов
   debtsPreviewByGroupId: DebtsMap
 
@@ -52,6 +64,30 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   groupsError: null,
   reqId: 0,
 
+  includeHidden: false,
+  includeArchived: false,
+  includeDeleted: false,
+  sortBy: "last_activity",
+  sortDir: "desc",
+  search: "",
+
+  setFilters(f) {
+    set({
+      includeHidden:  f.includeHidden  ?? get().includeHidden,
+      includeArchived:f.includeArchived?? get().includeArchived,
+      includeDeleted: f.includeDeleted ?? get().includeDeleted,
+    })
+  },
+  setSort(s) {
+    set({
+      sortBy: s.sortBy ?? get().sortBy,
+      sortDir: s.sortDir ?? get().sortDir,
+    })
+  },
+  setSearch(q) {
+    set({ search: q })
+  },
+
   debtsPreviewByGroupId: {},
 
   clearGroups() {
@@ -69,12 +105,13 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   async fetchGroups(userId, opts) {
     const state = get()
     const reset = !!opts?.reset
-    const q = opts?.q?.trim() || undefined
-    const includeHidden = !!opts?.includeHidden
-    const includeArchived = !!opts?.includeArchived
-    const includeDeleted = !!opts?.includeDeleted
-    const sortBy = opts?.sortBy
-    const sortDir = opts?.sortDir
+
+    const q               = (opts?.q ?? state.search)?.trim() || undefined
+    const includeHidden   = opts?.includeHidden   ?? state.includeHidden
+    const includeArchived = opts?.includeArchived ?? state.includeArchived
+    const includeDeleted  = opts?.includeDeleted  ?? state.includeDeleted
+    const sortBy          = opts?.sortBy          ?? state.sortBy
+    const sortDir         = opts?.sortDir         ?? state.sortDir
 
     const myId = state.reqId + 1
     set({ reqId: myId, groupsLoading: true, groupsError: null })
@@ -151,11 +188,9 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
   },
 
   async fetchDebtsPreview(groupIds) {
-    // добираем превью только для тех id, которых ещё нет в кеше
     const cached = get().debtsPreviewByGroupId
     const miss = groupIds.filter((id) => !cached[id])
     if (miss.length === 0) return
-    // основной путь — грузим превью вместе с каждой страницей в fetchGroups
     return
   },
 }))

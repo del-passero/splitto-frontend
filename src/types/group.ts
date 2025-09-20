@@ -23,6 +23,7 @@ export interface Group {
 
   last_activity_at?: string | null
   is_telegram_linked?: boolean
+  is_hidden?: boolean            // NEW
 }
 
 export interface GroupPreview {
@@ -39,4 +40,5 @@ export interface GroupPreview {
   default_currency_code?: string
   last_activity_at?: string | null
   is_telegram_linked?: boolean
+  is_hidden?: boolean            // NEW
 }

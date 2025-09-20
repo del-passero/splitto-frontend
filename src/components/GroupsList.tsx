@@ -38,6 +38,14 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const fetchGroups = useGroupsStore((s) => s.fetchGroups)
   const clearGroups = useGroupsStore((s) => s.clearGroups)
 
+  // текущие параметры фильтров/сорт/поиска из стора
+  const includeHidden   = useGroupsStore((s) => s.includeHidden)
+  const includeArchived = useGroupsStore((s) => s.includeArchived)
+  const includeDeleted  = useGroupsStore((s) => s.includeDeleted)
+  const sortBy          = useGroupsStore((s) => s.sortBy)
+  const sortDir         = useGroupsStore((s) => s.sortDir)
+  const search          = useGroupsStore((s) => s.search)
+
   // локальный стейт меню
   const [menuOpenForId, setMenuOpenForId] = useState<number | null>(null)
 
@@ -81,12 +89,20 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
     }
   }, [loadMore, loading])
 
-  // простой рефреш после действий
+  // рефреш с учётом текущих фильтров/сорт/поиска
   const refetch = useCallback(async () => {
     if (!user?.id) return
     clearGroups()
-    await fetchGroups(user.id, { reset: true })
-  }, [user?.id, clearGroups, fetchGroups])
+    await fetchGroups(user.id, {
+      reset: true,
+      q: search?.trim() || undefined,
+      includeHidden,
+      includeArchived,
+      includeDeleted,
+      sortBy,
+      sortDir,
+    })
+  }, [user?.id, clearGroups, fetchGroups, search, includeHidden, includeArchived, includeDeleted, sortBy, sortDir])
 
   const currentGroup = useMemo(
     () => groups.find((g) => g.id === menuOpenForId),
@@ -99,8 +115,8 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   }, [currentGroup, user?.id])
 
   const isArchived = (currentGroup as any)?.status === "archived"
-  const isDeleted = !!(currentGroup as any)?.deleted_at
-  const isHiddenForMe = false // при необходимости можно пробросить из API
+  const isDeleted  = !!(currentGroup as any)?.deleted_at
+  const isHiddenForMe = !!(currentGroup as any)?.is_hidden
 
   // handlers
   const onEdit = useCallback(async () => {
@@ -147,7 +163,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
   const onRestore = useCallback(async (_opts?: { toActive?: boolean }) => {
     if (!currentGroup) return
     await restoreGroup(currentGroup.id, {
-      toActive: _opts?.toActive ?? false,
+      toActive: true,       // всегда в active
       returnFull: false,
     })
     await refetch()

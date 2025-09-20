@@ -1,5 +1,5 @@
 // src/pages/GroupsPage.tsx
-// Как ContactsPage: поиск уходит на сервер, счётчик берём из total, инфинити-скролл через GroupsList.loadMore
+// Поиск/фильтры/сорт — берём из стора. Любое изменение триггерит перезагрузку.
 
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -24,36 +24,26 @@ type SortDir = "asc" | "desc"
 
 type FiltersState = FiltersStateModal
 
-const defaultFilters: FiltersState = {
-  includeArchived: false,
-  includeDeleted: false,
-  includeHidden: false,
-}
-
 const GroupsPage = () => {
   const { t } = useTranslation()
   const { user } = useUserStore()
+
   const {
     groups, groupsLoading, groupsError,
     groupsHasMore, groupsTotal,
-    fetchGroups, loadMoreGroups, clearGroups
+    fetchGroups, loadMoreGroups, clearGroups,
+
+    includeHidden, includeArchived, includeDeleted,
+    sortBy, sortDir, search,
+    setFilters, setSort, setSearch,
   } = useGroupsStore()
 
-  const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
-  // фильтры/сортировка
+  // модалки фильтров/сортировки (только "open" локально)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
-  const [filters, setFilters] = useState<FiltersState>(defaultFilters)
-  const [sortBy, setSortBy] = useState<SortBy>("last_activity")
-  const [sortDir, setSortDir] = useState<SortDir>("desc")
-
-  // то, что понимает сервер
-  const includeArchived = filters.includeArchived
-  const includeDeleted = filters.includeDeleted
-  const includeHidden = filters.includeHidden
 
   const q = useMemo(() => search.trim(), [search])
 
@@ -132,16 +122,21 @@ const GroupsPage = () => {
         <GroupsFilterModal
           open={filtersOpen}
           onClose={() => setFiltersOpen(false)}
-          initial={filters}
-          onApply={(f) => setFilters(f)}
+          initial={{ includeArchived, includeDeleted, includeHidden }}
+          onApply={(f: FiltersState) => {
+            setFilters({
+              includeArchived: f.includeArchived,
+              includeDeleted: f.includeDeleted,
+              includeHidden: f.includeHidden,
+            })
+          }}
         />
         <GroupsSortModal
           open={sortOpen}
           onClose={() => setSortOpen(false)}
           initial={{ sortBy, sortDir }}
           onApply={({ sortBy: sb, sortDir: sd }) => {
-            setSortBy(sb)
-            setSortDir(sd)
+            setSort({ sortBy: sb, sortDir: sd })
           }}
         />
       </MainLayout>
@@ -211,16 +206,21 @@ const GroupsPage = () => {
       <GroupsFilterModal
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        initial={filters}
-        onApply={(f) => setFilters(f)}
+        initial={{ includeArchived, includeDeleted, includeHidden }}
+        onApply={(f: FiltersState) => {
+          setFilters({
+            includeArchived: f.includeArchived,
+            includeDeleted: f.includeDeleted,
+            includeHidden: f.includeHidden,
+          })
+        }}
       />
       <GroupsSortModal
         open={sortOpen}
         onClose={() => setSortOpen(false)}
         initial={{ sortBy, sortDir }}
         onApply={({ sortBy: sb, sortDir: sd }) => {
-          setSortBy(sb)
-          setSortDir(sd)
+          setSort({ sortBy: sb, sortDir: sd })
         }}
       />
     </MainLayout>
