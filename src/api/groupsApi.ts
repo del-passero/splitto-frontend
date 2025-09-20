@@ -33,6 +33,7 @@ export async function getUserGroups(
     offset?: number
     includeHidden?: boolean
     includeArchived?: boolean
+    includeDeleted?: boolean
     q?: string
     sortBy?: "last_activity" | "name" | "created_at" | "members_count"
     sortDir?: "asc" | "desc"
@@ -42,6 +43,7 @@ export async function getUserGroups(
   const offset = params?.offset ?? 0
   const includeHidden = params?.includeHidden ? "true" : "false"
   const includeArchived = params?.includeArchived ? "true" : "false"
+  const includeDeleted = params?.includeDeleted ? "true" : "false"
   const q = (params?.q ?? "").trim()
 
   const sp = new URLSearchParams()
@@ -49,6 +51,7 @@ export async function getUserGroups(
   sp.set("offset", String(offset))
   sp.set("include_hidden", includeHidden)
   sp.set("include_archived", includeArchived)
+  sp.set("include_deleted", includeDeleted)
   if (q.length > 0) sp.set("q", q)
   if (params?.sortBy) sp.set("sort_by", params.sortBy)
   if (params?.sortDir) sp.set("sort_dir", params.sortDir)

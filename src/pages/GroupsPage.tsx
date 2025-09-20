@@ -1,5 +1,5 @@
 // src/pages/GroupsPage.tsx
-// Как ContactsPage: поиск уходит на сервер, счётчик берём из total, инфинити-скролл через GroupsList.loadMore
+// Поиск — на сервер, счётчик — из total, infinity-scroll через GroupsList.loadMore
 
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -22,9 +22,9 @@ type SortDir = "asc" | "desc"
 type FiltersState = ModalFiltersState
 
 const defaultFilters: FiltersState = {
-  status: { active: true, archived: false, deleted: false, all: false },
-  hidden: { hidden: false, visible: true, all: false },
-  activity: { recent: false, inactive: false, empty: false, all: true },
+  status: { active: true, archived: false, deleted: false },
+  hidden: { visible: true, hidden: false },
+  activity: { recent: false, inactive: false, empty: false },
 }
 
 const GroupsPage = () => {
@@ -46,15 +46,10 @@ const GroupsPage = () => {
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Параметры для API — из фильтров (только то, что сервер понимает)
-  const includeArchived = useMemo(
-    () => filters.status.archived || filters.status.all,
-    [filters.status]
-  )
-  const includeHidden = useMemo(
-    () => filters.hidden.hidden || filters.hidden.all,
-    [filters.hidden]
-  )
+  // Флаги, которые понимает сервер
+  const includeArchived = filters.status.archived
+  const includeDeleted = filters.status.deleted
+  const includeHidden = filters.hidden.hidden
 
   const q = useMemo(() => search.trim(), [search])
 
@@ -65,6 +60,7 @@ const GroupsPage = () => {
       q: q.length ? q : undefined,
       includeHidden,
       includeArchived,
+      includeDeleted,
       sortBy,
       sortDir,
     })
@@ -75,42 +71,43 @@ const GroupsPage = () => {
     clearGroups()
     loadPage(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, q, includeHidden, includeArchived, sortBy, sortDir])
+  }, [user?.id, q, includeHidden, includeArchived, includeDeleted, sortBy, sortDir])
 
-  // Клиентская дофильтрация (статус/скрытые/активность) поверх пришедших страниц
+  // Клиентская фильтрация: статус/скрытые/активность
   const filteredGroups = useMemo(() => {
     let arr = groups as any[]
 
-    // Статус
+    // Статус (любой набор комбинаций)
     const s = filters.status
-    const statusAll = s.all || (s.active && s.archived) || (!s.active && !s.archived)
-    if (!statusAll) {
+    const statusAny = s.active || s.archived || s.deleted
+    if (statusAny) {
       arr = arr.filter((g) => {
-        const st = (g as any).status
-        return (s.active && st === "active") || (s.archived && st === "archived")
+        const deleted = !!g.deleted_at
+        const st = g.status
+        return (s.deleted && deleted) || (s.active && !deleted && st === "active") || (s.archived && !deleted && st === "archived")
       })
     }
 
-    // Скрытые/Видимые (требует флага is_hidden с сервера)
+    // Скрытые/видимые (любой набор)
     const h = filters.hidden
-    const hiddenAll = h.all || (h.hidden && h.visible) || (!h.hidden && !h.visible)
-    if (!hiddenAll) {
+    const hiddenAny = h.visible || h.hidden
+    if (hiddenAny) {
       arr = arr.filter((g) => {
-        const hidden = !!((g as any).is_hidden || (g as any).is_hidden_for_me || (g as any).hidden_for_me)
+        const hidden = !!(g.is_hidden || g.is_hidden_for_me || g.hidden_for_me)
         return (h.hidden && hidden) || (h.visible && !hidden)
       })
     }
 
-    // Активность (UI-уровень; при необходимости зададим пороги)
+    // Активность (пороговые значения UI-уровня)
     const a = filters.activity
-    const activityAll = a.all || (a.recent && a.inactive && a.empty) || (!a.recent && !a.inactive && !a.empty)
-    if (!activityAll) {
+    const activityAny = a.recent || a.inactive || a.empty
+    if (activityAny) {
       const now = Date.now()
       const day = 24 * 60 * 60 * 1000
       const RECENT_DAYS = 7
       const INACTIVE_DAYS = 30
       arr = arr.filter((g) => {
-        const val = (g as any).last_activity_at
+        const val = g.last_activity_at
         const ts = val ? new Date(val).getTime() : NaN
         const empty = !val
         const recent = !!val && now - ts <= RECENT_DAYS * day
@@ -202,7 +199,6 @@ const GroupsPage = () => {
       />
 
       <CardSection noPadding>
-        {/* счётчик — как договаривались, из total */}
         <TopInfoRow count={groupsTotal} labelKey="groups_count" />
         <GroupsList
           groups={filteredGroups as any}
@@ -215,6 +211,7 @@ const GroupsPage = () => {
                     q: q.length ? q : undefined,
                     includeHidden,
                     includeArchived,
+                    includeDeleted,
                     sortBy,
                     sortDir,
                   })

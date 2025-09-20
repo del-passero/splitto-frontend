@@ -1,11 +1,11 @@
 // src/components/GroupsFilterModal.tsx
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export type FiltersState = {
-  status: { active: boolean; archived: boolean; deleted: boolean; all: boolean }
-  hidden: { hidden: boolean; visible: boolean; all: boolean }
-  activity: { recent: boolean; inactive: boolean; empty: boolean; all: boolean }
+  status: { active: boolean; archived: boolean; deleted: boolean }
+  hidden: { visible: boolean; hidden: boolean }
+  activity: { recent: boolean; inactive: boolean; empty: boolean }
 }
 
 type Props = {
@@ -18,31 +18,47 @@ type Props = {
 const ModalShell = ({ open, children }: { open: boolean; children: React.ReactNode }) => {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="w-full sm:max-w-md sm:rounded-2xl sm:shadow-xl bg-[var(--tg-bg-color)] border border-[var(--tg-secondary-bg-color)]">
         {children}
       </div>
     </div>
   )
 }
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="px-4 py-3 border-b border-[var(--tg-secondary-bg-color)]">
-    <div className="text-sm font-semibold text-[var(--tg-text-color)] mb-2">{title}</div>
-    <div className="flex flex-wrap gap-2">{children}</div>
+
+const Row = ({ title, right }: { title: string; right: React.ReactNode }) => (
+  <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--tg-secondary-bg-color)] last:border-b-0">
+    <div className="text-sm text-[var(--tg-text-color)]">{title}</div>
+    {right}
   </div>
 )
-const Chip = ({ active, onClick, label, title }: { active: boolean; onClick: () => void; label: string; title?: string }) => (
+
+const Switch = ({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  ariaLabel?: string
+}) => (
   <button
     type="button"
-    onClick={onClick}
-    title={title}
-    className={`
-      px-3 py-1.5 rounded-full text-sm border transition
-      ${active ? "bg-[var(--tg-link-color)] text-white border-[var(--tg-link-color)]" : "bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)] border-[var(--tg-secondary-bg-color)]"}
-      hover:brightness-105 active:scale-[0.99]
-    `}
+    aria-label={ariaLabel}
+    onClick={() => onChange(!checked)}
+    className={`relative h-6 w-11 rounded-full transition ${
+      checked ? "bg-[var(--tg-link-color)]" : "bg-[var(--tg-secondary-bg-color)]"
+    }`}
   >
-    {label}
+    <span
+      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+        checked ? "right-0.5" : "left-0.5"
+      }`}
+    />
   </button>
 )
 
@@ -54,41 +70,18 @@ export default function GroupsFilterModal({ open, initial, onApply, onClose }: P
     if (open) setState(initial)
   }, [open, initial])
 
-  const normalized: FiltersState = useMemo(() => {
-    const s = state
-    const statusAll = s.status.active && s.status.archived && s.status.deleted
-    const hiddenAll = s.hidden.hidden && s.hidden.visible
-    const activityAll = s.activity.recent && s.activity.inactive && s.activity.empty
-    return {
-      status: { ...s.status, all: statusAll },
-      hidden: { ...s.hidden, all: hiddenAll },
-      activity: { ...s.activity, all: activityAll },
-    }
-  }, [state])
+  const setStatus = (k: keyof FiltersState["status"], v: boolean) =>
+    setState((s) => ({ ...s, status: { ...s.status, [k]: v } }))
+  const setHidden = (k: keyof FiltersState["hidden"], v: boolean) =>
+    setState((s) => ({ ...s, hidden: { ...s.hidden, [k]: v } }))
+  const setActivity = (k: keyof FiltersState["activity"], v: boolean) =>
+    setState((s) => ({ ...s, activity: { ...s.activity, [k]: v } }))
 
-  const toggle = <K extends keyof FiltersState, F extends keyof FiltersState[K]>(block: K, flag: F) => {
-    setState((prev) => {
-      const next = { ...prev, [block]: { ...(prev[block] as any) } } as FiltersState
-      ;(next[block] as any)[flag] = !(prev[block] as any)[flag]
-      ;(next[block] as any).all = false
-      return next
-    })
-  }
-  const selectAll = <K extends keyof FiltersState>(block: K, value: boolean) => {
-    setState((prev) => {
-      const flags = Object.keys(prev[block]) as (keyof FiltersState[K])[]
-      const next = { ...prev, [block]: { ...(prev[block] as any) } } as FiltersState
-      flags.forEach((f) => {
-        ;(next[block] as any)[f] = value
-      })
-      return next
-    })
-  }
   const reset = () =>
     setState({
-      status: { active: true, archived: false, deleted: false, all: false },
-      hidden: { hidden: false, visible: true, all: false },
-      activity: { recent: false, inactive: false, empty: false, all: true },
+      status: { active: true, archived: false, deleted: false },
+      hidden: { visible: true, hidden: false },
+      activity: { recent: false, inactive: false, empty: false },
     })
 
   return (
@@ -97,35 +90,58 @@ export default function GroupsFilterModal({ open, initial, onApply, onClose }: P
         <div className="text-base font-semibold text-[var(--tg-text-color)]">{t("groups_filter_title")}</div>
       </div>
 
-      <Section title={t("groups_filter_status") || "Статус"}>
-        <Chip label={t("groups_filter_status_active") || "Активные"} active={normalized.status.active} onClick={() => toggle("status", "active")} />
-        <Chip label={t("groups_filter_status_archived") || "Архивные"} active={normalized.status.archived} onClick={() => toggle("status", "archived")} />
-        <Chip label={t("groups_filter_status_deleted") || "Удалённые"} active={normalized.status.deleted} onClick={() => toggle("status", "deleted")} title="Пункт интерфейса; сервер удалённые не отдаёт" />
-        <Chip label={t("groups_filter_all") || "ВСЕ"} active={normalized.status.all} onClick={() => selectAll("status", !normalized.status.all)} />
-      </Section>
+      {/* Статус */}
+      <Row
+        title={t("groups_filter_status_active") || "Активные"}
+        right={<Switch checked={state.status.active} onChange={(v) => setStatus("active", v)} ariaLabel={t("groups_filter_status_active") || "Active"} />}
+      />
+      <Row
+        title={t("groups_filter_status_archived") || "Архивные"}
+        right={<Switch checked={state.status.archived} onChange={(v) => setStatus("archived", v)} ariaLabel={t("groups_filter_status_archived") || "Archived"} />}
+      />
+      <Row
+        title={t("groups_filter_status_deleted") || "Удалённые"}
+        right={<Switch checked={state.status.deleted} onChange={(v) => setStatus("deleted", v)} ariaLabel={t("groups_filter_status_deleted") || "Deleted"} />}
+      />
 
-      <Section title={t("groups_filter_hidden") || "Скрытые мной"}>
-        <Chip label={t("groups_filter_hidden_visible") || "Видимые"} active={normalized.hidden.visible} onClick={() => toggle("hidden", "visible")} />
-        <Chip label={t("hide") || "Скрытые"} active={normalized.hidden.hidden} onClick={() => toggle("hidden", "hidden")} />
-        <Chip label={t("groups_filter_all") || "ВСЕ"} active={normalized.hidden.all} onClick={() => selectAll("hidden", !normalized.hidden.all)} />
-      </Section>
+      {/* Скрытые/Видимые */}
+      <Row
+        title={t("groups_filter_hidden_visible") || "Видимые"}
+        right={<Switch checked={state.hidden.visible} onChange={(v) => setHidden("visible", v)} ariaLabel={t("groups_filter_hidden_visible") || "Visible"} />}
+      />
+      <Row
+        title={t("hide") || "Скрытые"}
+        right={<Switch checked={state.hidden.hidden} onChange={(v) => setHidden("hidden", v)} ariaLabel={t("hide") || "Hidden"} />}
+      />
 
-      <Section title={t("groups_filter_activity") || "Активность"}>
-        <Chip label={t("groups_filter_activity_recent") || "Недавняя"} active={normalized.activity.recent} onClick={() => toggle("activity", "recent")} />
-        <Chip label={t("groups_filter_activity_inactive") || "Неактивная"} active={normalized.activity.inactive} onClick={() => toggle("activity", "inactive")} />
-        <Chip label={t("groups_filter_activity_empty") || "Без транзакций"} active={normalized.activity.empty} onClick={() => toggle("activity", "empty")} />
-        <Chip label={t("groups_filter_all") || "ВСЕ"} active={normalized.activity.all} onClick={() => selectAll("activity", !normalized.activity.all)} />
-      </Section>
+      {/* Активность */}
+      <Row
+        title={t("groups_filter_activity_recent") || "Недавняя активность"}
+        right={<Switch checked={state.activity.recent} onChange={(v) => setActivity("recent", v)} ariaLabel={t("groups_filter_activity_recent") || "Recent"} />}
+      />
+      <Row
+        title={t("groups_filter_activity_inactive") || "Неактивная"}
+        right={<Switch checked={state.activity.inactive} onChange={(v) => setActivity("inactive", v)} ariaLabel={t("groups_filter_activity_inactive") || "Inactive"} />}
+      />
+      <Row
+        title={t("groups_filter_activity_empty") || "Без транзакций"}
+        right={<Switch checked={state.activity.empty} onChange={(v) => setActivity("empty", v)} ariaLabel={t("groups_filter_activity_empty") || "Empty"} />}
+      />
 
+      {/* Кнопки */}
       <div className="flex items-center justify-end gap-2 px-4 py-3">
-        <button type="button" className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)]" onClick={reset}>
+        <button
+          type="button"
+          className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)]"
+          onClick={reset}
+        >
           {t("reset_filters")}
         </button>
         <button
           type="button"
           className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-link-color)] text-white"
           onClick={() => {
-            onApply(normalized)
+            onApply(state)
             onClose()
           }}
         >
