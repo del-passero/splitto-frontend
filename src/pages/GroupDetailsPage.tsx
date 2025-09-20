@@ -20,7 +20,7 @@ import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
 
-// ↓↓↓ ДОБАВЛЕНО: лёгкая модалка контакта
+// ↓↓↓ лёгкая модалка контакта
 import ContactQuickModal from "../components/contacts/ContactQuickModal"
 
 const PAGE_SIZE = 24
@@ -43,7 +43,7 @@ const GroupDetailsPage = () => {
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
 
-  // Табы — по умолчанию «Транзакции»
+  // Табы
   const [selectedTab, setSelectedTab] =
     useState<"transactions" | "balance" | "analytics">("transactions")
 
@@ -56,12 +56,9 @@ const GroupDetailsPage = () => {
   const [createTxOpen, setCreateTxOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
 
-  // ↓↓↓ ДОБАВЛЕНО: состояние для ContactQuickModal
+  // лёгкая модалка контакта
   const [quickOpen, setQuickOpen] = useState(false)
   const [quickUserId, setQuickUserId] = useState<number | null>(null)
-
-  // Заглушка для списка транзакций (список здесь не грузим — грузит таб)
-  const transactions: any[] = []
 
   // Детали группы
   useEffect(() => {
@@ -72,7 +69,7 @@ const GroupDetailsPage = () => {
         const data = await getGroupDetails(id)
         setGroup(data as Group)
 
-        // Read-only режим для archived/soft-deleted
+        // Для archived/soft-deleted отдаём участников из detail и не докачиваем
         const isDeleted = Boolean((data as any)?.deleted_at)
         const isArchived = (data as any)?.status === "archived"
         const initialMembers = (data as any)?.members
@@ -149,7 +146,7 @@ const GroupDetailsPage = () => {
 
   const handleBalanceClick = () => setSelectedTab("balance")
 
-  // ↓↓↓ клик по мини-карточке участника => лёгкая модалка
+  // клик по мини-карточке участника => лёгкая модалка
   const handleParticipantClick = (userId: number) => {
     if (!userId) return
     if (userId === currentUserId) {
@@ -177,6 +174,7 @@ const GroupDetailsPage = () => {
   }
 
   const existingMemberIds = members.map(m => m.user.id)
+  const isDeleted = Boolean((group as any).deleted_at)
 
   return (
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
@@ -194,7 +192,6 @@ const GroupDetailsPage = () => {
         onParticipantClick={handleParticipantClick}
         onInviteClick={() => setInviteOpen(true)}
         onAddClick={() => setAddOpen(true)}
-        // всегда передаём функцию (() => void), без undefined
         loadMore={() => { if (hasMore) { void loadMembers() } }}
         hasMore={hasMore}
         loading={membersLoading}
@@ -212,7 +209,10 @@ const GroupDetailsPage = () => {
           <GroupTransactionsTab
             loading={false}
             transactions={[]}
+            // Кнопка «Добавить» не показывается для удалённых/архивных (внутри таба)
             onAddTransaction={() => setCreateTxOpen(true)}
+            // ВАЖНО: ререндер по id + флаг deleted — чтобы таб пересобрался
+            key={`tx-${id}-${isDeleted ? "deleted" : "active"}`}
           />
         )}
 
@@ -230,7 +230,7 @@ const GroupDetailsPage = () => {
         onClose={() => setAddOpen(false)}
         groupId={id}
         existingMemberIds={existingMemberIds}
-        onAdded={() => { /* перезагрузишь при необходимости */ }}
+        onAdded={() => { /* no-op */ }}
       />
 
       {/* Модалка создания транзакции */}
@@ -241,7 +241,7 @@ const GroupDetailsPage = () => {
         groups={group ? [{
           id: group.id,
           name: group.name,
-          // @ts-ignore — если есть в типе
+          // @ts-ignore
           icon: (group as any).icon,
           // @ts-ignore
           color: (group as any).color,
@@ -258,3 +258,4 @@ const GroupDetailsPage = () => {
 }
 
 export default GroupDetailsPage
+

@@ -7,9 +7,6 @@ type Props = {
   open: boolean
   onClose: () => void
 
-  // опционально: вызывающая сторона может пробрасывать id, но меню его не использует
-  groupId?: number
-
   // факты о группе/правах
   isOwner: boolean
   isArchived: boolean
@@ -25,8 +22,8 @@ type Props = {
   onArchive?: () => Promise<void> | void
   onUnarchive?: () => Promise<void> | void
 
+  // ЕДИНСТВЕННОЕ «Удалить» — бэкенд сам решает soft/hard
   onSoftDelete?: () => Promise<void> | void
-  onHardDelete?: () => Promise<void> | void
 
   onRestore?: (opts?: { toActive?: boolean }) => Promise<void> | void
 }
@@ -44,19 +41,22 @@ export default function GroupCardMenu({
   onArchive,
   onUnarchive,
   onSoftDelete,
-  onHardDelete,
   onRestore,
 }: Props) {
   const { t } = useTranslation()
   if (!open) return null
 
-  // Матрица показа
+  // Видимость пунктов:
+  // - Редактировать: только для активных
+  // - Скрыть/Показать: для всех состояний (персональная настройка)
+  // - Архивировать/Разархивировать: только для владельца, и ТОЛЬКО если группа не deleted
+  // - Удалить: только для владельца и ТОЛЬКО если группа не archived и не deleted
+  // - Восстановить: только для владельца и ТОЛЬКО если группа deleted
   const showEdit       = !isDeleted && !isArchived
   const showHide       = true
   const showArchive    = isOwner && !isDeleted && !isArchived
   const showUnarchive  = isOwner && !isDeleted && isArchived
-  const showSoftDelete = isOwner && !isDeleted && !isArchived
-  const showHardDelete = isOwner && !isDeleted && !isArchived
+  const showDelete     = isOwner && !isDeleted && !isArchived
   const showRestore    = isOwner && isDeleted
 
   const click = async (
@@ -141,7 +141,7 @@ export default function GroupCardMenu({
             </button>
           )}
 
-          {showSoftDelete && (
+          {showDelete && (
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
@@ -150,18 +150,6 @@ export default function GroupCardMenu({
             >
               <Trash2 size={18} />
               <span>{t("delete") || "Удалить"}</span>
-            </button>
-          )}
-
-          {showHardDelete && (
-            <button
-              type="button"
-              className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
-              title={(t("delete") || "Удалить") + " (hard)"}
-              onClick={() => click(onHardDelete, "group_modals.delete_hard_confirm")}
-            >
-              <Trash2 size={18} />
-              <span>{(t("delete") || "Удалить") + " (hard)"}</span>
             </button>
           )}
 
@@ -191,4 +179,6 @@ export default function GroupCardMenu({
     </div>
   )
 }
+
+
 

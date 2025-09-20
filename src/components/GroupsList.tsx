@@ -1,5 +1,5 @@
 // src/components/GroupsList.tsx
-// Рендер и инфинити-скролл + превью долгов + полнофункциональное меню ⋮
+// Рендер и инфинити-скролл + превью долгов + корректное меню ⋮
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -15,7 +15,6 @@ import {
   archiveGroup,
   unarchiveGroup,
   softDeleteGroup,
-  hardDeleteGroup,
   restoreGroup,
 } from "../api/groupsApi"
 
@@ -150,13 +149,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
 
   const onSoftDelete = useCallback(async () => {
     if (!currentGroup) return
-    await softDeleteGroup(currentGroup.id)
-    await refetch()
-  }, [currentGroup, refetch])
-
-  const onHardDelete = useCallback(async () => {
-    if (!currentGroup) return
-    await hardDeleteGroup(currentGroup.id)
+    await softDeleteGroup(currentGroup.id) // бэкенд сам решает soft/hard
     await refetch()
   }, [currentGroup, refetch])
 
@@ -188,7 +181,6 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
       <GroupCardMenu
         open={menuOpenForId != null}
         onClose={() => setMenuOpenForId(null)}
-        groupId={currentGroup?.id ?? 0}
         isOwner={!!isOwner}
         isArchived={!!isArchived}
         isDeleted={!!isDeleted}
@@ -198,8 +190,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
         onUnhide={onUnhide}
         onArchive={onArchive}
         onUnarchive={onUnarchive}
-        onSoftDelete={onSoftDelete}
-        onHardDelete={onHardDelete}
+        onSoftDelete={onSoftDelete}  // ← единая кнопка «Удалить»
         onRestore={onRestore}
       />
     </CardSection>

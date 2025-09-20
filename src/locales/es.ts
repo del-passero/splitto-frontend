@@ -18,7 +18,7 @@ export default {
   no_participants: "Sin participantes",
   contacts_not_found: "No se encontraron contactos",
   groups_not_found: "No se encontraron grupos",
-  group_not_found: "Grupo no encontrado",
+  group_not_found: "Grupo no encontrado",          // ← añadido
   group_name_placeholder: "Nombre del grupo",
   group_description_placeholder: "Descripción del grupo",
   group_name_required: "Introduce el nombre del grupo",
@@ -244,29 +244,17 @@ export default {
     trip_date_placeholder: "DD.MM.AAAA",
   },
 
-  // --- Modales ---
-  add_members_modal: {
-    title: "Añadir participantes",
-    search_placeholder: "Buscar contacto...",
-    empty: "No hay amigos para añadir",
-    add_btn: "Añadir ({{count}})",
-    adding: "Añadiendo...",
-    error_some_failed: "Añadidos: {{added}}, fallidos: {{failed}}",
-  },
-
-  // Modales unificados de acciones de grupo
+  // Modales de acciones de grupo
   group_modals: {
     archive_confirm: "¿Quieres mover el grupo al archivo?",
     unarchive_confirm: "¿Quieres restaurar el grupo del archivo?",
-    delete_forbidden_debts: "El grupo tiene deudas pendientes, no se puede eliminar",
-    delete_soft_confirm: "El grupo será eliminado. Como tiene transacciones, se podrá restaurar más tarde.",
-    delete_hard_confirm: "El grupo se eliminará permanentemente. ¿Estás seguro?",
+    delete_soft_confirm: "El grupo será eliminado. Si tiene transacciones, se podrá restaurar; si no, se eliminará permanentemente. ¿Continuar?",
     restore_confirm: "¿Quieres restaurar el grupo eliminado?",
-    archive_forbidden_debts: "El grupo tiene deudas pendientes, no se puede archivar",
-    edit_blocked_deleted: "El grupo está eliminado. No se puede editar — primero restáuralo.",
-    edit_blocked_archived: "El grupo está archivado. No se puede editar — primero desarchívalo.",
+    edit_blocked_deleted: "El grupo está eliminado y no se puede editar. Restaúralo primero.",
+    edit_blocked_archived: "El grupo está archivado y no se puede editar. Desarchívalo primero.",
   },
 
+  // --- Modales (tx) ---
   tx_modal: {
     title: "Nueva transacción",
     choose_group: "Elige un grupo",
@@ -353,8 +341,7 @@ export default {
     no_name: "Sin nombre",
   },
 
-  // --- Alias (también usado en la raíz) ---
+  // --- Alias ---
   cannot_edit_or_delete_inactive:
     "No puedes editar o eliminar esta transacción porque uno de sus participantes salió del grupo.",
 }
-
