@@ -8,16 +8,13 @@ type Props = {
   open: boolean
   onClose: () => void
 
-  // идентификатор для предпросмотра удаления
   groupId: number
 
-  // факты о группе/правах
   isOwner: boolean
   isArchived: boolean
   isDeleted: boolean // soft
   isHiddenForMe?: boolean
 
-  // колбэки-операции (реальные вызовы API приходят сверху)
   onEdit?: () => Promise<void> | void
 
   onHide?: () => Promise<void> | void
@@ -52,20 +49,15 @@ export default function GroupCardMenu({
   const { t } = useTranslation()
   if (!open) return null
 
-  // матрица показа
-  // Редактирование — только активные (не архив и не удалена)
+  // Матрица показа действий с учётом бизнес-правил:
+  // - Архивную группу НЕЛЬЗЯ удалять
+  // - Удалённую (soft) группу НЕЛЬЗЯ архивировать
   const showEdit       = !isDeleted && !isArchived
-  // Скрыть/Показать — доступно в любых состояниях; сохраним прежнюю логику (для владельца можно отключать при желании)
   const showHide       = true
-  // Архивировать/Разархивировать — показываем и для deleted-групп (по уточнению)
-  const showArchive    = isOwner && !isArchived
+  const showArchive    = isOwner && !isArchived && !isDeleted
   const showUnarchive  = isOwner && isArchived
-  // Удалить — один пункт; если уже soft-deleted, пункт не показываем
-  const showDelete     = isOwner && !isDeleted
-  // Восстановить — только для soft-deleted
+  const showDelete     = isOwner && !isDeleted && !isArchived
   const showRestore    = isOwner && isDeleted
-
-  // --- спец-обработчики под ТЗ (модалки через i18n) ---
 
   const handleArchive = async () => {
     const confirmText = t("group_modals.archive_confirm") as string
@@ -74,7 +66,6 @@ export default function GroupCardMenu({
       await onArchive?.()
       onClose()
     } catch (_e) {
-      // По ТЗ: в случае долгов показать отдельную модалку
       window.alert(t("group_modals.archive_forbidden_debts") as string)
     }
   }
@@ -112,7 +103,6 @@ export default function GroupCardMenu({
         onClose()
         return
       }
-      // disabled/прочее — ничего не делаем
     } catch (e: any) {
       const msg = e?.message || (t("delete_failed") as string)
       window.alert(`${t("error")}: ${msg}`)
@@ -146,10 +136,7 @@ export default function GroupCardMenu({
       className="fixed inset-0 z-[999] flex items-end justify-center"
       onClick={onClose}
     >
-      {/* overlay */}
       <div className="absolute inset-0 bg-black/30" />
-
-      {/* sheet */}
       <div
         className="relative w-full max-w-md rounded-t-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color)] p-1 pb-3 shadow-xl"
         onClick={(e) => e.stopPropagation()}
