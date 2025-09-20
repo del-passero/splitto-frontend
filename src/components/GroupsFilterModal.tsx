@@ -1,11 +1,10 @@
-// src/components/GroupsFilterModal.tsx
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export type FiltersState = {
-  status: { active: boolean; archived: boolean; deleted: boolean }
-  hidden: { visible: boolean; hidden: boolean }
-  activity: { recent: boolean; inactive: boolean; empty: boolean }
+  includeArchived: boolean
+  includeDeleted: boolean
+  includeHidden: boolean
 }
 
 type Props = {
@@ -30,10 +29,9 @@ const ModalShell = ({ open, children }: { open: boolean; children: React.ReactNo
   )
 }
 
-const Row = ({ title, right }: { title: string; right: React.ReactNode }) => (
+const Row = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--tg-secondary-bg-color)] last:border-b-0">
-    <div className="text-sm text-[var(--tg-text-color)]">{title}</div>
-    {right}
+    {children}
   </div>
 )
 
@@ -49,7 +47,10 @@ const Switch = ({
   <button
     type="button"
     aria-label={ariaLabel}
-    onClick={() => onChange(!checked)}
+    onClick={(e) => {
+      e.stopPropagation()
+      onChange(!checked)
+    }}
     className={`relative h-6 w-11 rounded-full transition ${
       checked ? "bg-[var(--tg-link-color)]" : "bg-[var(--tg-secondary-bg-color)]"
     }`}
@@ -70,66 +71,67 @@ export default function GroupsFilterModal({ open, initial, onApply, onClose }: P
     if (open) setState(initial)
   }, [open, initial])
 
-  const setStatus = (k: keyof FiltersState["status"], v: boolean) =>
-    setState((s) => ({ ...s, status: { ...s.status, [k]: v } }))
-  const setHidden = (k: keyof FiltersState["hidden"], v: boolean) =>
-    setState((s) => ({ ...s, hidden: { ...s.hidden, [k]: v } }))
-  const setActivity = (k: keyof FiltersState["activity"], v: boolean) =>
-    setState((s) => ({ ...s, activity: { ...s.activity, [k]: v } }))
-
   const reset = () =>
     setState({
-      status: { active: true, archived: false, deleted: false },
-      hidden: { visible: true, hidden: false },
-      activity: { recent: false, inactive: false, empty: false },
+      includeArchived: false,
+      includeDeleted: false,
+      includeHidden: false,
     })
 
   return (
     <ModalShell open={open}>
+      {/* Заголовок */}
       <div className="px-4 py-3 border-b border-[var(--tg-secondary-bg-color)]">
-        <div className="text-base font-semibold text-[var(--tg-text-color)]">{t("groups_filter_title")}</div>
+        <div className="text-base font-semibold text-[var(--tg-text-color)]">
+          {t("groups_filter_title")}
+        </div>
       </div>
 
-      {/* Статус */}
-      <Row
-        title={t("groups_filter_status_active") || "Активные"}
-        right={<Switch checked={state.status.active} onChange={(v) => setStatus("active", v)} ariaLabel={t("groups_filter_status_active") || "Active"} />}
-      />
-      <Row
-        title={t("groups_filter_status_archived") || "Архивные"}
-        right={<Switch checked={state.status.archived} onChange={(v) => setStatus("archived", v)} ariaLabel={t("groups_filter_status_archived") || "Archived"} />}
-      />
-      <Row
-        title={t("groups_filter_status_deleted") || "Удалённые"}
-        right={<Switch checked={state.status.deleted} onChange={(v) => setStatus("deleted", v)} ariaLabel={t("groups_filter_status_deleted") || "Deleted"} />}
-      />
+      {/* Показать архивные */}
+      <Row>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_filter_status_archived")}
+        </div>
+        <Switch
+          checked={state.includeArchived}
+          onChange={(v) => setState((s) => ({ ...s, includeArchived: v }))}
+          ariaLabel={t("groups_filter_status_archived") || "Show archived"}
+        />
+      </Row>
 
-      {/* Скрытые/Видимые */}
-      <Row
-        title={t("groups_filter_hidden_visible") || "Видимые"}
-        right={<Switch checked={state.hidden.visible} onChange={(v) => setHidden("visible", v)} ariaLabel={t("groups_filter_hidden_visible") || "Visible"} />}
-      />
-      <Row
-        title={t("hide") || "Скрытые"}
-        right={<Switch checked={state.hidden.hidden} onChange={(v) => setHidden("hidden", v)} ariaLabel={t("hide") || "Hidden"} />}
-      />
+      {/* Показать удалённые */}
+      <Row>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_filter_status_deleted")}
+        </div>
+        <Switch
+          checked={state.includeDeleted}
+          onChange={(v) => setState((s) => ({ ...s, includeDeleted: v }))}
+          ariaLabel={t("groups_filter_status_deleted") || "Show deleted"}
+        />
+      </Row>
 
-      {/* Активность */}
-      <Row
-        title={t("groups_filter_activity_recent") || "Недавняя активность"}
-        right={<Switch checked={state.activity.recent} onChange={(v) => setActivity("recent", v)} ariaLabel={t("groups_filter_activity_recent") || "Recent"} />}
-      />
-      <Row
-        title={t("groups_filter_activity_inactive") || "Неактивная"}
-        right={<Switch checked={state.activity.inactive} onChange={(v) => setActivity("inactive", v)} ariaLabel={t("groups_filter_activity_inactive") || "Inactive"} />}
-      />
-      <Row
-        title={t("groups_filter_activity_empty") || "Без транзакций"}
-        right={<Switch checked={state.activity.empty} onChange={(v) => setActivity("empty", v)} ariaLabel={t("groups_filter_activity_empty") || "Empty"} />}
-      />
+      {/* Показать скрытые мной */}
+      <Row>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_filter_hidden")}
+        </div>
+        <Switch
+          checked={state.includeHidden}
+          onChange={(v) => setState((s) => ({ ...s, includeHidden: v }))}
+          ariaLabel={t("groups_filter_hidden") || "Show hidden by me"}
+        />
+      </Row>
 
       {/* Кнопки */}
       <div className="flex items-center justify-end gap-2 px-4 py-3">
+        <button
+          type="button"
+          className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)]"
+          onClick={onClose}
+        >
+          {t("close")}
+        </button>
         <button
           type="button"
           className="px-3 py-2 text-sm rounded-lg bg-[var(--tg-secondary-bg-color)] text-[var(--tg-text-color)]"

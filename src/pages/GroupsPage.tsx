@@ -1,5 +1,5 @@
 // src/pages/GroupsPage.tsx
-// Поиск — на сервер, счётчик — из total, infinity-scroll через GroupsList.loadMore
+// Как ContactsPage: поиск уходит на сервер, счётчик берём из total, инфинити-скролл через GroupsList.loadMore
 
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -14,17 +14,20 @@ import GroupsList from "../components/GroupsList"
 import EmptyGroups from "../components/EmptyGroups"
 import CreateGroupModal from "../components/CreateGroupModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
-import GroupsFilterModal, { FiltersState as ModalFiltersState } from "../components/GroupsFilterModal"
+
+// Модалки
+import GroupsFilterModal, { FiltersState as FiltersStateModal } from "../components/GroupsFilterModal"
 import GroupsSortModal from "../components/GroupsSortModal"
 
 type SortBy = "last_activity" | "name" | "created_at" | "members_count"
 type SortDir = "asc" | "desc"
-type FiltersState = ModalFiltersState
+
+type FiltersState = FiltersStateModal
 
 const defaultFilters: FiltersState = {
-  status: { active: true, archived: false, deleted: false },
-  hidden: { visible: true, hidden: false },
-  activity: { recent: false, inactive: false, empty: false },
+  includeArchived: false,
+  includeDeleted: false,
+  includeHidden: false,
 }
 
 const GroupsPage = () => {
@@ -40,20 +43,21 @@ const GroupsPage = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
 
+  // фильтры/сортировка
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const [filters, setFilters] = useState<FiltersState>(defaultFilters)
   const [sortBy, setSortBy] = useState<SortBy>("last_activity")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Флаги, которые понимает сервер
-  const includeArchived = filters.status.archived
-  const includeDeleted = filters.status.deleted
-  const includeHidden = filters.hidden.hidden
+  // то, что понимает сервер
+  const includeArchived = filters.includeArchived
+  const includeDeleted = filters.includeDeleted
+  const includeHidden = filters.includeHidden
 
   const q = useMemo(() => search.trim(), [search])
 
-  const loadPage = (reset: boolean) => {
+  const reload = (reset: boolean) => {
     if (!user?.id) return
     fetchGroups(user.id, {
       reset,
@@ -66,61 +70,16 @@ const GroupsPage = () => {
     })
   }
 
+  // первичная загрузка и на все зависимости
   useEffect(() => {
     if (!user?.id) return
     clearGroups()
-    loadPage(true)
+    reload(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, q, includeHidden, includeArchived, includeDeleted, sortBy, sortDir])
 
-  // Клиентская фильтрация: статус/скрытые/активность
-  const filteredGroups = useMemo(() => {
-    let arr = groups as any[]
-
-    // Статус (любой набор комбинаций)
-    const s = filters.status
-    const statusAny = s.active || s.archived || s.deleted
-    if (statusAny) {
-      arr = arr.filter((g) => {
-        const deleted = !!g.deleted_at
-        const st = g.status
-        return (s.deleted && deleted) || (s.active && !deleted && st === "active") || (s.archived && !deleted && st === "archived")
-      })
-    }
-
-    // Скрытые/видимые (любой набор)
-    const h = filters.hidden
-    const hiddenAny = h.visible || h.hidden
-    if (hiddenAny) {
-      arr = arr.filter((g) => {
-        const hidden = !!(g.is_hidden || g.is_hidden_for_me || g.hidden_for_me)
-        return (h.hidden && hidden) || (h.visible && !hidden)
-      })
-    }
-
-    // Активность (пороговые значения UI-уровня)
-    const a = filters.activity
-    const activityAny = a.recent || a.inactive || a.empty
-    if (activityAny) {
-      const now = Date.now()
-      const day = 24 * 60 * 60 * 1000
-      const RECENT_DAYS = 7
-      const INACTIVE_DAYS = 30
-      arr = arr.filter((g) => {
-        const val = g.last_activity_at
-        const ts = val ? new Date(val).getTime() : NaN
-        const empty = !val
-        const recent = !!val && now - ts <= RECENT_DAYS * day
-        const inactive = !!val && now - ts >= INACTIVE_DAYS * day
-        return (a.empty && empty) || (a.recent && recent) || (a.inactive && inactive)
-      })
-    }
-
-    return arr
-  }, [groups, filters])
-
   const isSearching = q.length > 0
-  const nothingLoaded = !groupsLoading && !groupsError && filteredGroups.length === 0
+  const nothingLoaded = !groupsLoading && !groupsError && groups.length === 0
   const notFound = isSearching && nothingLoaded
   const noGroups = !isSearching && nothingLoaded
 
@@ -156,12 +115,12 @@ const GroupsPage = () => {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           ownerId={user?.id || 0}
-          onCreated={() => loadPage(true)}
+          onCreated={() => reload(true)}
         />
         <CreateTransactionModal
           open={createTxOpen}
           onOpenChange={setCreateTxOpen}
-          groups={(filteredGroups ?? []).map((g: any) => ({
+          groups={(groups ?? []).map((g: any) => ({
             id: g.id,
             name: g.name,
             icon: g.icon,
@@ -169,11 +128,12 @@ const GroupsPage = () => {
           }))}
         />
 
+        {/* Фильтры / Сортировка */}
         <GroupsFilterModal
           open={filtersOpen}
           onClose={() => setFiltersOpen(false)}
           initial={filters}
-          onApply={setFilters}
+          onApply={(f) => setFilters(f)}
         />
         <GroupsSortModal
           open={sortOpen}
@@ -201,13 +161,12 @@ const GroupsPage = () => {
       <CardSection noPadding>
         <TopInfoRow count={groupsTotal} labelKey="groups_count" />
         <GroupsList
-          groups={filteredGroups as any}
+          groups={groups as any}
           loading={groupsLoading}
           loadMore={
-            groupsLoading || !user?.id
-              ? undefined
-              : () => {
-                  return loadMoreGroups(user!.id, {
+            groupsHasMore && !groupsLoading && user?.id
+              ? () =>
+                  loadMoreGroups(user!.id, {
                     q: q.length ? q : undefined,
                     includeHidden,
                     includeArchived,
@@ -215,7 +174,7 @@ const GroupsPage = () => {
                     sortBy,
                     sortDir,
                   })
-                }
+              : undefined
           }
         />
       </CardSection>
@@ -235,12 +194,12 @@ const GroupsPage = () => {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ownerId={user?.id || 0}
-        onCreated={() => loadPage(true)}
+        onCreated={() => reload(true)}
       />
       <CreateTransactionModal
         open={createTxOpen}
         onOpenChange={setCreateTxOpen}
-        groups={(filteredGroups ?? []).map((g: any) => ({
+        groups={(groups ?? []).map((g: any) => ({
           id: g.id,
           name: g.name,
           icon: g.icon,
@@ -248,11 +207,12 @@ const GroupsPage = () => {
         }))}
       />
 
+      {/* Фильтры / Сортировка */}
       <GroupsFilterModal
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         initial={filters}
-        onApply={setFilters}
+        onApply={(f) => setFilters(f)}
       />
       <GroupsSortModal
         open={sortOpen}
