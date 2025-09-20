@@ -18,6 +18,7 @@ export default {
   no_participants: "Sin participantes",
   contacts_not_found: "No se encontraron contactos",
   groups_not_found: "No se encontraron grupos",
+  group_not_found: "Grupo no encontrado",
   group_name_placeholder: "Nombre del grupo",
   group_description_placeholder: "Descripción del grupo",
   group_name_required: "Introduce el nombre del grupo",
@@ -253,6 +254,19 @@ export default {
     error_some_failed: "Añadidos: {{added}}, fallidos: {{failed}}",
   },
 
+  // Modales unificados de acciones de grupo
+  group_modals: {
+    archive_confirm: "¿Quieres mover el grupo al archivo?",
+    unarchive_confirm: "¿Quieres restaurar el grupo del archivo?",
+    delete_forbidden_debts: "El grupo tiene deudas pendientes, no se puede eliminar",
+    delete_soft_confirm: "El grupo será eliminado. Como tiene transacciones, se podrá restaurar más tarde.",
+    delete_hard_confirm: "El grupo se eliminará permanentemente. ¿Estás seguro?",
+    restore_confirm: "¿Quieres restaurar el grupo eliminado?",
+    archive_forbidden_debts: "El grupo tiene deudas pendientes, no se puede archivar",
+    edit_blocked_deleted: "El grupo está eliminado. No se puede editar — primero restáuralo.",
+    edit_blocked_archived: "El grupo está archivado. No se puede editar — primero desarchívalo.",
+  },
+
   tx_modal: {
     title: "Nueva transacción",
     choose_group: "Elige un grupo",
@@ -342,22 +356,5 @@ export default {
   // --- Alias (también usado en la raíz) ---
   cannot_edit_or_delete_inactive:
     "No puedes editar o eliminar esta transacción porque uno de sus participantes salió del grupo.",
-
-  // --- Marcador extra ---
-  hidden: "Oculta",
-
-  // --- Modales de acciones de grupo (textos) ---
-  group_modals: {
-    archive_confirm: "¿Quieres mover el grupo al archivo?",
-    archive_forbidden_debts:
-      "El grupo tiene deudas pendientes y no se puede archivar",
-    unarchive_confirm: "¿Quieres restaurar el grupo del archivo?",
-    delete_forbidden_debts:
-      "El grupo tiene deudas pendientes y no se puede eliminar",
-    delete_soft_confirm:
-      "El grupo se eliminará. Como tiene transacciones, se podrá restaurar",
-    delete_hard_confirm:
-      "El grupo se eliminará permanentemente. ¿Estás seguro?",
-    restore_confirm: "¿Quieres restaurar el grupo eliminado?",
-  },
 }
+
