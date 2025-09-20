@@ -342,4 +342,22 @@ export default {
   // --- Alias (también usado en la raíz) ---
   cannot_edit_or_delete_inactive:
     "No puedes editar o eliminar esta transacción porque uno de sus participantes salió del grupo.",
+
+  // --- Marcador extra ---
+  hidden: "Oculta",
+
+  // --- Modales de acciones de grupo (textos) ---
+  group_modals: {
+    archive_confirm: "¿Quieres mover el grupo al archivo?",
+    archive_forbidden_debts:
+      "El grupo tiene deudas pendientes y no se puede archivar",
+    unarchive_confirm: "¿Quieres restaurar el grupo del archivo?",
+    delete_forbidden_debts:
+      "El grupo tiene deudas pendientes y no se puede eliminar",
+    delete_soft_confirm:
+      "El grupo se eliminará. Como tiene transacciones, se podrá restaurar",
+    delete_hard_confirm:
+      "El grupo se eliminará permanentemente. ¿Estás seguro?",
+    restore_confirm: "¿Quieres restaurar el grupo eliminado?",
+  },
 }

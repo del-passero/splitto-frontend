@@ -342,4 +342,22 @@ export default {
   // --- Alias (also used at root) ---
   cannot_edit_or_delete_inactive:
     "You can't edit or delete this transaction because one of its participants left the group.",
+
+  // --- Extra markers ---
+  hidden: "Hidden",
+
+  // --- Group action modals (localized texts) ---
+  group_modals: {
+    archive_confirm: "Do you want to move the group to archive?",
+    archive_forbidden_debts:
+      "The group has unsettled debts and cannot be archived",
+    unarchive_confirm: "Do you want to restore the group from archive?",
+    delete_forbidden_debts:
+      "The group has unsettled debts and cannot be deleted",
+    delete_soft_confirm:
+      "The group will be deleted. Since it has transactions, it can be restored later",
+    delete_hard_confirm:
+      "The group will be deleted permanently. Are you sure?",
+    restore_confirm: "Do you want to restore the deleted group?",
+  },
 }

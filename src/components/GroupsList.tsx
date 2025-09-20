@@ -188,6 +188,7 @@ const GroupsList = ({ groups, loadMore, loading = false }: Props) => {
       <GroupCardMenu
         open={menuOpenForId != null}
         onClose={() => setMenuOpenForId(null)}
+        groupId={currentGroup?.id ?? 0}
         isOwner={!!isOwner}
         isArchived={!!isArchived}
         isDeleted={!!isDeleted}

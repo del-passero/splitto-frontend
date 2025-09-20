@@ -2,10 +2,14 @@
 
 import { useTranslation } from "react-i18next"
 import { Archive, RotateCw, Trash2, EyeOff, Eye, Pencil } from "lucide-react"
+import { getDeletePreview } from "../api/groupsApi"
 
 type Props = {
   open: boolean
   onClose: () => void
+
+  // идентификатор для предпросмотра удаления
+  groupId: number
 
   // факты о группе/правах
   isOwner: boolean
@@ -13,7 +17,7 @@ type Props = {
   isDeleted: boolean // soft
   isHiddenForMe?: boolean
 
-  // колбэки-операции
+  // колбэки-операции (реальные вызовы API приходят сверху)
   onEdit?: () => Promise<void> | void
 
   onHide?: () => Promise<void> | void
@@ -31,6 +35,7 @@ type Props = {
 export default function GroupCardMenu({
   open,
   onClose,
+  groupId,
   isOwner,
   isArchived,
   isDeleted,
@@ -47,29 +52,92 @@ export default function GroupCardMenu({
   const { t } = useTranslation()
   if (!open) return null
 
-  // матрица показа (по целевой логике)
-  const showEdit       = !isDeleted && !isArchived                // редактируем только активные
-  const showHide       = !isOwner                                 // скрытие доступно не-владельцу во всех состояниях
-  const showArchive    = isOwner && !isDeleted && !isArchived
-  const showUnarchive  = isOwner && !isDeleted && isArchived
-  const showSoftDelete = isOwner && !isDeleted                    // soft только из не-удалённой
-  const showRestore    = isOwner && isDeleted                     // восстановление только для soft
-  const showHardDelete = isOwner && !isDeleted                    // hard доступен для актив/архив/скрытых, но НЕ soft
+  // матрица показа
+  // Редактирование — только активные (не архив и не удалена)
+  const showEdit       = !isDeleted && !isArchived
+  // Скрыть/Показать — доступно в любых состояниях; сохраним прежнюю логику (для владельца можно отключать при желании)
+  const showHide       = true
+  // Архивировать/Разархивировать — показываем и для deleted-групп (по уточнению)
+  const showArchive    = isOwner && !isArchived
+  const showUnarchive  = isOwner && isArchived
+  // Удалить — один пункт; если уже soft-deleted, пункт не показываем
+  const showDelete     = isOwner && !isDeleted
+  // Восстановить — только для soft-deleted
+  const showRestore    = isOwner && isDeleted
 
-  const click = async (
-    fn: (() => Promise<void> | void) | undefined,
-    { confirmText, errorTitle }: { confirmText?: string; errorTitle?: string } = {}
-  ) => {
+  // --- спец-обработчики под ТЗ (модалки через i18n) ---
+
+  const handleArchive = async () => {
+    const confirmText = t("group_modals.archive_confirm") as string
+    if (!window.confirm(confirmText)) return
     try {
-      if (confirmText) {
-        const ok = window.confirm(confirmText)
-        if (!ok) return
+      await onArchive?.()
+      onClose()
+    } catch (_e) {
+      // По ТЗ: в случае долгов показать отдельную модалку
+      window.alert(t("group_modals.archive_forbidden_debts") as string)
+    }
+  }
+
+  const handleUnarchive = async () => {
+    const confirmText = t("group_modals.unarchive_confirm") as string
+    if (!window.confirm(confirmText)) return
+    try {
+      await onUnarchive?.()
+      onClose()
+    } catch (e: any) {
+      const msg = e?.message || (t("error") as string)
+      window.alert(msg)
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      const preview = await getDeletePreview(groupId)
+      if (preview.mode === "forbidden") {
+        window.alert(t("group_modals.delete_forbidden_debts") as string)
+        return
       }
+      if (preview.mode === "soft") {
+        const ok = window.confirm(t("group_modals.delete_soft_confirm") as string)
+        if (!ok) return
+        await onSoftDelete?.()
+        onClose()
+        return
+      }
+      if (preview.mode === "hard") {
+        const ok = window.confirm(t("group_modals.delete_hard_confirm") as string)
+        if (!ok) return
+        await onHardDelete?.()
+        onClose()
+        return
+      }
+      // disabled/прочее — ничего не делаем
+    } catch (e: any) {
+      const msg = e?.message || (t("delete_failed") as string)
+      window.alert(`${t("error")}: ${msg}`)
+    }
+  }
+
+  const handleRestore = async () => {
+    const ok = window.confirm(t("group_modals.restore_confirm") as string)
+    if (!ok) return
+    try {
+      await onRestore?.({ toActive: true })
+      onClose()
+    } catch (e: any) {
+      const msg = e?.message || (t("error") as string)
+      window.alert(msg)
+    }
+  }
+
+  const clickPlain = async (fn?: () => Promise<void> | void) => {
+    try {
       await fn?.()
       onClose()
     } catch (e: any) {
-      const msg = e?.message || "Action failed"
-      window.alert(`${errorTitle || t("error") || "Ошибка"}: ${msg}`)
+      const msg = e?.message || (t("error") as string)
+      window.alert(msg)
     }
   }
 
@@ -94,7 +162,7 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("edit") || "Редактировать"}
-              onClick={() => click(onEdit)}
+              onClick={() => clickPlain(onEdit)}
             >
               <Pencil size={18} />
               <span>{t("edit") || "Редактировать"}</span>
@@ -106,9 +174,7 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}
-              onClick={() =>
-                click(isHiddenForMe ? onUnhide : onHide)
-              }
+              onClick={() => clickPlain(isHiddenForMe ? onUnhide : onHide)}
             >
               {isHiddenForMe ? <Eye size={18} /> : <EyeOff size={18} />}
               <span>{isHiddenForMe ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}</span>
@@ -119,16 +185,11 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              title={t("group_status_archived") || "Архивировать"}
-              onClick={() =>
-                click(onArchive, {
-                  confirmText: t("group_status_archived") || "Архивировать группу?",
-                  errorTitle: t("error") || "Ошибка",
-                })
-              }
+              title={t("archive") || "Архивировать"}
+              onClick={handleArchive}
             >
               <Archive size={18} />
-              <span>{t("group_status_archived") || "Архивировать"}</span>
+              <span>{t("archive") || "Архивировать"}</span>
             </button>
           )}
 
@@ -136,31 +197,20 @@ export default function GroupCardMenu({
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
-              title="Разархивировать"
-              onClick={() =>
-                click(onUnarchive, {
-                  confirmText: "Разархивировать группу?",
-                  errorTitle: t("error") || "Ошибка",
-                })
-              }
+              title={t("unarchive") || "Разархивировать"}
+              onClick={handleUnarchive}
             >
               <RotateCw size={18} />
-              <span>Разархивировать</span>
+              <span>{t("unarchive") || "Разархивировать"}</span>
             </button>
           )}
 
-          {showSoftDelete && (
+          {showDelete && (
             <button
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
-              title={(t("delete") || "Удалить") + " — если есть долги, операция невозможна"}
-              onClick={() =>
-                click(onSoftDelete, {
-                  confirmText:
-                    "Удалить группу? Если в группе есть долги — операция будет отклонена. Если транзакций нет — группа будет удалена безвозвратно.",
-                  errorTitle: t("error") || "Ошибка",
-                })
-              }
+              title={t("delete") || "Удалить"}
+              onClick={handleDelete}
             >
               <Trash2 size={18} />
               <span>{t("delete") || "Удалить"}</span>
@@ -172,33 +222,10 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("restore") || "Восстановить"}
-              onClick={() =>
-                click(() => onRestore?.({ toActive: true }), {
-                  confirmText: "Восстановить группу (вернём в активную)?",
-                  errorTitle: t("error") || "Ошибка",
-                })
-              }
+              onClick={handleRestore}
             >
               <RotateCw size={18} />
               <span>{t("restore") || "Восстановить"}</span>
-            </button>
-          )}
-
-          {showHardDelete && (
-            <button
-              type="button"
-              className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
-              title="Жёсткое удаление — только если в группе нет транзакций"
-              onClick={() =>
-                click(onHardDelete, {
-                  confirmText:
-                    "Удаление без возможности восстановления. Продолжить? (Доступно только если в группе нет транзакций и долгов.)",
-                  errorTitle: t("error") || "Ошибка",
-                })
-              }
-            >
-              <Trash2 size={18} />
-              <span>{(t("delete") || "Удалить") + " (hard)"}</span>
             </button>
           )}
         </div>

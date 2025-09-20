@@ -171,3 +171,13 @@ export async function getDebtsPreview(userId: number, groupIds: number[]): Promi
   const url = `${API_URL}/groups/user/${userId}/debts-preview?${sp.toString()}`
   return await fetchJson(url)
 }
+
+/** Предпросмотр удаления — чтобы показать правильную модалку */
+export async function getDeletePreview(groupId: number): Promise<{
+  mode: "forbidden" | "soft" | "hard" | "disabled"
+  has_debts: boolean
+  has_transactions: boolean
+}> {
+  const url = `${API_URL}/groups/${groupId}/delete-preview`
+  return await fetchJson(url)
+}
