@@ -20,7 +20,7 @@ import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
 
-// ↓↓↓ лёгкая модалка контакта
+// лёгкая модалка контакта
 import ContactQuickModal from "../components/contacts/ContactQuickModal"
 
 const PAGE_SIZE = 24
@@ -60,6 +60,11 @@ const GroupDetailsPage = () => {
   const [quickOpen, setQuickOpen] = useState(false)
   const [quickUserId, setQuickUserId] = useState<number | null>(null)
 
+  // Производные статусы группы (нужны для гейтов загрузки участников)
+  const isDeleted = Boolean((group as any)?.deleted_at)
+  const isArchived = (group as any)?.status === "archived"
+  const canLoadMembers = !!group && !isDeleted && !isArchived
+
   // Детали группы
   useEffect(() => {
     const fetchGroup = async () => {
@@ -70,10 +75,11 @@ const GroupDetailsPage = () => {
         setGroup(data as Group)
 
         // Для archived/soft-deleted отдаём участников из detail и не докачиваем
-        const isDeleted = Boolean((data as any)?.deleted_at)
-        const isArchived = (data as any)?.status === "archived"
-        const initialMembers = (data as any)?.members
-        if ((isDeleted || isArchived) && Array.isArray(initialMembers) && initialMembers.length > 0) {
+        const d = data as any
+        const _isDeleted = Boolean(d?.deleted_at)
+        const _isArchived = d?.status === "archived"
+        const initialMembers = d?.members
+        if ((_isDeleted || _isArchived) && Array.isArray(initialMembers) && initialMembers.length > 0) {
           setMembers(initialMembers as GroupMember[])
           setHasMore(false)
         }
@@ -88,7 +94,7 @@ const GroupDetailsPage = () => {
 
   // Подгрузка участников (для активных групп)
   const loadMembers = useCallback(async () => {
-    if (!id || membersLoading || !hasMore) return
+    if (!id || membersLoading || !hasMore || !canLoadMembers) return
     try {
       setMembersLoading(true)
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
@@ -103,7 +109,7 @@ const GroupDetailsPage = () => {
     } finally {
       setMembersLoading(false)
     }
-  }, [id, membersLoading, hasMore, page])
+  }, [id, membersLoading, hasMore, canLoadMembers, page])
 
   // Сброс пэйджера при смене id
   useEffect(() => {
@@ -112,23 +118,22 @@ const GroupDetailsPage = () => {
     setHasMore(true)
   }, [id])
 
-  // Первичная загрузка участников
+  // Первичная загрузка участников (только когда известно, что группа активна)
   useEffect(() => {
-    if (hasMore) { void loadMembers() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, hasMore])
+    if (canLoadMembers && hasMore) { void loadMembers() }
+  }, [id, canLoadMembers, hasMore, loadMembers])
 
-  // Инфинити-скролл для участников
+  // Инфинити-скролл для участников (только для активных групп)
   useEffect(() => {
-    if (membersLoading || !hasMore || !loaderRef.current) return
+    if (membersLoading || !hasMore || !loaderRef.current || !canLoadMembers) return
     const observer = new window.IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !membersLoading) {
+      if (entries[0].isIntersecting && hasMore && !membersLoading && canLoadMembers) {
         void loadMembers()
       }
     })
     observer.observe(loaderRef.current)
     return () => observer.disconnect()
-  }, [membersLoading, hasMore, loadMembers])
+  }, [membersLoading, hasMore, canLoadMembers, loadMembers])
 
   // Навигация (запрет редактирования для архивных/удалённых)
   const handleSettingsClick = () => {
@@ -157,6 +162,38 @@ const GroupDetailsPage = () => {
     setQuickOpen(true)
   }
 
+  // Блокирующие обработчики для Invite/Add — такое же поведение, как при редактировании
+  const handleInviteClick = () => {
+    if (isDeleted) {
+      window.alert(t("group_modals.edit_blocked_deleted") as string)
+      return
+    }
+    if (isArchived) {
+      window.alert(t("group_modals.edit_blocked_archived") as string)
+      return
+    }
+    setInviteOpen(true)
+  }
+
+  const handleAddClick = () => {
+    if (isDeleted) {
+      window.alert(t("group_modals.edit_blocked_deleted") as string)
+      return
+    }
+    if (isArchived) {
+      window.alert(t("group_modals.edit_blocked_archived") as string)
+      return
+    }
+    setAddOpen(true)
+  }
+
+  // Всегда передаём валидный колбэк — без undefined (фикс TS2322)
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && canLoadMembers) {
+      void loadMembers()
+    }
+  }, [hasMore, canLoadMembers, loadMembers])
+
   // Ошибки/загрузка
   if (loading) {
     return (
@@ -174,7 +211,7 @@ const GroupDetailsPage = () => {
   }
 
   const existingMemberIds = members.map(m => m.user.id)
-  const isDeleted = Boolean((group as any).deleted_at)
+  const isDeletedRender = Boolean((group as any).deleted_at)
 
   return (
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
@@ -190,9 +227,9 @@ const GroupDetailsPage = () => {
         members={members}
         currentUserId={currentUserId}
         onParticipantClick={handleParticipantClick}
-        onInviteClick={() => setInviteOpen(true)}
-        onAddClick={() => setAddOpen(true)}
-        loadMore={() => { if (hasMore) { void loadMembers() } }}
+        onInviteClick={handleInviteClick}
+        onAddClick={handleAddClick}
+        loadMore={handleLoadMore}
         hasMore={hasMore}
         loading={membersLoading}
         ownerId={group.owner_id}
@@ -209,10 +246,8 @@ const GroupDetailsPage = () => {
           <GroupTransactionsTab
             loading={false}
             transactions={[]}
-            // Кнопка «Добавить» не показывается для удалённых/архивных (внутри таба)
             onAddTransaction={() => setCreateTxOpen(true)}
-            // ВАЖНО: ререндер по id + флаг deleted — чтобы таб пересобрался
-            key={`tx-${id}-${isDeleted ? "deleted" : "active"}`}
+            key={`tx-${id}-${isDeletedRender ? "deleted" : "active"}`}
           />
         )}
 
@@ -258,4 +293,3 @@ const GroupDetailsPage = () => {
 }
 
 export default GroupDetailsPage
-

@@ -59,6 +59,15 @@ export default function GroupCardMenu({
   const showDelete     = isOwner && !isDeleted && !isArchived
   const showRestore    = isOwner && isDeleted
 
+  const normalizeErrorMessage = (e: any): string => {
+    const raw: string = e?.message || ""
+    // Если сервер вернул текст про «непогашенные долги» — используем локализованный ключ
+    if (/unsettled|cannot be (deleted|archived)|долг/i.test(raw)) {
+      return (t("delete_forbidden_debts_note") as string) || raw
+    }
+    return raw || (t("error") as string)
+  }
+
   const click = async (
     fn: (() => Promise<void> | void) | undefined,
     confirmKey?: string,
@@ -72,8 +81,8 @@ export default function GroupCardMenu({
       await fn?.()
       onClose()
     } catch (e: any) {
-      const msg = e?.message || (t("error") as string)
-      window.alert(`${errorTitle || t("error")}: ${msg}`)
+      const msg = normalizeErrorMessage(e)
+      window.alert(`${errorTitle || (t("error") as string)}: ${msg}`)
     }
   }
 
@@ -179,6 +188,3 @@ export default function GroupCardMenu({
     </div>
   )
 }
-
-
-
