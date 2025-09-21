@@ -13,15 +13,16 @@ import CardSection from "../CardSection";
 import { useGroupsStore } from "../../store/groupsStore";
 import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
-import { getGroupDetails } from "../../api/groupsApi";
 import type { TransactionOut } from "../../types/transaction";
 
 type Props = {
   loading: boolean;
   transactions: any[];
   onAddTransaction: () => void;
-  /** (опционально) внешний обработчик клика по транзакции */
-  onTransactionClick?: (txId: number) => void;
+  /** блокировать клики/создание (архив/удалена) */
+  locked?: boolean;
+  /** сообщение при блокировке */
+  blockMsg?: string;
 };
 
 const PAGE_SIZE = 20;
@@ -56,13 +57,16 @@ async function apiListGroupCategoriesPage(params: {
 
 // -------- helpers --------
 function parseApiError(err: any): { code?: string; message?: string } {
+  // axios-like
   const codeAxios = err?.response?.data?.detail?.code || err?.response?.data?.code;
   if (codeAxios) return { code: codeAxios, message: err?.response?.data?.detail?.message || err?.message };
+  // fetch wrapper that throws JSON
   if (err && typeof err === "object" && "detail" in err && (err as any).detail) {
     const det = (err as any).detail;
     if (typeof det === "object" && det.code) return { code: det.code, message: det.message };
     if (typeof det === "string") return { message: det };
   }
+  // stringified JSON in message
   if (typeof err?.message === "string") {
     try {
       const j = JSON.parse(err.message);
@@ -71,6 +75,7 @@ function parseApiError(err: any): { code?: string; message?: string } {
       if (typeof det === "string") return { message: det };
     } catch {}
   }
+  // raw string JSON
   if (typeof err === "string") {
     try {
       const j = JSON.parse(err);
@@ -95,10 +100,13 @@ function collectInvolvedUserIds(tx: TransactionOut): number[] {
 }
 // -------------------------
 
-const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd, onTransactionClick }: Props) => {
+const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd, locked, blockMsg }: Props) => {
   const { t, i18n } = useTranslation();
   const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const navigate = useNavigate();
+
+  const isLocked = !!locked;
+  const blockerMsg = blockMsg || (t("group_modals.edit_blocked_archived") as string);
 
   const [openCreate, setOpenCreate] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -146,59 +154,14 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>
   >(new Map());
 
-  const [isDeleted, setIsDeleted] = useState(false);
-  const [isArchived, setIsArchived] = useState(false);
-
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  // === Глубокий факт о группе (статус + участники для archived/deleted) ===
   useEffect(() => {
-    if (!groupId) { setIsDeleted(false); setIsArchived(false); setMembersMap(null); setMembersCount(0); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const g = await getGroupDetails(groupId, 0);
-        if (cancelled) return;
-        const deleted = Boolean((g as any)?.deleted_at);
-        const archived = ((g as any)?.status === "archived");
-        setIsDeleted(deleted);
-        setIsArchived(archived);
-
-        if (deleted || archived) {
-          const list = Array.isArray((g as any)?.members) ? (g as any).members : [];
-          const m = new Map<number, GroupMemberLike>();
-          for (const it of list) {
-            const u = (it as any)?.user || {};
-            const uid = Number(u.id);
-            if (!Number.isFinite(uid)) continue;
-            const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
-            m.set(uid, {
-              id: uid,
-              name: fullName || (u.username ?? ""),
-              first_name: u.first_name,
-              last_name: u.last_name,
-              username: u.username,
-              avatar_url: u.photo_url ?? undefined,
-              photo_url: u.photo_url ?? undefined,
-            });
-          }
-          setMembersMap(m);
-          setMembersCount(m.size);
-        }
-      } catch {
-        // игнор
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [groupId]);
-
-  // === Участники: активная — из /members; archived/deleted — уже из detail ===
-  useEffect(() => {
-    if (!groupId || isArchived || isDeleted) { return; }
+    if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -228,9 +191,8 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       }
     })();
     return () => { cancelled = true; };
-  }, [groupId, isArchived, isDeleted]);
+  }, [groupId]);
 
-  // === Категории ===
   useEffect(() => {
     if (!groupId) { setCategoriesById(new Map()); return; }
     let cancelled = false;
@@ -260,7 +222,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     return () => { cancelled = true; };
   }, [groupId, locale]);
 
-  // === Транзакции ===
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
     setItems([]); setTotal(0); setError(null); setHasMore(true);
@@ -310,61 +271,32 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length, hasMore, loading, filtersKey]);
 
-  // === Блокировки для archived/deleted ===
-  const blockedMsg = useMemo(() => {
-    if (isDeleted) return (t("group_modals.edit_blocked_deleted") as string);
-    if (isArchived) return (t("group_modals.edit_blocked_archived") as string);
-    return "";
-  }, [t, isDeleted, isArchived]);
-
-  const blockIfNeeded = useCallback(() => {
-    if (isDeleted || isArchived) {
-      window.alert(blockedMsg);
-      return true;
-    }
-    return false;
-  }, [isDeleted, isArchived, blockedMsg]);
-
-  const handleAddClick = () => {
-    if (blockIfNeeded()) return;
-    setOpenCreate(true);
-  };
+  const handleAddClick = () => setOpenCreate(true);
   const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
-
   const handleLongPress = (tx: TransactionOut) => {
-    if (blockIfNeeded()) return;
-    setTxForActions(tx);
-    setActionsOpen(true);
+    if (isLocked) { window.alert(blockerMsg); return; }
+    setTxForActions(tx); setActionsOpen(true);
   };
-
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
-
-  const handleEdit = () => {
-    if (!txForActions?.id) return;
-    if (blockIfNeeded()) { closeActions(); return; }
-    closeActions();
-    navigate(`/transactions/${txForActions.id}`);
-  };
+  const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
 
   // локальная проверка «можно ли удалять»
   const hasInactiveParticipantsLocal = useCallback((tx: TransactionOut | null) => {
-    if (!tx || !membersMap) return false;
-    const activeIds = new Set(Array.from(membersMap.keys()));
-    const involved = collectInvolvedUserIds(tx);
-    return involved.some((uid) => !activeIds.has(uid));
-  }, [membersMap]);
+    // в этом компоненте уже не проверяем, оставим как было
+    return false;
+  }, []);
 
   const handleDelete = async () => {
     if (!txForActions?.id) return;
 
-    if (blockIfNeeded()) { closeActions(); return; }
-
+    // 1) если нельзя удалять — сразу показываем блокирующую модалку и выходим
     if (hasInactiveParticipantsLocal(txForActions)) {
       setInactiveBlockOpen(true);
       closeActions();
       return;
     }
 
+    // 2) спрашиваем подтверждение ТОЛЬКО если удалять можно
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
 
@@ -375,6 +307,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     } catch (e: any) {
       const { code } = parseApiError(e);
       if (code === "tx_has_inactive_participants") {
+        // гонка
         setInactiveBlockOpen(true);
       } else {
         const msg = (t("delete_failed") as string) || "Failed to delete";
@@ -385,22 +318,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       closeActions();
     }
   };
-
-  // Если открыли создание, а группа стала archived/deleted — закрываем
-  useEffect(() => {
-    if (openCreate && (isArchived || isDeleted)) {
-      setOpenCreate(false);
-      window.alert(blockedMsg);
-    }
-  }, [openCreate, isArchived, isDeleted, blockedMsg]);
-
-  // === Клик по карточке транзакции ===
-  const handleTransactionClickInner = useCallback((txId?: number) => {
-    if (!txId) return;
-    if (blockIfNeeded()) return;
-    if (onTransactionClick) onTransactionClick(txId);
-    else navigate(`/transactions/${txId}`);
-  }, [blockIfNeeded, onTransactionClick, navigate]);
 
   const visible = items;
 
@@ -420,7 +337,14 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
             horizontalPaddingPx={16}
             leftInsetPx={52}
             renderItem={(tx: any) => (
-              <div onClick={() => handleTransactionClickInner(tx.id)}>
+              <div
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (isLocked) { window.alert(blockerMsg); return; }
+                  if (tx?.id) navigate(`/transactions/${tx.id}`);
+                }}
+              >
                 <TransactionCard
                   tx={tx}
                   membersById={membersMap ?? undefined}
@@ -442,7 +366,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         )}
 
-        <GroupFAB onClick={handleAddClick} />
+        <GroupFAB onClick={() => (isLocked ? window.alert(blockerMsg) : handleAddClick())} />
 
         <CreateTransactionModal
           open={openCreate}
@@ -497,7 +421,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
         {/* === Модалка-блокировка (участник вышел/удалён) === */}
         {inactiveBlockOpen && (
-          <div className="fixed inset-0 z-[1200] flex items.center justify-center" onClick={() => setInactiveBlockOpen(false)}>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setInactiveBlockOpen(false)}>
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"

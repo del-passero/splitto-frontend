@@ -77,6 +77,8 @@ export interface MinimalGroup {
   default_currency_code?: string | null;
   currency_code?: string | null;
   currency?: string | null;
+  status?: string | null;
+  deleted_at?: string | null;
 }
 
 type MemberMini = {
@@ -443,6 +445,10 @@ export default function TransactionEditPage() {
             currency_code: (gd as any).currency_code,
             // @ts-ignore
             currency: (gd as any).currency,
+            // @ts-ignore
+            status: (gd as any).status ?? null,
+            // @ts-ignore
+            deleted_at: (gd as any).deleted_at ?? null,
           };
         } catch {
           g = {
@@ -461,6 +467,19 @@ export default function TransactionEditPage() {
     })();
     return () => { alive = false; };
   }, [id]);
+
+  /* ---------- 1.1) если группа архив/удалена — показать алерт и сразу закрыть ---------- */
+  useEffect(() => {
+    if (!group) return;
+    const locked = !!group.deleted_at || group.status === "archived";
+    if (locked) {
+      const msg = group.deleted_at
+        ? (t("group_modals.edit_blocked_deleted") as string)
+        : (t("group_modals.edit_blocked_archived") as string);
+      window.alert(msg);
+      navigate(-1);
+    }
+  }, [group, t, navigate]);
 
   /* ---------- 2) участники группы ---------- */
   useEffect(() => {
@@ -891,8 +910,9 @@ export default function TransactionEditPage() {
   }
   if (error || !tx) {
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
-        <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
+      <div className="fixed inset-0 z-[1000]">
+        <div className="absolute inset-0 bg-black/40" onMouseDown={goBack} />
+        <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" onMouseDown={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
@@ -909,10 +929,14 @@ export default function TransactionEditPage() {
 
   // ПОЛНОЭКРАННАЯ МОДАЛКА ПОВЕРХ ВСЕГО
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/40" onClick={goBack}>
+    <div className="fixed inset-0 z-[1000]">
+      <div
+        className="absolute inset-0 bg-black/40"
+        onMouseDown={goBack}
+      />
       <div
         className="absolute inset-0 sm:inset-y-6 sm:inset-x-6 sm:rounded-2xl bg-[var(--tg-bg-color,#111)] shadow-2xl overflow-auto"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
