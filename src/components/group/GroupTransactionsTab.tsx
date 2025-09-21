@@ -19,10 +19,20 @@ type Props = {
   loading: boolean;
   transactions: any[];
   onAddTransaction: () => void;
-  /** блокировать клики/создание (архив/удалена) */
+
+  /** Блокирует клики/создание транзакций (архив/удалено) */
   locked?: boolean;
-  /** сообщение при блокировке */
+  /** Текст «умного» сообщения при блокировке */
   blockMsg?: string;
+
+  /** Список участников, переданный «сверху» (из деталей группы) */
+  initialMembers?: Array<{
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    photo_url?: string;
+  }>;
 };
 
 const PAGE_SIZE = 20;
@@ -100,13 +110,23 @@ function collectInvolvedUserIds(tx: TransactionOut): number[] {
 }
 // -------------------------
 
-const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, onAddTransaction: _onAdd, locked, blockMsg }: Props) => {
+const GroupTransactionsTab = ({
+  loading: _loadingProp,
+  transactions: _txProp,
+  onAddTransaction: _onAdd,
+  locked,
+  blockMsg,
+  initialMembers,
+}: Props) => {
   const { t, i18n } = useTranslation();
   const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const navigate = useNavigate();
 
   const isLocked = !!locked;
-  const blockerMsg = blockMsg || (t("group_modals.edit_blocked_archived") as string);
+  const blockerMsg =
+    blockMsg ||
+    (t("group_modals.edit_blocked_archived") as string) ||
+    "Действие недоступно: группа неактивна.";
 
   const [openCreate, setOpenCreate] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -160,7 +180,29 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
+  /* === 1) Инициализация карты участников: приоритет — initialMembers из родителя === */
   useEffect(() => {
+    if (initialMembers && initialMembers.length) {
+      const map = new Map<number, GroupMemberLike>();
+      for (const u of initialMembers) {
+        const id = Number(u.id);
+        if (!Number.isFinite(id)) continue;
+        const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+        map.set(id, {
+          id,
+          name: fullName || (u.username ?? ""),
+          first_name: u.first_name,
+          last_name: u.last_name,
+          username: u.username,
+          avatar_url: u.photo_url ?? undefined,
+          photo_url: u.photo_url ?? undefined,
+        });
+      }
+      setMembersMap(map);
+      setMembersCount(initialMembers.length);
+      return;
+    }
+
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
     (async () => {
@@ -191,8 +233,9 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
       }
     })();
     return () => { cancelled = true; };
-  }, [groupId]);
+  }, [groupId, initialMembers]);
 
+  /* === 2) Категории === */
   useEffect(() => {
     if (!groupId) { setCategoriesById(new Map()); return; }
     let cancelled = false;
@@ -222,6 +265,7 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     return () => { cancelled = true; };
   }, [groupId, locale]);
 
+  /* === 3) загрузка транзакций === */
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
     setItems([]); setTotal(0); setError(null); setHasMore(true);
@@ -273,30 +317,40 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
 
   const handleAddClick = () => setOpenCreate(true);
   const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
+
+  // длинный тап — блокируем в locked
   const handleLongPress = (tx: TransactionOut) => {
     if (isLocked) { window.alert(blockerMsg); return; }
     setTxForActions(tx); setActionsOpen(true);
   };
-  const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
-  const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
 
   // локальная проверка «можно ли удалять»
   const hasInactiveParticipantsLocal = useCallback((tx: TransactionOut | null) => {
-    // в этом компоненте уже не проверяем, оставим как было
-    return false;
-  }, []);
+    if (!tx || !membersMap) return false;
+    const activeIds = new Set(Array.from(membersMap.keys()));
+    const involved = collectInvolvedUserIds(tx);
+    return involved.some((uid) => !activeIds.has(uid));
+  }, [membersMap]);
+
+  const handleEdit = () => {
+    if (!txForActions?.id) return;
+    setActionsOpen(false);
+    setTimeout(() => setTxForActions(null), 160);
+    if (isLocked) { window.alert(blockerMsg); return; }
+    navigate(`/transactions/${txForActions.id}`);
+  };
+
+  const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
 
   const handleDelete = async () => {
     if (!txForActions?.id) return;
 
-    // 1) если нельзя удалять — сразу показываем блокирующую модалку и выходим
     if (hasInactiveParticipantsLocal(txForActions)) {
       setInactiveBlockOpen(true);
       closeActions();
       return;
     }
 
-    // 2) спрашиваем подтверждение ТОЛЬКО если удалять можно
     const ok = window.confirm((t("tx_modal.delete_confirm") as string) || "Удалить транзакцию? Это действие необратимо.");
     if (!ok) return;
 
@@ -307,7 +361,6 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
     } catch (e: any) {
       const { code } = parseApiError(e);
       if (code === "tx_has_inactive_participants") {
-        // гонка
         setInactiveBlockOpen(true);
       } else {
         const msg = (t("delete_failed") as string) || "Failed to delete";
@@ -334,14 +387,21 @@ const GroupTransactionsTab = ({ loading: _loadingProp, transactions: _txProp, on
           <TransactionList
             items={visible}
             bleedPx={0}
-            horizontalPaddingPx={16}
+            horizontalPaddingPx={6}   // ← уменьшил отступы слева/справа в 3 раза (было 16)
             leftInsetPx={52}
             renderItem={(tx: any) => (
               <div
+                // жёсткая блокировка навигации в архив/удалено: перехватываем на фазе capture + preventDefault
+                onPointerDownCapture={(e) => {
+                  if (isLocked) { e.preventDefault(); e.stopPropagation(); }
+                }}
+                onClickCapture={(e) => {
+                  if (isLocked) { e.preventDefault(); e.stopPropagation(); window.alert(blockerMsg); }
+                }}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (isLocked) { window.alert(blockerMsg); return; }
+                  if (isLocked) return;
                   if (tx?.id) navigate(`/transactions/${tx.id}`);
                 }}
               >

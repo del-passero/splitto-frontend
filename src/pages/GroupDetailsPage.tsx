@@ -1,5 +1,5 @@
 // src/pages/GroupDetailsPage.tsx
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -190,6 +190,27 @@ const GroupDetailsPage = () => {
 
   const existingMemberIds = members.map(m => m.user.id)
 
+  // Для блока транзакций: передаем «лок» и список активных участников (чтобы никто не «серел» в удалённой)
+  const locked = isDeleted || isArchived
+  const blockMsg =
+    isDeleted
+      ? (t("group_modals.edit_blocked_deleted") as string)
+      : isArchived
+        ? (t("group_modals.edit_blocked_archived") as string)
+        : undefined
+
+  const initialMembersForTx = useMemo(
+    () =>
+      members.map((gm) => ({
+        id: gm.user.id,
+        first_name: gm.user.first_name || "",
+        last_name: gm.user.last_name || "",
+        username: gm.user.username || "",
+        photo_url: (gm.user as any).photo_url || undefined,
+      })),
+    [members]
+  )
+
   // Блокирующие обработчики для Invite/Add — всплывашки для архивных/удалённых
   const handleInviteClick = () => {
     if (isDeleted) {
@@ -249,22 +270,16 @@ const GroupDetailsPage = () => {
             loading={false}
             transactions={[]}
             onAddTransaction={() => {
-              if (isDeleted) {
-                window.alert(t("group_modals.edit_blocked_deleted") as string)
-                return
-              }
-              if (isArchived) {
-                window.alert(t("group_modals.edit_blocked_archived") as string)
+              if (locked) {
+                window.alert(blockMsg || "")
                 return
               }
               setCreateTxOpen(true)
             }}
-            locked={isDeleted || isArchived}
-            blockMsg={
-              isDeleted
-                ? (t("group_modals.edit_blocked_deleted") as string)
-                : (t("group_modals.edit_blocked_archived") as string)
-            }
+            locked={locked}
+            blockMsg={blockMsg}
+            initialMembers={initialMembersForTx}
+            key={`tx-${id}-${locked ? "locked" : "active"}`}
           />
         )}
 
@@ -310,3 +325,4 @@ const GroupDetailsPage = () => {
 }
 
 export default GroupDetailsPage
+

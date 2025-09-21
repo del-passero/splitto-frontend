@@ -45,19 +45,17 @@ type TxOut = {
   type: TxType;
   group_id: number;
   amount: number | string;
-  currency?: string | null;        // на случай старых ответов
-  currency_code?: string | null;   // актуальное поле на бэке
+  currency?: string | null;
+  currency_code?: string | null;
   date: string;
   comment?: string | null;
 
-  // expense-only
   category?:
     | { id: number; name?: string; color?: string | null; icon?: string | null }
     | null;
   paid_by?: number | null;
   shares?: TxShare[];
 
-  // transfer-only
   transfer_from?: number | null;
   transfer_to?: number[] | null;
 
@@ -65,7 +63,6 @@ type TxOut = {
 
   split_type?: "equal" | "shares" | "custom";
 
-  // ДОБАВЛЕНО: участники транзакции (включая вышедших)
   related_users?: RelatedUser[];
 };
 
@@ -77,8 +74,6 @@ export interface MinimalGroup {
   default_currency_code?: string | null;
   currency_code?: string | null;
   currency?: string | null;
-  status?: string | null;
-  deleted_at?: string | null;
 }
 
 type MemberMini = {
@@ -200,7 +195,6 @@ const nameFromMember = (m?: MemberMini) => composeName(m);
 
 /** Парсим ошибки API и возвращаем { code?, message? } */
 function parseApiError(err: any): { code?: string; message?: string } {
-  // Популярные варианты: fetch -> e.message (строка с JSON), либо уже объект с detail
   const tryExtract = (obj: any) => {
     const d = obj?.detail ?? obj;
     if (d && typeof d === "object") {
@@ -288,52 +282,6 @@ function resolveUserFromMaps(
   return { name: `#${uid}`, avatar_url: undefined, inactive: true };
 }
 
-/* ====================== GCD helpers ====================== */
-const gcd2 = (a: number, b: number): number => (b ? gcd2(b, a % b) : Math.abs(a));
-const gcdArr = (arr: number[]): number =>
-  arr.reduce((g, v) => gcd2(g, Math.abs(v)), arr.length ? Math.abs(arr[0]) : 0);
-const deriveSharesFromAmounts = (amounts: number[], decimals: number): number[] => {
-  const scale = Math.pow(10, Math.max(0, decimals));
-  const ints = amounts.map((v) => Math.round(Math.max(0, v) * scale));
-  const positive = ints.filter((x) => x > 0);
-  const g = gcdArr(positive);
-  if (!g) return amounts.map(() => 1);
-  return ints.map((x) => (x > 0 ? x / g : 0));
-};
-
-/* ====================== Аватар с пометкой inactive ====================== */
-function AvatarWithStatus({
-  src,
-  size = 20,
-  inactive,
-  alt = "",
-}: { src?: string; size?: number; inactive: boolean; alt?: string }) {
-  return (
-    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      {src ? (
-        <img
-          src={src}
-          alt={alt}
-          className={`rounded-full object-cover ${inactive ? "grayscale opacity-70" : ""}`}
-          style={{ width: size, height: size }}
-        />
-      ) : (
-        <span
-          className={`rounded-full inline-block ${inactive ? "grayscale opacity-70" : ""}`}
-          style={{ width: size, height: size, background: "var(--tg-link-color)" }}
-        />
-      )}
-      {inactive && (
-        <UserX
-          size={Math.max(12, Math.round(size * 0.7))}
-          className="absolute"
-          style={{ color: "#ef4444" /* red-500 */ }}
-        />
-      )}
-    </span>
-  );
-}
-
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
   const { t, i18n } = useTranslation();
@@ -401,7 +349,6 @@ export default function TransactionEditPage() {
   const currency = useMemo(() => {
     const code = currencyCode || null;
     const decimals = code ? (DECIMALS_BY_CODE[code] ?? 2) : 2;
-    // ВАЖНО: дальше в превью долей используем именно CODE, а не SYMBOL
     const symbol = code ? (SYMBOL_BY_CODE[code] ?? code) : "";
     return { code, symbol, decimals };
   }, [currencyCode]);
@@ -428,7 +375,6 @@ export default function TransactionEditPage() {
         if (!alive) return;
         setTx(data as unknown as TxOut);
 
-        // группа — для участников; валюту НЕ берём из группы для префилла
         let g: MinimalGroup | null = null;
         try {
           const gd = await getGroupDetails((data as any).group_id ?? data.group_id);
@@ -445,10 +391,6 @@ export default function TransactionEditPage() {
             currency_code: (gd as any).currency_code,
             // @ts-ignore
             currency: (gd as any).currency,
-            // @ts-ignore
-            status: (gd as any).status ?? null,
-            // @ts-ignore
-            deleted_at: (gd as any).deleted_at ?? null,
           };
         } catch {
           g = {
@@ -467,19 +409,6 @@ export default function TransactionEditPage() {
     })();
     return () => { alive = false; };
   }, [id]);
-
-  /* ---------- 1.1) если группа архив/удалена — показать алерт и сразу закрыть ---------- */
-  useEffect(() => {
-    if (!group) return;
-    const locked = !!group.deleted_at || group.status === "archived";
-    if (locked) {
-      const msg = group.deleted_at
-        ? (t("group_modals.edit_blocked_deleted") as string)
-        : (t("group_modals.edit_blocked_archived") as string);
-      window.alert(msg);
-      navigate(-1);
-    }
-  }, [group, t, navigate]);
 
   /* ---------- 2) участники группы ---------- */
   useEffect(() => {
@@ -524,7 +453,6 @@ export default function TransactionEditPage() {
     if (didPrefillRef.current) return;
     if (!tx) return;
 
-    // если в tx нет валюты — ждём group для fallback
     const hasTxCurrency = !!((tx as any).currency_code ?? (tx as any).currency);
     if (!hasTxCurrency && !group) return;
 
@@ -532,12 +460,10 @@ export default function TransactionEditPage() {
       setDate((tx.date || tx.created_at || new Date().toISOString()).slice(0, 10));
       setComment(tx.comment || "");
 
-      // Валюта: БЕРЁМ из самой транзакции (а не из группы)
       const txCodeRaw = (tx.currency_code ?? tx.currency) || null;
       const txCode = typeof txCodeRaw === "string" && txCodeRaw.trim()
         ? txCodeRaw.trim().toUpperCase()
         : null;
-      // Если вдруг в транзакции нет валюты — мягко fallback к валюте группы
       const fallback = resolveCurrencyCodeFromGroup(group) || null;
       const code = txCode || fallback || "USD";
       setCurrencyCode(code);
@@ -547,35 +473,10 @@ export default function TransactionEditPage() {
 
       if (tx.type === "expense") {
         const cat: any = (tx as any).category || {};
-        const idCandidate =
-          cat.id ??
-          (tx as any).category_id ??
-          undefined;
-        const nameCandidate: string | null =
-          cat.name ??
-          cat.title ??
-          cat.label ??
-          (tx as any).category_name ??
-          (tx as any).categoryTitle ??
-          (tx as any).category_label ??
-          null;
-        const iconCandidate: string | null =
-          cat.icon ??
-          (tx as any).category_icon ??
-          (tx as any).categoryEmoji ??
-          null;
-        const rawColorCandidate =
-          cat.color ??
-          cat.bg_color ??
-          cat.hex ??
-          cat.background_color ??
-          cat.color_hex ??
-          (tx as any).category_color ??
-          (tx as any).category_hex ??
-          (tx as any).category_bg ??
-          (tx as any).category_background ??
-          null;
-
+        const idCandidate = cat.id ?? (tx as any).category_id ?? undefined;
+        const nameCandidate: string | null = cat.name ?? cat.title ?? cat.label ?? (tx as any).category_name ?? (tx as any).categoryTitle ?? (tx as any).category_label ?? null;
+        const iconCandidate: string | null = cat.icon ?? (tx as any).category_icon ?? (tx as any).categoryEmoji ?? null;
+        const rawColorCandidate = cat.color ?? cat.bg_color ?? cat.hex ?? cat.background_color ?? cat.color_hex ?? (tx as any).category_color ?? (tx as any).category_hex ?? (tx as any).category_bg ?? (tx as any).category_background ?? null;
         const hex6 = to6Hex(rawColorCandidate as any) ?? (rawColorCandidate as any) ?? null;
 
         setCategoryId(Number.isFinite(Number(idCandidate)) ? Number(idCandidate) : undefined);
@@ -604,11 +505,21 @@ export default function TransactionEditPage() {
         const initialSplitType: "equal" | "shares" | "custom" =
           (tx.split_type as any) || "custom";
 
+        const deriveShares = (amounts: number[], decimals: number): number[] => {
+          const scale = Math.pow(10, Math.max(0, decimals));
+          const ints = amounts.map((v) => Math.round(Math.max(0, v) * scale));
+          const positive = ints.filter((x) => x > 0);
+          const gcd2 = (a: number, b: number): number => (b ? gcd2(b, a % b) : Math.abs(a));
+          const g = positive.reduce((acc, v) => gcd2(acc, v), positive[0] || 0);
+          if (!g) return amounts.map(() => 1);
+          return ints.map((x) => (x > 0 ? x / g : 0));
+        };
+
         if (initialSplitType === "shares") {
           const needDerive = baseParts.some((p) => !p.share || p.share <= 0);
           let sharesVector: number[] = [];
           if (needDerive) {
-            sharesVector = deriveSharesFromAmounts(
+            sharesVector = deriveShares(
               baseParts.map((p) => p.amount),
               dec
             );
@@ -707,11 +618,7 @@ export default function TransactionEditPage() {
     it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>
   ) => {
     const raw =
-      (it as any).color ??
-      (it as any).bg_color ??
-      (it as any).hex ??
-      (it as any).background_color ??
-      (it as any).color_hex;
+      (it as any).color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
     const hex6 = to6Hex(raw) ?? raw ?? null;
     setCategoryId(it.id);
     setCategoryName(it.name);
@@ -778,11 +685,10 @@ export default function TransactionEditPage() {
     return true;
   };
 
-  // SAVE (PUT /transactions/{id})
+  // SAVE
   const doSave = async () => {
     if (!tx || !group?.id) return;
 
-    // Локальный чек: если есть неактивные участники — сразу модалка, без сохранения
     if (hasInactiveParticipants(tx, membersMap)) {
       setInactiveDialogOpen(true);
       return;
@@ -793,7 +699,6 @@ export default function TransactionEditPage() {
       const gid = group.id;
       const amtStr = toFixedSafe(amount || "0", currency.decimals);
 
-      // защита: сумма должна быть > 0
       if (!isFinite(Number(amtStr)) || Number(amtStr) <= 0) {
         showToast((t("errors.amount_positive") as string) || "Amount must be > 0");
         setSaving(false);
@@ -803,7 +708,6 @@ export default function TransactionEditPage() {
       const curr = (currency.code || tx.currency_code || tx.currency || "").toUpperCase();
 
       if (tx.type === "expense") {
-        // ⬇️ Без фолбэка: плательщик должен быть выбран явно
         const payerId = paidBy;
         if (!payerId) {
           setPayerOpen(true);
@@ -868,7 +772,6 @@ export default function TransactionEditPage() {
   const doDelete = async () => {
     if (!tx) return;
 
-    // Локальный чек: если есть неактивные участники — сразу модалка, без confirm
     if (hasInactiveParticipants(tx, membersMap)) {
       setInactiveDialogOpen(true);
       return;
@@ -910,9 +813,8 @@ export default function TransactionEditPage() {
   }
   if (error || !tx) {
     return (
-      <div className="fixed inset-0 z-[1000]">
-        <div className="absolute inset-0 bg-black/40" onMouseDown={goBack} />
-        <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" onMouseDown={(e)=>e.stopPropagation()}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
+        <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
@@ -927,16 +829,20 @@ export default function TransactionEditPage() {
     );
   }
 
-  // ПОЛНОЭКРАННАЯ МОДАЛКА ПОВЕРХ ВСЕГО
+  // ПОЛНОЭКРАННАЯ МОДАЛКА: разделили фон и контент, чтобы убрать «двойной клик»
   return (
     <div className="fixed inset-0 z-[1000]">
+      {/* фон-клик для закрытия */}
       <div
         className="absolute inset-0 bg-black/40"
         onMouseDown={goBack}
+        onClick={goBack}
       />
+      {/* контент — отдельным слоем; блокируем и mouseDown, и click от всплытия */}
       <div
         className="absolute inset-0 sm:inset-y-6 sm:inset-x-6 sm:rounded-2xl bg-[var(--tg-bg-color,#111)] shadow-2xl overflow-auto"
         onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
@@ -1119,7 +1025,6 @@ export default function TransactionEditPage() {
                               {fmtMoney(
                                 amountNumber,
                                 currency.decimals,
-                                // ПО ТРЕБОВАНИЮ: показываем КОД валюты
                                 currency.code || "",
                                 locale
                               )}
@@ -1147,7 +1052,6 @@ export default function TransactionEditPage() {
                                 {fmtMoney(
                                   p.amount,
                                   currency.decimals,
-                                  // ПО ТРЕБОВАНИЮ: показываем КОД валюты
                                   currency.code || "",
                                   locale
                                 )}
@@ -1176,7 +1080,7 @@ export default function TransactionEditPage() {
                         setRecipientOpen(false);
                         setSplitOpen(false);
                       }}
-                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg白/10 transition max-w-full"
+                      className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/10 transition max-w-full"
                     >
                       {paidBy ? (
                         <>
@@ -1194,7 +1098,7 @@ export default function TransactionEditPage() {
                           <span
                             role="button"
                             aria-label={t("clear") || "Очистить"}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg白/10 hover:bg-black/20"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1282,7 +1186,6 @@ export default function TransactionEditPage() {
                           {fmtMoney(
                             amountNumber,
                             currency.decimals,
-                            // ПО ТРЕБОВАНИЮ: показываем КОД валюты
                             currency.code || "",
                             locale
                           )}
@@ -1427,9 +1330,7 @@ export default function TransactionEditPage() {
                   });
                 } else if (membersMap.size > 0 || relatedMap.size > 0) {
                   const ids = new Set<number>();
-                  // участники группы
                   for (const m of membersMap.values()) ids.add(m.id);
-                  // и все, кто есть в related
                   for (const uid of Array.from(collectInvolvedIds(tx))) ids.add(uid);
                   participants = Array.from(ids).map((uid) => {
                     const m = membersMap.get(uid);
@@ -1528,4 +1429,37 @@ if (style) {
   .date-input-clean::-ms-expand { display: none; }
   `;
   document.head.appendChild(style);
+}
+
+/* ====================== Вспомогательные компоненты ====================== */
+function AvatarWithStatus({
+  src,
+  size = 20,
+  inactive,
+  alt = "",
+}: { src?: string; size?: number; inactive: boolean; alt?: string }) {
+  return (
+    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      {src ? (
+        <img
+          src={src}
+          alt={alt}
+          className={`rounded-full object-cover ${inactive ? "grayscale opacity-70" : ""}`}
+          style={{ width: size, height: size }}
+        />
+      ) : (
+        <span
+          className={`rounded-full inline-block ${inactive ? "grayscale opacity-70" : ""}`}
+          style={{ width: size, height: size, background: "var(--tg-link-color)" }}
+        />
+      )}
+      {inactive && (
+        <UserX
+          size={Math.max(12, Math.round(size * 0.7))}
+          className="absolute"
+          style={{ color: "#ef4444" }}
+        />
+      )}
+    </span>
+  );
 }
