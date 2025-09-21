@@ -1,5 +1,5 @@
 // src/pages/GroupDetailsPage.tsx
-import { useEffect, useState, useRef, useCallback, useMemo } from "react"
+import { useEffect, useState, useRef, useCallback, Component, ReactNode } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -19,9 +19,32 @@ import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
-
-// лёгкая модалка контакта
 import ContactQuickModal from "../components/contacts/ContactQuickModal"
+
+// ====== ErrorBoundary, чтобы не было «чёрного экрана» при любой ошибке ниже ======
+class LocalErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; msg?: string }> {
+  constructor(props: any) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError(err: any) {
+    return { hasError: true, msg: err?.message || String(err || "") }
+  }
+  componentDidCatch(err: any, info: any) {
+    // eslint-disable-next-line no-console
+    console.error("GroupDetailsPage error:", err, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-red-500">
+          {this.state.msg || "Unexpected error in Group page"}
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const PAGE_SIZE = 24
 
@@ -62,17 +85,26 @@ const GroupDetailsPage = () => {
 
   // Детали группы
   useEffect(() => {
+    let alive = true
     const fetchGroup = async () => {
       try {
         setLoading(true)
         setError(null)
         const data = await getGroupDetails(id)
-        setGroup(data as Group)
+        if (!alive) return
+
+        // Мягкая защита от кривых данных
+        const safe: Group = {
+          ...data,
+          members: Array.isArray((data as any)?.members) ? (data as any).members : [],
+        } as any
+
+        setGroup(safe as Group)
 
         // Для archived/soft-deleted: берём участников из detail и НЕ докачиваем
-        const isDeleted = Boolean((data as any)?.deleted_at)
-        const isArchived = (data as any)?.status === "archived"
-        const initialMembers = (data as any)?.members
+        const isDeleted = Boolean((safe as any)?.deleted_at)
+        const isArchived = (safe as any)?.status === "archived"
+        const initialMembers = (safe as any)?.members
         if ((isDeleted || isArchived) && Array.isArray(initialMembers) && initialMembers.length > 0) {
           setMembers(initialMembers as GroupMember[])
           setHasMore(false)
@@ -80,10 +112,11 @@ const GroupDetailsPage = () => {
       } catch (err: any) {
         setError(err?.message || (t("group_not_found") as string))
       } finally {
-        setLoading(false)
+        if (alive) setLoading(false)
       }
     }
     if (id) fetchGroup()
+    return () => { alive = false }
   }, [id, t])
 
   // Подгрузка участников (для активных групп)
@@ -172,45 +205,6 @@ const GroupDetailsPage = () => {
     setQuickOpen(true)
   }
 
-  // Ошибки/загрузка
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
-        {t("loading")}
-      </div>
-    )
-  }
-  if (error || !group) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-red-500">
-        {error || t("group_not_found")}
-      </div>
-    )
-  }
-
-  const existingMemberIds = members.map(m => m.user.id)
-
-  // Для блока транзакций: передаем «лок» и список активных участников (чтобы никто не «серел» в удалённой)
-  const locked = isDeleted || isArchived
-  const blockMsg =
-    isDeleted
-      ? (t("group_modals.edit_blocked_deleted") as string)
-      : isArchived
-        ? (t("group_modals.edit_blocked_archived") as string)
-        : undefined
-
-  const initialMembersForTx = useMemo(
-    () =>
-      members.map((gm) => ({
-        id: gm.user.id,
-        first_name: gm.user.first_name || "",
-        last_name: gm.user.last_name || "",
-        username: gm.user.username || "",
-        photo_url: (gm.user as any).photo_url || undefined,
-      })),
-    [members]
-  )
-
   // Блокирующие обработчики для Invite/Add — всплывашки для архивных/удалённых
   const handleInviteClick = () => {
     if (isDeleted) {
@@ -236,93 +230,115 @@ const GroupDetailsPage = () => {
     setAddOpen(true)
   }
 
+  // Ошибки/загрузка
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
+        {t("loading")}
+      </div>
+    )
+  }
+  if (error || !group) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-red-500">
+        {error || t("group_not_found")}
+      </div>
+    )
+  }
+
+  const existingMemberIds = (members || []).map(m => (m as any)?.user?.id).filter(Boolean)
+
   return (
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
-      {/* Шапка группы */}
-      <GroupHeader
-        group={group}
-        onSettingsClick={handleSettingsClick}
-        onBalanceClick={handleBalanceClick}
-      />
+      <LocalErrorBoundary>
+        {/* Шапка группы */}
+        <GroupHeader
+          group={group}
+          onSettingsClick={handleSettingsClick}
+          onBalanceClick={handleBalanceClick}
+        />
 
-      {/* Лента участников */}
-      <ParticipantsScroller
-        members={members}
-        currentUserId={currentUserId}
-        onParticipantClick={handleParticipantClick}
-        onInviteClick={handleInviteClick}
-        onAddClick={handleAddClick}
-        loadMore={effectiveLoadMore}
-        hasMore={canLoadMembers ? hasMore : false}
-        loading={canLoadMembers ? membersLoading : false}
-        ownerId={group.owner_id}
-      />
+        {/* Лента участников */}
+        <ParticipantsScroller
+          members={Array.isArray(members) ? members : []}
+          currentUserId={currentUserId}
+          onParticipantClick={handleParticipantClick}
+          onInviteClick={handleInviteClick}
+          onAddClick={handleAddClick}
+          loadMore={effectiveLoadMore}
+          hasMore={canLoadMembers ? hasMore : false}
+          loading={canLoadMembers ? membersLoading : false}
+          ownerId={group.owner_id}
+        />
 
-      {/* Вкладки */}
-      <div className="w-full max-w-xl mx-auto px-0">
-        <GroupTabs selected={selectedTab} onSelect={setSelectedTab} className="mb-0" />
-      </div>
+        {/* Вкладки */}
+        <div className="w-full max-w-xl mx-auto px-0">
+          <GroupTabs selected={selectedTab} onSelect={setSelectedTab} className="mb-0" />
+        </div>
 
-      {/* Контент вкладок */}
-      <div className="w-full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
-        {selectedTab === "transactions" && (
-          <GroupTransactionsTab
-            loading={false}
-            transactions={[]}
-            onAddTransaction={() => {
-              if (locked) {
-                window.alert(blockMsg || "")
-                return
-              }
-              setCreateTxOpen(true)
-            }}
-            locked={locked}
-            blockMsg={blockMsg}
-            initialMembers={initialMembersForTx}
-            key={`tx-${id}-${locked ? "locked" : "active"}`}
-          />
-        )}
+        {/* Контент вкладок */}
+        <div className="w-full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
+          {selectedTab === "transactions" && (
+            <GroupTransactionsTab
+              loading={false}
+              transactions={[]}
+              onAddTransaction={() => {
+                if (isDeleted) {
+                  window.alert(t("group_modals.edit_blocked_deleted") as string)
+                  return
+                }
+                if (isArchived) {
+                  window.alert(t("group_modals.edit_blocked_archived") as string)
+                  return
+                }
+                setCreateTxOpen(true)
+              }}
+              key={`tx-${id}-${isDeleted ? "deleted" : isArchived ? "archived" : "active"}`}
+            />
+          )}
 
-        {selectedTab === "balance" && <GroupBalanceTab />}
+          {selectedTab === "balance" && <GroupBalanceTab />}
 
-        {selectedTab === "analytics" && <GroupAnalyticsTab />}
-      </div>
+          {selectedTab === "analytics" && <GroupAnalyticsTab />}
+        </div>
 
-      {/* Сентинел для участников */}
-      {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
+        {/* Сентинел для участников */}
+        {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
 
-      {/* Модалка добавления участников */}
-      <AddGroupMembersModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        groupId={id}
-        existingMemberIds={existingMemberIds}
-        onAdded={() => { /* no-op */ }}
-      />
+        {/* Модалка добавления участников */}
+        <AddGroupMembersModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          groupId={id}
+          existingMemberIds={existingMemberIds as number[]}
+          onAdded={() => { /* no-op */ }}
+        />
 
-      {/* Модалка создания транзакции */}
-      <CreateTransactionModal
-        open={createTxOpen}
-        onOpenChange={setCreateTxOpen}
-        defaultGroupId={id}
-        groups={group ? [{
-          id: group.id,
-          name: group.name,
-          // @ts-ignore
-          icon: (group as any).icon,
-          // @ts-ignore
-          color: (group as any).color,
-        }] : []}
-      />
+        {/* Модалка создания транзакции */}
+        <CreateTransactionModal
+          open={createTxOpen}
+          onOpenChange={setCreateTxOpen}
+          defaultGroupId={id}
+          groups={group ? [{
+            id: group.id,
+            name: group.name,
+            // @ts-ignore
+            icon: (group as any).icon,
+            // @ts-ignore
+            color: (group as any).color,
+          }] : []}
+        />
 
-      {/* Модалка инвайта в группу */}
-      <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
+        {/* Модалка инвайта в группу */}
+        <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
 
-      {/* Лёгкая модалка контакта */}
-      <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
+        {/* Лёгкая модалка контакта */}
+        <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
+      </LocalErrorBoundary>
     </div>
   )
 }
 
 export default GroupDetailsPage
+
 
