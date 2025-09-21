@@ -1,6 +1,7 @@
 // src/components/GroupsSortModal.tsx
 // Стиль — как у GroupsFilterModal: нижний лист, z поверх FAB.
-// Одна опция в строку, блок "Направление" визуально отделён, три кнопки: Закрыть / Сбросить / Применить
+// Одна опция в строку. Секция «Направление» визуально отделена.
+// Три кнопки: Закрыть / Сбросить / Применить.
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -88,51 +89,64 @@ export default function GroupsSortModal({ open, initial, onApply, onClose }: Pro
         </div>
       </div>
 
-      {/* Поле сортировки — по одному в строке */}
+      {/* Поле сортировки — по одному пункту в строке */}
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">{t("groups_sort_by_last_activity") || "Последняя активность"}</div>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_sort_by_last_activity") || "Активность"}
+        </div>
         <Radio
           checked={state.sortBy === "last_activity"}
-          onChange={() => setState(s => ({ ...s, sortBy: "last_activity" }))}
+          onChange={() => setState((s) => ({ ...s, sortBy: "last_activity" }))}
           ariaLabel="last_activity"
         />
       </Row>
+
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">{t("groups_sort_by_name") || "Название"}</div>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_sort_by_name") || "Имя"}
+        </div>
         <Radio
           checked={state.sortBy === "name"}
-          onChange={() => setState(s => ({ ...s, sortBy: "name" }))}
+          onChange={() => setState((s) => ({ ...s, sortBy: "name" }))}
           ariaLabel="name"
         />
       </Row>
+
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">{t("groups_sort_by_created_at") || "Дата создания"}</div>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_sort_by_created_at") || "Создание"}
+        </div>
         <Radio
           checked={state.sortBy === "created_at"}
-          onChange={() => setState(s => ({ ...s, sortBy: "created_at" }))}
+          onChange={() => setState((s) => ({ ...s, sortBy: "created_at" }))}
           ariaLabel="created_at"
         />
       </Row>
+
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">{t("groups_sort_by_members_count") || "Число участников"}</div>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_sort_by_members_count") || "Участники"}
+        </div>
         <Radio
           checked={state.sortBy === "members_count"}
-          onChange={() => setState(s => ({ ...s, sortBy: "members_count" }))}
+          onChange={() => setState((s) => ({ ...s, sortBy: "members_count" }))}
           ariaLabel="members_count"
         />
       </Row>
 
-      {/* Разделитель для "Направление" */}
+      {/* Разделитель секции «Направление» */}
       <div className="h-2 bg-[var(--tg-secondary-bg-color)]/40" />
 
       {/* Направление */}
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">{t("groups_sort_dir") || "Направление"}</div>
+        <div className="text-sm text-[var(--tg-text-color)]">
+          {t("groups_sort_dir") || "Направление"}
+        </div>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <Radio
               checked={state.sortDir === "asc"}
-              onChange={() => setState(s => ({ ...s, sortDir: "asc" }))}
+              onChange={() => setState((s) => ({ ...s, sortDir: "asc" }))}
               ariaLabel="asc"
             />
             <span className="text-sm">{t("groups_sort_dir_asc") || "По возрастанию"}</span>
@@ -140,7 +154,7 @@ export default function GroupsSortModal({ open, initial, onApply, onClose }: Pro
           <div className="flex items-center gap-2">
             <Radio
               checked={state.sortDir === "desc"}
-              onChange={() => setState(s => ({ ...s, sortDir: "desc" }))}
+              onChange={() => setState((s) => ({ ...s, sortDir: "desc" }))}
               ariaLabel="desc"
             />
             <span className="text-sm">{t("groups_sort_dir_desc") || "По убыванию"}</span>
@@ -178,3 +192,4 @@ export default function GroupsSortModal({ open, initial, onApply, onClose }: Pro
     </ModalShell>
   )
 }
+
