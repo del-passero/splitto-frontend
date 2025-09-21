@@ -47,19 +47,20 @@ export default function GroupCardMenu({
   if (!open) return null
 
   // Видимость пунктов:
-  // - Редактировать: ВСЕГДА видим (блокировки — на стороне страницы)
-  // - Скрыть/Показать: для всех состояний (персональная настройка)
-  // - Архивировать/Разархивировать: только для владельца; Архив — нельзя в deleted
-  // - Удалить: только для владельца и ТОЛЬКО если группа не archived и не deleted
-  // - Восстановить: только для владельца и ТОЛЬКО если группа deleted
-  const showEdit       = true
+  // - Редактировать: СКРЫТЬ для archived/soft-deleted; показывать ТОЛЬКО у активных
+  // - Скрыть/Показать: всегда
+  // - Архивировать: только владелец, и только если не archived и не deleted
+  // - Разархивировать: только владелец, для archived (и не deleted)
+  // - Удалить: только владелец и только если не archived и не deleted
+  // - Восстановить: только владелец и только если deleted
+  const showEdit       = !isArchived && !isDeleted
   const showHide       = true
   const showArchive    = isOwner && !isDeleted && !isArchived
   const showUnarchive  = isOwner && !isDeleted && isArchived
   const showDelete     = isOwner && !isDeleted && !isArchived
   const showRestore    = isOwner && isDeleted
 
-  // Контекстная нормализация ошибок (только для archive/delete — «умные» сообщения)
+  // «Умные» сообщения только для archive/delete (как договаривались)
   const normalizeErrorMessage = (raw: string, kind: "archive" | "delete" | "generic"): string => {
     const msg = raw || ""
     const debts = /unsettled|cannot\s+be\s+(deleted|archived)|долг|долги|задолж/i.test(msg)
@@ -214,4 +215,5 @@ export default function GroupCardMenu({
     </div>
   )
 }
+
 

@@ -17,7 +17,6 @@ import GroupTransactionsTab from "../components/group/GroupTransactionsTab"
 import GroupBalanceTab from "../components/group/GroupBalanceTab"
 import GroupAnalyticsTab from "../components/group/GroupAnalyticsTab"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
-import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
 
 // лёгкая модалка контакта
@@ -53,7 +52,6 @@ const GroupDetailsPage = () => {
 
   // Модалки
   const [addOpen, setAddOpen] = useState(false)
-  const [createTxOpen, setCreateTxOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
 
   // лёгкая модалка контакта
@@ -86,14 +84,21 @@ const GroupDetailsPage = () => {
     if (id) fetchGroup()
   }, [id, t])
 
-  // Подгрузка участников (для активных групп)
+  // Подгрузка участников (для активных групп) с дедупликацией
   const loadMembers = useCallback(async () => {
     if (!id || membersLoading || !hasMore) return
     try {
       setMembersLoading(true)
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
       const newItems = res.items || []
-      setMembers(prev => [...prev, ...newItems])
+
+      // дедуп по user.id
+      setMembers(prev => {
+        const map = new Map<number, GroupMember>()
+        for (const m of prev) map.set((m as any).user?.id, m)
+        for (const m of newItems) map.set((m as any).user?.id, m)
+        return Array.from(map.values())
+      })
 
       const currentCount = (page * PAGE_SIZE) + newItems.length
       setHasMore(currentCount < (res.total || 0))
@@ -172,24 +177,6 @@ const GroupDetailsPage = () => {
     setQuickOpen(true)
   }
 
-  // Ошибки/загрузка
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
-        {t("loading")}
-      </div>
-    )
-  }
-  if (error || !group) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-red-500">
-        {error || t("group_not_found")}
-      </div>
-    )
-  }
-
-  const existingMemberIds = members.map(m => m.user.id)
-
   // Блокирующие обработчики для Invite/Add — всплывашки для архивных/удалённых
   const handleInviteClick = () => {
     if (isDeleted) {
@@ -214,6 +201,24 @@ const GroupDetailsPage = () => {
     }
     setAddOpen(true)
   }
+
+  // Ошибки/загрузка
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
+        {t("loading")}
+      </div>
+    )
+  }
+  if (error || !group) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-red-500">
+        {error || t("group_not_found")}
+      </div>
+    )
+  }
+
+  const existingMemberIds = members.map(m => (m as any).user.id)
 
   return (
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
@@ -248,17 +253,7 @@ const GroupDetailsPage = () => {
           <GroupTransactionsTab
             loading={false}
             transactions={[]}
-            onAddTransaction={() => {
-              if (isDeleted) {
-                window.alert(t("group_modals.edit_blocked_deleted") as string)
-                return
-              }
-              if (isArchived) {
-                window.alert(t("group_modals.edit_blocked_archived") as string)
-                return
-              }
-              setCreateTxOpen(true)
-            }}
+            onAddTransaction={() => {}}
             key={`tx-${id}-${isDeleted ? "deleted" : isArchived ? "archived" : "active"}`}
           />
         )}
@@ -278,21 +273,6 @@ const GroupDetailsPage = () => {
         groupId={id}
         existingMemberIds={existingMemberIds}
         onAdded={() => { /* no-op */ }}
-      />
-
-      {/* Модалка создания транзакции */}
-      <CreateTransactionModal
-        open={createTxOpen}
-        onOpenChange={setCreateTxOpen}
-        defaultGroupId={id}
-        groups={group ? [{
-          id: group.id,
-          name: group.name,
-          // @ts-ignore
-          icon: (group as any).icon,
-          // @ts-ignore
-          color: (group as any).color,
-        }] : []}
       />
 
       {/* Модалка инвайта в группу */}
