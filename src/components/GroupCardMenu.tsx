@@ -47,42 +47,44 @@ export default function GroupCardMenu({
   if (!open) return null
 
   // Видимость пунктов:
-  // - Редактировать: только для активных
+  // - Редактировать: ВСЕГДА видим (блокировки — на стороне страницы)
   // - Скрыть/Показать: для всех состояний (персональная настройка)
-  // - Архивировать/Разархивировать: только для владельца, и ТОЛЬКО если группа не deleted
+  // - Архивировать/Разархивировать: только для владельца; Архив — нельзя в deleted
   // - Удалить: только для владельца и ТОЛЬКО если группа не archived и не deleted
   // - Восстановить: только для владельца и ТОЛЬКО если группа deleted
-  const showEdit       = !isDeleted && !isArchived
+  const showEdit       = true
   const showHide       = true
   const showArchive    = isOwner && !isDeleted && !isArchived
   const showUnarchive  = isOwner && !isDeleted && isArchived
   const showDelete     = isOwner && !isDeleted && !isArchived
   const showRestore    = isOwner && isDeleted
 
-  const normalizeErrorMessage = (e: any): string => {
-    const raw: string = e?.message || ""
-    // Если сервер вернул текст про «непогашенные долги» — используем локализованный ключ
-    if (/unsettled|cannot be (deleted|archived)|долг/i.test(raw)) {
-      return (t("delete_forbidden_debts_note") as string) || raw
+  // Контекстная нормализация ошибок (только для archive/delete — «умные» сообщения)
+  const normalizeErrorMessage = (raw: string, kind: "archive" | "delete" | "generic"): string => {
+    const msg = raw || ""
+    const debts = /unsettled|cannot\s+be\s+(deleted|archived)|долг|долги|задолж/i.test(msg)
+    if (debts) {
+      if (kind === "archive") return (t("archive_forbidden_debts_note") as string) || msg
+      if (kind === "delete")  return (t("delete_forbidden_debts_note")  as string) || msg
     }
-    return raw || (t("error") as string)
+    return msg || (t("error") as string)
   }
 
   const click = async (
     fn: (() => Promise<void> | void) | undefined,
-    confirmKey?: string,
-    errorTitle?: string
+    opts?: { confirmKey?: string; errorTitle?: string; kind?: "archive" | "delete" | "generic" }
   ) => {
     try {
-      if (confirmKey) {
-        const ok = window.confirm(t(confirmKey) as string)
+      if (opts?.confirmKey) {
+        const ok = window.confirm(t(opts.confirmKey) as string)
         if (!ok) return
       }
       await fn?.()
       onClose()
     } catch (e: any) {
-      const msg = normalizeErrorMessage(e)
-      window.alert(`${errorTitle || (t("error") as string)}: ${msg}`)
+      const raw = e?.message || ""
+      const msg = normalizeErrorMessage(raw, opts?.kind ?? "generic")
+      window.alert(`${opts?.errorTitle || (t("error") as string)}: ${msg}`)
     }
   }
 
@@ -131,7 +133,13 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("archive") || "Архивировать"}
-              onClick={() => click(onArchive, "group_modals.archive_confirm")}
+              onClick={() =>
+                click(onArchive, {
+                  confirmKey: "group_modals.archive_confirm",
+                  errorTitle: t("error") as string,
+                  kind: "archive",
+                })
+              }
             >
               <Archive size={18} />
               <span>{t("archive") || "Архивировать"}</span>
@@ -143,7 +151,13 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("unarchive") || "Разархивировать"}
-              onClick={() => click(onUnarchive, "group_modals.unarchive_confirm")}
+              onClick={() =>
+                click(onUnarchive, {
+                  confirmKey: "group_modals.unarchive_confirm",
+                  errorTitle: t("error") as string,
+                  kind: "generic",
+                })
+              }
             >
               <RotateCw size={18} />
               <span>{t("unarchive") || "Разархивировать"}</span>
@@ -155,7 +169,13 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-500/10 rounded-xl"
               title={t("delete") || "Удалить"}
-              onClick={() => click(onSoftDelete, "group_modals.delete_soft_confirm")}
+              onClick={() =>
+                click(onSoftDelete, {
+                  confirmKey: "group_modals.delete_soft_confirm",
+                  errorTitle: t("error") as string,
+                  kind: "delete",
+                })
+              }
             >
               <Trash2 size={18} />
               <span>{t("delete") || "Удалить"}</span>
@@ -167,7 +187,13 @@ export default function GroupCardMenu({
               type="button"
               className="flex items-center gap-3 px-4 py-3 text-[var(--tg-text-color)] hover:bg-[var(--tg-secondary-bg-color)] rounded-xl"
               title={t("restore") || "Восстановить"}
-              onClick={() => click(() => onRestore?.({ toActive: true }), "group_modals.restore_confirm")}
+              onClick={() =>
+                click(() => onRestore?.({ toActive: true }), {
+                  confirmKey: "group_modals.restore_confirm",
+                  errorTitle: t("error") as string,
+                  kind: "generic",
+                })
+              }
             >
               <RotateCw size={18} />
               <span>{t("restore") || "Восстановить"}</span>
@@ -188,3 +214,4 @@ export default function GroupCardMenu({
     </div>
   )
 }
+

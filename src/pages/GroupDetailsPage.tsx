@@ -42,7 +42,6 @@ const GroupDetailsPage = () => {
   const [hasMore, setHasMore] = useState(true)
   const [page, setPage] = useState(0)
   const loaderRef = useRef<HTMLDivElement>(null)
-  const loadingRef = useRef(false) // защита от конкурентных вызовов
 
   // Табы
   const [selectedTab, setSelectedTab] =
@@ -61,57 +60,40 @@ const GroupDetailsPage = () => {
   const [quickOpen, setQuickOpen] = useState(false)
   const [quickUserId, setQuickUserId] = useState<number | null>(null)
 
-  const isDeleted = Boolean((group as any)?.deleted_at)
-  const isArchived = (group as any)?.status === "archived"
-  const canLoadMembers = !!group && !isDeleted && !isArchived
-
   // Детали группы
   useEffect(() => {
-    let cancelled = false
     const fetchGroup = async () => {
       try {
         setLoading(true)
         setError(null)
         const data = await getGroupDetails(id)
-        if (cancelled) return
         setGroup(data as Group)
 
-        // Для archived/soft-deleted отдаём участников из detail и не докачиваем
-        const deleted = Boolean((data as any)?.deleted_at)
-        const archived = (data as any)?.status === "archived"
+        // Для archived/soft-deleted: берём участников из detail и НЕ докачиваем
+        const isDeleted = Boolean((data as any)?.deleted_at)
+        const isArchived = (data as any)?.status === "archived"
         const initialMembers = (data as any)?.members
-        if ((deleted || archived) && Array.isArray(initialMembers)) {
+        if ((isDeleted || isArchived) && Array.isArray(initialMembers) && initialMembers.length > 0) {
           setMembers(initialMembers as GroupMember[])
-          setHasMore(false) // критично: сразу закрываем пагинацию
-          setPage(0)
+          setHasMore(false)
         }
       } catch (err: any) {
-        if (cancelled) return
         setError(err?.message || (t("group_not_found") as string))
       } finally {
-        if (!cancelled) setLoading(false)
+        setLoading(false)
       }
     }
     if (id) fetchGroup()
-    return () => { cancelled = true }
   }, [id, t])
 
-  // Дедуп + подгрузка участников (только для активных групп)
+  // Подгрузка участников (для активных групп)
   const loadMembers = useCallback(async () => {
-    if (!id || membersLoading || !hasMore || loadingRef.current || !canLoadMembers) return
+    if (!id || membersLoading || !hasMore) return
     try {
-      loadingRef.current = true
       setMembersLoading(true)
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
-      const newItems: GroupMember[] = res.items || []
-
-      // дедуп по user.id
-      const map = new Map<number, GroupMember>()
-      for (const m of [...members, ...newItems]) {
-        if (m?.user?.id != null) map.set(m.user.id, m)
-      }
-      const merged = Array.from(map.values())
-      setMembers(merged)
+      const newItems = res.items || []
+      setMembers(prev => [...prev, ...newItems])
 
       const currentCount = (page * PAGE_SIZE) + newItems.length
       setHasMore(currentCount < (res.total || 0))
@@ -120,9 +102,8 @@ const GroupDetailsPage = () => {
       // ignore
     } finally {
       setMembersLoading(false)
-      loadingRef.current = false
     }
-  }, [id, membersLoading, hasMore, page, members, canLoadMembers])
+  }, [id, membersLoading, hasMore, page])
 
   // Сброс пэйджера при смене id
   useEffect(() => {
@@ -131,27 +112,40 @@ const GroupDetailsPage = () => {
     setHasMore(true)
   }, [id])
 
-  // Первичная загрузка участников: запускаем ТОЛЬКО когда знаем состояние группы и она активна
-  useEffect(() => {
-    if (!group) return
-    if (!canLoadMembers) return
-    if (hasMore && !membersLoading) { void loadMembers() }
-  }, [group, canLoadMembers, hasMore, membersLoading, loadMembers])
+  // Признаки состояния группы
+  const isDeleted = Boolean((group as any)?.deleted_at)
+  const isArchived = (group as any)?.status === "archived"
+  // Инфинити-подгрузка только для АКТИВНОЙ группы
+  const canLoadMembers = Boolean(group) && !isDeleted && !isArchived
 
-  // Инфинити-скролл для участников — только для активных групп
+  // Первичная загрузка участников только когда подгрузка разрешена
+  useEffect(() => {
+    if (canLoadMembers && hasMore) {
+      void loadMembers()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, canLoadMembers])
+
+  // Инфинити-скролл для участников (только для активной группы)
   useEffect(() => {
     if (!canLoadMembers || membersLoading || !hasMore || !loaderRef.current) return
-    const node = loaderRef.current
     const observer = new window.IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore && !membersLoading) {
         void loadMembers()
       }
     })
-    observer.observe(node)
+    observer.observe(loaderRef.current)
     return () => observer.disconnect()
   }, [canLoadMembers, membersLoading, hasMore, loadMembers])
 
-  // Навигация (запрет редактирования для архивных/удалённых)
+  // Всегда передаём функцию в ParticipantsScroller, чтобы не падала типизация
+  const effectiveLoadMore = useCallback(() => {
+    if (!canLoadMembers) return
+    if (!hasMore || membersLoading) return
+    void loadMembers()
+  }, [canLoadMembers, hasMore, membersLoading, loadMembers])
+
+  // Навигация (редактирование блокируем для архивных/удалённых)
   const handleSettingsClick = () => {
     if (!group) return
     if (isDeleted) {
@@ -178,7 +172,25 @@ const GroupDetailsPage = () => {
     setQuickOpen(true)
   }
 
-  // Блокирующие обработчики для Invite/Add — такое же поведение, как при редактировании
+  // Ошибки/загрузка
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
+        {t("loading")}
+      </div>
+    )
+  }
+  if (error || !group) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-red-500">
+        {error || t("group_not_found")}
+      </div>
+    )
+  }
+
+  const existingMemberIds = members.map(m => m.user.id)
+
+  // Блокирующие обработчики для Invite/Add — всплывашки для архивных/удалённых
   const handleInviteClick = () => {
     if (isDeleted) {
       window.alert(t("group_modals.edit_blocked_deleted") as string)
@@ -203,37 +215,6 @@ const GroupDetailsPage = () => {
     setAddOpen(true)
   }
 
-  // Безопасный колбэк для кнопки «добавить транзакцию» во вкладке
-  const handleAddTransaction = () => {
-    if (isDeleted) {
-      window.alert(t("group_modals.edit_blocked_deleted") as string)
-      return
-    }
-    if (isArchived) {
-      window.alert(t("group_modals.edit_blocked_archived") as string)
-      return
-    }
-    setCreateTxOpen(true)
-  }
-
-  // Ошибки/загрузка
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--tg-hint-color)]">
-        {t("loading")}
-      </div>
-    )
-  }
-  if (error || !group) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-red-500">
-        {error || t("group_not_found")}
-      </div>
-    )
-  }
-
-  const existingMemberIds = members.map(m => m.user.id)
-
   return (
     <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
       {/* Шапка группы */}
@@ -250,14 +231,9 @@ const GroupDetailsPage = () => {
         onParticipantClick={handleParticipantClick}
         onInviteClick={handleInviteClick}
         onAddClick={handleAddClick}
-        // всегда передаём функцию (тип строгий), а внутри — гейт
-        loadMore={() => {
-          if (hasMore && canLoadMembers && !membersLoading) {
-            void loadMembers()
-          }
-        }}
-        hasMore={hasMore && canLoadMembers}
-        loading={membersLoading}
+        loadMore={effectiveLoadMore}
+        hasMore={canLoadMembers ? hasMore : false}
+        loading={canLoadMembers ? membersLoading : false}
         ownerId={group.owner_id}
       />
 
@@ -269,19 +245,22 @@ const GroupDetailsPage = () => {
       {/* Контент вкладок */}
       <div className="w-full max-w-xl mx-auto flex-1 px-0 pb-12 mt-1">
         {selectedTab === "transactions" && (
-          isDeleted ? (
-            // Для удалённой группы не рендерим тяжёлую вкладку, чтобы не было фоновых запросов
-            <div className="px-4 py-6 text-sm text-[var(--tg-hint-color)]">
-              {t("group_modals.edit_blocked_deleted")}
-            </div>
-          ) : (
-            <GroupTransactionsTab
-              loading={false}
-              transactions={[]}
-              onAddTransaction={handleAddTransaction}
-              key={`tx-${id}-${isArchived ? "archived" : "active"}`}
-            />
-          )
+          <GroupTransactionsTab
+            loading={false}
+            transactions={[]}
+            onAddTransaction={() => {
+              if (isDeleted) {
+                window.alert(t("group_modals.edit_blocked_deleted") as string)
+                return
+              }
+              if (isArchived) {
+                window.alert(t("group_modals.edit_blocked_archived") as string)
+                return
+              }
+              setCreateTxOpen(true)
+            }}
+            key={`tx-${id}-${isDeleted ? "deleted" : isArchived ? "archived" : "active"}`}
+          />
         )}
 
         {selectedTab === "balance" && <GroupBalanceTab />}
@@ -289,49 +268,40 @@ const GroupDetailsPage = () => {
         {selectedTab === "analytics" && <GroupAnalyticsTab />}
       </div>
 
-      {/* Сентинел для участников (только для активных) */}
-      {hasMore && canLoadMembers && <div ref={loaderRef} style={{ height: 1 }} />}
+      {/* Сентинел для участников */}
+      {hasMore && <div ref={loaderRef} style={{ height: 1 }} />}
 
-      {/* Модалка добавления участников — монтируем только когда открыта и группа активна */}
-      {addOpen && !isDeleted && !isArchived && (
-        <AddGroupMembersModal
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          groupId={id}
-          existingMemberIds={existingMemberIds}
-          onAdded={() => { /* no-op */ }}
-        />
-      )}
+      {/* Модалка добавления участников */}
+      <AddGroupMembersModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        groupId={id}
+        existingMemberIds={existingMemberIds}
+        onAdded={() => { /* no-op */ }}
+      />
 
-      {/* Модалка создания транзакции — монтируем только когда открыта */}
-      {createTxOpen && (
-        <CreateTransactionModal
-          open={createTxOpen}
-          onOpenChange={setCreateTxOpen}
-          defaultGroupId={id}
-          groups={group ? [{
-            id: group.id,
-            name: group.name,
-            // @ts-ignore
-            icon: (group as any).icon,
-            // @ts-ignore
-            color: (group as any).color,
-          }] : []}
-        />
-      )}
+      {/* Модалка создания транзакции */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        defaultGroupId={id}
+        groups={group ? [{
+          id: group.id,
+          name: group.name,
+          // @ts-ignore
+          icon: (group as any).icon,
+          // @ts-ignore
+          color: (group as any).color,
+        }] : []}
+      />
 
-      {/* Модалка инвайта в группу — монтируем только когда открыта и группа активна */}
-      {inviteOpen && !isDeleted && !isArchived && (
-        <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
-      )}
+      {/* Модалка инвайта в группу */}
+      <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
 
       {/* Лёгкая модалка контакта */}
-      {quickOpen && (
-        <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
-      )}
+      <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
     </div>
   )
 }
 
 export default GroupDetailsPage
-
