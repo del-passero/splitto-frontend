@@ -1,4 +1,5 @@
 // src/components/group/GroupTransactionsTab.tsx
+
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,9 +21,9 @@ type Props = {
   transactions: any[];
   onAddTransaction: () => void;
 
-  /** ДОБАВЛЕНО: когда группа удалена/архивна — блокируем клики */
+  /** Группа заблокирована (архив/удалена) — клики по транзакциям блокируем */
   locked?: boolean;
-  /** Сообщение для алерта при клике в locked-режиме */
+  /** Сообщение для заблокированных действий */
   blockMsg?: string;
 };
 
@@ -201,6 +202,7 @@ const GroupTransactionsTab = ({
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
+  // Участники группы
   useEffect(() => {
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
@@ -234,6 +236,7 @@ const GroupTransactionsTab = ({
     return () => { cancelled = true; };
   }, [groupId]);
 
+  // Категории группы (если доступно)
   useEffect(() => {
     if (!groupId) { setCategoriesById(new Map()); return; }
     let cancelled = false;
@@ -262,6 +265,33 @@ const GroupTransactionsTab = ({
     })();
     return () => { cancelled = true; };
   }, [groupId, locale]);
+
+  // ⬅️ ДОБАВЛЕНО: фоллбэк — достаём категории из самих транзакций
+  useEffect(() => {
+    if (!items?.length) return;
+    setCategoriesById(prev => {
+      const merged = new Map(prev);
+      for (const tx of items) {
+        if (tx.type !== "expense") continue;
+        const cat: any = (tx as any).category;
+        if (!cat || !Number.isFinite(Number(cat?.id))) continue;
+        const id = Number(cat.id);
+        const name: string | null =
+          cat.name ?? cat.title ?? cat.label ?? null;
+        const icon: string | null = cat.icon ?? null;
+        const color: string | null =
+          cat.color ?? cat.bg_color ?? cat.hex ?? cat.background_color ?? null;
+        const have = merged.get(id);
+        merged.set(id, {
+          id,
+          name: (name ?? have?.name ?? null),
+          icon: (icon ?? have?.icon ?? null),
+          color: (color ?? have?.color ?? null),
+        });
+      }
+      return merged;
+    });
+  }, [items]);
 
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
@@ -357,7 +387,8 @@ const GroupTransactionsTab = ({
   };
 
   // === Блокировка кликов по карточкам, когда locked ===
-  const onLockedCardClick = useCallback((e: React.MouseEvent) => {
+  const onLockedCardClickCapture = useCallback((e: React.MouseEvent) => {
+    // ВАЖНО: перехватываем в capture-фазе, чтобы дочерние onClick не стреляли
     e.preventDefault();
     e.stopPropagation();
     window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string));
@@ -387,7 +418,8 @@ const GroupTransactionsTab = ({
             renderItem={(tx: any) => (
               <div
                 data-tx-card
-                onClick={locked ? onLockedCardClick : undefined}
+                // ⬅️ перехватываем клики ДО карточки, чтобы не было перехода
+                onClickCapture={locked ? onLockedCardClickCapture : undefined}
               >
                 <TransactionCard
                   tx={tx}
@@ -503,5 +535,6 @@ const GroupTransactionsTab = ({
 };
 
 export default GroupTransactionsTab;
+
 
 
