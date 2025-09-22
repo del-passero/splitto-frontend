@@ -93,7 +93,6 @@ const GroupDetailsPage = () => {
         const data = await getGroupDetails(id)
         if (!alive) return
 
-        // Мягкая защита от кривых данных
         const safe: Group = {
           ...data,
           members: Array.isArray((data as any)?.members) ? (data as any).members : [],
@@ -102,10 +101,10 @@ const GroupDetailsPage = () => {
         setGroup(safe as Group)
 
         // Для archived/soft-deleted: берём участников из detail и НЕ докачиваем
-        const isDeleted = Boolean((safe as any)?.deleted_at)
-        const isArchived = (safe as any)?.status === "archived"
+        const isDeleted_ = Boolean((safe as any)?.deleted_at)
+        const isArchived_ = (safe as any)?.status === "archived"
         const initialMembers = (safe as any)?.members
-        if ((isDeleted || isArchived) && Array.isArray(initialMembers) && initialMembers.length > 0) {
+        if ((isDeleted_ || isArchived_) && Array.isArray(initialMembers) && initialMembers.length > 0) {
           setMembers(initialMembers as GroupMember[])
           setHasMore(false)
         }
@@ -148,8 +147,13 @@ const GroupDetailsPage = () => {
   // Признаки состояния группы
   const isDeleted = Boolean((group as any)?.deleted_at)
   const isArchived = (group as any)?.status === "archived"
+  const locked = isDeleted || isArchived
+  const lockMsg = isDeleted
+    ? (t("group_modals.edit_blocked_deleted") as string)
+    : (t("group_modals.edit_blocked_archived") as string)
+
   // Инфинити-подгрузка только для АКТИВНОЙ группы
-  const canLoadMembers = Boolean(group) && !isDeleted && !isArchived
+  const canLoadMembers = Boolean(group) && !locked
 
   // Первичная загрузка участников только когда подгрузка разрешена
   useEffect(() => {
@@ -181,12 +185,8 @@ const GroupDetailsPage = () => {
   // Навигация (редактирование блокируем для архивных/удалённых)
   const handleSettingsClick = () => {
     if (!group) return
-    if (isDeleted) {
-      window.alert(t("group_modals.edit_blocked_deleted") as string)
-      return
-    }
-    if (isArchived) {
-      window.alert(t("group_modals.edit_blocked_archived") as string)
+    if (locked) {
+      window.alert(lockMsg)
       return
     }
     navigate(`/groups/${group.id}/settings`)
@@ -207,24 +207,16 @@ const GroupDetailsPage = () => {
 
   // Блокирующие обработчики для Invite/Add — всплывашки для архивных/удалённых
   const handleInviteClick = () => {
-    if (isDeleted) {
-      window.alert(t("group_modals.edit_blocked_deleted") as string)
-      return
-    }
-    if (isArchived) {
-      window.alert(t("group_modals.edit_blocked_archived") as string)
+    if (locked) {
+      window.alert(lockMsg)
       return
     }
     setInviteOpen(true)
   }
 
   const handleAddClick = () => {
-    if (isDeleted) {
-      window.alert(t("group_modals.edit_blocked_deleted") as string)
-      return
-    }
-    if (isArchived) {
-      window.alert(t("group_modals.edit_blocked_archived") as string)
+    if (locked) {
+      window.alert(lockMsg)
       return
     }
     setAddOpen(true)
@@ -283,17 +275,15 @@ const GroupDetailsPage = () => {
               loading={false}
               transactions={[]}
               onAddTransaction={() => {
-                if (isDeleted) {
-                  window.alert(t("group_modals.edit_blocked_deleted") as string)
-                  return
-                }
-                if (isArchived) {
-                  window.alert(t("group_modals.edit_blocked_archived") as string)
+                if (locked) {
+                  window.alert(lockMsg)
                   return
                 }
                 setCreateTxOpen(true)
               }}
-              key={`tx-${id}-${isDeleted ? "deleted" : isArchived ? "archived" : "active"}`}
+              locked={locked}
+              blockMsg={lockMsg}
+              key={`tx-${id}-${locked ? "locked" : "active"}`}
             />
           )}
 
@@ -340,5 +330,3 @@ const GroupDetailsPage = () => {
 }
 
 export default GroupDetailsPage
-
-

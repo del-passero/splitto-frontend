@@ -5,10 +5,12 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import GroupFAB from "./GroupFAB";
 import EmptyTransactions from "../EmptyTransactions";
+import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import TransactionCard, { GroupMemberLike } from "../transactions/TransactionCard";
 import TransactionList from "../transactions/TransactionList";
 import CardSection from "../CardSection";
 
+import { useGroupsStore } from "../../store/groupsStore";
 import { getTransactions, removeTransaction } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import type { TransactionOut } from "../../types/transaction";
@@ -18,19 +20,46 @@ type Props = {
   transactions: any[];
   onAddTransaction: () => void;
 
-  /** Доп-опции, которые мог пробрасывать родитель раньше — принимаем и игнорируем, чтобы не падал TS */
+  /** ДОБАВЛЕНО: когда группа удалена/архивна — блокируем клики */
   locked?: boolean;
+  /** Сообщение для алерта при клике в locked-режиме */
   blockMsg?: string;
-  initialMembers?: { id: number; first_name: string; last_name: string; username: string; photo_url?: string | null }[];
 };
 
 const PAGE_SIZE = 20;
+
+const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api";
+function getTelegramInitData(): string {
+  // @ts-ignore
+  return window?.Telegram?.WebApp?.initData || "";
+}
+type ApiExpenseCategoryOut = {
+  id: number;
+  key: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  parent_id?: number | null;
+  is_active: boolean;
+  name_i18n?: Record<string, string> | null;
+};
+type ApiListResp = { items: ApiExpenseCategoryOut[]; total: number; restricted: boolean };
+async function apiListGroupCategoriesPage(params: {
+  groupId: number; offset: number; limit: number; locale: string;
+}): Promise<ApiListResp> {
+  const url = new URL(`${API_URL}/groups/${params.groupId}/categories`);
+  url.searchParams.set("offset", String(params.offset));
+  url.searchParams.set("limit", String(params.limit));
+  url.searchParams.set("locale", params.locale);
+  const res = await fetch(url.toString(), { headers: { "x-telegram-initdata": getTelegramInitData() } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 // -------- helpers --------
 function parseApiError(err: any): { code?: string; message?: string } {
   const codeAxios = err?.response?.data?.detail?.code || err?.response?.data?.code;
   if (codeAxios) return { code: codeAxios, message: err?.response?.data?.detail?.message || err?.message };
-
   if (err && typeof err === "object" && "detail" in err && (err as any).detail) {
     const det = (err as any).detail;
     if (typeof det === "object" && det.code) return { code: det.code, message: det.message };
@@ -66,20 +95,37 @@ function collectInvolvedUserIds(tx: TransactionOut): number[] {
   }
   return Array.from(ids);
 }
+
+// ==== related_users → собрать fallback-карточки пользователей ====
+type RelatedUser = {
+  id: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  photo_url?: string | null;
+  avatar_url?: string | null;
+  name?: string | null;
+};
+function composeName(u?: RelatedUser | null): string {
+  if (!u) return "";
+  const n = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+  return n || (u.name ?? "") || (u.username ?? "") || (u.id ? `#${u.id}` : "");
+}
+
 // -------------------------
 
 const GroupTransactionsTab = ({
   loading: _loadingProp,
   transactions: _txProp,
-  onAddTransaction,
-  locked,            // не используем, но оставляем для совместимости
-  blockMsg,          // не используем, но оставляем для совместимости
-  initialMembers,    // не используем, но оставляем для совместимости
+  onAddTransaction: _onAdd,
+  locked,
+  blockMsg,
 }: Props) => {
   const { t, i18n } = useTranslation();
   const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const navigate = useNavigate();
 
+  const [openCreate, setOpenCreate] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
@@ -110,6 +156,8 @@ const GroupTransactionsTab = ({
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
 
+  const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? []);
+
   const [items, setItems] = useState<TransactionOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -119,13 +167,40 @@ const GroupTransactionsTab = ({
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
 
+  // 🔧 Аугментация participants: добиваем из related_users (важно для удалённых/архивных)
+  const membersMapAugmented = useMemo(() => {
+    const base = new Map<number, GroupMemberLike>(membersMap ?? undefined);
+    for (const tx of items) {
+      const rel = (tx as any)?.related_users as RelatedUser[] | undefined;
+      if (!Array.isArray(rel)) continue;
+      for (const u of rel) {
+        const uid = Number(u?.id);
+        if (!Number.isFinite(uid)) continue;
+        if (base.has(uid)) continue;
+        base.set(uid, {
+          id: uid,
+          name: composeName(u),
+          first_name: u.first_name || undefined,
+          last_name: u.last_name || undefined,
+          username: u.username || undefined,
+          avatar_url: u.photo_url || u.avatar_url || undefined,
+          photo_url: u.photo_url || u.avatar_url || undefined,
+        } as any);
+      }
+    }
+    return base;
+  }, [membersMap, items]);
+
+  const [categoriesById, setCategoriesById] = useState<
+    Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>
+  >(new Map());
+
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  // загрузка участников (активных)
   useEffect(() => {
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
@@ -159,7 +234,35 @@ const GroupTransactionsTab = ({
     return () => { cancelled = true; };
   }, [groupId]);
 
-  // загрузка транзакций
+  useEffect(() => {
+    if (!groupId) { setCategoriesById(new Map()); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = new Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>();
+        let offset = 0; const LIMIT = 200;
+        while (true) {
+          const page = await apiListGroupCategoriesPage({ groupId, offset, limit: LIMIT, locale });
+          for (const it of page.items || []) {
+            const prev = m.get(it.id);
+            m.set(it.id, {
+              id: it.id,
+              name: it.name || prev?.name || null,
+              icon: (it.icon ?? prev?.icon) ?? null,
+              color: (it.color ?? prev?.color) ?? null,
+            });
+          }
+          offset += (page.items?.length || 0);
+          if ((page.items?.length || 0) < LIMIT) break;
+        }
+        if (!cancelled) setCategoriesById(m);
+      } catch {
+        if (!cancelled) setCategoriesById(new Map());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [groupId, locale]);
+
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
     setItems([]); setTotal(0); setError(null); setHasMore(true);
@@ -209,22 +312,19 @@ const GroupTransactionsTab = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length, hasMore, loading, filtersKey]);
 
-  const handleAddClick = () => {
-    // Доверяем решение родителю (он знает состояние группы и покажет умное сообщение)
-    onAddTransaction?.();
-  };
-
+  const handleAddClick = () => setOpenCreate(true);
+  const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
   const handleLongPress = (tx: TransactionOut) => { setTxForActions(tx); setActionsOpen(true); };
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
   const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
 
   // локальная проверка «можно ли удалять»
   const hasInactiveParticipantsLocal = useCallback((tx: TransactionOut | null) => {
-    if (!tx || !membersMap) return false;
-    const activeIds = new Set(Array.from(membersMap.keys()));
+    if (!tx || !membersMapAugmented) return false;
+    const activeIds = new Set(Array.from(membersMapAugmented.keys()));
     const involved = collectInvolvedUserIds(tx);
     return involved.some((uid) => !activeIds.has(uid));
-  }, [membersMap]);
+  }, [membersMapAugmented]);
 
   const handleDelete = async () => {
     if (!txForActions?.id) return;
@@ -256,7 +356,18 @@ const GroupTransactionsTab = ({
     }
   };
 
+  // === Блокировка кликов по карточкам, когда locked ===
+  const onLockedCardClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string));
+  }, [blockMsg, t]);
+
   const visible = items;
+
+  // уменьшили боковые отступы в 3 раза: было 16 → 6; leftInsetPx было 52 → 18
+  const H_PADDING = 6;
+  const LEFT_INSET = 18;
 
   return (
     <CardSection noPadding className="relative w-full h-full min-h-[320px]">
@@ -271,16 +382,22 @@ const GroupTransactionsTab = ({
           <TransactionList
             items={visible}
             bleedPx={0}
-            horizontalPaddingPx={6}   // было 16 — уменьшил в 3 раза
-            leftInsetPx={18}           // было 52 — уменьшил в 3 раза
+            horizontalPaddingPx={H_PADDING}
+            leftInsetPx={LEFT_INSET}
             renderItem={(tx: any) => (
-              <TransactionCard
-                tx={tx}
-                membersById={membersMap ?? undefined}
-                groupMembersCount={membersCount}
-                t={t}
-                onLongPress={handleLongPress}
-              />
+              <div
+                data-tx-card
+                onClick={locked ? onLockedCardClick : undefined}
+              >
+                <TransactionCard
+                  tx={tx}
+                  membersById={membersMapAugmented ?? undefined}
+                  groupMembersCount={membersCount}
+                  t={t}
+                  onLongPress={handleLongPress}
+                  categoriesById={categoriesById}
+                />
+              </div>
             )}
             keyExtractor={(tx: any) =>
               tx.id ?? `${tx.type}-${tx.date}-${tx.amount}-${tx.comment ?? ""}`
@@ -293,7 +410,23 @@ const GroupTransactionsTab = ({
           <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         )}
 
-        <GroupFAB onClick={handleAddClick} />
+        <GroupFAB onClick={locked ? () => window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string)) : handleAddClick} />
+
+        <CreateTransactionModal
+          open={openCreate}
+          onOpenChange={setOpenCreate}
+          groups={groups.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            icon: (g as any).icon,
+            color: (g as any).color,
+            default_currency_code: (g as any).default_currency_code,
+            currency_code: (g as any).currency_code,
+            currency: (g as any).currency,
+          }))}
+          defaultGroupId={groupId}
+          onCreated={handleCreated}
+        />
 
         {/* === Центрированная модалка действий === */}
         {actionsOpen && (
@@ -339,10 +472,8 @@ const GroupTransactionsTab = ({
               style={{ color: "var(--tg-text-color)" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-[14px]">
-                {inactiveMsg}
-              </div>
-              <div className="mt-3 flex justify-end">
+              <div className="text-[14px] leading-snug mb-3">{inactiveMsg}</div>
+              <div className="flex justify-end">
                 <button
                   type="button"
                   className="px-4 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
@@ -372,4 +503,5 @@ const GroupTransactionsTab = ({
 };
 
 export default GroupTransactionsTab;
+
 
