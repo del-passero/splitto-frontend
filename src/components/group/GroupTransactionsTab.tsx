@@ -267,31 +267,65 @@ const GroupTransactionsTab = ({
   }, [groupId, locale]);
 
   // ⬅️ ДОБАВЛЕНО: фоллбэк — достаём категории из самих транзакций
-  useEffect(() => {
-    if (!items?.length) return;
-    setCategoriesById(prev => {
-      const merged = new Map(prev);
-      for (const tx of items) {
-        if (tx.type !== "expense") continue;
-        const cat: any = (tx as any).category;
-        if (!cat || !Number.isFinite(Number(cat?.id))) continue;
-        const id = Number(cat.id);
-        const name: string | null =
-          cat.name ?? cat.title ?? cat.label ?? null;
-        const icon: string | null = cat.icon ?? null;
-        const color: string | null =
-          cat.color ?? cat.bg_color ?? cat.hex ?? cat.background_color ?? null;
-        const have = merged.get(id);
-        merged.set(id, {
-          id,
-          name: (name ?? have?.name ?? null),
-          icon: (icon ?? have?.icon ?? null),
-          color: (color ?? have?.color ?? null),
-        });
-      }
-      return merged;
-    });
-  }, [items]);
+// ⬇️ ЗАМЕНИ ВЕСЬ ЭТОТ useEffect на эту версию
+useEffect(() => {
+  if (!items?.length) return;
+  setCategoriesById(prev => {
+    const merged = new Map(prev);
+    for (const tx of items) {
+      if ((tx as any)?.type !== "expense") continue;
+
+      const cat: any = (tx as any).category || {};
+      const idRaw = cat.id ?? (tx as any).category_id;
+      const id = Number(idRaw);
+      if (!Number.isFinite(id)) continue;
+
+      // 1) Пытаемся взять локализованное имя
+      const nameFromI18n =
+        (cat.name_i18n && typeof cat.name_i18n === "object")
+          ? (cat.name_i18n[locale] || cat.name_i18n["en"] || cat.name_i18n["ru"])
+          : undefined;
+
+      // 2) Иначе обычные поля категории, 3) иначе — поля на самом tx
+      const name: string | null =
+        (nameFromI18n as string | undefined) ??
+        cat.name ??
+        cat.title ??
+        cat.label ??
+        (tx as any).category_name ??
+        (tx as any).categoryTitle ??
+        (tx as any).category_label ??
+        null;
+
+      const icon: string | null =
+        cat.icon ??
+        (tx as any).category_icon ??
+        (tx as any).categoryEmoji ??
+        null;
+
+      const color: string | null =
+        cat.color ??
+        cat.bg_color ??
+        cat.hex ??
+        cat.background_color ??
+        (tx as any).category_color ??
+        (tx as any).category_hex ??
+        (tx as any).category_bg ??
+        (tx as any).category_background ??
+        null;
+
+      const have = merged.get(id);
+      merged.set(id, {
+        id,
+        name: (name ?? have?.name ?? null),
+        icon: (icon ?? have?.icon ?? null),
+        color: (color ?? have?.color ?? null),
+      });
+    }
+    return merged;
+  });
+}, [items, locale]);
+
 
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
