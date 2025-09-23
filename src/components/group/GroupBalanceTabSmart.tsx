@@ -40,20 +40,33 @@ const firstOnly = (u?: User) => {
   return name || u.username || `#${u.id}`;
 };
 
-/** «550 TRY» или «45,50 USD»: без копеек, если дробная часть = 0 */
-const fmtNoTrailing = (n: number, code: string, locale?: string) => {
-  const rounded = Math.round(n * 100) / 100;
-  const hasCents = Math.round((rounded % 1) * 100) !== 0;
+/** Формат «1 234.50 USD», автоматически скрывает .00 и уважает валюты без копеек */
+const nbsp = "\u00A0";
+export function fmtAmountSmart(value: number, currency: string, locale?: string) {
   try {
-    const nf = new Intl.NumberFormat(locale, {
+    // 1) Получаем дробность валюты через currency-форматтер
+    const nfCurrency = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+    });
+    const parts = nfCurrency.formatToParts(Math.abs(value));
+    const fractionPart = parts.find((p) => p.type === "fraction");
+    const hasCents = !!fractionPart && Number(fractionPart.value) !== 0;
+
+    // 2) Форматируем как число, без символа валюты, с 0/2 знаками
+    const nfNumber = new Intl.NumberFormat(locale, {
       minimumFractionDigits: hasCents ? 2 : 0,
       maximumFractionDigits: hasCents ? 2 : 0,
+      useGrouping: true,
     });
-    return `${nf.format(rounded)}\u00A0${code}`;
+    return `${nfNumber.format(value)}${nbsp}${currency}`;
   } catch {
-    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}\u00A0${code}`;
+    const rounded = Math.round(value * 100) / 100;
+    const hasCents = Math.round((Math.abs(rounded) % 1) * 100) !== 0;
+    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}${nbsp}${currency}`;
   }
-};
+}
 
 function Avatar({
   url,
@@ -80,27 +93,24 @@ function Avatar({
   );
 }
 
-/* ---------- helpers для «двух колонок» ---------- */
+/* ---------- helpers ---------- */
 type CurrencyLine = { currency: string; amount: number }; // абсолют
 type CardItem = { user: User; lines: CurrencyLine[]; total: number };
 
 function totalsToInline(by: Record<string, number>, locale?: string) {
   const parts = Object.entries(by)
+    .filter(([, sum]) => sum > 0) // [26] — исключаем нулевые
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ccy, sum]) => fmtNoTrailing(sum, ccy, locale));
-  return parts.join("; "); // перенос только после "; "
+    .map(([ccy, sum]) => fmtAmountSmart(sum, ccy, locale));
+  return parts.join("; ");
 }
 
-/* ===== Общее оформление кнопок ===== */
+/* ===== Единый пресет для кнопок [27] ===== */
 const btn3D =
   "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
   "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
   "hover:brightness-105";
-
-/* ===== Константы компоновки строк сумм ===== */
-const LINE_H = 22; // высота строки суммы (px)
-const V_GAP = 6; // вертикальный отступ между строками (px)
 
 /* ================= main ================= */
 export default function GroupBalanceTabSmart({
@@ -108,7 +118,7 @@ export default function GroupBalanceTabSmart({
   myDebts,
   allDebts,
   loading,
-  onFabClick,
+  onFabClick, // [18] — больше не используем скрытую кнопку
   onRepay,
   onRemind,
 }: Props) {
@@ -119,7 +129,7 @@ export default function GroupBalanceTabSmart({
 
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
-  // локальная заглушка для «Напомнить» (если внешний обработчик не передали — всё равно открываем)
+  // локальная заглушка для «Напомнить» (если внешний обработчик не передали — всё равно откроем)
   const [stubOpen, setStubOpen] = useState(false);
 
   /* ---------- Мой баланс: подготовка данных ---------- */
@@ -141,7 +151,7 @@ export default function GroupBalanceTabSmart({
 
     for (const d of myDebts) {
       const abs = Math.abs(d.amount);
-      if (abs <= 0) continue;
+      if (abs <= 0) continue; // [26] — исключаем нулевые
       const key = d.user.id;
 
       if (d.amount < 0) {
@@ -159,15 +169,20 @@ export default function GroupBalanceTabSmart({
       }
     }
 
-    const sortCards = (a: CardItem, b: CardItem) => b.total - a.total;
+    const sortCards = (a: CardItem, b: CardItem) => {
+      // [25] — стабильная сортировка: по total, затем по имени
+      const byTotal = b.total - a.total;
+      if (byTotal !== 0) return byTotal;
+      return firstOnly(a.user).localeCompare(firstOnly(b.user));
+    };
     const sortLines = (a: CurrencyLine, b: CurrencyLine) =>
       a.currency.localeCompare(b.currency);
 
     const leftCards = Array.from(leftMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) })) // [26]
       .sort(sortCards);
     const rightCards = Array.from(rightMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) })) // [26]
       .sort(sortCards);
 
     return {
@@ -190,7 +205,7 @@ export default function GroupBalanceTabSmart({
       [side]: { ...s[side], [uid]: !s[side][uid] },
     }));
 
-  // пары для «Мой баланс»: индексами выравниваем по строкам
+  // пары для «Мой баланс»: индексами выравниваем по строкам (без принудительных высот) [10]
   const mineRows = useMemo(() => {
     const maxLen = Math.max(leftCards.length, rightCards.length);
     const rows: Array<{ left?: CardItem; right?: CardItem }> = [];
@@ -214,6 +229,9 @@ export default function GroupBalanceTabSmart({
     for (const p of allDebts) {
       const a = p.from;
       const b = p.to;
+      const amt = Math.abs(p.amount); // [2] — складываем по модулю
+      if (amt <= 0) continue; // [26] — исключаем нулевые
+
       // фиксируем порядок (левый — с меньшим id), но направления сумм учитываем отдельно
       const [minU, maxU] = a.id <= b.id ? [a, b] : [b, a];
       const key: PairKey = `${minU.id}-${maxU.id}`;
@@ -223,18 +241,26 @@ export default function GroupBalanceTabSmart({
       const card = byPair.get(key)!;
       if (a.id === card.u1.id && b.id === card.u2.id) {
         // долг u1 -> u2
-        card.left[p.currency] = (card.left[p.currency] || 0) + p.amount;
+        card.left[p.currency] = (card.left[p.currency] || 0) + amt;
       } else {
         // долг u2 -> u1
-        card.right[p.currency] = (card.right[p.currency] || 0) + p.amount;
+        card.right[p.currency] = (card.right[p.currency] || 0) + amt;
       }
     }
 
-    // сортировка по сумме по убыванию (берём max из левого/правого total)
-    const total = (m: SumMap) => Object.values(m).reduce((s, v) => s + v, 0);
-    return Array.from(byPair.values()).sort(
-      (A, B) => Math.max(total(B.left), total(B.right)) - Math.max(total(A.left), total(A.right))
-    );
+    const sum = (m: SumMap) => Object.values(m).reduce((s, v) => s + v, 0);
+
+    // [25] — сортировка: по max(total), при равенстве — по имени пары (стабильно)
+    const sorted = Array.from(byPair.values()).sort((A, B) => {
+      const aSum = Math.max(sum(A.left), sum(A.right));
+      const bSum = Math.max(sum(B.left), sum(B.right));
+      if (bSum !== aSum) return bSum - aSum;
+      const aName = `${firstOnly(A.u1)} ${firstOnly(A.u2)}`.toLowerCase();
+      const bName = `${firstOnly(B.u1)} ${firstOnly(B.u2)}`.toLowerCase();
+      return aName.localeCompare(bName);
+    });
+
+    return sorted;
   }, [allDebts]);
 
   // свернуто/развернуто для колонок пары (All)
@@ -243,7 +269,7 @@ export default function GroupBalanceTabSmart({
     setExpandedAll((s) => ({ ...s, [key]: { left: !!s[key]?.left, right: !!s[key]?.right, [side]: !s[key]?.[side] } }));
 
   /* ===== Общий UI-кусок: строчка валюты с суммой и стрелкой ===== */
-  const DebtLine = ({
+  const DebtLine = React.memo(({
     amount,
     currency,
     color, // "red" | "green"
@@ -257,20 +283,17 @@ export default function GroupBalanceTabSmart({
     locale: string;
   }) => {
     const isRed = color === "red";
-    const col = isRed ? "var(--tg-destructive-text,#ff5a5f)" : "var(--tg-success-text,#2ecc71)";
+    const col = isRed ? "var(--tg-destructive-text,#d7263d)" : "var(--tg-success-text,#1aab55)";
+    const Icon = arrow === "left" ? ArrowLeft : ArrowRight;
     return (
       <div className="flex items-center gap-1">
-        {arrow === "left" ? (
-          <ArrowLeft size={14} style={{ color: col }} />
-        ) : (
-          <ArrowRight size={14} style={{ color: col }} />
-        )}
+        <Icon size={14} style={{ color: col }} aria-hidden />
         <span className="text-[14px] font-semibold" style={{ color: col }}>
-          {fmtNoTrailing(amount, currency, locale)}
+          {fmtAmountSmart(amount, currency, locale)}
         </span>
       </div>
     );
-  };
+  });
 
   /* ===== Верхняя полоска итогов (Mine): скролл + фейд градиенты ===== */
   const TotalsScroller = ({ text }: { text: string }) => {
@@ -309,7 +332,7 @@ export default function GroupBalanceTabSmart({
 
   /* ===== Разметка ===== */
   return (
-    <div className="w-full">
+    <div className="w-full select-none" style={{ WebkitTapHighlightColor: "transparent" }}>
       {/* микротабы */}
       <div className="flex justify-center mt-1 mb-2">
         <div
@@ -351,7 +374,7 @@ export default function GroupBalanceTabSmart({
           /* ================= Мой баланс: две колонки ================= */
           <div>
             {/* Заголовки + итоги со скроллом и фейдом */}
-            <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 mb-1">
               <div className="min-w-0">
                 <div
                   className="text-[15px] font-semibold"
@@ -384,29 +407,20 @@ export default function GroupBalanceTabSmart({
               </div>
             </div>
 
-            {/* Пары карточек */}
-            <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Пары карточек: адаптивная сетка [9], без принудительного выравнивания [10] */}
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
               {mineRows.map(({ left, right }, rowIdx) => {
                 if (!left && !right) return null;
 
-                // Состояние свёрнутости
                 const Lexpanded = left ? !!expandedMine.left[left.user.id] : false;
                 const Rexpanded = right ? !!expandedMine.right[right.user.id] : false;
 
                 const Lfull = left ? left.lines.length : 0;
                 const Rfull = right ? right.lines.length : 0;
-                const Lvis = left ? (Lexpanded ? Lfull : Math.min(2, Lfull)) : 0;
-                const Rvis = right ? (Rexpanded ? Rfull : Math.min(2, Rfull)) : 0;
 
-                // Только когда обе карточки пары свернуты — равняем высоты
-                const bothCollapsed = (!!left && !Lexpanded) && (!!right && !Rexpanded);
-                const rowVisible = Math.max(Lvis, Rvis);
-                const rowMinHeight = rowVisible > 0 ? rowVisible * LINE_H + (rowVisible - 1) * V_GAP : 0;
-
-                // Для случая "одна карточка" — никакого рендера пустой рамки
                 return (
                   <React.Fragment key={`row-${rowIdx}`}>
-                    {/* Левая карточка */}
+                    {/* Левая карточка (я должен) */}
                     <div className="min-w-0">
                       {left ? (
                         <div
@@ -428,45 +442,34 @@ export default function GroupBalanceTabSmart({
                             </div>
                           </div>
 
-                          {/* суммы */}
-                          <div
-                            className="flex flex-col gap-[6px]"
-                            style={{
-                              minHeight:
-                                bothCollapsed
-                                  ? rowMinHeight
-                                  : Math.min(2, Lfull) * LINE_H +
-                                    (Math.min(2, Lfull) - 1) * V_GAP,
-                              justifyContent:
-                                bothCollapsed && Lvis < Rvis ? "center" : "flex-start",
-                            }}
-                          >
-                            {(left.lines.slice(0, Lexpanded ? Lfull : Math.min(2, Lfull))).map((ln, i) => (
-                              <div
-                                key={`L-${left.user.id}-${ln.currency}-${i}`}
-                                className="grid items-center"
-                                style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                              >
-                                <DebtLine
-                                  amount={ln.amount}
-                                  currency={ln.currency}
-                                  color="red"
-                                  arrow="right"
-                                  locale={locale}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onRepay?.(left.user, ln.amount, ln.currency)
-                                  }
-                                  className={btn3D}
-                                  aria-label={t("repay_debt") as string}
-                                  title={t("repay_debt") as string}
+                          {/* суммы — [3a] кнопка в строке */}
+                          <div className="flex flex-col gap-[6px]">
+                            {(left.lines.slice(0, Lexpanded ? Lfull : Math.min(2, Lfull))).map(
+                              (ln, i) => (
+                                <div
+                                  key={`L-${left.user.id}-${ln.currency}-${i}`}
+                                  className="grid items-center"
+                                  style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
                                 >
-                                  <HandCoins size={18} />
-                                </button>
-                              </div>
-                            ))}
+                                  <DebtLine
+                                    amount={ln.amount}
+                                    currency={ln.currency}
+                                    color="red"
+                                    arrow="right"
+                                    locale={locale}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => onRepay?.(left.user, ln.amount, ln.currency)}
+                                    className={btn3D}
+                                    aria-label={t("repay_debt") as string}
+                                    title={t("repay_debt") as string}
+                                  >
+                                    <HandCoins size={18} />
+                                  </button>
+                                </div>
+                              )
+                            )}
                             {Lfull > 2 && (
                               <div className="pt-1">
                                 <button
@@ -474,11 +477,14 @@ export default function GroupBalanceTabSmart({
                                   onClick={() => toggleMine("left", left.user.id)}
                                   className="text-[12px] opacity-80 hover:opacity-100"
                                   style={{ color: "var(--tg-hint-color)" }}
+                                  aria-expanded={Lexpanded}
+                                  aria-controls={`mine-left-${left.user.id}`}
                                 >
                                   {Lexpanded
                                     ? t("close") || "Свернуть"
                                     : `${t("all") || "ВСЕ"} · +${Lfull - 2}`}
                                 </button>
+                                <div id={`mine-left-${left.user.id}`} />
                               </div>
                             )}
                           </div>
@@ -486,7 +492,7 @@ export default function GroupBalanceTabSmart({
                       ) : null}
                     </div>
 
-                    {/* Правая карточка */}
+                    {/* Правая карточка (мне должны) */}
                     <div className="min-w-0">
                       {right ? (
                         <div
@@ -508,86 +514,54 @@ export default function GroupBalanceTabSmart({
                             </div>
                           </div>
 
-                          {/* две колонки: суммы и вертикальная колонка с кнопкой «Напомнить» */}
-                          <div
-                            className="grid"
-                            style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                          >
-                            <div
-                              className="flex flex-col gap-[6px]"
-                              style={{
-                                minHeight:
-                                  bothCollapsed
-                                    ? rowMinHeight
-                                    : Math.min(2, Rfull) * LINE_H +
-                                      (Math.min(2, Rfull) - 1) * V_GAP,
-                                justifyContent:
-                                  bothCollapsed && Rvis < Lvis ? "center" : "flex-start",
-                              }}
-                            >
-                              {(right.lines.slice(0, Rexpanded ? Rfull : Math.min(2, Rfull))).map(
-                                (ln, i) => (
-                                  <div
-                                    key={`R-${right.user.id}-${ln.currency}-${i}`}
-                                    className="text-[14px] font-semibold"
-                                    style={{ color: "var(--tg-success-text,#2ecc71)" }}
-                                  >
-                                    <DebtLine
-                                      amount={ln.amount}
-                                      currency={ln.currency}
-                                      color="green"
-                                      arrow="left"
-                                      locale={locale}
-                                    />
-                                  </div>
-                                )
-                              )}
-                              {Rfull > 2 && (
-                                <div className="pt-1">
+                          {/* суммы — [3a] кнопка в строке */}
+                          <div className="flex flex-col gap-[6px]">
+                            {(right.lines.slice(0, Rexpanded ? Rfull : Math.min(2, Rfull))).map(
+                              (ln, i) => (
+                                <div
+                                  key={`R-${right.user.id}-${ln.currency}-${i}`}
+                                  className="grid items-center"
+                                  style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                >
+                                  <DebtLine
+                                    amount={ln.amount}
+                                    currency={ln.currency}
+                                    color="green"
+                                    arrow="left"
+                                    locale={locale}
+                                  />
                                   <button
                                     type="button"
-                                    onClick={() => toggleMine("right", right.user.id)}
-                                    className="text-[12px] opacity-80 hover:opacity-100"
-                                    style={{ color: "var(--tg-hint-color)" }}
+                                    onClick={() => {
+                                      setStubOpen(true);
+                                      onRemind?.(right.user, ln.amount, ln.currency);
+                                    }}
+                                    className={btn3D}
+                                    aria-label={t("remind_debt") as string}
+                                    title={t("remind_debt") as string}
                                   >
-                                    {Rexpanded
-                                      ? t("close") || "Свернуть"
-                                      : `${t("all") || "ВСЕ"} · +${Rfull - 2}`}
+                                    <Bell size={18} />
                                   </button>
                                 </div>
-                              )}
-                            </div>
-
-                            {/* колонка с «Напомнить» по вертикальному центру видимых строк */}
-                            <div
-                              className="flex items-center justify-end"
-                              style={{
-                                minHeight:
-                                  (Rexpanded ? Rfull : Math.min(2, Rfull)) * LINE_H +
-                                  ((Rexpanded ? Rfull : Math.min(2, Rfull)) - 1) * V_GAP,
-                              }}
-                            >
-                              {Rfull > 0 && (
+                              )
+                            )}
+                            {Rfull > 2 && (
+                              <div className="pt-1">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setStubOpen(true);
-                                    if (onRemind) {
-                                      const ln = right.lines[0];
-                                      setTimeout(
-                                        () => onRemind(right.user, ln.amount, ln.currency),
-                                        0
-                                      );
-                                    }
-                                  }}
-                                  className={btn3D}
-                                  aria-label={t("remind_debt") as string}
-                                  title={t("remind_debt") as string}
+                                  onClick={() => toggleMine("right", right.user.id)}
+                                  className="text-[12px] opacity-80 hover:opacity-100"
+                                  style={{ color: "var(--tg-hint-color)" }}
+                                  aria-expanded={Rexpanded}
+                                  aria-controls={`mine-right-${right.user.id}`}
                                 >
-                                  <Bell size={18} />
+                                  {Rexpanded
+                                    ? t("close") || "Свернуть"
+                                    : `${t("all") || "ВСЕ"} · +${Rfull - 2}`}
                                 </button>
-                              )}
-                            </div>
+                                <div id={`mine-right-${right.user.id}`} />
+                              </div>
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -607,26 +581,23 @@ export default function GroupBalanceTabSmart({
             ) : (
               allPairs.map((pair) => {
                 const key: PairKey = `${pair.u1.id}-${pair.u2.id}`;
-                const leftEntries = Object.entries(pair.left).sort((a, b) =>
-                  a[0].localeCompare(b[0])
-                );
-                const rightEntries = Object.entries(pair.right).sort((a, b) =>
-                  a[0].localeCompare(b[0])
-                );
+                const iAmU1 = myId === pair.u1.id;
+                const iAmU2 = myId === pair.u2.id;
+
+                // entries по валютам: сорт по коду; [26] — фильтруем нули
+                const leftEntries = Object.entries(pair.left)
+                  .filter(([, amt]) => amt > 0)
+                  .sort((a, b) => a[0].localeCompare(b[0]));
+                const rightEntries = Object.entries(pair.right)
+                  .filter(([, amt]) => amt > 0)
+                  .sort((a, b) => a[0].localeCompare(b[0]));
+
                 const Lfull = leftEntries.length;
                 const Rfull = rightEntries.length;
                 const Lexp = !!expandedAll[key]?.left;
                 const Rexp = !!expandedAll[key]?.right;
                 const Lvis = Lexp ? Lfull : Math.min(2, Lfull);
                 const Rvis = Rexp ? Rfull : Math.min(2, Rfull);
-
-                // Кнопки: если я должник — «Рассчитаться» в своем столбце, если кредитор — одна «Напомнить» по центру столбца
-                const iAmU1 = myId === pair.u1.id;
-                const iAmU2 = myId === pair.u2.id;
-
-                // Для вертикального центрирования «Напомнить» — min-height видимых строк конкретного столбца.
-                const minHLeft = Lvis * LINE_H + (Lvis - 1) * V_GAP;
-                const minHRight = Rvis * LINE_H + (Rvis - 1) * V_GAP;
 
                 return (
                   <div
@@ -649,7 +620,11 @@ export default function GroupBalanceTabSmart({
                           {firstOnly(pair.u1)}
                         </div>
                       </div>
-                      <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} />
+                      <ArrowLeftRight
+                        size={20}
+                        style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
+                        aria-hidden
+                      />
                       <div className="flex items-center gap-2 min-w-0">
                         <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={40} />
                         <div
@@ -662,14 +637,11 @@ export default function GroupBalanceTabSmart({
                       </div>
                     </div>
 
-                    {/* Две колонки: левый столбец = u1->u2 (красный, →), правый столбец = u2->u1 (зелёный, ←) */}
-                    <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                      {/* Левый столбец (u1 должник) */}
+                    {/* Две колонки: адаптивная сетка [9]; [3a] — кнопки прямо в строках */}
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                      {/* Левый столбец (u1 должник → красные →) */}
                       <div className="min-w-0">
-                        <div
-                          className="flex flex-col gap-[6px]"
-                          style={{ minHeight: minHLeft, justifyContent: "flex-start" }}
-                        >
+                        <div className="flex flex-col gap-[6px]">
                           {(leftEntries.slice(0, Lvis)).map(([ccy, amt], i) => (
                             <div
                               key={`pair-${key}-L-${ccy}-${i}`}
@@ -683,6 +655,7 @@ export default function GroupBalanceTabSmart({
                                 arrow="right"
                                 locale={locale}
                               />
+                              {/* если я должник (u1) — «Рассчитаться», если кредитор (u2) — «Напомнить» */}
                               {iAmU1 ? (
                                 <button
                                   type="button"
@@ -692,6 +665,19 @@ export default function GroupBalanceTabSmart({
                                   title={t("repay_debt") as string}
                                 >
                                   <HandCoins size={18} />
+                                </button>
+                              ) : iAmU2 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStubOpen(true);
+                                    onRemind?.(pair.u1, amt, ccy);
+                                  }}
+                                  className={btn3D}
+                                  aria-label={t("remind_debt") as string}
+                                  title={t("remind_debt") as string}
+                                >
+                                  <Bell size={18} />
                                 </button>
                               ) : null}
                             </div>
@@ -703,6 +689,7 @@ export default function GroupBalanceTabSmart({
                                 onClick={() => toggleAll(key, "left")}
                                 className="text-[12px] opacity-80 hover:opacity-100"
                                 style={{ color: "var(--tg-hint-color)" }}
+                                aria-expanded={Lexp}
                               >
                                 {Lexp
                                   ? t("close") || "Свернуть"
@@ -711,39 +698,11 @@ export default function GroupBalanceTabSmart({
                             </div>
                           )}
                         </div>
-
-                        {/* Если я кредитор (u2) — одна кнопка «Напомнить» по центру видимых строк левого столбца */}
-                        {iAmU2 && Lvis > 0 && (
-                          <div
-                            className="flex items-center mt-2"
-                            style={{ minHeight: 0 }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStubOpen(true);
-                                // по смыслу напоминаем должнику u1 по первой строке
-                                if (onRemind && leftEntries[0]) {
-                                  const [ccy, amt] = leftEntries[0];
-                                  setTimeout(() => onRemind(pair.u1, amt, ccy), 0);
-                                }
-                              }}
-                              className={btn3D}
-                              aria-label={t("remind_debt") as string}
-                              title={t("remind_debt") as string}
-                            >
-                              <Bell size={18} />
-                            </button>
-                          </div>
-                        )}
                       </div>
 
-                      {/* Правый столбец (u2 должник) */}
+                      {/* Правый столбец (u2 должник ← зелёные) */}
                       <div className="min-w-0">
-                        <div
-                          className="flex flex-col gap-[6px]"
-                          style={{ minHeight: minHRight, justifyContent: "flex-start" }}
-                        >
+                        <div className="flex flex-col gap-[6px]">
                           {(rightEntries.slice(0, Rvis)).map(([ccy, amt], i) => (
                             <div
                               key={`pair-${key}-R-${ccy}-${i}`}
@@ -767,6 +726,19 @@ export default function GroupBalanceTabSmart({
                                 >
                                   <HandCoins size={18} />
                                 </button>
+                              ) : iAmU1 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStubOpen(true);
+                                    onRemind?.(pair.u2, amt, ccy);
+                                  }}
+                                  className={btn3D}
+                                  aria-label={t("remind_debt") as string}
+                                  title={t("remind_debt") as string}
+                                >
+                                  <Bell size={18} />
+                                </button>
                               ) : null}
                             </div>
                           ))}
@@ -777,6 +749,7 @@ export default function GroupBalanceTabSmart({
                                 onClick={() => toggleAll(key, "right")}
                                 className="text-[12px] opacity-80 hover:opacity-100"
                                 style={{ color: "var(--tg-hint-color)" }}
+                                aria-expanded={Rexp}
                               >
                                 {Rexp
                                   ? t("close") || "Свернуть"
@@ -785,30 +758,6 @@ export default function GroupBalanceTabSmart({
                             </div>
                           )}
                         </div>
-
-                        {/* Если я кредитор (u1) — одна кнопка «Напомнить» по центру видимых строк правого столбца */}
-                        {iAmU1 && Rvis > 0 && (
-                          <div
-                            className="flex items-center mt-2"
-                            style={{ minHeight: 0 }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStubOpen(true);
-                                if (onRemind && rightEntries[0]) {
-                                  const [ccy, amt] = rightEntries[0];
-                                  setTimeout(() => onRemind(pair.u2, amt, ccy), 0);
-                                }
-                              }}
-                              className={btn3D}
-                              aria-label={t("remind_debt") as string}
-                              title={t("remind_debt") as string}
-                            >
-                              <Bell size={18} />
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -819,17 +768,17 @@ export default function GroupBalanceTabSmart({
         )}
       </div>
 
-      {/* Временная модалка-заглушка для "Напомнить" */}
+      {/* Модалка-заглушка для "Напомнить" (закрываем кнопкой/ESC) */}
       {stubOpen && (
         <div
           className="fixed inset-0 z-[1200] flex items-center justify-center"
-          onClick={() => setStubOpen(false)}
+          tabIndex={-1}
+          onKeyDown={(e) => { if (e.key === "Escape") setStubOpen(false); }}
         >
           <div className="absolute inset-0 bg-black/50" />
           <div
             className="relative max-w-[84vw] w-[420px] rounded-xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
             style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="text-[15px] font-semibold mb-2">
               {t("remind_debt")}
@@ -841,17 +790,14 @@ export default function GroupBalanceTabSmart({
                 onClick={() => setStubOpen(false)}
                 className="h-9 px-4 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
               >
-                OK
+                {t("close")}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* скрытая кнопка для FAB */}
-      <div className="hidden">
-        <button type="button" onClick={onFabClick} />
-      </div>
+      {/* [18] — убрано: скрытая кнопка для FAB больше не нужна */}
     </div>
   );
 }
