@@ -1,8 +1,6 @@
 // src/pages/GroupDetailsPage.tsx
-// Оптимизировано: тост вместо alert, ранний префетч участников, ErrorBoundary сбрасывается по id,
-// existingMemberIds приводим к number[], безопасная догрузка. Оставили одну модалку создания — внутри вкладки.
 
-import { useEffect, useState, useRef, useCallback, Component, ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, Component, ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -102,7 +100,7 @@ const GroupDetailsPage = () => {
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickUserId, setQuickUserId] = useState<number | null>(null);
 
-  // Центрированный тост (единый для страницы)
+  // Центрированный тост (для прочих сообщений)
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
   const toastTimerRef = useRef<number | null>(null);
   const showToast = useCallback((msg: string) => {
@@ -115,6 +113,16 @@ const GroupDetailsPage = () => {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
+
+  // Классическая модалка для locked
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const openBlocked = useCallback(() => setBlockedOpen(true), []);
+  const closeBlocked = useCallback(() => setBlockedOpen(false), []);
+  const lockMsg = useMemo(() => {
+    return (group && (group as any)?.deleted_at)
+      ? (t("group_modals.edit_blocked_deleted") as string)
+      : (t("group_modals.edit_blocked_archived") as string);
+  }, [group, t]);
 
   // Детали группы
   useEffect(() => {
@@ -176,15 +184,13 @@ const GroupDetailsPage = () => {
     setPage(0);
     setHasMore(true);
     setSelectedTab("transactions"); // стартуем всегда со списка транзакций
+    setBlockedOpen(false);
   }, [id]);
 
   // Признаки состояния группы
   const isDeleted = Boolean((group as any)?.deleted_at);
   const isArchived = (group as any)?.status === "archived";
   const locked = isDeleted || isArchived;
-  const lockMsg = isDeleted
-    ? (t("group_modals.edit_blocked_deleted") as string)
-    : (t("group_modals.edit_blocked_archived") as string);
 
   // Инфинити-подгрузка только для АКТИВНОЙ группы
   const canLoadMembers = Boolean(group) && !locked;
@@ -220,11 +226,11 @@ const GroupDetailsPage = () => {
     void loadMembers();
   }, [canLoadMembers, hasMore, membersLoading, loadMembers]);
 
-  // Навигация (редактирование блокируем для архивных/удалённых)
+  // Навигация (редактирование блокируем для архивных/удалённых) — показываем модалку
   const handleSettingsClick = () => {
     if (!group) return;
     if (locked) {
-      showToast(lockMsg);
+      openBlocked();
       return;
     }
     navigate(`/groups/${group.id}/settings`);
@@ -243,10 +249,10 @@ const GroupDetailsPage = () => {
     setQuickOpen(true);
   };
 
-  // Блокирующие обработчики для Invite/Add — тост для архивных/удалённых
+  // Invite/Add — показываем модалку при locked
   const handleInviteClick = () => {
     if (locked) {
-      showToast(lockMsg);
+      openBlocked();
       return;
     }
     setInviteOpen(true);
@@ -254,7 +260,7 @@ const GroupDetailsPage = () => {
 
   const handleAddClick = () => {
     if (locked) {
-      showToast(lockMsg);
+      openBlocked();
       return;
     }
     setAddOpen(true);
@@ -337,7 +343,7 @@ const GroupDetailsPage = () => {
           groupId={id}
           existingMemberIds={existingMemberIds}
           onAdded={() => {
-            // По желанию можно принудительно освежить список:
+            // При желании можно обновить список:
             // setMembers([]); setPage(0); setHasMore(true); if (!locked) void loadMembers();
           }}
         />
@@ -348,7 +354,7 @@ const GroupDetailsPage = () => {
         {/* Лёгкая модалка контакта */}
         <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />
 
-        {/* Единый центрированный тост для страницы */}
+        {/* Единый центрированный тост для страницы (для нефатальных сообщений) */}
         {toast.open && (
           <div className="fixed inset-0 z-[1400] pointer-events-none flex items-center justify-center">
             <div
@@ -356,6 +362,31 @@ const GroupDetailsPage = () => {
               style={{ color: "var(--tg-text-color)" }}
             >
               {toast.message}
+            </div>
+          </div>
+        )}
+
+        {/* Классическая модалка для locked */}
+        {blockedOpen && (
+          <div className="fixed inset-0 z-[1450] flex items-center justify-center" onClick={closeBlocked}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
+              style={{ color: "var(--tg-text-color)" }}
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-[14px] leading-snug mb-3">{lockMsg}</div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-4 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
+                  onClick={closeBlocked}
+                >
+                  {t("close")}
+                </button>
+              </div>
             </div>
           </div>
         )}

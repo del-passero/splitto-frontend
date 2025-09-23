@@ -1,6 +1,11 @@
 // src/components/group/GroupTransactionsTab.tsx
-// Оптимизировано: тост вместо alert, кулдаун, корректная проверка неактивных участников (только по membersMap),
-// ранний префетч, чистка таймера тоста, пагинация участников >200, прозрачный оверлей-блокиратор при locked.
+// Ключевые моменты:
+// - Классическая модалка блокировки (locked) с кнопкой t("close")
+// - Оверлей перехватывает клики и открывает модалку
+// - Типы событий приведены корректно (Pointer/Mouse/Keyboard)
+// - Фикс локальной проверки «неактивных участников» (только по membersMap)
+// - Ранний префетч IntersectionObserver
+// - Чистка таймера тоста; тост остаётся для прочих сообщений (например, delete_failed)
 
 import {
   useEffect,
@@ -143,7 +148,7 @@ const GroupTransactionsTab = ({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
-  // центрированный тост
+  // центрированный тост (для прочих сообщений)
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
   const toastTimerRef = useRef<number | null>(null);
   const showToast = useCallback((msg: string) => {
@@ -157,7 +162,7 @@ const GroupTransactionsTab = ({
     };
   }, []);
 
-  // модалка: нельзя редактировать/удалять из-за вышедших участников
+  // Модалка: нельзя редактировать/удалять из-за вышедших участников
   const [inactiveBlockOpen, setInactiveBlockOpen] = useState(false);
   const inactiveMsg = useMemo(() => {
     const key = "cannot_edit_or_delete_inactive";
@@ -173,6 +178,12 @@ const GroupTransactionsTab = ({
     }
     return raw;
   }, [t, locale]);
+
+  // Модалка-блокировка для archived/deleted (классическая)
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const openBlocked = useCallback(() => setBlockedOpen(true), []);
+  const closeBlocked = useCallback(() => setBlockedOpen(false), []);
+  const blockedMsg = blockMsg || (t("group_modals.edit_blocked_archived") as string);
 
   const params = useParams();
   const groupId = Number(params.groupId || params.id || 0) || undefined;
@@ -383,11 +394,8 @@ const GroupTransactionsTab = ({
       const offset = items.length;
       const { total: newTotal, items: chunk } = await getTransactions({ groupId, offset, limit: PAGE_SIZE, signal: controller.signal });
       const map = new Map<number | string, TransactionOut>();
-      // прежние
       for (const it of items) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
-      // новые
       for (const it of chunk) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
-
       const merged = Array.from(map.values());
       setItems(merged);
       setTotal(newTotal);
@@ -465,38 +473,27 @@ const GroupTransactionsTab = ({
     }
   };
 
-  // ===== Блокирующий оверлей (для locked) =====
-  const lastNoticeAtRef = useRef(0);
-  const NOTICE_COOLDOWN_MS = 800;
-  const blockedMsg = blockMsg || (t("group_modals.edit_blocked_archived") as string);
-
-  const fireBlockedNotice = useCallback(() => {
-    const now = Date.now();
-    if (now - lastNoticeAtRef.current < NOTICE_COOLDOWN_MS) return;
-    lastNoticeAtRef.current = now;
-    showToast(blockedMsg);
-  }, [blockedMsg, showToast]);
-
+  // ===== Блокирующий оверлей (для locked): открывает классическую модалку =====
   const handleLockedOverlayPointer = useCallback((e: ReactPointerEvent) => {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
-    fireBlockedNotice();
-  }, [fireBlockedNotice]);
+    openBlocked();
+  }, [openBlocked]);
 
   const handleLockedOverlayMouse = useCallback((e: ReactMouseEvent) => {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
-    fireBlockedNotice();
-  }, [fireBlockedNotice]);
+    openBlocked();
+  }, [openBlocked]);
 
   const handleLockedOverlayKey = useCallback((e: ReactKeyboardEvent) => {
     const keys = ["Enter", " "];
     if (keys.includes(e.key)) {
       try { e.preventDefault(); } catch {}
       try { e.stopPropagation(); } catch {}
-      fireBlockedNotice();
+      openBlocked();
     }
-  }, [fireBlockedNotice]);
+  }, [openBlocked]);
 
   const visible = items;
 
@@ -542,8 +539,8 @@ const GroupTransactionsTab = ({
           <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         )}
 
-        {/* Если locked — показываем тост; если нет — открываем модалку создания */}
-        <GroupFAB onClick={locked ? fireBlockedNotice : handleAddClick} />
+        {/* Если locked — открываем модалку; если нет — модалка создания */}
+        <GroupFAB onClick={locked ? openBlocked : handleAddClick} />
 
         <CreateTransactionModal
           open={openCreate}
@@ -587,7 +584,7 @@ const GroupTransactionsTab = ({
               <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
               <button
                 type="button"
-                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg黑/5 dark:hover:bg-white/5 transition"
+                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
                 onClick={closeActions}
               >
                 {t("cancel")}
@@ -619,7 +616,32 @@ const GroupTransactionsTab = ({
           </div>
         )}
 
-        {/* === Центрированный тост === */}
+        {/* === Классическая модалка-блокировка (архив/удалена) === */}
+        {blockedOpen && (
+          <div className="fixed inset-0 z-[1250] flex items-center justify-center" onClick={closeBlocked}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
+              style={{ color: "var(--tg-text-color)" }}
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-[14px] leading-snug mb-3">{blockedMsg}</div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-4 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
+                  onClick={closeBlocked}
+                >
+                  {t("close")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* === Центрированный тост (другие сообщения) === */}
         {toast.open && (
           <div className="fixed inset-0 z-[1300] pointer-events-none flex items-center justify-center">
             <div
