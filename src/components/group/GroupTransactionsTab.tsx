@@ -1,4 +1,6 @@
 // src/components/group/GroupTransactionsTab.tsx
+// Оптимизировано: тост вместо alert, кулдаун, корректная проверка неактивных участников (только по membersMap),
+// ранний префетч, чистка таймера тоста, пагинация участников >200, прозрачный оверлей-блокиратор при locked.
 
 import {
   useEffect,
@@ -7,6 +9,8 @@ import {
   useState,
   useCallback,
   type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -41,6 +45,7 @@ function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || "";
 }
+
 type ApiExpenseCategoryOut = {
   id: number;
   key: string;
@@ -52,6 +57,7 @@ type ApiExpenseCategoryOut = {
   name_i18n?: Record<string, string> | null;
 };
 type ApiListResp = { items: ApiExpenseCategoryOut[]; total: number; restricted: boolean };
+
 async function apiListGroupCategoriesPage(params: {
   groupId: number; offset: number; limit: number; locale: string;
 }): Promise<ApiListResp> {
@@ -137,14 +143,21 @@ const GroupTransactionsTab = ({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [txForActions, setTxForActions] = useState<TransactionOut | null>(null);
 
-  // center toast
+  // центрированный тост
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
+  const toastTimerRef = useRef<number | null>(null);
   const showToast = useCallback((msg: string) => {
     setToast({ open: true, message: msg });
-    window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast({ open: false, message: "" }), 2400);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
-  // modal: cannot edit/delete because inactive participants
+  // модалка: нельзя редактировать/удалять из-за вышедших участников
   const [inactiveBlockOpen, setInactiveBlockOpen] = useState(false);
   const inactiveMsg = useMemo(() => {
     const key = "cannot_edit_or_delete_inactive";
@@ -175,7 +188,7 @@ const GroupTransactionsTab = ({
   const [membersMap, setMembersMap] = useState<Map<number, GroupMemberLike> | null>(null);
   const [membersCount, setMembersCount] = useState<number>(0);
 
-  // 🔧 Аугментация participants: добиваем из related_users (важно для удалённых/архивных)
+  // 🔧 Аугментация participants: добиваем из related_users (только для отображения)
   const membersMapAugmented = useMemo(() => {
     const base = new Map<number, GroupMemberLike>(membersMap ?? undefined);
     for (const tx of items) {
@@ -206,44 +219,57 @@ const GroupTransactionsTab = ({
   const abortRef = useRef<AbortController | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const ioRef = useRef<IntersectionObserver | null>(null);
+  const loadingMoreRef = useRef(false);
 
   const filtersKey = useMemo(() => JSON.stringify({ groupId }), [groupId]);
 
-  // Участники группы
+  // Участники группы — с пагинацией (>200)
   useEffect(() => {
     if (!groupId) { setMembersMap(null); setMembersCount(0); return; }
     let cancelled = false;
     (async () => {
       try {
-        const { total, items } = await getGroupMembers(groupId, 0, 200);
-        if (cancelled) return;
         const map = new Map<number, GroupMemberLike>();
-        for (const m of items) {
-          const u = (m as any).user || {};
-          const id = Number(u.id);
-          if (!Number.isFinite(id)) continue;
-          const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
-          map.set(id, {
-            id,
-            name: fullName || (u.username ?? ""),
-            first_name: u.first_name,
-            last_name: u.last_name,
-            username: u.username,
-            avatar_url: u.photo_url ?? undefined,
-            photo_url: u.photo_url ?? undefined,
-          });
+        let offset = 0;
+        const LIMIT = 200;
+        let totalFetched = 0;
+        let totalKnown = Infinity;
+
+        while (!cancelled && totalFetched < totalKnown) {
+          const { total, items } = await getGroupMembers(groupId, offset, LIMIT);
+          totalKnown = typeof total === "number" ? total : totalKnown;
+          for (const m of items || []) {
+            const u = (m as any).user || {};
+            const id = Number(u.id);
+            if (!Number.isFinite(id)) continue;
+            const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+            map.set(id, {
+              id,
+              name: fullName || (u.username ?? ""),
+              first_name: u.first_name,
+              last_name: u.last_name,
+              username: u.username,
+              avatar_url: u.photo_url ?? undefined,
+              photo_url: u.photo_url ?? undefined,
+            });
+          }
+          totalFetched += (items?.length || 0);
+          if ((items?.length || 0) < LIMIT) break;
+          offset += LIMIT;
         }
-        setMembersMap(map);
-        setMembersCount(total || items.length);
+
+        if (!cancelled) {
+          setMembersMap(map);
+          setMembersCount(map.size);
+        }
       } catch {
-        setMembersMap(null);
-        setMembersCount(0);
+        if (!cancelled) { setMembersMap(null); setMembersCount(0); }
       }
     })();
     return () => { cancelled = true; };
   }, [groupId]);
 
-  // Категории группы (если доступно)
+  // Категории группы
   useEffect(() => {
     if (!groupId) { setCategoriesById(new Map()); return; }
     let cancelled = false;
@@ -251,7 +277,7 @@ const GroupTransactionsTab = ({
       try {
         const m = new Map<number, { id: number; name?: string | null; icon?: string | null; color?: string | null }>();
         let offset = 0; const LIMIT = 200;
-        while (true) {
+        while (!cancelled) {
           const page = await apiListGroupCategoriesPage({ groupId, offset, limit: LIMIT, locale });
           for (const it of page.items || []) {
             const prev = m.get(it.id);
@@ -273,7 +299,7 @@ const GroupTransactionsTab = ({
     return () => { cancelled = true; };
   }, [groupId, locale]);
 
-  // Фоллбэк — достаём категории из самих транзакций (важно для удалённых/архивных)
+  // Фоллбэк категорий из транзакций (для архивных/удалённых)
   useEffect(() => {
     if (!items?.length) return;
     setCategoriesById(prev => {
@@ -330,6 +356,7 @@ const GroupTransactionsTab = ({
     });
   }, [items, locale]);
 
+  // Первая страница
   const reloadFirstPage = useCallback(async () => {
     abortRef.current?.abort(); abortRef.current = null;
     setItems([]); setTotal(0); setError(null); setHasMore(true);
@@ -347,51 +374,66 @@ const GroupTransactionsTab = ({
 
   useEffect(() => { void reloadFirstPage(); }, [filtersKey, reloadFirstPage]);
 
+  // Дозагрузка
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (loadingMoreRef.current || !hasMore) return;
     const controller = new AbortController(); abortRef.current = controller;
     try {
-      setLoading(true);
+      loadingMoreRef.current = true;
       const offset = items.length;
       const { total: newTotal, items: chunk } = await getTransactions({ groupId, offset, limit: PAGE_SIZE, signal: controller.signal });
-      setTotal(newTotal);
       const map = new Map<number | string, TransactionOut>();
+      // прежние
       for (const it of items) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
+      // новые
       for (const it of chunk) map.set(it.id ?? `${it.type}-${it.date}-${it.amount}-${it.comment ?? ""}`, it);
+
       const merged = Array.from(map.values());
-      setItems(merged); setHasMore(merged.length < newTotal);
+      setItems(merged);
+      setTotal(newTotal);
+      setHasMore(merged.length < newTotal);
     } catch (e: any) {
       if (!controller.signal.aborted) setError(e?.message || "Failed to load more");
-    } finally { setLoading(false); }
-  }, [groupId, items, hasMore, loading]);
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [groupId, items, hasMore]);
 
+  // IO-сентинел (ранний префетч)
   useEffect(() => {
     const el = loaderRef.current; if (!el) return;
     ioRef.current?.disconnect();
     const io = new IntersectionObserver((entries) => {
       const e = entries[0];
       if (!e.isIntersecting) return;
-      if (loading || !hasMore) return;
+      if (loadingMoreRef.current || !hasMore) return;
       void loadMore();
-    }, { root: null, rootMargin: "320px 0px 0px 0px", threshold: 0 });
+    }, {
+      root: null,
+      rootMargin: "0px 0px 320px 0px",
+      threshold: 0,
+    });
     io.observe(el); ioRef.current = io;
     return () => { io.disconnect(); if (ioRef.current === io) ioRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, hasMore, loading, filtersKey]);
+  }, [items.length, hasMore, filtersKey]);
 
+  // FAB/модалка создания (оставляем здесь, чтобы мгновенно обновлять локальный список)
   const handleAddClick = () => setOpenCreate(true);
   const handleCreated = (tx: TransactionOut) => setItems(prev => [tx, ...prev]);
+
+  // Долгое нажатие → действия
   const handleLongPress = (tx: TransactionOut) => { setTxForActions(tx); setActionsOpen(true); };
   const closeActions = () => { setActionsOpen(false); setTimeout(() => setTxForActions(null), 160); };
   const handleEdit = () => { if (!txForActions?.id) return; closeActions(); navigate(`/transactions/${txForActions.id}`); };
 
-  // локальная проверка «можно ли удалять»
+  // Локальная проверка «можно ли удалять» — сравниваем ТОЛЬКО с активными (membersMap), без аугментации
   const hasInactiveParticipantsLocal = useCallback((tx: TransactionOut | null) => {
-    if (!tx || !membersMapAugmented) return false;
-    const activeIds = new Set(Array.from(membersMapAugmented.keys()));
+    if (!tx || !membersMap) return false;
+    const activeIds = new Set(Array.from(membersMap.keys()));
     const involved = collectInvolvedUserIds(tx);
     return involved.some((uid) => !activeIds.has(uid));
-  }, [membersMapAugmented]);
+  }, [membersMap]);
 
   const handleDelete = async () => {
     if (!txForActions?.id) return;
@@ -423,21 +465,38 @@ const GroupTransactionsTab = ({
     }
   };
 
-  // ===== Блокировка интеракций: показываем ОДИН alert за жест (cooldown) =====
-  const lastAlertAtRef = useRef(0);
-  const COOLDOWN_MS = 800;
+  // ===== Блокирующий оверлей (для locked) =====
+  const lastNoticeAtRef = useRef(0);
+  const NOTICE_COOLDOWN_MS = 800;
+  const blockedMsg = blockMsg || (t("group_modals.edit_blocked_archived") as string);
 
-  const handleLockedPointerDownCapture = useCallback((e: ReactPointerEvent) => {
-    // полностью гасим событие
+  const fireBlockedNotice = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNoticeAtRef.current < NOTICE_COOLDOWN_MS) return;
+    lastNoticeAtRef.current = now;
+    showToast(blockedMsg);
+  }, [blockedMsg, showToast]);
+
+  const handleLockedOverlayPointer = useCallback((e: ReactPointerEvent) => {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
+    fireBlockedNotice();
+  }, [fireBlockedNotice]);
 
-    const now = Date.now();
-    if (now - lastAlertAtRef.current < COOLDOWN_MS) return; // анти-спам
-    lastAlertAtRef.current = now;
+  const handleLockedOverlayMouse = useCallback((e: ReactMouseEvent) => {
+    try { e.preventDefault(); } catch {}
+    try { e.stopPropagation(); } catch {}
+    fireBlockedNotice();
+  }, [fireBlockedNotice]);
 
-    window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string));
-  }, [blockMsg, t]);
+  const handleLockedOverlayKey = useCallback((e: ReactKeyboardEvent) => {
+    const keys = ["Enter", " "];
+    if (keys.includes(e.key)) {
+      try { e.preventDefault(); } catch {}
+      try { e.stopPropagation(); } catch {}
+      fireBlockedNotice();
+    }
+  }, [fireBlockedNotice]);
 
   const visible = items;
 
@@ -461,11 +520,7 @@ const GroupTransactionsTab = ({
             horizontalPaddingPx={H_PADDING}
             leftInsetPx={LEFT_INSET}
             renderItem={(tx: any) => (
-              <div
-                data-tx-card
-                // Один-единственный перехватчик: гасим событие и показываем alert с cooldown
-                onPointerDownCapture={locked ? handleLockedPointerDownCapture : undefined}
-              >
+              <div data-tx-card>
                 <TransactionCard
                   tx={tx}
                   membersById={membersMapAugmented ?? undefined}
@@ -487,7 +542,8 @@ const GroupTransactionsTab = ({
           <div className="py-3 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         )}
 
-        <GroupFAB onClick={locked ? () => window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string)) : handleAddClick} />
+        {/* Если locked — показываем тост; если нет — открываем модалку создания */}
+        <GroupFAB onClick={locked ? fireBlockedNotice : handleAddClick} />
 
         <CreateTransactionModal
           open={openCreate}
@@ -531,7 +587,7 @@ const GroupTransactionsTab = ({
               <div className="h-px bg-[var(--tg-hint-color)] opacity-10 my-1" />
               <button
                 type="button"
-                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg-black/5 dark:hover:bg-white/5 transition"
+                className="w-full text-center px-4 py-3 rounded-xl text-[14px] hover:bg黑/5 dark:hover:bg-white/5 transition"
                 onClick={closeActions}
               >
                 {t("cancel")}
@@ -565,7 +621,7 @@ const GroupTransactionsTab = ({
 
         {/* === Центрированный тост === */}
         {toast.open && (
-          <div className="fixed inset-0 z-[1200] pointer-events-none flex items-center justify-center">
+          <div className="fixed inset-0 z-[1300] pointer-events-none flex items-center justify-center">
             <div
               className="px-4 py-2.5 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-2xl text-[14px] font-medium"
               style={{ color: "var(--tg-text-color)" }}
@@ -574,10 +630,21 @@ const GroupTransactionsTab = ({
             </div>
           </div>
         )}
+
+        {/* === Прозрачный оверлей блокировки (только когда locked) === */}
+        {locked && (
+          <div
+            className="absolute inset-0 z-[1000]"
+            role="presentation"
+            onPointerDownCapture={handleLockedOverlayPointer}
+            onClickCapture={handleLockedOverlayMouse}
+            onContextMenuCapture={handleLockedOverlayMouse}
+            onKeyDownCapture={handleLockedOverlayKey}
+          />
+        )}
       </div>
     </CardSection>
   );
 };
 
 export default GroupTransactionsTab;
-
