@@ -225,44 +225,44 @@ export default function GroupBalanceTabSmart({
   const allPairs: PairCard[] = useMemo(() => {
     const byPair = new Map<PairKey, PairCard>();
 
+    const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
+    const cmpUser = (x: User, y: User) =>
+      nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) ||
+      (x.id - y.id); // тайбрейк по id
+
     for (const p of allDebts) {
       const a = p.from;
       const b = p.to;
-      const amt = Math.abs(p.amount); // складываем по модулю
-      if (amt <= 0) continue; // исключаем нули
+      const amt = Math.abs(p.amount);
+      if (amt <= 0) continue; // пропускаем нули
 
-      // фиксируем порядок (левый — с меньшим id), но направления сумм учитываем отдельно
-      const [minU, maxU] = a.id <= b.id ? [a, b] : [b, a];
-      const key: PairKey = `${minU.id}-${maxU.id}`;
-      if (!byPair.has(key)) {
-        byPair.set(key, { u1: minU, u2: maxU, left: {}, right: {} });
-      }
+      // ❗ нормализуем пару по алфавиту (а не по id)
+      const [u1, u2] = cmpUser(a, b) <= 0 ? [a, b] : [b, a];
+      const key: PairKey = `${u1.id}-${u2.id}`;
+
+      if (!byPair.has(key)) byPair.set(key, { u1, u2, left: {}, right: {} });
       const card = byPair.get(key)!;
+
+      // копим оба направления в одной карточке
       if (a.id === card.u1.id && b.id === card.u2.id) {
-        // долг u1 -> u2
+        // u1 -> u2
         card.left[p.currency] = (card.left[p.currency] || 0) + amt;
       } else {
-        // долг u2 -> u1
+        // u2 -> u1
         card.right[p.currency] = (card.right[p.currency] || 0) + amt;
       }
     }
 
-    // ПЕРВИЧНАЯ СОРТИРОВКА ПО УЧАСТНИКАМ:
-    // Сначала группируем по u1 (отсортированному по имени), внутри по u2 (по имени).
-    const byName1 = (u: User) => firstOnly(u).toLowerCase();
-    const byName2 = (u: User) => firstOnly(u).toLowerCase();
-
-    const sorted = Array.from(byPair.values()).sort((A, B) => {
-      const a1 = byName1(A.u1);
-      const b1 = byName1(B.u1);
-      if (a1 !== b1) return a1.localeCompare(b1);
-      const a2 = byName2(A.u2);
-      const b2 = byName2(B.u2);
-      return a2.localeCompare(b2);
+    // сортировка по участникам: u1 ↑, затем u2 ↑, стабильный тайбрейк по id
+    return Array.from(byPair.values()).sort((A, B) => {
+      const c1 = cmpUser(A.u1, B.u1);
+      if (c1) return c1;
+      const c2 = cmpUser(A.u2, B.u2);
+      if (c2) return c2;
+      return (A.u1.id - B.u1.id) || (A.u2.id - B.u2.id);
     });
+  }, [allDebts, locale]);
 
-    return sorted;
-  }, [allDebts]);
 
   // свернуто/развернуто для колонок пары (All)
   const [expandedAll, setExpandedAll] = useState<Record<PairKey, { left: boolean; right: boolean }>>({});
