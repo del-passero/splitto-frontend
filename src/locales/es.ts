@@ -49,6 +49,7 @@ export default {
   delete_hard_note: "Se eliminará permanentemente",
   delete_soft_note: "Se eliminará con posibilidad de restaurar",
   delete_forbidden_debts_note: "No se puede eliminar: hay deudas pendientes",
+  archive_forbidden_debts_note: "No se puede archivar: hay deudas pendientes",
 
   // --- Saldos y deudas ---
   group_balance_you_get: "Te deben {{sum}}",

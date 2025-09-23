@@ -49,6 +49,7 @@ export default {
   delete_hard_note: "Will be deleted permanently",
   delete_soft_note: "Will be deleted with possibility to restore",
   delete_forbidden_debts_note: "Cannot delete: there are unsettled debts",
+  archive_forbidden_debts_note: "Cannot archive: there are unsettled debts",
 
   // --- Balances & debts ---
   group_balance_you_get: "You are owed {{sum}}",
