@@ -6,9 +6,7 @@ import {
   useRef,
   useState,
   useCallback,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type TouchEvent as ReactTouchEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -425,19 +423,25 @@ const GroupTransactionsTab = ({
     }
   };
 
-  // Полный блок кликов/тапов/пойнтеров, когда locked === true
-  const stopAll = (e: ReactMouseEvent | ReactPointerEvent | ReactTouchEvent) => {
+  // ===== Блокировка интеракций: показываем ОДИН alert за жест (cooldown) =====
+  const lastAlertAtRef = useRef(0);
+  const COOLDOWN_MS = 800;
+
+  const handleLockedPointerDownCapture = useCallback((e: ReactPointerEvent) => {
+    // полностью гасим событие
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
-  };
-  const onLockedCardEventCapture = useCallback((e: ReactMouseEvent | ReactPointerEvent | ReactTouchEvent) => {
-    stopAll(e);
+
+    const now = Date.now();
+    if (now - lastAlertAtRef.current < COOLDOWN_MS) return; // анти-спам
+    lastAlertAtRef.current = now;
+
     window.alert(blockMsg || (t("group_modals.edit_blocked_archived") as string));
   }, [blockMsg, t]);
 
   const visible = items;
 
-  // уменьшили боковые отступы в 3 раза: было 16 → 6; leftInsetPx было 52 → 18
+  // уменьшенные отступы: было 16 → 6; leftInsetPx 52 → 18
   const H_PADDING = 6;
   const LEFT_INSET = 18;
 
@@ -459,14 +463,8 @@ const GroupTransactionsTab = ({
             renderItem={(tx: any) => (
               <div
                 data-tx-card
-                // Полностью перехватываем интеракции на карточке, чтобы не было навигации
-                onClickCapture={locked ? onLockedCardEventCapture : undefined}
-                onMouseDownCapture={locked ? onLockedCardEventCapture : undefined}
-                onMouseUpCapture={locked ? onLockedCardEventCapture : undefined}
-                onPointerDownCapture={locked ? onLockedCardEventCapture : undefined}
-                onPointerUpCapture={locked ? onLockedCardEventCapture : undefined}
-                onTouchStartCapture={locked ? onLockedCardEventCapture : undefined}
-                onTouchEndCapture={locked ? onLockedCardEventCapture : undefined}
+                // Один-единственный перехватчик: гасим событие и показываем alert с cooldown
+                onPointerDownCapture={locked ? handleLockedPointerDownCapture : undefined}
               >
                 <TransactionCard
                   tx={tx}
@@ -582,3 +580,4 @@ const GroupTransactionsTab = ({
 };
 
 export default GroupTransactionsTab;
+
