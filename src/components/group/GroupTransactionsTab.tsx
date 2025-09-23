@@ -1,11 +1,4 @@
 // src/components/group/GroupTransactionsTab.tsx
-// Ключевые моменты:
-// - Классическая модалка блокировки (locked) с кнопкой t("close")
-// - Оверлей перехватывает клики и открывает модалку
-// - Типы событий приведены корректно (Pointer/Mouse/Keyboard)
-// - Фикс локальной проверки «неактивных участников» (только по membersMap)
-// - Ранний префетч IntersectionObserver
-// - Чистка таймера тоста; тост остаётся для прочих сообщений (например, delete_failed)
 
 import {
   useEffect,
@@ -473,7 +466,7 @@ const GroupTransactionsTab = ({
     }
   };
 
-  // ===== Блокирующий оверлей (для locked): открывает классическую модалку =====
+  // ===== Блокирующий оверлей (для locked): открывает классическую модалку; НЕ закрываем по клику по фону =====
   const handleLockedOverlayPointer = useCallback((e: ReactPointerEvent) => {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
@@ -503,7 +496,9 @@ const GroupTransactionsTab = ({
 
   return (
     <CardSection noPadding className="relative w-full h-full min-h-[320px]">
-      <div style={{ color: "var(--tg-text-color)" }}>
+      <div
+        style={{ WebkitTapHighlightColor: "transparent", color: "var(--tg-text-color)" as any }}
+      >
         {error ? (
           <div className="flex justify-center py-12 text-red-500">{error}</div>
         ) : loading && items.length === 0 ? (
@@ -517,7 +512,11 @@ const GroupTransactionsTab = ({
             horizontalPaddingPx={H_PADDING}
             leftInsetPx={LEFT_INSET}
             renderItem={(tx: any) => (
-              <div data-tx-card>
+              <div
+                data-tx-card
+                className="outline-none"
+                style={{ userSelect: "none" }}
+              >
                 <TransactionCard
                   tx={tx}
                   membersById={membersMapAugmented ?? undefined}
@@ -560,8 +559,8 @@ const GroupTransactionsTab = ({
 
         {/* === Центрированная модалка действий === */}
         {actionsOpen && (
-          <div className="fixed inset-0 z-[1100] flex items-center justify-center" onClick={closeActions}>
-            <div className="absolute inset-0 bg-black/40" />
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={closeActions} />
             <div
               className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-2"
               style={{ color: "var(--tg-text-color)" }}
@@ -593,14 +592,15 @@ const GroupTransactionsTab = ({
           </div>
         )}
 
-        {/* === Модалка-блокировка (участник вышел/удалён) === */}
+        {/* === Модалка-блокировка (участник вышел/удалён) — закрываем только кнопкой === */}
         {inactiveBlockOpen && (
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center" onClick={() => setInactiveBlockOpen(false)}>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center">
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
               style={{ color: "var(--tg-text-color)" }}
-              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
             >
               <div className="text-[14px] leading-snug mb-3">{inactiveMsg}</div>
               <div className="flex justify-end">
@@ -616,16 +616,19 @@ const GroupTransactionsTab = ({
           </div>
         )}
 
-        {/* === Классическая модалка-блокировка (архив/удалена) === */}
+        {/* === Классическая модалка-блокировка (архив/удалена) — закрываем только кнопкой/ESC === */}
         {blockedOpen && (
-          <div className="fixed inset-0 z-[1250] flex items-center justify-center" onClick={closeBlocked}>
+          <div
+            className="fixed inset-0 z-[1250] flex items-center justify-center"
+            onKeyDown={(e) => { if (e.key === "Escape") closeBlocked(); }}
+            tabIndex={-1}
+          >
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
               style={{ color: "var(--tg-text-color)" }}
               role="dialog"
               aria-modal="true"
-              onClick={(e) => e.stopPropagation()}
             >
               <div className="text-[14px] leading-snug mb-3">{blockedMsg}</div>
               <div className="flex justify-end">
@@ -641,7 +644,7 @@ const GroupTransactionsTab = ({
           </div>
         )}
 
-        {/* === Центрированный тост (другие сообщения) === */}
+        {/* === Тост (прочие сообщения) === */}
         {toast.open && (
           <div className="fixed inset-0 z-[1300] pointer-events-none flex items-center justify-center">
             <div

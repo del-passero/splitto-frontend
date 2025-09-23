@@ -287,7 +287,10 @@ const GroupDetailsPage = () => {
     .filter((v): v is number => Number.isFinite(v));
 
   return (
-    <div className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col">
+    <div
+      className="relative w-full min-h-screen bg-[var(--tg-bg-color)] text-[var(--tg-text-color)] flex flex-col"
+      style={{ WebkitTapHighlightColor: "transparent" as any }}
+    >
       {/* ErrorBoundary сбрасывается при смене группы */}
       <LocalErrorBoundary key={id}>
         {/* Шапка группы */}
@@ -366,16 +369,15 @@ const GroupDetailsPage = () => {
           </div>
         )}
 
-        {/* Классическая модалка для locked */}
+        {/* Классическая модалка для locked — закрываем только кнопкой/ESC */}
         {blockedOpen && (
-          <div className="fixed inset-0 z-[1450] flex items-center justify-center" onClick={closeBlocked}>
+          <div className="fixed inset-0 z-[1450] flex items-center justify-center" onKeyDown={(e) => { if (e.key === "Escape") closeBlocked(); }} tabIndex={-1}>
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
               style={{ color: "var(--tg-text-color)" }}
               role="dialog"
               aria-modal="true"
-              onClick={(e) => e.stopPropagation()}
             >
               <div className="text-[14px] leading-snug mb-3">{lockMsg}</div>
               <div className="flex justify-end">
