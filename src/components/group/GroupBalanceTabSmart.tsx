@@ -223,45 +223,89 @@ export default function GroupBalanceTabSmart({
   };
 
   const allPairs: PairCard[] = useMemo(() => {
-    const byPair = new Map<PairKey, PairCard>();
+    type SumMap = Record<string, number>;
+    type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
+
+    const byPair = new Map<PairKey, Agg>();
 
     const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
-    const cmpUser = (x: User, y: User) =>
+    const cmpByName = (x: User, y: User) =>
       nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) ||
-      (x.id - y.id); // тайбрейк по id
+      (x.id - y.id); // стабильный тайбрейк по id
 
+    // 1) Агрегируем по каноническому ключу (minId-maxId), копим оба направления в одной записи
     for (const p of allDebts) {
+      const amt = Math.abs(p.amount);
+      if (amt <= 0) continue;
+
       const a = p.from;
       const b = p.to;
-      const amt = Math.abs(p.amount);
-      if (amt <= 0) continue; // пропускаем нули
+      const [low, high] = a.id <= b.id ? [a, b] : [b, a];
+      const key: PairKey = `${low.id}-${high.id}`;
 
-      // ❗ нормализуем пару по алфавиту (а не по id)
-      const [u1, u2] = cmpUser(a, b) <= 0 ? [a, b] : [b, a];
-      const key: PairKey = `${u1.id}-${u2.id}`;
+      let rec = byPair.get(key);
+      if (!rec) {
+        rec = { low, high, lowToHigh: {}, highToLow: {} };
+        byPair.set(key, rec);
+      }
 
-      if (!byPair.has(key)) byPair.set(key, { u1, u2, left: {}, right: {} });
-      const card = byPair.get(key)!;
-
-      // копим оба направления в одной карточке
-      if (a.id === card.u1.id && b.id === card.u2.id) {
-        // u1 -> u2
-        card.left[p.currency] = (card.left[p.currency] || 0) + amt;
+      if (a.id === low.id && b.id === high.id) {
+        rec.lowToHigh[p.currency] = (rec.lowToHigh[p.currency] || 0) + amt;   // low -> high
       } else {
-        // u2 -> u1
-        card.right[p.currency] = (card.right[p.currency] || 0) + amt;
+        rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt;   // high -> low
       }
     }
 
-    // сортировка по участникам: u1 ↑, затем u2 ↑, стабильный тайбрейк по id
-    return Array.from(byPair.values()).sort((A, B) => {
-      const c1 = cmpUser(A.u1, B.u1);
+    // 2) Ориентируем пары для отображения:
+    //    - если в паре есть я -> я слева (u1)
+    //    - иначе — по алфавиту имён (с тайбрейком по id)
+    const oriented: PairCard[] = [];
+    for (const rec of byPair.values()) {
+      const { low, high, lowToHigh, highToLow } = rec;
+
+      let u1: User, u2: User, left: SumMap, right: SumMap;
+
+      if (myId && myId === low.id) {
+        u1 = low; u2 = high; left = lowToHigh; right = highToLow;
+      } else if (myId && myId === high.id) {
+        u1 = high; u2 = low; left = highToLow; right = lowToHigh;
+      } else {
+        if (cmpByName(low, high) <= 0) {
+          u1 = low; u2 = high; left = lowToHigh; right = highToLow;
+        } else {
+          u1 = high; u2 = low; left = highToLow; right = lowToHigh;
+        }
+      }
+
+      oriented.push({ u1, u2, left, right });
+    }
+
+    // 3) Сортировка:
+    //    — сначала пары текущего пользователя (u1 === myId), по имени партнёра (u2)
+    //    — затем остальные: по u1 (имя), потом u2 (имя), с тайбрейком по id
+    const isMine = (p: PairCard) => p.u1.id === myId;
+    const partnerKey = (p: PairCard) => nameKey(p.u2);
+
+    oriented.sort((A, B) => {
+      const mineA = isMine(A), mineB = isMine(B);
+      if (mineA !== mineB) return mineA ? -1 : 1;
+
+      if (mineA && mineB) {
+        const c = partnerKey(A).localeCompare(partnerKey(B), locale, { sensitivity: "base" });
+        if (c) return c;
+        return A.u2.id - B.u2.id;
+      }
+
+      const c1 = cmpByName(A.u1, B.u1);
       if (c1) return c1;
-      const c2 = cmpUser(A.u2, B.u2);
+      const c2 = cmpByName(A.u2, B.u2);
       if (c2) return c2;
       return (A.u1.id - B.u1.id) || (A.u2.id - B.u2.id);
     });
-  }, [allDebts, locale]);
+
+    return oriented;
+  }, [allDebts, locale, myId]);
+
 
 
   // свернуто/развернуто для колонок пары (All)
