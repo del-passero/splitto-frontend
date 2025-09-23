@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useUserStore } from "../../store/userStore";
 
-/* ===== Types (как в старом рабочем коде) ===== */
+/* ===== Types ===== */
 type User = {
   id: number;
   first_name?: string;
@@ -112,9 +112,22 @@ const btn3D =
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
   "hover:brightness-105";
 
-/* ===== Константы компоновки строк сумм (для «Мой баланс» как было) ===== */
+/* ===== Константы компоновки строк сумм (для «Мой баланс») ===== */
 const LINE_H = 22; // высота строки суммы (px)
 const V_GAP = 6; // вертикальный отступ между строками (px)
+
+/* ===== Общие мини-компоненты ===== */
+const Pill: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span
+    className="inline-flex items-center px-2 h-7 rounded-full text-[12px] font-semibold mr-1.5 mb-1.5"
+    style={{
+      background: "var(--tg-secondary-bg-color,#e7e7e7)",
+      color: "var(--tg-text-color)",
+    }}
+  >
+    {children}
+  </span>
+);
 
 /* ================= main ================= */
 export default function GroupBalanceTabSmart({
@@ -136,17 +149,17 @@ export default function GroupBalanceTabSmart({
   // локальная заглушка для «Напомнить»
   const [stubOpen, setStubOpen] = useState(false);
 
-  /* ---------- Мой баланс: подготовка данных (как было) ---------- */
+  /* ---------- Мой баланс: подготовка данных ---------- */
   const {
     leftCards,
     rightCards,
-    leftTotalsInline,
-    rightTotalsInline,
+    leftTotalsMap,
+    rightTotalsMap,
   }: {
     leftCards: CardItem[];
     rightCards: CardItem[];
-    leftTotalsInline: string;
-    rightTotalsInline: string;
+    leftTotalsMap: Record<string, number>;
+    rightTotalsMap: Record<string, number>;
   } = useMemo(() => {
     const leftMap = new Map<number, CardItem>(); // я должен
     const rightMap = new Map<number, CardItem>(); // мне должны
@@ -178,19 +191,19 @@ export default function GroupBalanceTabSmart({
       a.currency.localeCompare(b.currency);
 
     const leftCards = Array.from(leftMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
     const rightCards = Array.from(rightMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
 
     return {
       leftCards,
       rightCards,
-      leftTotalsInline: totalsToInline(leftTotals, locale),
-      rightTotalsInline: totalsToInline(rightTotals, locale),
+      leftTotalsMap: leftTotals,
+      rightTotalsMap: rightTotals,
     };
-  }, [myDebts, locale]);
+  }, [myDebts]);
 
   // свернуто/развернуто для карточек «Мой баланс» (по user.id и стороне)
   const [expandedMine, setExpandedMine] = useState<{
@@ -213,7 +226,7 @@ export default function GroupBalanceTabSmart({
   }, [leftCards, rightCards]);
 
   /* ---------- Все балансы: агрегирование по парам и валютам ---------- */
-  type PairKey = string; // "minId-maxId"
+  type PairKey = string; // "id1-id2"
   type SumMap = Record<string, number>; // currency -> amount
   type PairCard = {
     u1: User; // левый в заголовке
@@ -222,8 +235,7 @@ export default function GroupBalanceTabSmart({
     right: SumMap; // долги u2 -> u1 (u2 должник)
   };
 
-  const allPairs: PairCard[] = useMemo(() => {
-    type SumMap = Record<string, number>;
+  const { allPairs, allTotalsMap } = useMemo(() => {
     type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
 
     const byPair = new Map<PairKey, Agg>();
@@ -250,9 +262,9 @@ export default function GroupBalanceTabSmart({
       }
 
       if (a.id === low.id && b.id === high.id) {
-        rec.lowToHigh[p.currency] = (rec.lowToHigh[p.currency] || 0) + amt;   // low -> high
+        rec.lowToHigh[p.currency] = (rec.lowToHigh[p.currency] || 0) + amt; // low -> high
       } else {
-        rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt;   // high -> low
+        rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt; // high -> low
       }
     }
 
@@ -283,15 +295,14 @@ export default function GroupBalanceTabSmart({
     // 3) Сортировка:
     //    — сначала пары текущего пользователя (u1 === myId), по имени партнёра (u2)
     //    — затем остальные: по u1 (имя), потом u2 (имя), с тайбрейком по id
-    const isMine = (p: PairCard) => p.u1.id === myId;
-    const partnerKey = (p: PairCard) => nameKey(p.u2);
+    const nameKeyLower = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
 
     oriented.sort((A, B) => {
-      const mineA = isMine(A), mineB = isMine(B);
+      const mineA = A.u1.id === myId, mineB = B.u1.id === myId;
       if (mineA !== mineB) return mineA ? -1 : 1;
 
       if (mineA && mineB) {
-        const c = partnerKey(A).localeCompare(partnerKey(B), locale, { sensitivity: "base" });
+        const c = nameKeyLower(A.u2).localeCompare(nameKeyLower(B.u2), locale, { sensitivity: "base" });
         if (c) return c;
         return A.u2.id - B.u2.id;
       }
@@ -303,10 +314,19 @@ export default function GroupBalanceTabSmart({
       return (A.u1.id - B.u1.id) || (A.u2.id - B.u2.id);
     });
 
-    return oriented;
+    // 4) Итоги по группе (сумма абсолютов по всем направлениям)
+    const totals: Record<string, number> = {};
+    for (const pair of oriented) {
+      for (const [ccy, amt] of Object.entries(pair.left)) {
+        if (amt > 0) totals[ccy] = (totals[ccy] || 0) + amt;
+      }
+      for (const [ccy, amt] of Object.entries(pair.right)) {
+        if (amt > 0) totals[ccy] = (totals[ccy] || 0) + amt;
+      }
+    }
+
+    return { allPairs: oriented, allTotalsMap: totals };
   }, [allDebts, locale, myId]);
-
-
 
   // свернуто/развернуто для колонок пары (All)
   const [expandedAll, setExpandedAll] = useState<Record<PairKey, { left: boolean; right: boolean }>>({});
@@ -339,41 +359,6 @@ export default function GroupBalanceTabSmart({
       </div>
     );
   });
-
-  /* ===== Верхняя полоска итогов (Mine): скролл + фейд градиенты ===== */
-  const TotalsScroller = ({ text }: { text: string }) => {
-    if (!text) return null;
-    return (
-      <div className="relative mb-2">
-        {/* фейды слева/справа */}
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 w-6"
-          style={{
-            background:
-              "linear-gradient(to right, var(--tg-bg-color,transparent) 0%, rgba(0,0,0,0) 100%)",
-          }}
-        />
-        <div
-          className="pointer-events-none absolute inset-y-0 right-0 w-6"
-          style={{
-            background:
-              "linear-gradient(to left, var(--tg-bg-color,transparent) 0%, rgba(0,0,0,0) 100%)",
-          }}
-        />
-        <div
-          className="overflow-x-auto no-scrollbar"
-          style={{ WebkitOverflowScrolling: "touch" }}
-        >
-          <div
-            className="inline-block whitespace-nowrap text-[12px]"
-            style={{ color: "var(--tg-hint-color)" }}
-          >
-            {text}
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   /* ===== Разметка ===== */
   return (
@@ -416,9 +401,58 @@ export default function GroupBalanceTabSmart({
             {t("loading")}
           </div>
         ) : tab === "mine" ? (
-          /* ================= Мой баланс: ДОЛЖЕН БЫТЬ «КАК БЫЛО» ================= */
+          /* ================= Мой баланс ================= */
           <div>
-            {/* Заголовки + итоги со скроллом и фейдом */}
+            {/* ИТОГО (мой баланс) */}
+            <div
+              className="rounded-xl border p-3 mb-2"
+              style={{
+                borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                background: "var(--tg-card-bg)",
+              }}
+            >
+              <div className="text-[13px] font-semibold mb-2" style={{ color: "var(--tg-text-color)" }}>
+                {t("total") || "Итого"}
+              </div>
+              <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <div className="min-w-0">
+                  <div className="text-[12px] opacity-80 mb-1" style={{ color: "var(--tg-hint-color)" }}>
+                    {t("i_owe") || "Я должен"}
+                  </div>
+                  <div>
+                    {Object.keys(leftTotalsMap).filter((k) => leftTotalsMap[k] > 0).length === 0 ? (
+                      <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
+                    ) : (
+                      Object.entries(leftTotalsMap)
+                        .filter(([, v]) => v > 0)
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([ccy, sum]) => (
+                          <Pill key={`lt-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
+                        ))
+                    )}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[12px] opacity-80 mb-1" style={{ color: "var(--tg-hint-color)" }}>
+                    {t("they_owe_me") || "Мне должны"}
+                  </div>
+                  <div>
+                    {Object.keys(rightTotalsMap).filter((k) => rightTotalsMap[k] > 0).length === 0 ? (
+                      <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
+                    ) : (
+                      Object.entries(rightTotalsMap)
+                        .filter(([, v]) => v > 0)
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([ccy, sum]) => (
+                          <Pill key={`rt-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
+                        ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Заголовки колонок */}
             <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <div className="min-w-0">
                 <div
@@ -427,13 +461,6 @@ export default function GroupBalanceTabSmart({
                 >
                   {t("i_owe") || "Я должен"}
                 </div>
-                {leftCards.length === 0 ? (
-                  <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
-                    {t("group_balance_no_debts_left")}
-                  </div>
-                ) : (
-                  <TotalsScroller text={leftTotalsInline} />
-                )}
               </div>
               <div className="min-w-0">
                 <div
@@ -442,17 +469,10 @@ export default function GroupBalanceTabSmart({
                 >
                   {t("they_owe_me") || "Мне должны"}
                 </div>
-                {rightCards.length === 0 ? (
-                  <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
-                    {t("group_balance_no_debts_right")}
-                  </div>
-                ) : (
-                  <TotalsScroller text={rightTotalsInline} />
-                )}
               </div>
             </div>
 
-            {/* Пары карточек: ЖЁСТКО 2 колонки + выравнивание высот, как было */}
+            {/* Пары карточек: 2 колонки + выравнивание высот, как было */}
             <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {mineRows.map(({ left, right }, rowIdx) => {
                 if (!left && !right) return null;
@@ -667,6 +687,37 @@ export default function GroupBalanceTabSmart({
         ) : (
           /* ================= Все балансы: карточки-пары пользователей ================= */
           <div className="flex flex-col gap-2">
+            {/* ИТОГО (вся группа) */}
+            <div
+              className="rounded-xl border p-3"
+              style={{
+                borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                background: "var(--tg-card-bg)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[13px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
+                  {t("total") || "Итого"}
+                </div>
+                <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
+                  {t("pairs") || "Пары"}: {allPairs.length}
+                </div>
+              </div>
+              <div>
+                {Object.keys(allTotalsMap).filter((k) => allTotalsMap[k] > 0).length === 0 ? (
+                  <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
+                ) : (
+                  Object.entries(allTotalsMap)
+                    .filter(([, v]) => v > 0)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([ccy, sum]) => (
+                      <Pill key={`all-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
+                    ))
+                )}
+              </div>
+            </div>
+
+            {/* Список пар */}
             {allPairs.length === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts_all")}
@@ -701,9 +752,13 @@ export default function GroupBalanceTabSmart({
                       background: "var(--tg-card-bg)",
                     }}
                   >
-                    {/* Заголовок пары */}
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
+                    {/* Заголовок пары — стрелка строго по центру, правый аватар сразу после стрелки */}
+                    <div
+                      className="grid items-center mb-2"
+                      style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
+                    >
+                      {/* Левый участник */}
+                      <div className="flex items-center gap-2 min-w-0 justify-start">
                         <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={40} />
                         <div
                           className="text-[14px] font-medium truncate"
@@ -713,12 +768,18 @@ export default function GroupBalanceTabSmart({
                           {firstOnly(pair.u1)}
                         </div>
                       </div>
-                      <ArrowLeftRight
-                        size={20}
-                        style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
-                        aria-hidden
-                      />
-                      <div className="flex items-center gap-2 min-w-0">
+
+                      {/* Стрелка по центру */}
+                      <div className="flex justify-center">
+                        <ArrowLeftRight
+                          size={20}
+                          style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
+                          aria-hidden
+                        />
+                      </div>
+
+                      {/* Правый участник — аватар сразу после стрелки */}
+                      <div className="flex items-center gap-2 min-w-0 justify-start">
                         <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={40} />
                         <div
                           className="text-[14px] font-medium truncate"
