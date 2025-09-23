@@ -48,6 +48,24 @@ class LocalErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 
 const PAGE_SIZE = 24
 
+// Локальный хелпер: аккуратно мержим без дублей по user.id, сохраняя порядок
+const mergeUniqueMembers = (prev: GroupMember[], chunk: GroupMember[]): GroupMember[] => {
+  const out = [...prev]
+  const seen = new Set<number>()
+  for (const m of prev) {
+    const uid = Number((m as any)?.user?.id)
+    if (Number.isFinite(uid)) seen.add(uid)
+  }
+  for (const m of chunk) {
+    const uid = Number((m as any)?.user?.id)
+    if (!Number.isFinite(uid)) continue
+    if (seen.has(uid)) continue
+    seen.add(uid)
+    out.push(m)
+  }
+  return out
+}
+
 const GroupDetailsPage = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -100,12 +118,12 @@ const GroupDetailsPage = () => {
 
         setGroup(safe as Group)
 
-        // Для archived/soft-deleted: берём участников из detail и НЕ докачиваем
+        // Для archived/soft-deleted: берём участников из detail, ДЕДУБЛИМ и НЕ докачиваем
         const isDeleted_ = Boolean((safe as any)?.deleted_at)
         const isArchived_ = (safe as any)?.status === "archived"
         const initialMembers = (safe as any)?.members
         if ((isDeleted_ || isArchived_) && Array.isArray(initialMembers) && initialMembers.length > 0) {
-          setMembers(initialMembers as GroupMember[])
+          setMembers(prev => mergeUniqueMembers(prev, initialMembers as GroupMember[]))
           setHasMore(false)
         }
       } catch (err: any) {
@@ -125,7 +143,7 @@ const GroupDetailsPage = () => {
       setMembersLoading(true)
       const res = await getGroupMembers(id, page * PAGE_SIZE, PAGE_SIZE)
       const newItems = res.items || []
-      setMembers(prev => [...prev, ...newItems])
+      setMembers(prev => mergeUniqueMembers(prev, newItems as GroupMember[]))
 
       const currentCount = (page * PAGE_SIZE) + newItems.length
       setHasMore(currentCount < (res.total || 0))
@@ -330,3 +348,4 @@ const GroupDetailsPage = () => {
 }
 
 export default GroupDetailsPage
+
