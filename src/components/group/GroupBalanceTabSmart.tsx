@@ -1,8 +1,10 @@
 // src/components/group/GroupBalanceTabSmart.tsx
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { HandCoins, Bell, ArrowRight, ArrowLeft, ArrowLeftRight } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, ArrowRight, Bell, HandCoins, X } from "lucide-react";
 import { useUserStore } from "../../store/userStore";
+import { useGroupsStore } from "../../store/groupsStore";
+import { useParams } from "react-router-dom";
 
 /* ===== Types ===== */
 type User = {
@@ -24,22 +26,25 @@ type Props = {
   onFabClick: () => void;
 
   onRepay?: (user: User, amount: number, currency: string) => void;
-  onRemind?: (user: User, amount: number, currency: string) => void;
 };
 
-/* ===== Utils ===== */
+/* ---------- utils ---------- */
+const AVA = 32; // единый размер всех аватаров в этом компоненте
 
 const firstOnly = (u?: User) => {
   if (!u) return "";
-  const name = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+  const name = (u.first_name || "").trim();
   return name || u.username || `#${u.id}`;
 };
 
-/** «1 234.50 USD», скрывает .00 и уважает валюты без копеек */
 const nbsp = "\u00A0";
 export function fmtAmountSmart(value: number, currency: string, locale?: string) {
   try {
-    const nfCurrency = new Intl.NumberFormat(locale, { style: "currency", currency, currencyDisplay: "code" });
+    const nfCurrency = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+    });
     const parts = nfCurrency.formatToParts(Math.abs(value));
     const fractionPart = parts.find((p) => p.type === "fraction");
     const hasCents = !!fractionPart && Number(fractionPart.value) !== 0;
@@ -56,15 +61,7 @@ export function fmtAmountSmart(value: number, currency: string, locale?: string)
   }
 }
 
-function Avatar({
-  url,
-  alt,
-  size = 40, // по умолчанию 40 — используем для шапки секции (u1)
-}: {
-  url?: string;
-  alt?: string;
-  size?: number;
-}) {
+function Avatar({ url, alt, size = AVA }: { url?: string; alt?: string; size?: number }) {
   return url ? (
     <img
       src={url}
@@ -82,169 +79,147 @@ function Avatar({
   );
 }
 
-/* ===== Кнопки ===== */
+type CurrencyLine = { currency: string; amount: number }; // абсолют
+type CardItem = { user: User; lines: CurrencyLine[]; total: number };
+
 const btn3D =
   "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition " +
   "bg-gradient-to-b from-[color:var(--tg-secondary-bg-color,#e7e7e7)] to-[color:rgba(0,0,0,0.04)] " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] hover:brightness-105";
 
-/* ===== Константы раскладки ===== */
 const LINE_H = 22;
 const V_GAP = 6;
-const CARD_AVA = 28; // ⟵ уменьшенный аватар для карточек (−30% от 40)
 
-/* ===== Компоненты UI ===== */
+const Divider = ({ leftPx = AVA + 24 }) => (
+  <div
+    className="h-px bg-[var(--tg-hint-color)] opacity-15 w-full"
+    style={{ marginLeft: leftPx, width: `calc(100% - ${leftPx}px)` }}
+  />
+);
 
-const DebtLine: React.FC<{
-  amount: number;
-  currency: string;
-  color: "red" | "green";
-  arrow: "left" | "right";
-  locale: string;
-}> = ({ amount, currency, color, arrow, locale }) => {
-  const Icon = arrow === "left" ? ArrowLeft : ArrowRight;
-  const col = color === "red" ? "var(--tg-destructive-text,#d7263d)" : "var(--tg-success-text,#1aab55)";
-  return (
-    <div className="flex items-center gap-1">
-      <Icon size={14} style={{ color: col }} aria-hidden />
-      <span className="text-[14px] font-semibold" style={{ color: col }}>
-        {fmtAmountSmart(amount, currency, locale)}
-      </span>
-    </div>
-  );
-};
-
-const Chip: React.FC<{
-  dir: "left" | "right";
-  amount: number;
-  currency: string;
-  color: "red" | "green";
-  locale: string;
-  title?: string;
-}> = ({ dir, amount, currency, color, locale, title }) => {
-  const Icon = dir === "left" ? ArrowLeft : ArrowRight;
-  const col = color === "red" ? "var(--tg-destructive-text,#d7263d)" : "var(--tg-success-text,#1aab55)";
-  return (
-    <span
-      className="inline-flex items-center gap-1 h-7 px-2 rounded-full border text-[12px]"
-      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-      title={title}
-      aria-label={title}
-    >
-      <Icon size={14} style={{ color: col }} aria-hidden />
-      <span className="font-semibold" style={{ color: col }}>
-        {fmtAmountSmart(amount, currency, locale)}
-      </span>
-    </span>
-  );
-};
-
-/* ==== Напоминание: генерация текста + буфер + модалка ==== */
-
-function buildReminderText(opts: {
-  locale: string;
-  name?: string;
-  amount: number;
-  currency: string;
-}) {
-  const { locale, name, amount, currency } = opts;
-  const amountStr = fmtAmountSmart(amount, currency, locale);
-  const hasName = !!(name && name.trim());
-  const namePart = hasName ? `, ${name}` : "";
-
-  if (locale.startsWith("ru")) {
-    const hello = hasName ? `Привет${namePart}!` : "Привет!";
-    return `${hello} Напоминаю про долг ${amountStr} по группе в Splitto. Спасибо! 🙏`;
-  }
-  if (locale.startsWith("es")) {
-    const hello = hasName ? `¡Hola${namePart}!` : "¡Hola!";
-    return `${hello} Te recuerdo la deuda de ${amountStr} del grupo en Splitto. ¡Gracias! 🙏`;
-  }
-  const hello = hasName ? `Hi${namePart}!` : "Hi!";
-  return `${hello} Just a friendly reminder about the ${amountStr} in our Splitto group. Thanks! 🙏`;
-}
-
+/* ====== Clipboard helper ====== */
 async function copyToClipboard(text: string) {
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      return ok;
-    } catch {
-      return false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
     }
+  } catch {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
   }
 }
 
-/* ================== main ================== */
+/* ====== Message builder ====== */
+function buildReminderMessage(opts: {
+  locale: string;
+  name?: string;
+  username?: string;
+  amounts: Record<string, number>; // currency -> sum
+  groupName?: string;
+}) {
+  const { locale, name, amounts, groupName } = opts;
+  const hasName = !!(name && name.trim());
+  const hello =
+    locale.startsWith("ru")
+      ? hasName
+        ? `Привет, ${name}!`
+        : "Привет!"
+      : locale.startsWith("es")
+      ? hasName
+        ? `¡Hola, ${name}!`
+        : "¡Hola!"
+      : hasName
+      ? `Hi, ${name}!`
+      : "Hi!";
 
+  const groupPart = groupName && groupName.trim()
+    ? (locale.startsWith("ru")
+        ? `в группе «${groupName}»`
+        : locale.startsWith("es")
+        ? `en el grupo “${groupName}”`
+        : `in the “${groupName}” group`)
+    : (locale.startsWith("ru") ? "в нашей группе" : locale.startsWith("es") ? "en nuestro grupo" : "in our group");
+
+  const list = Object.entries(amounts)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([ccy, sum]) => fmtAmountSmart(sum, ccy, locale))
+    .join(locale.startsWith("ru") || locale.startsWith("es") ? ", " : ", ");
+
+  const ask =
+    locale.startsWith("ru")
+      ? "Сможешь закрыть долг?"
+      : locale.startsWith("es")
+      ? "¿Puedes saldar la deuda?"
+      : "Could you settle it?";
+
+  const youOweMe =
+    locale.startsWith("ru")
+      ? `По нашим расходам ${groupPart} ты должен мне: ${list}.`
+      : locale.startsWith("es")
+      ? `Según nuestros gastos ${groupPart}, me debes: ${list}.`
+      : `For our expenses ${groupPart}, you owe me: ${list}.`;
+
+  return `${hello}\n${youOweMe}\n${ask}`;
+}
+
+/* ================= main ================= */
 export default function GroupBalanceTabSmart({
-  myBalanceByCurrency, // не используется напрямую
+  myBalanceByCurrency,
   myDebts,
   allDebts,
   loading,
   onFabClick,
   onRepay,
-  onRemind,
 }: Props) {
   const { t, i18n } = useTranslation();
-  const locale = (i18n.language || "ru").toLowerCase();
+  const locale = (i18n.language || "ru").split("-")[0];
   const me = useUserStore((s) => s.user);
   const myId = Number(me?.id) || 0;
 
   const [tab, setTab] = useState<"mine" | "all">("mine");
 
-  /* ===== Модалка «текст скопирован» для 🔔 ===== */
-  const [remindOpen, setRemindOpen] = useState(false);
-  const [remindUsername, setRemindUsername] = useState<string | undefined>();
-  const [remindText, setRemindText] = useState<string>("");
+  // group name (для текста напоминания)
+  const params = useParams();
+  const groupId = Number(params.groupId || params.id || 0) || undefined;
+  const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? []);
+  const groupName = useMemo(() => {
+    const g = groups.find((x: any) => Number(x?.id) === Number(groupId));
+    return (g?.name as string) || undefined;
+  }, [groups, groupId]);
 
-  const openTelegramContact = useCallback(() => {
-    if (!remindUsername) return;
-    const url = `https://t.me/${remindUsername}`;
-    try {
-      window.open(url, "_blank");
-    } catch {
-      window.location.href = url;
-    }
-  }, [remindUsername]);
-
-  const doRemind = useCallback(
-    async (user: User, amount: number, currency: string) => {
-      const text = buildReminderText({
-        locale,
-        name: user.first_name || undefined,
-        amount,
-        currency,
-      });
-      setRemindText(text);
-      await copyToClipboard(text);
-      setRemindUsername(user.username || undefined);
-      setRemindOpen(true);
-      if (onRemind) setTimeout(() => onRemind(user, amount, currency), 0);
-    },
-    [locale, onRemind]
-  );
-
-  /* ====== «Мой баланс»: подготовка ====== */
-  type CurrencyLine = { currency: string; amount: number }; // абсолют
-  type CardItem = { user: User; lines: CurrencyLine[]; total: number };
-
-  const minePrepared = useMemo(() => {
+  /* ---------- Мой баланс: подготовка данных ---------- */
+  const {
+    leftCards,
+    rightCards,
+    leftTotals,
+    rightTotals,
+    showChipsMine,
+  }: {
+    leftCards: CardItem[];
+    rightCards: CardItem[];
+    leftTotals: Record<string, number>;
+    rightTotals: Record<string, number>;
+    showChipsMine: boolean;
+  } = useMemo(() => {
     const leftMap = new Map<number, CardItem>(); // я должен
     const rightMap = new Map<number, CardItem>(); // мне должны
     const leftTotals: Record<string, number> = {};
     const rightTotals: Record<string, number> = {};
+    let leftLines = 0;
+    let rightLines = 0;
 
     for (const d of myDebts) {
       const abs = Math.abs(d.amount);
@@ -257,14 +232,17 @@ export default function GroupBalanceTabSmart({
         ci.total += abs;
         leftMap.set(key, ci);
         leftTotals[d.currency] = (leftTotals[d.currency] || 0) + abs;
+        leftLines++;
       } else {
         const ci = rightMap.get(key) || { user: d.user, lines: [], total: 0 };
         ci.lines.push({ currency: d.currency, amount: abs });
         ci.total += abs;
         rightMap.set(key, ci);
         rightTotals[d.currency] = (rightTotals[d.currency] || 0) + abs;
+        rightLines++;
       }
     }
+
     const sortCards = (a: CardItem, b: CardItem) => b.total - a.total;
     const sortLines = (a: CurrencyLine, b: CurrencyLine) => a.currency.localeCompare(b.currency);
 
@@ -275,7 +253,14 @@ export default function GroupBalanceTabSmart({
       .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
 
-    return { leftCards, rightCards, leftTotals, rightTotals };
+    // логика показа чипов: если хотя бы в одной колонке есть "сжатие" — показываем обе
+    const leftUnique = Object.keys(leftTotals).length;
+    const rightUnique = Object.keys(rightTotals).length;
+    const leftCompressed = leftLines > 0 && leftUnique < leftLines;
+    const rightCompressed = rightLines > 0 && rightUnique < rightLines;
+    const showChipsMine = leftCompressed || rightCompressed;
+
+    return { leftCards, rightCards, leftTotals, rightTotals, showChipsMine };
   }, [myDebts]);
 
   const [expandedMine, setExpandedMine] = useState<{ left: Record<number, boolean>; right: Record<number, boolean> }>({
@@ -286,27 +271,31 @@ export default function GroupBalanceTabSmart({
     setExpandedMine((s) => ({ ...s, [side]: { ...s[side], [uid]: !s[side][uid] } }));
 
   const mineRows = useMemo(() => {
-    const { leftCards, rightCards } = minePrepared;
     const maxLen = Math.max(leftCards.length, rightCards.length);
     const rows: Array<{ left?: CardItem; right?: CardItem }> = [];
     for (let i = 0; i < maxLen; i++) rows.push({ left: leftCards[i], right: rightCards[i] });
     return rows;
-  }, [minePrepared]);
+  }, [leftCards, rightCards]);
 
-  /* ====== «Все балансы»: агрегирование ====== */
-  type PairKey = string; // "minId-maxId"
-  type SumMap = Record<string, number>; // currency -> amount
-  type PairCard = { u1: User; u2: User; left: SumMap; right: SumMap };
+  /* ---------- Все балансы: агрегирование по парам и секциям ---------- */
+  type PairKey = string;
+  type SumMap = Record<string, number>;
+  type PairCard = { u1: User; u2: User; left: SumMap; right: SumMap }; // left: u1->u2, right: u2->u1
 
-  const allSections = useMemo(() => {
+  type Section = {
+    u1: User;
+    pairs: PairCard[];
+    sumsLeft: SumMap; // u1 -> *
+    sumsRight: SumMap; // * -> u1
+    showChipsLeft: boolean;
+    showChipsRight: boolean;
+  };
+
+  const sections: Section[] = useMemo(() => {
+    // собрать пары (канонический ключ по id)
     type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
     const byPair = new Map<PairKey, Agg>();
 
-    const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
-    const cmpByName = (x: User, y: User) =>
-      nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) || x.id - y.id;
-
-    // соберём пары (канонически minId-maxId), суммы — по модулю
     for (const p of allDebts) {
       const amt = Math.abs(p.amount);
       if (amt <= 0) continue;
@@ -326,67 +315,190 @@ export default function GroupBalanceTabSmart({
       }
     }
 
-    // ориентируем: текущий пользователь всегда слева, иначе — по имени
+    // ориентировать пары так, чтобы текущий пользователь был слева (если участвует), иначе — по алфавиту
+    const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
+    const cmpByName = (x: User, y: User) =>
+      nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) || x.id - y.id;
+
     const oriented: PairCard[] = [];
     for (const rec of byPair.values()) {
       const { low, high, lowToHigh, highToLow } = rec;
       let u1: User, u2: User, left: SumMap, right: SumMap;
       if (myId && myId === low.id) {
-        u1 = low; u2 = high; left = lowToHigh; right = highToLow;
+        u1 = low;
+        u2 = high;
+        left = lowToHigh;
+        right = highToLow;
       } else if (myId && myId === high.id) {
-        u1 = high; u2 = low; left = highToLow; right = lowToHigh;
-      } else if (cmpByName(low, high) <= 0) {
-        u1 = low; u2 = high; left = lowToHigh; right = highToLow;
+        u1 = high;
+        u2 = low;
+        left = highToLow;
+        right = lowToHigh;
       } else {
-        u1 = high; u2 = low; left = highToLow; right = lowToHigh;
+        if (cmpByName(low, high) <= 0) {
+          u1 = low;
+          u2 = high;
+          left = lowToHigh;
+          right = highToLow;
+        } else {
+          u1 = high;
+          u2 = low;
+          left = highToLow;
+          right = lowToHigh;
+        }
       }
       oriented.push({ u1, u2, left, right });
     }
 
-    // сгруппируем по u1
-    const groups = new Map<number, { u1: User; pairs: PairCard[] }>();
-    for (const pc of oriented) {
-      const g = groups.get(pc.u1.id) || { u1: pc.u1, pairs: [] };
-      g.pairs.push(pc);
-      groups.set(pc.u1.id, g);
+    // сгруппировать по u1
+    const byU1 = new Map<number, PairCard[]>();
+    for (const p of oriented) {
+      const arr = byU1.get(p.u1.id) || [];
+      arr.push(p);
+      byU1.set(p.u1.id, arr);
     }
 
-    // сортируем секции и пары
-    const sections = Array.from(groups.values());
-    sections.sort((A, B) => {
-      const mineA = A.u1.id === myId;
-      const mineB = B.u1.id === myId;
-      if (mineA !== mineB) return mineA ? -1 : 1;
-      return firstOnly(A.u1).toLowerCase().localeCompare(firstOnly(B.u1).toLowerCase(), locale, {
-        sensitivity: "base",
-      }) || A.u1.id - B.u1.id;
-    });
-    for (const s of sections) {
-      s.pairs.sort(
-        (A, B) =>
-          firstOnly(A.u2).toLowerCase().localeCompare(firstOnly(B.u2).toLowerCase(), locale, {
-            sensitivity: "base",
-          }) || A.u2.id - B.u2.id
+    // сортировка секций: мои — первыми, затем по имени u1; внутри — по имени u2
+    const secs: Section[] = Array.from(byU1.entries())
+      .map(([u1id, pairs]) => {
+        const u1 = pairs[0].u1;
+        const sumsLeft: SumMap = {};
+        const sumsRight: SumMap = {};
+        let leftLines = 0;
+        let rightLines = 0;
+
+        // суммирование по секции и подсчёт строк/уникальных валют
+        for (const pr of pairs) {
+          for (const [ccy, amt] of Object.entries(pr.left)) {
+            if (amt > 0) {
+              sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
+              leftLines++;
+            }
+          }
+          for (const [ccy, amt] of Object.entries(pr.right)) {
+            if (amt > 0) {
+              sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
+              rightLines++;
+            }
+          }
+        }
+        const leftCompressed = leftLines > 0 && Object.keys(sumsLeft).length < leftLines;
+        const rightCompressed = rightLines > 0 && Object.keys(sumsRight).length < rightLines;
+
+        // сортировка пар по имени u2
+        pairs.sort((A, B) => {
+          const kA = nameKey(A.u2);
+          const kB = nameKey(B.u2);
+          return kA.localeCompare(kB, locale, { sensitivity: "base" }) || A.u2.id - B.u2.id;
+        });
+
+        return {
+          u1,
+          pairs,
+          sumsLeft,
+          sumsRight,
+          showChipsLeft: leftCompressed,
+          showChipsRight: rightCompressed,
+        };
+      })
+      .sort((S1, S2) => {
+        const mine1 = S1.u1.id === myId ? 1 : 0;
+        const mine2 = S2.u1.id === myId ? 1 : 0;
+        if (mine1 !== mine2) return mine2 - mine1; // мои — первыми
+        const nk1 = nameKey(S1.u1);
+        const nk2 = nameKey(S2.u1);
+        return nk1.localeCompare(nk2, locale, { sensitivity: "base" }) || S1.u1.id - S2.u1.id;
+      });
+
+    return secs;
+  }, [allDebts, locale, myId]);
+
+  /* ===== Общий UI-кусок: строчка валюты с суммой и стрелкой ===== */
+  const DebtLine = React.memo(
+    ({
+      amount,
+      currency,
+      color,
+      arrow,
+      locale,
+    }: {
+      amount: number;
+      currency: string;
+      color: "red" | "green";
+      arrow: "left" | "right";
+      locale: string;
+    }) => {
+      const isRed = color === "red";
+      const col = isRed ? "var(--tg-destructive-text,#d7263d)" : "var(--tg-success-text,#1aab55)";
+      const Icon = arrow === "left" ? ArrowLeft : ArrowRight;
+      return (
+        <div className="flex items-center gap-1">
+          <Icon size={14} style={{ color: col }} aria-hidden />
+          <span className="text-[14px] font-semibold" style={{ color: col }}>
+            {fmtAmountSmart(amount, currency, locale)}
+          </span>
+        </div>
       );
     }
+  );
 
-    return sections;
-  }, [allDebts, myId, locale]);
+  /* ===== Chips ===== */
+  const Chip = ({
+    dir,
+    amount,
+    currency,
+  }: {
+    dir: "out" | "in"; // out = я должен / u1->*, in = мне должны / *->u1
+    amount: number;
+    currency: string;
+  }) => {
+    const isOut = dir === "out";
+    const col = isOut ? "var(--tg-destructive-text,#d7263d)" : "var(--tg-success-text,#1aab55)";
+    const Icon = isOut ? ArrowRight : ArrowLeft;
+    return (
+      <div
+        className="h-7 px-2 rounded-lg border flex items-center gap-1 text-[13px]"
+        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      >
+        <Icon size={14} style={{ color: col }} />
+        <span style={{ color: col, fontWeight: 600 }}>{fmtAmountSmart(amount, currency, locale)}</span>
+      </div>
+    );
+  };
 
-  const [expandedAll, setExpandedAll] = useState<Record<PairKey, { left: boolean; right: boolean }>>({});
-  const toggleAll = (key: PairKey, side: "left" | "right") =>
-    setExpandedAll((s) => ({ ...s, [key]: { left: !!s[key]?.left, right: !!s[key]?.right, [side]: !s[key]?.[side] } }));
+  /* ===== Напоминание (модалка) ===== */
+  const [remindOpen, setRemindOpen] = useState(false);
+  const [remindUsername, setRemindUsername] = useState<string | undefined>(undefined);
+  const [remindMessage, setRemindMessage] = useState<string>("");
 
-  /* Разделитель «как в ContactsList» (с отступом слева под аватар 40px: 64px = ml-16) */
-  const Sep = () => (
-    <div className="h-px bg-[var(--tg-hint-color)] opacity-15 ml-16" />
+  const openTelegram = useCallback(() => {
+    if (!remindUsername) return;
+    const url = `https://t.me/${remindUsername}`;
+    window.open(url, "_blank");
+  }, [remindUsername]);
+
+  const triggerRemind = useCallback(
+    async (user: User, amounts: Record<string, number>) => {
+      const msg = buildReminderMessage({
+        locale,
+        name: firstOnly(user),
+        username: user.username,
+        amounts,
+        groupName,
+      });
+      await copyToClipboard(msg);
+      setRemindUsername(user.username);
+      setRemindMessage(msg);
+      setRemindOpen(true);
+    },
+    [locale, groupName]
   );
 
   /* ===== Разметка ===== */
   return (
     <div className="w-full select-none" style={{ WebkitTapHighlightColor: "transparent" }}>
       {/* микротабы */}
-      <div className="flex justify-center mt-1 mb-2">
+      <div className="flex justify-center mt-1 mb-1">
         <div
           className="inline-flex rounded-xl border overflow-hidden"
           style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
@@ -411,51 +523,47 @@ export default function GroupBalanceTabSmart({
       {/* Контент */}
       <div className="px-2 py-2">
         {loading ? (
-          <div className="py-8 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
+          <div className="py-6 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
           /* ================= Мой баланс ================= */
           <div>
-            {/* Заголовки + чипы под ними */}
+            {/* Заголовки */}
             <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <div className="min-w-0">
-                <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                <div className="text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                   {t("i_owe") || "Я должен"}
-                </div>
-                <div className="flex flex-wrap gap-1.5 mb-2" aria-label={t("group_balance_totals_aria") as string}>
-                  {Object.entries(minePrepared.leftTotals)
-                    .filter(([, sum]) => sum > 0)
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([ccy, sum]) => (
-                      <Chip key={`L-${ccy}`} dir="right" amount={sum} currency={ccy} color="red" locale={locale} />
-                    ))}
-                  {Object.keys(minePrepared.leftTotals).filter((k) => minePrepared.leftTotals[k] > 0).length === 0 && (
-                    <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
-                      {t("group_balance_no_debts_left")}
-                    </div>
-                  )}
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                <div className="text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                   {t("they_owe_me") || "Мне должны"}
-                </div>
-                <div className="flex flex-wrap gap-1.5 mb-2" aria-label={t("group_balance_totals_aria") as string}>
-                  {Object.entries(minePrepared.rightTotals)
-                    .filter(([, sum]) => sum > 0)
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([ccy, sum]) => (
-                      <Chip key={`R-${ccy}`} dir="left" amount={sum} currency={ccy} color="green" locale={locale} />
-                    ))}
-                  {Object.keys(minePrepared.rightTotals).filter((k) => minePrepared.rightTotals[k] > 0).length === 0 && (
-                    <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
-                      {t("group_balance_no_debts_right")}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
 
-            {/* Пары карточек: 2 колонки */}
+            {/* Чипы — только если нужно, и тогда в обеих колонках */}
+            {showChipsMine && (
+              <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {Object.entries(leftTotals)
+                    .filter(([, v]) => v > 0)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([ccy, sum]) => (
+                      <Chip key={`L-${ccy}`} dir="out" amount={sum} currency={ccy} />
+                    ))}
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {Object.entries(rightTotals)
+                    .filter(([, v]) => v > 0)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([ccy, sum]) => (
+                      <Chip key={`R-${ccy}`} dir="in" amount={sum} currency={ccy} />
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Пары карточек */}
             <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {mineRows.map(({ left, right }, rowIdx) => {
                 if (!left && !right) return null;
@@ -468,42 +576,71 @@ export default function GroupBalanceTabSmart({
                 const Lvis = left ? (Lexpanded ? Lfull : Math.min(2, Lfull)) : 0;
                 const Rvis = right ? (Rexpanded ? Rfull : Math.min(2, Rfull)) : 0;
 
-                const bothCollapsed = (!!left && !Lexpanded) && (!!right && !Rexpanded);
+                const bothCollapsed = !!left && !Lexpanded && !!right && !Rexpanded;
                 const rowVisible = Math.max(Lvis, Rvis);
                 const rowMinHeight = rowVisible > 0 ? rowVisible * LINE_H + (rowVisible - 1) * V_GAP : 0;
 
                 return (
                   <React.Fragment key={`row-${rowIdx}`}>
-                    {/* Левая карточка */}
+                    {/* Левая карточка (я должен) */}
                     <div className="min-w-0">
                       {left ? (
-                        <div className="rounded-xl border p-2" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
+                        <div
+                          className="rounded-xl border p-2"
+                          style={{
+                            borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                            background: "var(--tg-card-bg)",
+                          }}
+                        >
+                          {/* шапка: только аватар + имя */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} size={CARD_AVA} />
-                            <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(left.user)}>
+                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} size={AVA} />
+                            <div
+                              className="text-[14px] font-medium truncate"
+                              style={{ color: "var(--tg-text-color)" }}
+                              title={firstOnly(left.user)}
+                            >
                               {firstOnly(left.user)}
                             </div>
                           </div>
 
+                          {/* суммы */}
                           <div
                             className="flex flex-col gap-[6px]"
                             style={{
-                              minHeight: bothCollapsed ? rowMinHeight : Math.min(2, Lfull) * LINE_H + (Math.min(2, Lfull) - 1) * V_GAP,
+                              minHeight: bothCollapsed
+                                ? rowMinHeight
+                                : Math.min(2, Lfull) * LINE_H + (Math.min(2, Lfull) - 1) * V_GAP,
                               justifyContent: bothCollapsed && Lvis < Rvis ? "center" : "flex-start",
                             }}
                           >
                             {(left.lines.slice(0, Lexpanded ? Lfull : Math.min(2, Lfull))).map((ln, i) => (
-                              <div key={`L-${left.user.id}-${ln.currency}-${i}`} className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
+                              <div
+                                key={`L-${left.user.id}-${ln.currency}-${i}`}
+                                className="grid items-center"
+                                style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                              >
                                 <DebtLine amount={ln.amount} currency={ln.currency} color="red" arrow="right" locale={locale} />
-                                <button type="button" onClick={() => onRepay?.(left.user, ln.amount, ln.currency)} className={btn3D} aria-label={t("repay_debt") as string} title={t("repay_debt") as string}>
+                                <button
+                                  type="button"
+                                  onClick={() => onRepay?.(left.user, ln.amount, ln.currency)}
+                                  className={btn3D}
+                                  aria-label={t("repay_debt") as string}
+                                  title={t("repay_debt") as string}
+                                >
                                   <HandCoins size={18} />
                                 </button>
                               </div>
                             ))}
                             {Lfull > 2 && (
                               <div className="pt-1">
-                                <button type="button" onClick={() => toggleMine("left", left.user.id)} className="text-[12px] opacity-80 hover:opacity-100" style={{ color: "var(--tg-hint-color)" }}>
-                                  {Lexpanded ? (t("close") || "Свернуть") : `${t("tx_modal.all") || "ВСЕ"} · +${Lfull - 2}`}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMine("left", left.user.id)}
+                                  className="text-[12px] opacity-80 hover:opacity-100"
+                                  style={{ color: "var(--tg-hint-color)" }}
+                                >
+                                  {Lexpanded ? t("close") || "Свернуть" : `${t("all") || "ВСЕ"} · +${Lfull - 2}`}
                                 </button>
                               </div>
                             )}
@@ -512,54 +649,66 @@ export default function GroupBalanceTabSmart({
                       ) : null}
                     </div>
 
-                    {/* Правая карточка */}
+                    {/* Правая карточка (мне должны) */}
                     <div className="min-w-0">
                       {right ? (
-                        <div className="rounded-xl border p-2" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
+                        <div
+                          className="rounded-xl border p-2"
+                          style={{
+                            borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                            background: "var(--tg-card-bg)",
+                          }}
+                        >
+                          {/* шапка: только аватар + имя */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} size={CARD_AVA} />
-                            <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(right.user)}>
+                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} size={AVA} />
+                            <div
+                              className="text-[14px] font-medium truncate"
+                              style={{ color: "var(--tg-text-color)" }}
+                              title={firstOnly(right.user)}
+                            >
                               {firstOnly(right.user)}
                             </div>
                           </div>
 
-                          {/* список сумм + одна 🔔 на всю колонку */}
+                          {/* суммы + одна кнопка Напомнить на колонку */}
                           <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
                             <div
                               className="flex flex-col gap-[6px]"
                               style={{
-                                minHeight: bothCollapsed ? rowMinHeight : Math.min(2, Rfull) * LINE_H + (Math.min(2, Rfull) - 1) * V_GAP,
-                                justifyContent: bothCollapsed && Rvis < Lvis ? "center" : "flex-start",
+                                minHeight:
+                                  (Rexpanded ? Rfull : Math.min(2, Rfull)) * LINE_H +
+                                  ((Rexpanded ? Rfull : Math.min(2, Rfull)) - 1) * V_GAP,
                               }}
                             >
                               {(right.lines.slice(0, Rexpanded ? Rfull : Math.min(2, Rfull))).map((ln, i) => (
-                                <div key={`R-${right.user.id}-${ln.currency}-${i}`} className="grid items-center" style={{ gridTemplateColumns: "1fr", columnGap: 6 }}>
-                                  {/* только сумма (зелёная ←); без пер-строчных 🔔 */}
+                                <div key={`R-${right.user.id}-${ln.currency}-${i}`} className="text-[14px] font-semibold">
                                   <DebtLine amount={ln.amount} currency={ln.currency} color="green" arrow="left" locale={locale} />
                                 </div>
                               ))}
                               {Rfull > 2 && (
                                 <div className="pt-1">
-                                  <button type="button" onClick={() => toggleMine("right", right.user.id)} className="text-[12px] opacity-80 hover:opacity-100" style={{ color: "var(--tg-hint-color)" }}>
-                                    {Rexpanded ? (t("close") || "Свернуть") : `${t("tx_modal.all") || "ВСЕ"} · +${Rfull - 2}`}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleMine("right", right.user.id)}
+                                    className="text-[12px] opacity-80 hover:opacity-100"
+                                    style={{ color: "var(--tg-hint-color)" }}
+                                  >
+                                    {Rexpanded ? t("close") || "Свернуть" : `${t("all") || "ВСЕ"} · +${Rfull - 2}`}
                                   </button>
                                 </div>
                               )}
                             </div>
 
-                            {/* одна 🔔 на колонку */}
-                            <div
-                              className="flex items-center justify-end"
-                              style={{
-                                minHeight: (Rexpanded ? Rfull : Math.min(2, Rfull)) * LINE_H + ((Rexpanded ? Rfull : Math.min(2, Rfull)) - 1) * V_GAP,
-                              }}
-                            >
+                            {/* одна кнопка Напомнить для всех долгов карточки */}
+                            <div className="flex items-center justify-end">
                               {Rfull > 0 && (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const ln = right.lines[0];
-                                    void doRemind(right.user, ln.amount, ln.currency);
+                                    const amounts: Record<string, number> = {};
+                                    for (const ln of right.lines) amounts[ln.currency] = (amounts[ln.currency] || 0) + ln.amount;
+                                    triggerRemind(right.user, amounts);
                                   }}
                                   className={btn3D}
                                   aria-label={t("remind_debt") as string}
@@ -579,119 +728,165 @@ export default function GroupBalanceTabSmart({
             </div>
           </div>
         ) : (
-          /* ================= Все балансы ================= */
-          <div className="flex flex-col gap-3">
-            {allSections.length === 0 ? (
+          /* ================= Все балансы (секции u1) ================= */
+          <div className="flex flex-col gap-2">
+            {sections.length === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
             ) : (
-              allSections.map((sec) => {
-                // суммарные чипы по u1: лево (u1→u2) — красные →; право (u2→u1) — зелёные ←
-                const sumLeft: Record<string, number> = {};
-                const sumRight: Record<string, number> = {};
-                for (const p of sec.pairs) {
-                  for (const [ccy, v] of Object.entries(p.left)) sumLeft[ccy] = (sumLeft[ccy] || 0) + v;
-                  for (const [ccy, v] of Object.entries(p.right)) sumRight[ccy] = (sumRight[ccy] || 0) + v;
-                }
-
+              sections.map((sec, sIdx) => {
                 return (
                   <div
-                    key={`sec-${sec.u1.id}`}
-                    className="rounded-2xl border p-3"
+                    key={`sec-${sec.u1.id}-${sIdx}`}
+                    className="rounded-xl border p-2"
                     style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
                   >
-                    {/* Шапка секции: аватар 40 + Имя Фамилия + @username */}
-                    <div className="flex items-center gap-3 mb-2">
-                      <Avatar url={sec.u1.photo_url} alt={firstOnly(sec.u1)} size={40} />
+                    {/* Заголовок секции (развёрнутый формат) */}
+                    <div className="flex items-center gap-2">
+                      <Avatar url={sec.u1.photo_url} alt={firstOnly(sec.u1)} size={AVA} />
                       <div className="min-w-0">
                         <div className="text-[14px] font-semibold truncate" style={{ color: "var(--tg-text-color)" }}>
-                          {(sec.u1.first_name || "") + (sec.u1.last_name ? ` ${sec.u1.last_name}` : "") || firstOnly(sec.u1)}
+                          {`${sec.u1.first_name ?? ""} ${sec.u1.last_name ?? ""}`.trim() || firstOnly(sec.u1)}
                         </div>
                         {sec.u1.username ? (
-                          <div className="text-[12px] text-[var(--tg-hint-color)]">@{sec.u1.username}</div>
+                          <div className="text-[12px] opacity-70 truncate">@{sec.u1.username}</div>
                         ) : null}
                       </div>
                     </div>
 
-                    {/* разделитель между шапкой и чипами */}
-                    <Sep />
-
-                    {/* Чипы сводки по u1 */}
-                    <div className="flex flex-wrap gap-1.5 my-2">
-                      {Object.entries(sumLeft)
-                        .filter(([, v]) => v > 0)
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([ccy, v]) => (
-                          <Chip key={`sumL-${ccy}`} dir="right" amount={v} currency={ccy} color="red" locale={locale} />
-                        ))}
-                      {Object.entries(sumRight)
-                        .filter(([, v]) => v > 0)
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([ccy, v]) => (
-                          <Chip key={`sumR-${ccy}`} dir="left" amount={v} currency={ccy} color="green" locale={locale} />
-                        ))}
+                    {/* разделитель после заголовка */}
+                    <div className="mt-2 mb-2">
+                      <Divider />
                     </div>
 
-                    {/* разделитель между чипами и карточками пар (если есть пары) */}
-                    {sec.pairs.length > 0 && <Sep />}
+                    {/* Чипы секции (по правилам «сжатия») */}
+                    {(sec.showChipsLeft || sec.showChipsRight) && (
+                      <>
+                        <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {sec.showChipsLeft &&
+                              Object.entries(sec.sumsLeft)
+                                .filter(([, v]) => v > 0)
+                                .sort((a, b) => a[0].localeCompare(b[0]))
+                                .map(([ccy, sum]) => <Chip key={`S-L-${ccy}`} dir="out" amount={sum} currency={ccy} />)}
+                          </div>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {sec.showChipsRight &&
+                              Object.entries(sec.sumsRight)
+                                .filter(([, v]) => v > 0)
+                                .sort((a, b) => a[0].localeCompare(b[0]))
+                                .map(([ccy, sum]) => <Chip key={`S-R-${ccy}`} dir="in" amount={sum} currency={ccy} />)}
+                          </div>
+                        </div>
 
-                    {/* Пары u1 ↔ u2 */}
+                        {/* разделитель между чипами и карточками пар */}
+                        <div className="mt-2 mb-2">
+                          <Divider />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Карточки пар (без внешней рамки у пары) */}
                     <div className="flex flex-col">
                       {sec.pairs.map((pair, idx) => {
-                        const key: PairKey = `${pair.u1.id}-${pair.u2.id}`;
-                        const leftEntries = Object.entries(pair.left)
-                          .filter(([, amt]) => amt > 0)
-                          .sort((a, b) => a[0].localeCompare(b[0]));
-                        const rightEntries = Object.entries(pair.right)
-                          .filter(([, amt]) => amt > 0)
-                          .sort((a, b) => a[0].localeCompare(b[0]));
+                        const leftEntries = Object.entries(pair.left).filter(([, v]) => v > 0).sort((a, b) => a[0].localeCompare(b[0]));
+                        const rightEntries = Object.entries(pair.right).filter(([, v]) => v > 0).sort((a, b) => a[0].localeCompare(b[0]));
                         const Lfull = leftEntries.length;
                         const Rfull = rightEntries.length;
-                        const Lexp = !!expandedAll[key]?.left;
-                        const Rexp = !!expandedAll[key]?.right;
-                        const Lvis = Lexp ? Lfull : Math.min(2, Lfull);
-                        const Rvis = Rexp ? Rfull : Math.min(2, Rfull);
 
                         const iAmU1 = myId === pair.u1.id;
                         const iAmU2 = myId === pair.u2.id;
 
-                        // Какая сторона — «должны мне» (где ставим одну 🔔)
-                        const remindSide: "left" | "right" | null = iAmU1 ? "right" : iAmU2 ? "left" : null;
-
-                        // высоты для вертикального центрирования 🔔
-                        const leftButtonHeight =
-                          (Lexp ? Lfull : Math.min(2, Lfull)) * LINE_H + ((Lexp ? Lfull : Math.min(2, Lfull)) - 1) * V_GAP;
-                        const rightButtonHeight =
-                          (Rexp ? Rfull : Math.min(2, Rfull)) * LINE_H + ((Rexp ? Rfull : Math.min(2, Rfull)) - 1) * V_GAP;
-
-                        return (
-                          <div key={key} className="relative py-2">
-                            {/* Хедер пары: только аватар(ы) 28px + имя; без рамки пары */}
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={CARD_AVA} />
-                                <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(pair.u1)}>
-                                  {firstOnly(pair.u1)}
-                                </div>
-                              </div>
-                              <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} aria-hidden />
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={CARD_AVA} />
-                                <div className="text-[14px] font-medium truncate" style={{ color: "var(--tg-text-color)" }} title={firstOnly(pair.u2)}>
-                                  {firstOnly(pair.u2)}
-                                </div>
+                        // заголовок пары: стрелка строго по центру, правый аватар сразу после стрелки
+                        const PairHeader = (
+                          <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA} />
+                              <div
+                                className="text-[14px] font-medium truncate"
+                                style={{ color: "var(--tg-text-color)" }}
+                                title={firstOnly(pair.u1)}
+                              >
+                                {firstOnly(pair.u1)}
                               </div>
                             </div>
+                            <div className="justify-self-center">
+                              <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} aria-hidden />
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0 justify-end">
+                              <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA} />
+                              <div
+                                className="text-[14px] font-medium truncate"
+                                style={{ color: "var(--tg-text-color)" }}
+                                title={firstOnly(pair.u2)}
+                              >
+                                {firstOnly(pair.u2)}
+                              </div>
+                            </div>
+                          </div>
+                        );
 
-                            {/* Две колонки сумм */}
-                            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                              {/* Левый столбец (u1 должник →, красные) */}
+                        // одна кнопка Напомнить для столбца кредитора
+                        const RightBell =
+                          iAmU1 && Rfull > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const amounts: Record<string, number> = {};
+                                for (const [ccy, amt] of rightEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
+                                triggerRemind(pair.u2, amounts);
+                              }}
+                              className={btn3D}
+                              aria-label={t("remind_debt") as string}
+                              title={t("remind_debt") as string}
+                            >
+                              <Bell size={18} />
+                            </button>
+                          ) : null;
+
+                        const LeftBell =
+                          iAmU2 && Lfull > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const amounts: Record<string, number> = {};
+                                for (const [ccy, amt] of leftEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
+                                triggerRemind(pair.u1, amounts);
+                              }}
+                              className={btn3D}
+                              aria-label={t("remind_debt") as string}
+                              title={t("remind_debt") as string}
+                            >
+                              <Bell size={18} />
+                            </button>
+                          ) : null;
+
+                        // вычислим высоты для вертикального центрирования колокольчика
+                        const leftMinH = Math.max(1, Math.min(2, Lfull)) * LINE_H + (Math.max(0, Math.min(2, Lfull) - 1)) * V_GAP;
+                        const rightMinH =
+                          Math.max(1, Math.min(2, Rfull)) * LINE_H + (Math.max(0, Math.min(2, Rfull) - 1)) * V_GAP;
+
+                        return (
+                          <div key={`${pair.u1.id}-${pair.u2.id}-${idx}`} className="py-2">
+                            {/* header пары */}
+                            {PairHeader}
+
+                            {/* две колонки сумм */}
+                            <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                              {/* Левый столбец u1 -> u2 (красные) + одна кнопка Напомнить (если я u2-кредитор) */}
                               <div className="min-w-0">
                                 <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
-                                  <div className="flex flex-col gap-[6px]">
-                                    {leftEntries.slice(0, Lvis).map(([ccy, amt], i) => (
-                                      <div key={`pair-${key}-L-${ccy}-${i}`} className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
+                                  <div
+                                    className="flex flex-col gap-[6px]"
+                                    style={{ minHeight: leftMinH, justifyContent: "flex-start" }}
+                                  >
+                                    {leftEntries.slice(0, 2).map(([ccy, amt], i) => (
+                                      <div
+                                        key={`pair-L-${ccy}-${i}`}
+                                        className="grid items-center"
+                                        style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                      >
                                         <DebtLine amount={amt} currency={ccy} color="red" arrow="right" locale={locale} />
-                                        {/* на левой стороне показываем 💰, если я — должник (u1) */}
+                                        {/* «Рассчитаться» если я должник (u1) */}
                                         {iAmU1 ? (
                                           <button
                                             type="button"
@@ -705,52 +900,26 @@ export default function GroupBalanceTabSmart({
                                         ) : null}
                                       </div>
                                     ))}
-                                    {Lfull > 2 && (
-                                      <div className="pt-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleAll(key, "left")}
-                                          className="text-[12px] opacity-80 hover:opacity-100"
-                                          style={{ color: "var(--tg-hint-color)" }}
-                                          aria-expanded={Lexp}
-                                        >
-                                          {Lexp ? (t("close") || "Свернуть") : `${t("tx_modal.all") || "ВСЕ"} · +${Lfull - 2}`}
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
-
-                                  {/* одна 🔔 на ВСЮ колонку, если эта сторона = «мне должны» */}
-                                  <div
-                                    className="flex items-center justify-end"
-                                    style={{ minHeight: leftButtonHeight }}
-                                  >
-                                    {remindSide === "left" && Lfull > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const [ccy, amt] = leftEntries[0];
-                                          void doRemind(pair.u1, amt, ccy);
-                                        }}
-                                        className={btn3D}
-                                        aria-label={t("remind_debt") as string}
-                                        title={t("remind_debt") as string}
-                                      >
-                                        <Bell size={18} />
-                                      </button>
-                                    )}
-                                  </div>
+                                  <div className="flex items-center justify-end">{LeftBell}</div>
                                 </div>
                               </div>
 
-                              {/* Правый столбец (u2 должник ←, зелёные) */}
+                              {/* Правый столбец u2 -> u1 (зелёные) + одна кнопка Напомнить (если я u1-кредитор) */}
                               <div className="min-w-0">
                                 <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
-                                  <div className="flex flex-col gap-[6px]">
-                                    {rightEntries.slice(0, Rvis).map(([ccy, amt], i) => (
-                                      <div key={`pair-${key}-R-${ccy}-${i}`} className="grid items-center" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
+                                  <div
+                                    className="flex flex-col gap-[6px]"
+                                    style={{ minHeight: rightMinH, justifyContent: "flex-start" }}
+                                  >
+                                    {rightEntries.slice(0, 2).map(([ccy, amt], i) => (
+                                      <div
+                                        key={`pair-R-${ccy}-${i}`}
+                                        className="grid items-center"
+                                        style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                      >
                                         <DebtLine amount={amt} currency={ccy} color="green" arrow="left" locale={locale} />
-                                        {/* на правой стороне показываем 💰, если я — должник (u2) */}
+                                        {/* «Рассчитаться» если я должник (u2) */}
                                         {iAmU2 ? (
                                           <button
                                             type="button"
@@ -764,47 +933,18 @@ export default function GroupBalanceTabSmart({
                                         ) : null}
                                       </div>
                                     ))}
-                                    {Rfull > 2 && (
-                                      <div className="pt-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleAll(key, "right")}
-                                          className="text-[12px] opacity-80 hover:opacity-100"
-                                          style={{ color: "var(--tg-hint-color)" }}
-                                          aria-expanded={Rexp}
-                                        >
-                                          {Rexp ? (t("close") || "Свернуть") : `${t("tx_modal.all") || "ВСЕ"} · +${Rfull - 2}`}
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
-
-                                  {/* одна 🔔 на ВСЮ колонку, если эта сторона = «мне должны» */}
-                                  <div
-                                    className="flex items-center justify-end"
-                                    style={{ minHeight: rightButtonHeight }}
-                                  >
-                                    {remindSide === "right" && Rfull > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const [ccy, amt] = rightEntries[0];
-                                          void doRemind(pair.u2, amt, ccy);
-                                        }}
-                                        className={btn3D}
-                                        aria-label={t("remind_debt") as string}
-                                        title={t("remind_debt") as string}
-                                      >
-                                        <Bell size={18} />
-                                      </button>
-                                    )}
-                                  </div>
+                                  <div className="flex items-center justify-end">{RightBell}</div>
                                 </div>
                               </div>
                             </div>
 
-                            {/* разделитель между парами (кроме последней) */}
-                            {idx !== sec.pairs.length - 1 && <div className="mt-2"><Sep /></div>}
+                            {/* разделитель между парами (начиная сразу после аватара) */}
+                            {idx !== sec.pairs.length - 1 && (
+                              <div className="mt-2">
+                                <Divider />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -817,52 +957,46 @@ export default function GroupBalanceTabSmart({
         )}
       </div>
 
-      {/* Модалка после копирования текста напоминания */}
+      {/* Модалка «Текст скопирован…» */}
       {remindOpen && (
-        <div
-          className="fixed inset-0 z-[1300] flex items-center justify-center"
-          tabIndex={-1}
-          onKeyDown={(e) => { if (e.key === "Escape") setRemindOpen(false); }}
-        >
-          <div className="absolute inset-0 bg-black/40" onClick={() => setRemindOpen(false)} />
+        <div className="fixed inset-0 z-[1400] flex items-center justify-center" tabIndex={-1}>
+          <div className="absolute inset-0 bg-black/50" onClick={() => setRemindOpen(false)} />
           <div
-            className="relative w-full max-w-md mx-4 rounded-2xl bg-[var(--tg-card-bg)] border border-[var(--tg-secondary-bg-color,#e7e7e7)] shadow-2xl p-4"
-            style={{ color: "var(--tg-text-color)" }}
+            className="relative max-w-[90vw] w-[440px] rounded-xl border bg-[var(--tg-card-bg)] text-[var(--tg-text-color)] p-4 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
+            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >
-            <div className="text-[15px] font-semibold mb-2">{t("remind_copied") || "Text copied. Open Telegram and paste it."}</div>
-            <div className="text-[13px] opacity-80 mb-3 whitespace-pre-wrap break-words">{remindText}</div>
-            <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="absolute top-2 right-2 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+              onClick={() => setRemindOpen(false)}
+              aria-label={t("close") as string}
+              title={t("close") as string}
+            >
+              <X size={18} />
+            </button>
+
+            <div className="text-[15px] font-semibold mb-1">{t("reminder_copied_title")}</div>
+            <div className="text-[14px] opacity-80 mb-3">{t("reminder_copied_desc")}</div>
+
+            <div className="max-h-[200px] overflow-auto rounded-lg border p-2 text-[13px] mb-3" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+              <pre className="whitespace-pre-wrap break-words m-0">{remindMessage}</pre>
+            </div>
+
+            {remindUsername ? (
               <button
                 type="button"
-                className="px-4 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
-                onClick={() => setRemindOpen(false)}
+                onClick={openTelegram}
+                className="w-full h-10 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
               >
-                {t("close")}
+                {t("contact.open_in_telegram")}
               </button>
-              {remindUsername ? (
-                <button
-                  type="button"
-                  className="px-4 h-10 rounded-xl font-bold text-[14px] border active:scale-95 transition"
-                  style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-                  onClick={openTelegramContact}
-                >
-                  {t("contact.open_in_telegram")}
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
         </div>
       )}
-
-      {/* Скрытая кнопка для FAB (сохранить интерфейс) */}
-      <div className="hidden">
-        <button type="button" onClick={onFabClick} />
-      </div>
     </div>
   );
 }
-
-

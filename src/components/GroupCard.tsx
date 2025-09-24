@@ -43,7 +43,9 @@ function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | nu
   }
 }
 
-// Суммы в одну строку, горизонтальный скролл
+// Суммы "сумма + валюта" через `;`, БЕЗ горизонтального скролла.
+// Пара "сумма + валюта" держится вместе (неразрывный пробел), перенос — только между парами.
+// Клики/тачи НЕ останавливаем: клик по зоне долгов открывает группу.
 function MoneyScroller({
   entries,
   colorClass,
@@ -51,18 +53,14 @@ function MoneyScroller({
   entries: [string, number][]
   colorClass: string
 }) {
-  const stop = useCallback((e: React.UIEvent | React.MouseEvent) => {
-    e.stopPropagation() // чтобы скролл не запускал навигацию карточки
-  }, [])
   return (
-    <span
-      className="inline-flex gap-2 overflow-x-auto no-scrollbar whitespace-nowrap align-baseline max-w-full"
-      onMouseDown={stop}
-      onClickCapture={stop}
-    >
-      {entries.map(([ccy, amt]) => (
-        <span key={ccy} className={`shrink-0 ${colorClass}`}>
-          <span className="font-semibold">{amt}</span>&nbsp;{ccy}
+    <span className="inline whitespace-normal break-normal">
+      {entries.map(([ccy, amt], i) => (
+        <span key={`${ccy}-${i}`} className="inline">
+          <span className={`font-semibold ${colorClass} whitespace-nowrap`}>
+            {amt}&nbsp;{ccy}
+          </span>
+          {i < entries.length - 1 ? "; " : ""}
         </span>
       ))}
     </span>
