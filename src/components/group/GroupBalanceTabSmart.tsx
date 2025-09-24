@@ -71,7 +71,7 @@ export function fmtAmountSmart(value: number, currency: string, locale?: string)
 function Avatar({
   url,
   alt,
-  size = 56,
+  size = 40, // единообразно 40px
 }: {
   url?: string;
   alt?: string;
@@ -93,17 +93,9 @@ function Avatar({
   );
 }
 
-/* ---------- helpers для «двух колонок» ---------- */
+/* ---------- helpers для «двух колонок» (Mine) ---------- */
 type CurrencyLine = { currency: string; amount: number }; // абсолют
 type CardItem = { user: User; lines: CurrencyLine[]; total: number };
-
-function totalsToInline(by: Record<string, number>, locale?: string) {
-  const parts = Object.entries(by)
-    .filter(([, sum]) => sum > 0) // исключаем нули
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ccy, sum]) => fmtAmountSmart(sum, ccy, locale));
-  return parts.join("; "); // перенос только после "; "
-}
 
 /* ===== Общее оформление кнопок ===== */
 const btn3D =
@@ -112,26 +104,44 @@ const btn3D =
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.2)] " +
   "hover:brightness-105";
 
-/* ===== Константы компоновки строк сумм (для «Мой баланс») ===== */
+/* ===== Константы компоновки строк сумм (Mine) ===== */
 const LINE_H = 22; // высота строки суммы (px)
 const V_GAP = 6; // вертикальный отступ между строками (px)
 
-/* ===== Общие мини-компоненты ===== */
-const Pill: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <span
-    className="inline-flex items-center px-2 h-7 rounded-full text-[12px] font-semibold mr-1.5 mb-1.5"
-    style={{
-      background: "var(--tg-secondary-bg-color,#e7e7e7)",
-      color: "var(--tg-text-color)",
-    }}
-  >
-    {children}
-  </span>
-);
+/* ====== Chip UI ====== */
+const Chip = ({
+  children,
+  title,
+  tone, // "neutral" | "red" | "green"
+}: {
+  children: React.ReactNode;
+  title?: string;
+  tone?: "neutral" | "red" | "green";
+}) => {
+  const color =
+    tone === "red"
+      ? "var(--tg-destructive-text,#d7263d)"
+      : tone === "green"
+      ? "var(--tg-success-text,#1aab55)"
+      : "var(--tg-text-color)";
+  return (
+    <span
+      className="inline-flex items-center h-7 px-2 rounded-xl border text-[12px] font-medium mr-2 mb-2"
+      style={{
+        borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+        color,
+        background: "var(--tg-card-bg)",
+      }}
+      title={title}
+    >
+      {children}
+    </span>
+  );
+};
 
 /* ================= main ================= */
 export default function GroupBalanceTabSmart({
-  myBalanceByCurrency, // сейчас не используем в UI
+  myBalanceByCurrency, // не используем в UI
   myDebts,
   allDebts,
   loading,
@@ -153,13 +163,13 @@ export default function GroupBalanceTabSmart({
   const {
     leftCards,
     rightCards,
-    leftTotalsMap,
-    rightTotalsMap,
+    leftTotalsByCcy,
+    rightTotalsByCcy,
   }: {
     leftCards: CardItem[];
     rightCards: CardItem[];
-    leftTotalsMap: Record<string, number>;
-    rightTotalsMap: Record<string, number>;
+    leftTotalsByCcy: Record<string, number>;
+    rightTotalsByCcy: Record<string, number>;
   } = useMemo(() => {
     const leftMap = new Map<number, CardItem>(); // я должен
     const rightMap = new Map<number, CardItem>(); // мне должны
@@ -191,21 +201,21 @@ export default function GroupBalanceTabSmart({
       a.currency.localeCompare(b.currency);
 
     const leftCards = Array.from(leftMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
     const rightCards = Array.from(rightMap.values())
-      .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
+      .map((ci) => ({ ...ci, lines: ci.lines.filter(l => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
 
     return {
       leftCards,
       rightCards,
-      leftTotalsMap: leftTotals,
-      rightTotalsMap: rightTotals,
+      leftTotalsByCcy: leftTotals,
+      rightTotalsByCcy: rightTotals,
     };
   }, [myDebts]);
 
-  // свернуто/развернуто для карточек «Мой баланс» (по user.id и стороне)
+  // свёрнуто/развернуто для карточек «Мой баланс» (по user.id и стороне)
   const [expandedMine, setExpandedMine] = useState<{
     left: Record<number, boolean>;
     right: Record<number, boolean>;
@@ -225,19 +235,23 @@ export default function GroupBalanceTabSmart({
     return rows;
   }, [leftCards, rightCards]);
 
-  /* ---------- Все балансы: агрегирование по парам и валютам ---------- */
-  type PairKey = string; // "id1-id2"
+  /* ---------- Все балансы: агрегирование по парам/секциям ---------- */
+  type PairKey = string; // "minId-maxId"
   type SumMap = Record<string, number>; // currency -> amount
   type PairCard = {
-    u1: User; // левый в заголовке
+    u1: User; // левый в заголовке (ориентированный)
     u2: User; // правый в заголовке
     left: SumMap; // долги u1 -> u2 (u1 должник)
     right: SumMap; // долги u2 -> u1 (u2 должник)
   };
 
-  const { allPairs, allTotalsMap } = useMemo(() => {
+  const sections: {
+    u1: User;
+    pairs: PairCard[];
+    totalsLeft: SumMap;  // суммарно u1 должен (→)
+    totalsRight: SumMap; // суммарно должны u1 (←)
+  }[] = useMemo(() => {
     type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
-
     const byPair = new Map<PairKey, Agg>();
 
     const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
@@ -245,7 +259,7 @@ export default function GroupBalanceTabSmart({
       nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) ||
       (x.id - y.id); // стабильный тайбрейк по id
 
-    // 1) Агрегируем по каноническому ключу (minId-maxId), копим оба направления в одной записи
+    // 1) Канонические пары с накоплением по модулю
     for (const p of allDebts) {
       const amt = Math.abs(p.amount);
       if (amt <= 0) continue;
@@ -262,15 +276,13 @@ export default function GroupBalanceTabSmart({
       }
 
       if (a.id === low.id && b.id === high.id) {
-        rec.lowToHigh[p.currency] = (rec.lowToHigh[p.currency] || 0) + amt; // low -> high
+        rec.lowToHigh[p.currency] = (rec.lowToHigh[p.currency] || 0) + amt;   // low -> high
       } else {
-        rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt; // high -> low
+        rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt;   // high -> low
       }
     }
 
-    // 2) Ориентируем пары для отображения:
-    //    - если в паре есть я -> я слева (u1)
-    //    - иначе — по алфавиту имён (с тайбрейком по id)
+    // 2) Ориентируем пары (мой id слева, иначе по алфавиту)
     const oriented: PairCard[] = [];
     for (const rec of byPair.values()) {
       const { low, high, lowToHigh, highToLow } = rec;
@@ -292,40 +304,57 @@ export default function GroupBalanceTabSmart({
       oriented.push({ u1, u2, left, right });
     }
 
-    // 3) Сортировка:
-    //    — сначала пары текущего пользователя (u1 === myId), по имени партнёра (u2)
-    //    — затем остальные: по u1 (имя), потом u2 (имя), с тайбрейком по id
-    const nameKeyLower = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
-
-    oriented.sort((A, B) => {
-      const mineA = A.u1.id === myId, mineB = B.u1.id === myId;
-      if (mineA !== mineB) return mineA ? -1 : 1;
-
-      if (mineA && mineB) {
-        const c = nameKeyLower(A.u2).localeCompare(nameKeyLower(B.u2), locale, { sensitivity: "base" });
-        if (c) return c;
-        return A.u2.id - B.u2.id;
-      }
-
-      const c1 = cmpByName(A.u1, B.u1);
-      if (c1) return c1;
-      const c2 = cmpByName(A.u2, B.u2);
-      if (c2) return c2;
-      return (A.u1.id - B.u1.id) || (A.u2.id - B.u2.id);
-    });
-
-    // 4) Итоги по группе (сумма абсолютов по всем направлениям)
-    const totals: Record<string, number> = {};
-    for (const pair of oriented) {
-      for (const [ccy, amt] of Object.entries(pair.left)) {
-        if (amt > 0) totals[ccy] = (totals[ccy] || 0) + amt;
-      }
-      for (const [ccy, amt] of Object.entries(pair.right)) {
-        if (amt > 0) totals[ccy] = (totals[ccy] || 0) + amt;
-      }
+    // 3) Группируем по u1 (секции)
+    const byU1 = new Map<number, { u1: User; pairs: PairCard[] }>();
+    for (const p of oriented) {
+      const k = p.u1.id;
+      if (!byU1.has(k)) byU1.set(k, { u1: p.u1, pairs: [] });
+      byU1.get(k)!.pairs.push(p);
     }
 
-    return { allPairs: oriented, allTotalsMap: totals };
+    // 4) Считаем секционные тоталы (→ и ← отдельно по валютам), сортируем пары по u2
+    const secArr: {
+      u1: User; pairs: PairCard[]; totalsLeft: SumMap; totalsRight: SumMap;
+    }[] = [];
+
+    for (const sec of byU1.values()) {
+      const totalsL: SumMap = {};
+      const totalsR: SumMap = {};
+
+      const pairsSorted = sec.pairs.slice().sort((A, B) => {
+        const a = nameKey(A.u2); const b = nameKey(B.u2);
+        if (a !== b) return a.localeCompare(b, locale, { sensitivity: "base" });
+        return A.u2.id - B.u2.id;
+      });
+
+      for (const p of pairsSorted) {
+        for (const [ccy, v] of Object.entries(p.left || {})) {
+          if (v > 0) totalsL[ccy] = (totalsL[ccy] || 0) + v;
+        }
+        for (const [ccy, v] of Object.entries(p.right || {})) {
+          if (v > 0) totalsR[ccy] = (totalsR[ccy] || 0) + v;
+        }
+      }
+
+      secArr.push({ u1: sec.u1, pairs: pairsSorted, totalsLeft: totalsL, totalsRight: totalsR });
+    }
+
+    // 5) Сортировка секций: моя первая, затем по имени u1
+    const myFirst = (u: User) => (u.id === myId ? 0 : 1);
+    secArr.sort((A, B) => {
+      const aM = myFirst(A.u1), bM = myFirst(B.u1);
+      if (aM !== bM) return aM - bM;
+      const nn = nameKey(A.u1).localeCompare(nameKey(B.u1), locale, { sensitivity: "base" });
+      if (nn) return nn;
+      return A.u1.id - B.u1.id;
+    });
+
+    // Пустые секции (если и → и ← нули) убираем
+    return secArr.filter(sec => {
+      const hasL = Object.values(sec.totalsLeft).some(v => v > 0);
+      const hasR = Object.values(sec.totalsRight).some(v => v > 0);
+      return hasL || hasR || sec.pairs.length > 0;
+    });
   }, [allDebts, locale, myId]);
 
   // свернуто/развернуто для колонок пары (All)
@@ -403,76 +432,62 @@ export default function GroupBalanceTabSmart({
         ) : tab === "mine" ? (
           /* ================= Мой баланс ================= */
           <div>
-            {/* ИТОГО (мой баланс) */}
-            <div
-              className="rounded-xl border p-3 mb-2"
-              style={{
-                borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
-                background: "var(--tg-card-bg)",
-              }}
-            >
-              <div className="text-[13px] font-semibold mb-2" style={{ color: "var(--tg-text-color)" }}>
-                {t("total") || "Итого"}
-              </div>
-              <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                <div className="min-w-0">
-                  <div className="text-[12px] opacity-80 mb-1" style={{ color: "var(--tg-hint-color)" }}>
-                    {t("i_owe") || "Я должен"}
-                  </div>
-                  <div>
-                    {Object.keys(leftTotalsMap).filter((k) => leftTotalsMap[k] > 0).length === 0 ? (
-                      <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
-                    ) : (
-                      Object.entries(leftTotalsMap)
-                        .filter(([, v]) => v > 0)
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([ccy, sum]) => (
-                          <Pill key={`lt-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
-                        ))
-                    )}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[12px] opacity-80 mb-1" style={{ color: "var(--tg-hint-color)" }}>
-                    {t("they_owe_me") || "Мне должны"}
-                  </div>
-                  <div>
-                    {Object.keys(rightTotalsMap).filter((k) => rightTotalsMap[k] > 0).length === 0 ? (
-                      <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
-                    ) : (
-                      Object.entries(rightTotalsMap)
-                        .filter(([, v]) => v > 0)
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([ccy, sum]) => (
-                          <Pill key={`rt-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
-                        ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Заголовки колонок */}
-            <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Заголовки и ЧИПЫ (суммы под заголовком) */}
+            <div className="grid gap-3 mb-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {/* LEFT: Я должен */}
               <div className="min-w-0">
                 <div
-                  className="text-[15px] font-semibold"
+                  className="text-[15px] font-semibold mb-1"
                   style={{ color: "var(--tg-text-color)" }}
                 >
                   {t("i_owe") || "Я должен"}
                 </div>
+                {/* Chips (без стрелок) */}
+                <div className="flex flex-wrap">
+                  {Object.entries(leftTotalsByCcy)
+                    .filter(([, sum]) => sum > 0)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([ccy, sum]) => (
+                      <Chip key={`L-${ccy}`} tone="neutral" title={`${t("i_owe")} · ${ccy}`}>
+                        {fmtAmountSmart(sum, ccy, locale)}
+                      </Chip>
+                    ))}
+                  {Object.values(leftTotalsByCcy).every(v => !v) && (
+                    <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
+                      {t("group_balance_no_debts_left")}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* RIGHT: Мне должны */}
               <div className="min-w-0">
                 <div
-                  className="text-[15px] font-semibold"
+                  className="text-[15px] font-semibold mb-1"
                   style={{ color: "var(--tg-text-color)" }}
                 >
                   {t("they_owe_me") || "Мне должны"}
                 </div>
+                {/* Chips (без стрелок) */}
+                <div className="flex flex-wrap">
+                  {Object.entries(rightTotalsByCcy)
+                    .filter(([, sum]) => sum > 0)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([ccy, sum]) => (
+                      <Chip key={`R-${ccy}`} tone="neutral" title={`${t("they_owe_me")} · ${ccy}`}>
+                        {fmtAmountSmart(sum, ccy, locale)}
+                      </Chip>
+                    ))}
+                  {Object.values(rightTotalsByCcy).every(v => !v) && (
+                    <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
+                      {t("group_balance_no_debts_right")}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Пары карточек: 2 колонки + выравнивание высот, как было */}
+            {/* Пары карточек: 2 колонки + выравнивание высот (как было) */}
             <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {mineRows.map(({ left, right }, rowIdx) => {
                 if (!left && !right) return null;
@@ -505,7 +520,7 @@ export default function GroupBalanceTabSmart({
                         >
                           {/* шапка */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} />
+                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} size={40} />
                             <div
                               className="text-[14px] font-medium truncate"
                               style={{ color: "var(--tg-text-color)" }}
@@ -585,7 +600,7 @@ export default function GroupBalanceTabSmart({
                         >
                           {/* шапка */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} />
+                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} size={40} />
                             <div
                               className="text-[14px] font-medium truncate"
                               style={{ color: "var(--tg-text-color)" }}
@@ -685,238 +700,236 @@ export default function GroupBalanceTabSmart({
             </div>
           </div>
         ) : (
-          /* ================= Все балансы: карточки-пары пользователей ================= */
-          <div className="flex flex-col gap-2">
-            {/* ИТОГО (вся группа) */}
-            <div
-              className="rounded-xl border p-3"
-              style={{
-                borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
-                background: "var(--tg-card-bg)",
-              }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[13px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
-                  {t("total") || "Итого"}
-                </div>
-                <div className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>
-                  {t("pairs") || "Пары"}: {allPairs.length}
-                </div>
-              </div>
-              <div>
-                {Object.keys(allTotalsMap).filter((k) => allTotalsMap[k] > 0).length === 0 ? (
-                  <span className="text-[12px]" style={{ color: "var(--tg-hint-color)" }}>—</span>
-                ) : (
-                  Object.entries(allTotalsMap)
-                    .filter(([, v]) => v > 0)
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([ccy, sum]) => (
-                      <Pill key={`all-${ccy}`}>{fmtAmountSmart(sum, ccy, locale)}</Pill>
-                    ))
-                )}
-              </div>
-            </div>
-
-            {/* Список пар */}
-            {allPairs.length === 0 ? (
+          /* ================= Все балансы: секции по u1 ================= */
+          <div className="flex flex-col gap-3">
+            {sections.length === 0 ? (
               <div className="text-[13px] text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts_all")}
               </div>
             ) : (
-              allPairs.map((pair) => {
-                const key: PairKey = `${pair.u1.id}-${pair.u2.id}`;
-                const iAmU1 = myId === pair.u1.id;
-                const iAmU2 = myId === pair.u2.id;
-
-                // entries по валютам: сорт по коду; исключаем нули
-                const leftEntries = Object.entries(pair.left)
-                  .filter(([, amt]) => amt > 0)
-                  .sort((a, b) => a[0].localeCompare(b[0]));
-                const rightEntries = Object.entries(pair.right)
-                  .filter(([, amt]) => amt > 0)
-                  .sort((a, b) => a[0].localeCompare(b[0]));
-
-                const Lfull = leftEntries.length;
-                const Rfull = rightEntries.length;
-                const Lexp = !!expandedAll[key]?.left;
-                const Rexp = !!expandedAll[key]?.right;
-                const Lvis = Lexp ? Lfull : Math.min(2, Lfull);
-                const Rvis = Rexp ? Rfull : Math.min(2, Rfull);
-
-                return (
-                  <div
-                    key={key}
-                    className="rounded-xl border p-2"
-                    style={{
-                      borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
-                      background: "var(--tg-card-bg)",
-                    }}
-                  >
-                    {/* Заголовок пары — стрелка строго по центру, правый аватар сразу после стрелки */}
-                    <div
-                      className="grid items-center mb-2"
-                      style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
-                    >
-                      {/* Левый участник */}
-                      <div className="flex items-center gap-2 min-w-0 justify-start">
-                        <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={40} />
-                        <div
-                          className="text-[14px] font-medium truncate"
-                          style={{ color: "var(--tg-text-color)" }}
-                          title={firstOnly(pair.u1)}
-                        >
-                          {firstOnly(pair.u1)}
-                        </div>
-                      </div>
-
-                      {/* Стрелка по центру */}
-                      <div className="flex justify-center">
-                        <ArrowLeftRight
-                          size={20}
-                          style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
-                          aria-hidden
-                        />
-                      </div>
-
-                      {/* Правый участник — аватар сразу после стрелки */}
-                      <div className="flex items-center gap-2 min-w-0 justify-start">
-                        <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={40} />
-                        <div
-                          className="text-[14px] font-medium truncate"
-                          style={{ color: "var(--tg-text-color)" }}
-                          title={firstOnly(pair.u2)}
-                        >
-                          {firstOnly(pair.u2)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Две колонки: на строках — действия */}
-                    <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                      {/* Левый столбец (u1 должник → красные →) */}
-                      <div className="min-w-0">
-                        <div className="flex flex-col gap-[6px]">
-                          {(leftEntries.slice(0, Lvis)).map(([ccy, amt], i) => (
-                            <div
-                              key={`pair-${key}-L-${ccy}-${i}`}
-                              className="grid items-center"
-                              style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                            >
-                              <DebtLine
-                                amount={amt}
-                                currency={ccy}
-                                color="red"
-                                arrow="right"
-                                locale={locale}
-                              />
-                              {/* если я должник (u1) — «Рассчитаться», если кредитор (u2) — «Напомнить» */}
-                              {iAmU1 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onRepay?.(pair.u2, amt, ccy)}
-                                  className={btn3D}
-                                  aria-label={t("repay_debt") as string}
-                                  title={t("repay_debt") as string}
-                                >
-                                  <HandCoins size={18} />
-                                </button>
-                              ) : iAmU2 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setStubOpen(true);
-                                    onRemind?.(pair.u1, amt, ccy);
-                                  }}
-                                  className={btn3D}
-                                  aria-label={t("remind_debt") as string}
-                                  title={t("remind_debt") as string}
-                                >
-                                  <Bell size={18} />
-                                </button>
-                              ) : null}
-                            </div>
-                          ))}
-                          {Lfull > 2 && (
-                            <div className="pt-1">
-                              <button
-                                type="button"
-                                onClick={() => toggleAll(key, "left")}
-                                className="text-[12px] opacity-80 hover:opacity-100"
-                                style={{ color: "var(--tg-hint-color)" }}
-                                aria-expanded={Lexp}
-                              >
-                                {Lexp
-                                  ? t("close") || "Свернуть"
-                                  : `${t("all") || "ВСЕ"} · +${Lfull - 2}`}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Правый столбец (u2 должник ← зелёные) */}
-                      <div className="min-w-0">
-                        <div className="flex flex-col gap-[6px]">
-                          {(rightEntries.slice(0, Rvis)).map(([ccy, amt], i) => (
-                            <div
-                              key={`pair-${key}-R-${ccy}-${i}`}
-                              className="grid items-center"
-                              style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                            >
-                              <DebtLine
-                                amount={amt}
-                                currency={ccy}
-                                color="green"
-                                arrow="left"
-                                locale={locale}
-                              />
-                              {iAmU2 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onRepay?.(pair.u1, amt, ccy)}
-                                  className={btn3D}
-                                  aria-label={t("repay_debt") as string}
-                                  title={t("repay_debt") as string}
-                                >
-                                  <HandCoins size={18} />
-                                </button>
-                              ) : iAmU1 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setStubOpen(true);
-                                    onRemind?.(pair.u2, amt, ccy);
-                                  }}
-                                  className={btn3D}
-                                  aria-label={t("remind_debt") as string}
-                                  title={t("remind_debt") as string}
-                                >
-                                  <Bell size={18} />
-                                </button>
-                              ) : null}
-                            </div>
-                          ))}
-                          {Rfull > 2 && (
-                            <div className="pt-1">
-                              <button
-                                type="button"
-                                onClick={() => toggleAll(key, "right")}
-                                className="text-[12px] opacity-80 hover:opacity-100"
-                                style={{ color: "var(--tg-hint-color)" }}
-                                aria-expanded={Rexp}
-                              >
-                                {Rexp
-                                  ? t("close") || "Свернуть"
-                                  : `${t("all") || "ВСЕ"} · +${Rfull - 2}`}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+              sections.map((sec) => (
+                <div key={`sec-${sec.u1.id}`} className="w-full">
+                  {/* Заголовок секции */}
+                  <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
+                    {firstOnly(sec.u1)}
                   </div>
-                );
-              })
+
+                  {/* Сводные чипы секции */}
+                  <div className="flex flex-wrap mb-2">
+                    {/* → u1 должен */}
+                    {Object.entries(sec.totalsLeft)
+                      .filter(([, v]) => v > 0)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([ccy, v]) => (
+                        <Chip key={`sec-${sec.u1.id}-L-${ccy}`} tone="red" title={`${t("i_owe")} · ${ccy}`}>
+                          <ArrowRight size={14} className="mr-1" />
+                          {fmtAmountSmart(v, ccy, locale)}
+                        </Chip>
+                      ))}
+                    {/* ← должны u1 */}
+                    {Object.entries(sec.totalsRight)
+                      .filter(([, v]) => v > 0)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([ccy, v]) => (
+                        <Chip key={`sec-${sec.u1.id}-R-${ccy}`} tone="green" title={`${t("they_owe_me")} · ${ccy}`}>
+                          <ArrowLeft size={14} className="mr-1" />
+                          {fmtAmountSmart(v, ccy, locale)}
+                        </Chip>
+                      ))}
+                  </div>
+
+                  {/* Пары в секции */}
+                  <div className="flex flex-col gap-2">
+                    {sec.pairs.map((pair) => {
+                      const key: PairKey = `${pair.u1.id}-${pair.u2.id}`;
+                      const iAmU1 = myId === pair.u1.id;
+                      const iAmU2 = myId === pair.u2.id;
+
+                      const leftEntries = Object.entries(pair.left)
+                        .filter(([, amt]) => amt > 0)
+                        .sort((a, b) => a[0].localeCompare(b[0]));
+                      const rightEntries = Object.entries(pair.right)
+                        .filter(([, amt]) => amt > 0)
+                        .sort((a, b) => a[0].localeCompare(b[0]));
+
+                      const Lfull = leftEntries.length;
+                      const Rfull = rightEntries.length;
+                      const Lexp = !!expandedAll[key]?.left;
+                      const Rexp = !!expandedAll[key]?.right;
+                      const Lvis = Lexp ? Lfull : Math.min(2, Lfull);
+                      const Rvis = Rexp ? Rfull : Math.min(2, Rfull);
+
+                      // карточка пары
+                      return (
+                        <div
+                          key={key}
+                          className="rounded-xl border p-2"
+                          style={{
+                            borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                            background: "var(--tg-card-bg)",
+                          }}
+                        >
+                          {/* Хедер: [u1]  ⇄  [u2], стрелка по центру, правый аватар сразу после стрелки */}
+                          <div
+                            className="grid items-center mb-2"
+                            style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={40} />
+                              <div
+                                className="text-[14px] font-medium truncate"
+                                style={{ color: "var(--tg-text-color)" }}
+                                title={firstOnly(pair.u1)}
+                              >
+                                {firstOnly(pair.u1)}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-center">
+                              <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} aria-hidden />
+                            </div>
+
+                            <div className="flex items-center gap-2 min-w-0 justify-start">
+                              <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={40} />
+                              <div
+                                className="text-[14px] font-medium truncate"
+                                style={{ color: "var(--tg-text-color)" }}
+                                title={firstOnly(pair.u2)}
+                              >
+                                {firstOnly(pair.u2)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Две колонки: u1→u2 (красн) | u2→u1 (зел) */}
+                          <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                            {/* Левый столбец (u1 должник →) */}
+                            <div className="min-w-0">
+                              <div className="flex flex-col gap-[6px]">
+                                {(leftEntries.slice(0, Lvis)).map(([ccy, amt], i) => (
+                                  <div
+                                    key={`pair-${key}-L-${ccy}-${i}`}
+                                    className="grid items-center"
+                                    style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                  >
+                                    <DebtLine
+                                      amount={amt}
+                                      currency={ccy}
+                                      color="red"
+                                      arrow="right"
+                                      locale={locale}
+                                    />
+                                    {/* если я должник (u1) — «Рассчитаться», если кредитор (u2) — «Напомнить» */}
+                                    {iAmU1 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onRepay?.(pair.u2, amt, ccy)}
+                                        className={btn3D}
+                                        aria-label={t("repay_debt") as string}
+                                        title={t("repay_debt") as string}
+                                      >
+                                        <HandCoins size={18} />
+                                      </button>
+                                    ) : iAmU2 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setStubOpen(true);
+                                          onRemind?.(pair.u1, amt, ccy);
+                                        }}
+                                        className={btn3D}
+                                        aria-label={t("remind_debt") as string}
+                                        title={t("remind_debt") as string}
+                                      >
+                                        <Bell size={18} />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ))}
+                                {Lfull > 2 && (
+                                  <div className="pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleAll(key, "left")}
+                                      className="text-[12px] opacity-80 hover:opacity-100"
+                                      style={{ color: "var(--tg-hint-color)" }}
+                                      aria-expanded={Lexp}
+                                    >
+                                      {Lexp
+                                        ? t("close") || "Свернуть"
+                                        : `${t("all") || "ВСЕ"} · +${Lfull - 2}`}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Правый столбец (u2 должник ←) */}
+                            <div className="min-w-0">
+                              <div className="flex flex-col gap-[6px]">
+                                {(rightEntries.slice(0, Rvis)).map(([ccy, amt], i) => (
+                                  <div
+                                    key={`pair-${key}-R-${ccy}-${i}`}
+                                    className="grid items-center"
+                                    style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                  >
+                                    <DebtLine
+                                      amount={amt}
+                                      currency={ccy}
+                                      color="green"
+                                      arrow="left"
+                                      locale={locale}
+                                    />
+                                    {iAmU2 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onRepay?.(pair.u1, amt, ccy)}
+                                        className={btn3D}
+                                        aria-label={t("repay_debt") as string}
+                                        title={t("repay_debt") as string}
+                                      >
+                                        <HandCoins size={18} />
+                                      </button>
+                                    ) : iAmU1 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setStubOpen(true);
+                                          onRemind?.(pair.u2, amt, ccy);
+                                        }}
+                                        className={btn3D}
+                                        aria-label={t("remind_debt") as string}
+                                        title={t("remind_debt") as string}
+                                      >
+                                        <Bell size={18} />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ))}
+                                {Rfull > 2 && (
+                                  <div className="pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleAll(key, "right")}
+                                      className="text-[12px] opacity-80 hover:opacity-100"
+                                      style={{ color: "var(--tg-hint-color)" }}
+                                      aria-expanded={Rexp}
+                                    >
+                                      {Rexp
+                                        ? t("close") || "Свернуть"
+                                        : `${t("all") || "ВСЕ"} · +${Rfull - 2}`}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
