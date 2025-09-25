@@ -18,9 +18,10 @@ type Props = {
 const FAB = ({ actions }: Props) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [visible, setVisible] = useState(true)
   const fabRef = useRef<HTMLDivElement>(null)
 
-  // закрытие по клику вне
+  // Клик вне FAB — закрываем меню
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -31,71 +32,38 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  const [visible, setVisible] = useState(true)
-
+  // Скрывать/показывать FAB по направлению скролла
   useEffect(() => {
-    // если меню открыто — не прячем
-    if (open) {
-      setVisible(true)
-      return
+    // Берём основной скроллер приложения
+    const scrollEl =
+      (document.querySelector(".app-scroll") as HTMLElement | null) ||
+      (document.querySelector("main") as HTMLElement | null)
+
+    // Функции чтения позиции
+    const getPos = () => (scrollEl ? scrollEl.scrollTop : window.scrollY || 0)
+
+    let last = getPos()
+
+    const onScroll = () => {
+      const cur = getPos()
+      const nearTop = cur < 10
+      const goingDown = cur > last
+      // Требование: при прокрутке вверх — скрывать, при прокрутке вниз — показывать
+      setVisible(nearTop || goingDown)
+      last = cur
     }
 
-    const lastMap = new WeakMap<EventTarget, number>()
-    const THRESH = 6 // мёртвая зона против дрожания
-
-    const getTop = (target: EventTarget | null): number => {
-      if (target instanceof Element) {
-        const st = (target as Element).scrollTop as number | undefined
-        if (typeof st === "number") return st || 0
-      }
-      if (target instanceof Document) {
-        const se = target.scrollingElement || target.documentElement
-        return (se?.scrollTop || 0)
-      }
-      const se = document.scrollingElement || document.documentElement
-      return (se?.scrollTop || window.scrollY || 0)
-    }
-
-    const applyByDelta = (dy: number, yNow: number) => {
-      // у самого верха — всегда видно
-      if (yNow < 10) {
-        setVisible(true)
-        return
-      }
-      if (Math.abs(dy) < THRESH) return
-      // ТЗ: вверх — скрыть, вниз — показать
-      if (dy > 0) setVisible(true)      // скролл вниз
-      else setVisible(false)            // скролл вверх
-    }
-
-    let raf = 0
-    const onScrollCapture = (e: Event) => {
-      const tgt: EventTarget = (e.target as EventTarget) || document
-      const y = getTop(tgt)
-      const last = lastMap.get(tgt) ?? y
-      const dy = y - last
-      lastMap.set(tgt, y)
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => applyByDelta(dy, y))
-    }
-
-    const onWheelCapture = (e: WheelEvent) => {
-      // колесо даёт направление, высоту берём из документа
-      const y = getTop(document)
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => applyByDelta(e.deltaY, y))
-    }
-
-    window.addEventListener("scroll", onScrollCapture, { capture: true, passive: true })
-    document.addEventListener("scroll", onScrollCapture, { capture: true, passive: true })
-    window.addEventListener("wheel", onWheelCapture, { capture: true, passive: true })
+    const target: any = scrollEl || window
+    target.addEventListener("scroll", onScroll, { passive: true })
 
     return () => {
-      window.removeEventListener("scroll", onScrollCapture as any, true)
-      document.removeEventListener("scroll", onScrollCapture as any, true)
-      window.removeEventListener("wheel", onWheelCapture as any, true)
-      cancelAnimationFrame(raf)
+      target.removeEventListener("scroll", onScroll)
     }
+  }, [])
+
+  // Если меню открыто — не прячем FAB
+  useEffect(() => {
+    if (open) setVisible(true)
   }, [open])
 
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
