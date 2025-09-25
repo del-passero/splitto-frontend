@@ -15,11 +15,14 @@ type Props = {
   actions: FabAction[]
 }
 
+const THRESHOLD = 2 // игнорим «дрожание» скролла до 2px
+
 const FAB = ({ actions }: Props) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [visible, setVisible] = useState(true)
   const fabRef = useRef<HTMLDivElement>(null)
+  const scrollTargetRef = useRef<HTMLElement | Window | null>(null)
 
   // Клик вне FAB — закрываем меню
   useEffect(() => {
@@ -32,33 +35,52 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // Скрывать/показывать FAB по направлению скролла
+  // Скрывать/показывать FAB по направлению скролла именно на актуальном скроллере
   useEffect(() => {
-    // Берём основной скроллер приложения
-    const scrollEl =
-      (document.querySelector(".app-scroll") as HTMLElement | null) ||
-      (document.querySelector("main") as HTMLElement | null)
+    const closest = fabRef.current?.closest(".app-scroll") as HTMLElement | null
+    const globalAppScroll = document.querySelector(".app-scroll") as HTMLElement | null
+    const mainEl = document.querySelector("main") as HTMLElement | null
 
-    // Функции чтения позиции
-    const getPos = () => (scrollEl ? scrollEl.scrollTop : window.scrollY || 0)
+    const target: HTMLElement | Window =
+      closest || globalAppScroll || mainEl || window
+
+    scrollTargetRef.current = target
+
+    const getPos = () => {
+      if (target instanceof Window) {
+        return window.scrollY || document.documentElement.scrollTop || 0
+      }
+      return (target as HTMLElement).scrollTop
+    }
 
     let last = getPos()
 
     const onScroll = () => {
       const cur = getPos()
-      const nearTop = cur < 10
-      const goingDown = cur > last
-      // Требование: при прокрутке вверх — скрывать, при прокрутке вниз — показывать
-      setVisible(nearTop || goingDown)
+      const diff = cur - last
+      const nearTop = cur <= 10
+
+      if (Math.abs(diff) < THRESHOLD) {
+        last = cur
+        return
+      }
+
+      // Требование: при прокрутке вверх — FAB исчезает; вниз — появляется.
+      if (diff > 0) {
+        // вниз
+        setVisible(true)
+      } else {
+        // вверх
+        setVisible(nearTop ? true : false)
+      }
       last = cur
     }
 
-    const target: any = scrollEl || window
-    target.addEventListener("scroll", onScroll, { passive: true })
+    const add = (el: any) => el.addEventListener("scroll", onScroll, { passive: true })
+    const remove = (el: any) => el.removeEventListener("scroll", onScroll)
 
-    return () => {
-      target.removeEventListener("scroll", onScroll)
-    }
+    add(target)
+    return () => remove(target)
   }, [])
 
   // Если меню открыто — не прячем FAB
