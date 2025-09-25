@@ -137,27 +137,30 @@ export default function GroupsSortModal({ open, initial, onApply, onClose }: Pro
       {/* Разделитель секции «Направление» */}
       <div className="h-2 bg-[var(--tg-secondary-bg-color)]/40" />
 
-      {/* Направление */}
+      {/* Направление: заголовок на своей строке, варианты ниже */}
       <Row>
-        <div className="text-sm text-[var(--tg-text-color)]">
-          {t("groups_sort_dir") || "Направление"}
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Radio
-              checked={state.sortDir === "asc"}
-              onChange={() => setState((s) => ({ ...s, sortDir: "asc" }))}
-              ariaLabel="asc"
-            />
-            <span className="text-sm">{t("groups_sort_dir_asc") || "По возрастанию"}</span>
+        <div className="w-full">
+          <div className="text-sm text-[var(--tg-text-color)] mb-2">
+            {t("groups_sort_dir") || "Направление"}
           </div>
-          <div className="flex items-center gap-2">
-            <Radio
-              checked={state.sortDir === "desc"}
-              onChange={() => setState((s) => ({ ...s, sortDir: "desc" }))}
-              ariaLabel="desc"
-            />
-            <span className="text-sm">{t("groups_sort_dir_desc") || "По убыванию"}</span>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Radio
+                checked={state.sortDir === "asc"}
+                onChange={() => setState((s) => ({ ...s, sortDir: "asc" }))}
+                ariaLabel="asc"
+              />
+              <span className="text-sm">{t("groups_sort_dir_asc") || "По возрастанию"}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Radio
+                checked={state.sortDir === "desc"}
+                onChange={() => setState((s) => ({ ...s, sortDir: "desc" }))}
+                ariaLabel="desc"
+              />
+              <span className="text-sm">{t("groups_sort_dir_desc") || "По убыванию"}</span>
+            </div>
           </div>
         </div>
       </Row>
@@ -192,4 +195,3 @@ export default function GroupsSortModal({ open, initial, onApply, onClose }: Pro
     </ModalShell>
   )
 }
-

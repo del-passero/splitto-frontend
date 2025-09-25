@@ -10,6 +10,17 @@ import ContactFriendsList from "../components/contacts/ContactFriendsList"
 import type { UserShort } from "../types/friend"
 import type { User } from "../types/user"
 
+// Добавлено: для блока «Общие группы» как на GroupsPage
+import { useUserStore } from "../store/userStore"
+import { useGroupsStore } from "../store/groupsStore"
+import TopInfoRow from "../components/TopInfoRow"
+import FiltersRow from "../components/FiltersRow"
+import GroupsList from "../components/GroupsList"
+import GroupsFilterModal, { FiltersState as FiltersStateModal } from "../components/GroupsFilterModal"
+import GroupsSortModal from "../components/GroupsSortModal"
+
+type FiltersState = FiltersStateModal
+
 const ContactDetailsPage = () => {
   const { t } = useTranslation()
   const { friendId: friendIdParam } = useParams()
@@ -63,21 +74,75 @@ const ContactDetailsPage = () => {
     window.open(`https://t.me/${contactUsername}`, "_blank")
   }
 
+  /* ===== Общие группы — как на GroupsPage, но только пересечение ===== */
+  const { user } = useUserStore()
+  const {
+    groups, groupsLoading, groupsError,
+    groupsHasMore, fetchGroups, loadMoreGroups, clearGroups,
+
+    includeHidden, includeArchived, includeDeleted,
+    sortBy, sortDir, search,
+    setFilters, setSort, setSearch,
+  } = useGroupsStore()
+
+  const q = useMemo(() => (search || "").trim(), [search])
+  const commonNamesSet = useMemo(() => new Set(contactCommonGroupNames || []), [contactCommonGroupNames])
+
+  // Фильтруем глобальный список групп по общим названиям
+  const commonGroups = useMemo(() => {
+    if (!Array.isArray(groups) || commonNamesSet.size === 0) return []
+    return (groups as any[]).filter((g) => commonNamesSet.has(g?.name))
+  }, [groups, commonNamesSet])
+
+  // Перезагрузка групп при изменениях (аналогично GroupsPage), чтобы поиск/сорт работали
+  useEffect(() => {
+    if (!user?.id) return
+    // подгружаем группы пользователя и уже здесь фильтруем до общих
+    clearGroups()
+    fetchGroups(user.id, {
+      reset: true,
+      q: q.length ? q : undefined,
+      includeHidden,
+      includeArchived,
+      includeDeleted,
+      sortBy,
+      sortDir,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, q, includeHidden, includeArchived, includeDeleted, sortBy, sortDir])
+
+  const isSearching = q.length > 0
+  const nothingLoaded = !groupsLoading && !groupsError && commonGroups.length === 0
+  const notFound = isSearching && nothingLoaded
+  const noCommon = !isSearching && nothingLoaded
+
+  // Модалки фильтров/сортировки (локальное "open")
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
+
   return (
     <div className="p-2">
-      <div className="flex rounded-xl overflow-hidden mb-2 border border-[color:var(--tg-separator-color)]">
-        <button
-          className={`flex-1 py-2 text-sm ${activeTab === "info" ? "bg-[var(--tg-accent-color)] text-white" : "bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]"}`}
-          onClick={() => setActiveTab("info")}
+      {/* Микротабы как в «Мой баланс / Все балансы» */}
+      <div className="flex justify-center mt-1 mb-2">
+        <div
+          className="inline-flex rounded-xl border overflow-hidden"
+          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
         >
-          {t("contact.tab_info")}
-        </button>
-        <button
-          className={`flex-1 py-2 text-sm ${activeTab === "friends" ? "bg-[var(--tg-accent-color)] text-white" : "bg-[var(--tg-card-bg)] text-[var(--tg-text-color)]"}`}
-          onClick={() => setActiveTab("friends")}
-        >
-          {t("contact.tab_contact_friends")}
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("info")}
+            className={`px-3 h-9 text-[13px] ${activeTab === "info" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+          >
+            {t("contact.tab_info")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("friends")}
+            className={`px-3 h-9 text-[13px] ${activeTab === "friends" ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "text-[var(--tg-text-color)]"}`}
+          >
+            {t("contact.tab_contact_friends")}
+          </button>
+        </div>
       </div>
 
       {activeTab === "info" && (
@@ -120,32 +185,77 @@ const ContactDetailsPage = () => {
             )}
           </CardSection>
 
-          <CardSection noPadding>
-            <div className="px-3 pt-3 pb-2 font-semibold">{t("contact.mutual_groups")}</div>
+          {/* === Общие группы — контент как на GroupsPage, но только пересечение === */}
+          <FiltersRow
+            search={search}
+            setSearch={setSearch}
+            placeholderKey="search_group_placeholder"
+            onFilterClick={() => setFiltersOpen(true)}
+            onSortClick={() => setSortOpen(true)}
+          />
 
-            {contactCommonGroupsLoading && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
-            )}
-            {!!contactCommonGroupsError && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("error")}</div>
-            )}
-
-            {!contactCommonGroupsLoading && !contactCommonGroupNames.length && (
-              <div className="px-3 pb-3 text-sm text-[var(--tg-hint-color)]">{t("groups_not_found")}</div>
-            )}
-
-            {!!contactCommonGroupNames.length && (
-              <div>
-                {contactCommonGroupNames.map((name, idx) => (
-                  <div key={`${name}-${idx}`} className="cursor-default">
-                    {/* псевдокарточка, как просили: используем UserCard с name */}
-                    <UserCard name={name} />
-                  </div>
-                ))}
-                <div className="h-2" />
+          {/* Пустые состояния/«не найдено» с учётом флага поиска */}
+          {(noCommon || notFound) ? (
+            <CardSection>
+              <div className="text-center py-6 text-[var(--tg-hint-color)]">
+                {notFound ? (t("groups_not_found") || "Группы не найдены") : (t("contact.no_common_groups") || "Общих групп нет")}
               </div>
-            )}
-          </CardSection>
+            </CardSection>
+          ) : (
+            <CardSection noPadding>
+              <TopInfoRow count={commonGroups.length} labelKey="groups_count" />
+              <GroupsList
+                groups={commonGroups as any}
+                loading={groupsLoading}
+                loadMore={
+                  groupsHasMore && !groupsLoading && user?.id
+                    ? () =>
+                        loadMoreGroups(user!.id, {
+                          q: q.length ? q : undefined,
+                          includeHidden,
+                          includeArchived,
+                          includeDeleted,
+                          sortBy,
+                          sortDir,
+                        })
+                    : undefined
+                }
+              />
+            </CardSection>
+          )}
+
+          {groupsLoading && (
+            <CardSection>
+              <div className="text-center py-6 text-[var(--tg-hint-color)]">{t("loading")}</div>
+            </CardSection>
+          )}
+          {groupsError && (
+            <CardSection>
+              <div className="text-center py-6 text-red-500">{groupsError}</div>
+            </CardSection>
+          )}
+
+          {/* Фильтры / Сортировка */}
+          <GroupsFilterModal
+            open={filtersOpen}
+            onClose={() => setFiltersOpen(false)}
+            initial={{ includeArchived, includeDeleted, includeHidden }}
+            onApply={(f: FiltersState) => {
+              setFilters({
+                includeArchived: f.includeArchived,
+                includeDeleted: f.includeDeleted,
+                includeHidden: f.includeHidden,
+              })
+            }}
+          />
+          <GroupsSortModal
+            open={sortOpen}
+            onClose={() => setSortOpen(false)}
+            initial={{ sortBy, sortDir }}
+            onApply={({ sortBy: sb, sortDir: sd }) => {
+              setSort({ sortBy: sb, sortDir: sd })
+            }}
+          />
         </>
       )}
 
