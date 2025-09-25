@@ -15,16 +15,28 @@ type Props = {
   actions: FabAction[]
 }
 
-const THRESHOLD = 2 // игнорим «дрожание» скролла до 2px
+const THRESHOLD_SCROLL = 1      // игнорируем микро-движения скролла
+const THRESHOLD_TOUCH = 8       // чувствительность к свайпу
+
+const findScrollEl = (from?: HTMLElement | null): HTMLElement | Window => {
+  const closest = from?.closest(".app-scroll") as HTMLElement | null
+  const global = document.querySelector(".app-scroll") as HTMLElement | null
+  const mainEl = document.querySelector("main") as HTMLElement | null
+  return closest || global || mainEl || window
+}
+
+const getScrollPos = (target: HTMLElement | Window) =>
+  target instanceof Window
+    ? window.scrollY || document.documentElement.scrollTop || 0
+    : (target as HTMLElement).scrollTop
 
 const FAB = ({ actions }: Props) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [visible, setVisible] = useState(true)
   const fabRef = useRef<HTMLDivElement>(null)
-  const scrollTargetRef = useRef<HTMLElement | Window | null>(null)
 
-  // Клик вне FAB — закрываем меню
+  // Закрываем меню по клику вне FAB
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -35,52 +47,82 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // Скрывать/показывать FAB по направлению скролла именно на актуальном скроллере
+  // Показывать FAB, когда вверху
+  const forceVisibleIfNearTop = (target: HTMLElement | Window) => {
+    const nearTop = getScrollPos(target) <= 10
+    if (nearTop) setVisible(true)
+    return nearTop
+  }
+
+  // Основная логика направления скролла/свайпа
   useEffect(() => {
-    const closest = fabRef.current?.closest(".app-scroll") as HTMLElement | null
-    const globalAppScroll = document.querySelector(".app-scroll") as HTMLElement | null
-    const mainEl = document.querySelector("main") as HTMLElement | null
+    const target = findScrollEl(fabRef.current)
 
-    const target: HTMLElement | Window =
-      closest || globalAppScroll || mainEl || window
-
-    scrollTargetRef.current = target
-
-    const getPos = () => {
-      if (target instanceof Window) {
-        return window.scrollY || document.documentElement.scrollTop || 0
-      }
-      return (target as HTMLElement).scrollTop
-    }
-
-    let last = getPos()
+    let last = getScrollPos(target)
+    let touchY = 0
 
     const onScroll = () => {
-      const cur = getPos()
+      const cur = getScrollPos(target)
       const diff = cur - last
-      const nearTop = cur <= 10
-
-      if (Math.abs(diff) < THRESHOLD) {
+      if (Math.abs(diff) >= THRESHOLD_SCROLL) {
+        if (diff > 0) {
+          // скроллим вниз — показываем FAB
+          setVisible(true)
+        } else {
+          // скроллим вверх — прячем, кроме самого верха
+          if (!forceVisibleIfNearTop(target)) setVisible(false)
+        }
         last = cur
-        return
-      }
-
-      // Требование: при прокрутке вверх — FAB исчезает; вниз — появляется.
-      if (diff > 0) {
-        // вниз
-        setVisible(true)
       } else {
-        // вверх
-        setVisible(nearTop ? true : false)
+        // даже при микро-движении, если вверху — всегда видим
+        forceVisibleIfNearTop(target)
       }
-      last = cur
     }
 
-    const add = (el: any) => el.addEventListener("scroll", onScroll, { passive: true })
-    const remove = (el: any) => el.removeEventListener("scroll", onScroll)
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches?.[0]?.clientY ?? 0
+      // при начале жеста у самого верха — сразу показать
+      forceVisibleIfNearTop(target)
+    }
 
-    add(target)
-    return () => remove(target)
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches?.[0]?.clientY ?? 0
+      const dy = y - touchY
+      if (Math.abs(dy) >= THRESHOLD_TOUCH) {
+        if (dy < 0) {
+          // палец вверх => контент вниз => показываем
+          setVisible(true)
+        } else {
+          // палец вниз => контент вверх => прячем, кроме самого верха
+          if (!forceVisibleIfNearTop(target)) setVisible(false)
+        }
+        touchY = y
+      }
+    }
+
+    // Подписки на сам скроллер
+    const opts: AddEventListenerOptions = { passive: true }
+    ;(target as any).addEventListener?.("scroll", onScroll, opts)
+    ;(target as any).addEventListener?.("touchstart", onTouchStart, opts)
+    ;(target as any).addEventListener?.("touchmove", onTouchMove, opts)
+
+    // Дублируем на window — для случаев, когда скроллер «промахнулся»
+    window.addEventListener("scroll", onScroll, opts)
+    window.addEventListener("touchstart", onTouchStart, opts)
+    window.addEventListener("touchmove", onTouchMove, opts)
+
+    // Стартовое состояние — если уже не вверху, считаем «прокрутили вниз»
+    if (!forceVisibleIfNearTop(target)) setVisible(true)
+
+    return () => {
+      ;(target as any).removeEventListener?.("scroll", onScroll)
+      ;(target as any).removeEventListener?.("touchstart", onTouchStart)
+      ;(target as any).removeEventListener?.("touchmove", onTouchMove)
+
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("touchstart", onTouchStart)
+      window.removeEventListener("touchmove", onTouchMove)
+    }
   }, [])
 
   // Если меню открыто — не прячем FAB
