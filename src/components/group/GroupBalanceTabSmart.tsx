@@ -1,10 +1,20 @@
 // src/components/group/GroupBalanceTabSmart.tsx
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowLeftRight, ArrowRight, Bell, HandCoins, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowRight,
+  Bell,
+  HandCoins,
+  X,
+  ChevronDown,
+} from "lucide-react";
 import { useUserStore } from "../../store/userStore";
 import { useGroupsStore } from "../../store/groupsStore";
 import { useParams } from "react-router-dom";
+import { getGroupMembers } from "../../api/groupMembersApi"; // для списка ВСЕХ участников
+import type { GroupMember } from "../../types/group_member";
 
 /* ===== Types ===== */
 type User = {
@@ -35,6 +45,11 @@ const firstOnly = (u?: User) => {
   if (!u) return "";
   const name = (u.first_name || "").trim();
   return name || u.username || `#${u.id}`;
+};
+
+const displayName = (u: User) => {
+  const full = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+  return full || firstOnly(u);
 };
 
 const nbsp = "\u00A0";
@@ -144,19 +159,24 @@ function buildReminderMessage(opts: {
       ? `Hi, ${name}!`
       : "Hi!";
 
-  const groupPart = groupName && groupName.trim()
-    ? (locale.startsWith("ru")
+  const groupPart =
+    groupName && groupName.trim()
+      ? locale.startsWith("ru")
         ? `в группе «${groupName}»`
         : locale.startsWith("es")
         ? `en el grupo “${groupName}”`
-        : `in the “${groupName}” group`)
-    : (locale.startsWith("ru") ? "в нашей группе" : locale.startsWith("es") ? "en nuestro grupo" : "in our group");
+        : `in the “${groupName}” group`
+      : locale.startsWith("ru")
+      ? "в нашей группе"
+      : locale.startsWith("es")
+      ? "en nuestro grupo"
+      : "in our group";
 
   const list = Object.entries(amounts)
     .filter(([, v]) => v > 0)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([ccy, sum]) => fmtAmountSmart(sum, ccy, locale))
-    .join(locale.startsWith("ru") || locale.startsWith("es") ? ", " : ", ");
+    .join(", ");
 
   const ask =
     locale.startsWith("ru")
@@ -199,6 +219,34 @@ export default function GroupBalanceTabSmart({
     const g = groups.find((x: any) => Number(x?.id) === Number(groupId));
     return (g?.name as string) || undefined;
   }, [groups, groupId]);
+
+  // ===== Загрузка ВСЕХ участников группы (для "Все балансы")
+  const [members, setMembers] = useState<User[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMembers() {
+      if (!groupId) return;
+      try {
+        setMembersLoading(true);
+        const res = await getGroupMembers(groupId as number);
+        // допускаем оба формата ответа
+        const arr: GroupMember[] = Array.isArray(res) ? (res as any) : (res?.items ?? []);
+        const users: User[] = (arr || [])
+          .map((gm: any) => gm?.user)
+          .filter(Boolean);
+        if (!cancelled) setMembers(users);
+      } catch {
+        if (!cancelled) setMembers([]);
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    }
+    loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [groupId]);
 
   /* ---------- Мой баланс: подготовка данных ---------- */
   const {
@@ -253,7 +301,7 @@ export default function GroupBalanceTabSmart({
       .map((ci) => ({ ...ci, lines: ci.lines.filter((l) => l.amount > 0).sort(sortLines) }))
       .sort(sortCards);
 
-    // логика показа чипов: если хотя бы в одной колонке есть "сжатие" — показываем обе
+    // логика показа чипов (для "Мой баланс"): если хотя бы в одной колонке есть "сжатие" — показываем обе
     const leftUnique = Object.keys(leftTotals).length;
     const rightUnique = Object.keys(rightTotals).length;
     const leftCompressed = leftLines > 0 && leftUnique < leftLines;
@@ -277,25 +325,14 @@ export default function GroupBalanceTabSmart({
     return rows;
   }, [leftCards, rightCards]);
 
-  /* ---------- Все балансы: агрегирование по парам и секциям ---------- */
+  /* ---------- Все балансы: агрегация пар (канонический вид) ---------- */
   type PairKey = string;
   type SumMap = Record<string, number>;
+  type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
   type PairCard = { u1: User; u2: User; left: SumMap; right: SumMap }; // left: u1->u2, right: u2->u1
 
-  type Section = {
-    u1: User;
-    pairs: PairCard[];
-    sumsLeft: SumMap; // u1 -> *
-    sumsRight: SumMap; // * -> u1
-    showChipsLeft: boolean;
-    showChipsRight: boolean;
-  };
-
-  const sections: Section[] = useMemo(() => {
-    // собрать пары (канонический ключ по id)
-    type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
+  const pairAgg = useMemo(() => {
     const byPair = new Map<PairKey, Agg>();
-
     for (const p of allDebts) {
       const amt = Math.abs(p.amount);
       if (amt <= 0) continue;
@@ -314,104 +351,75 @@ export default function GroupBalanceTabSmart({
         rec.highToLow[p.currency] = (rec.highToLow[p.currency] || 0) + amt;
       }
     }
+    return byPair;
+  }, [allDebts]);
 
-    // ориентировать пары так, чтобы текущий пользователь был слева (если участвует), иначе — по алфавиту
-    const nameKey = (u: User) => (firstOnly(u) || `#${u.id}`).toLowerCase();
-    const cmpByName = (x: User, y: User) =>
-      nameKey(x).localeCompare(nameKey(y), locale, { sensitivity: "base" }) || x.id - y.id;
+  // построить секцию "участник u1" -> список его пар и суммарные чипы (всегда показываем)
+  const buildSectionForUser = useCallback(
+    (u1: User) => {
+      const sumsLeft: SumMap = {};
+      const sumsRight: SumMap = {};
+      const pairs: PairCard[] = [];
 
-    const oriented: PairCard[] = [];
-    for (const rec of byPair.values()) {
-      const { low, high, lowToHigh, highToLow } = rec;
-      let u1: User, u2: User, left: SumMap, right: SumMap;
-      if (myId && myId === low.id) {
-        u1 = low;
-        u2 = high;
-        left = lowToHigh;
-        right = highToLow;
-      } else if (myId && myId === high.id) {
-        u1 = high;
-        u2 = low;
-        left = highToLow;
-        right = lowToHigh;
-      } else {
-        if (cmpByName(low, high) <= 0) {
-          u1 = low;
-          u2 = high;
-          left = lowToHigh;
-          right = highToLow;
-        } else {
-          u1 = high;
-          u2 = low;
-          left = highToLow;
-          right = lowToHigh;
+      // собрать все пары, где участвует u1, и ориентировать так, чтобы u1 был слева
+      for (const rec of pairAgg.values()) {
+        const { low, high, lowToHigh, highToLow } = rec;
+        if (u1.id === low.id) {
+          // u1 -> high
+          const left = { ...lowToHigh };
+          const right = { ...highToLow };
+          // отфильтруем нули и параллельно суммируем
+          const l: SumMap = {};
+          const r: SumMap = {};
+          for (const [ccy, amt] of Object.entries(left)) {
+            if (amt > 0) {
+              l[ccy] = amt;
+              sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
+            }
+          }
+          for (const [ccy, amt] of Object.entries(right)) {
+            if (amt > 0) {
+              r[ccy] = amt;
+              sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
+            }
+          }
+          if (Object.keys(l).length || Object.keys(r).length) {
+            pairs.push({ u1, u2: high, left: l, right: r });
+          }
+        } else if (u1.id === high.id) {
+          // u1 -> low (в обратную сторону)
+          const left = { ...highToLow };
+          const right = { ...lowToHigh };
+          const l: SumMap = {};
+          const r: SumMap = {};
+          for (const [ccy, amt] of Object.entries(left)) {
+            if (amt > 0) {
+              l[ccy] = amt;
+              sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
+            }
+          }
+          for (const [ccy, amt] of Object.entries(right)) {
+            if (amt > 0) {
+              r[ccy] = amt;
+              sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
+            }
+          }
+          if (Object.keys(l).length || Object.keys(r).length) {
+            pairs.push({ u1, u2: low, left: l, right: r });
+          }
         }
       }
-      oriented.push({ u1, u2, left, right });
-    }
 
-    // сгруппировать по u1
-    const byU1 = new Map<number, PairCard[]>();
-    for (const p of oriented) {
-      const arr = byU1.get(p.u1.id) || [];
-      arr.push(p);
-      byU1.set(p.u1.id, arr);
-    }
+      // отсортировать пары по имени u2
+      const nameKey = (u: User) => (displayName(u) || `#${u.id}`).toLowerCase();
+      pairs.sort(
+        (A, B) => nameKey(A.u2).localeCompare(nameKey(B.u2), locale, { sensitivity: "base" }) || A.u2.id - B.u2.id
+      );
 
-    // сортировка секций: мои — первыми, затем по имени u1; внутри — по имени u2
-    const secs: Section[] = Array.from(byU1.entries())
-      .map(([u1id, pairs]) => {
-        const u1 = pairs[0].u1;
-        const sumsLeft: SumMap = {};
-        const sumsRight: SumMap = {};
-        let leftLines = 0;
-        let rightLines = 0;
-
-        // суммирование по секции и подсчёт строк/уникальных валют
-        for (const pr of pairs) {
-          for (const [ccy, amt] of Object.entries(pr.left)) {
-            if (amt > 0) {
-              sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
-              leftLines++;
-            }
-          }
-          for (const [ccy, amt] of Object.entries(pr.right)) {
-            if (amt > 0) {
-              sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
-              rightLines++;
-            }
-          }
-        }
-        const leftCompressed = leftLines > 0 && Object.keys(sumsLeft).length < leftLines;
-        const rightCompressed = rightLines > 0 && Object.keys(sumsRight).length < rightLines;
-
-        // сортировка пар по имени u2
-        pairs.sort((A, B) => {
-          const kA = nameKey(A.u2);
-          const kB = nameKey(B.u2);
-          return kA.localeCompare(kB, locale, { sensitivity: "base" }) || A.u2.id - B.u2.id;
-        });
-
-        return {
-          u1,
-          pairs,
-          sumsLeft,
-          sumsRight,
-          showChipsLeft: leftCompressed,
-          showChipsRight: rightCompressed,
-        };
-      })
-      .sort((S1, S2) => {
-        const mine1 = S1.u1.id === myId ? 1 : 0;
-        const mine2 = S2.u1.id === myId ? 1 : 0;
-        if (mine1 !== mine2) return mine2 - mine1; // мои — первыми
-        const nk1 = nameKey(S1.u1);
-        const nk2 = nameKey(S2.u1);
-        return nk1.localeCompare(nk2, locale, { sensitivity: "base" }) || S1.u1.id - S2.u1.id;
-      });
-
-    return secs;
-  }, [allDebts, locale, myId]);
+      return { u1, pairs, sumsLeft, sumsRight };
+    },
+    [pairAgg, locale]
+  );
 
   /* ===== Общий UI-кусок: строчка валюты с суммой и стрелкой ===== */
   const DebtLine = React.memo(
@@ -494,6 +502,36 @@ export default function GroupBalanceTabSmart({
     [locale, groupName]
   );
 
+  // ============ Состояние разворотов для "Все балансы" ============
+  const [expandedAllMap, setExpandedAllMap] = useState<Record<number, boolean>>({});
+  const toggleAllItem = (uid: number) =>
+    setExpandedAllMap((m) => ({ ...m, [uid]: !m[uid] }));
+  const expandAll = (uids: number[]) =>
+    setExpandedAllMap((m) => {
+      const next: Record<number, boolean> = { ...m };
+      for (const id of uids) next[id] = true;
+      return next;
+    });
+
+  // Полный список участников (из БД) + подстраховка пользователями из allDebts
+  const participants: User[] = useMemo(() => {
+    const map = new Map<number, User>();
+    for (const u of members) map.set(u.id, u);
+    for (const p of allDebts) {
+      if (p.from) map.set(p.from.id, p.from);
+      if (p.to) map.set(p.to.id, p.to);
+    }
+    const arr = Array.from(map.values());
+    const key = (u: User) => (displayName(u) || `#${u.id}`).toLowerCase();
+    arr.sort((a, b) => {
+      const mineA = a.id === myId ? 1 : 0;
+      const mineB = b.id === myId ? 1 : 0;
+      if (mineA !== mineB) return mineB - mineA; // я — первым
+      return key(a).localeCompare(key(b), locale, { sensitivity: "base" }) || a.id - b.id;
+    });
+    return arr;
+  }, [members, allDebts, myId, locale]);
+
   /* ===== Разметка ===== */
   return (
     <div className="w-full select-none" style={{ WebkitTapHighlightColor: "transparent" }}>
@@ -525,7 +563,7 @@ export default function GroupBalanceTabSmart({
         {loading ? (
           <div className="py-6 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
-          /* ================= Мой баланс ================= */
+          /* ================= Мой баланс (НЕ ТРОГАЕМ) ================= */
           <div>
             {/* Заголовки */}
             <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -614,7 +652,7 @@ export default function GroupBalanceTabSmart({
                               justifyContent: bothCollapsed && Lvis < Rvis ? "center" : "flex-start",
                             }}
                           >
-                            {(left.lines.slice(0, Lexpanded ? Lfull : Math.min(2, Lfull))).map((ln, i) => (
+                            {left.lines.slice(0, Lexpanded ? Lfull : Math.min(2, Lfull)).map((ln, i) => (
                               <div
                                 key={`L-${left.user.id}-${ln.currency}-${i}`}
                                 className="grid items-center"
@@ -681,7 +719,7 @@ export default function GroupBalanceTabSmart({
                                   ((Rexpanded ? Rfull : Math.min(2, Rfull)) - 1) * V_GAP,
                               }}
                             >
-                              {(right.lines.slice(0, Rexpanded ? Rfull : Math.min(2, Rfull))).map((ln, i) => (
+                              {right.lines.slice(0, Rexpanded ? Rfull : Math.min(2, Rfull)).map((ln, i) => (
                                 <div key={`R-${right.user.id}-${ln.currency}-${i}`} className="text-[14px] font-semibold">
                                   <DebtLine amount={ln.amount} currency={ln.currency} color="green" arrow="left" locale={locale} />
                                 </div>
@@ -728,230 +766,292 @@ export default function GroupBalanceTabSmart({
             </div>
           </div>
         ) : (
-          /* ================= Все балансы (секции u1) ================= */
-          <div className="flex flex-col gap-2">
-            {sections.length === 0 ? (
-              <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</div>
+          /* ================= Все балансы -> СПИСОК УЧАСТНИКОВ ================= */
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+            {membersLoading && (
+              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
+            )}
+
+            {participants.length === 0 && !membersLoading ? (
+              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
+                {t("group_balance_no_debts_all")}
+              </div>
             ) : (
-              sections.map((sec, sIdx) => {
+              participants.map((u, idx) => {
+                const sec = buildSectionForUser(u);
+                const expanded = !!expandedAllMap[u.id];
+
+                const leftTotals = Object.entries(sec.sumsLeft).sort((a, b) => a[0].localeCompare(b[0]));
+                const rightTotals = Object.entries(sec.sumsRight).sort((a, b) => a[0].localeCompare(b[0]));
+
+                // одна карточка участника как в UserCard, + чипы всегда + иконка разворота
                 return (
-                  <div
-                    key={`sec-${sec.u1.id}-${sIdx}`}
-                    className="rounded-xl border p-2"
-                    style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
-                  >
-                    {/* Заголовок секции (развёрнутый формат) */}
-                    <div className="flex items-center gap-2">
-                      <Avatar url={sec.u1.photo_url} alt={firstOnly(sec.u1)} size={AVA} />
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-semibold truncate" style={{ color: "var(--tg-text-color)" }}>
-                          {`${sec.u1.first_name ?? ""} ${sec.u1.last_name ?? ""}`.trim() || firstOnly(sec.u1)}
+                  <div key={`u-${u.id}`} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => toggleAllItem(u.id)}
+                      className="w-full active:opacity-70"
+                    >
+                      <div className="flex items-center px-3 py-3 gap-4">
+                        <Avatar url={u.photo_url} alt={displayName(u)} size={48} />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-base truncate">{displayName(u)}</div>
+                          <div className="text-[var(--tg-hint-color)] text-xs truncate">
+                            {u.username ? `@${u.username}` : ""}
+                          </div>
                         </div>
-                        {sec.u1.username ? (
-                          <div className="text-[12px] opacity-70 truncate">@{sec.u1.username}</div>
-                        ) : null}
+
+                        {/* Чипы: Я должен (out) — Мне должны (in). Показываем ВСЕГДА (для имеющихся валют) */}
+                        <div className="hidden sm:flex items-center gap-2 mr-2">
+                          {leftTotals.map(([ccy, sum]) => (
+                            <Chip key={`u-${u.id}-L-${ccy}`} dir="out" amount={sum} currency={ccy} />
+                          ))}
+                          {rightTotals.map(([ccy, sum]) => (
+                            <Chip key={`u-${u.id}-R-${ccy}`} dir="in" amount={sum} currency={ccy} />
+                          ))}
+                        </div>
+
+                        {/* На узких экранах чипы в две маленькие кучки */}
+                        <div className="sm:hidden flex flex-col items-end gap-1 mr-2">
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {leftTotals.map(([ccy, sum]) => (
+                              <Chip key={`u-${u.id}-L-${ccy}`} dir="out" amount={sum} currency={ccy} />
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {rightTotals.map(([ccy, sum]) => (
+                              <Chip key={`u-${u.id}-R-${ccy}`} dir="in" amount={sum} currency={ccy} />
+                            ))}
+                          </div>
+                        </div>
+
+                        <ChevronDown
+                          size={18}
+                          className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+                          aria-hidden
+                        />
                       </div>
-                    </div>
+                    </button>
 
-                    {/* разделитель после заголовка */}
-                    <div className="mt-2 mb-2">
-                      <Divider />
-                    </div>
-
-                    {/* Чипы секции (по правилам «сжатия») */}
-                    {(sec.showChipsLeft || sec.showChipsRight) && (
-                      <>
-                        <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {sec.showChipsLeft &&
-                              Object.entries(sec.sumsLeft)
-                                .filter(([, v]) => v > 0)
-                                .sort((a, b) => a[0].localeCompare(b[0]))
-                                .map(([ccy, sum]) => <Chip key={`S-L-${ccy}`} dir="out" amount={sum} currency={ccy} />)}
-                          </div>
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {sec.showChipsRight &&
-                              Object.entries(sec.sumsRight)
-                                .filter(([, v]) => v > 0)
-                                .sort((a, b) => a[0].localeCompare(b[0]))
-                                .map(([ccy, sum]) => <Chip key={`S-R-${ccy}`} dir="in" amount={sum} currency={ccy} />)}
-                          </div>
-                        </div>
-
-                        {/* разделитель между чипами и карточками пар */}
-                        <div className="mt-2 mb-2">
-                          <Divider />
-                        </div>
-                      </>
+                    {/* разделитель как в ContactsList — после шапки */}
+                    {idx !== participants.length - 1 && !expanded && (
+                      <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                     )}
 
-                    {/* Карточки пар (без внешней рамки у пары) */}
-                    <div className="flex flex-col">
-                      {sec.pairs.map((pair, idx) => {
-                        const leftEntries = Object.entries(pair.left).filter(([, v]) => v > 0).sort((a, b) => a[0].localeCompare(b[0]));
-                        const rightEntries = Object.entries(pair.right).filter(([, v]) => v > 0).sort((a, b) => a[0].localeCompare(b[0]));
-                        const Lfull = leftEntries.length;
-                        const Rfull = rightEntries.length;
-
-                        const iAmU1 = myId === pair.u1.id;
-                        const iAmU2 = myId === pair.u2.id;
-
-                        // заголовок пары: стрелка строго по центру, правый аватар сразу после стрелки
-                        const PairHeader = (
-                          <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}>
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA} />
-                              <div
-                                className="text-[14px] font-medium truncate"
-                                style={{ color: "var(--tg-text-color)" }}
-                                title={firstOnly(pair.u1)}
-                              >
-                                {firstOnly(pair.u1)}
-                              </div>
-                            </div>
-                            <div className="justify-self-center">
-                              <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} aria-hidden />
-                            </div>
-                            <div className="flex items-center gap-2 min-w-0 justify-end">
-                              <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA} />
-                              <div
-                                className="text-[14px] font-medium truncate"
-                                style={{ color: "var(--tg-text-color)" }}
-                                title={firstOnly(pair.u2)}
-                              >
-                                {firstOnly(pair.u2)}
-                              </div>
-                            </div>
+                    {/* Развёрнутый блок: Пары u1–u2 (БЕЗ чипов) */}
+                    {expanded && (
+                      <div className="px-3 pb-3">
+                        {sec.pairs.length === 0 ? (
+                          <div className="text-[13px] text-[var(--tg-hint-color)]">
+                            {t("group_balance_no_debts_all")}
                           </div>
-                        );
+                        ) : (
+                          sec.pairs.map((pair, pIdx) => {
+                            const leftEntries = Object.entries(pair.left)
+                              .filter(([, v]) => v > 0)
+                              .sort((a, b) => a[0].localeCompare(b[0]));
+                            const rightEntries = Object.entries(pair.right)
+                              .filter(([, v]) => v > 0)
+                              .sort((a, b) => a[0].localeCompare(b[0]));
+                            const Lfull = leftEntries.length;
+                            const Rfull = rightEntries.length;
 
-                        // одна кнопка Напомнить для столбца кредитора
-                        const RightBell =
-                          iAmU1 && Rfull > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const amounts: Record<string, number> = {};
-                                for (const [ccy, amt] of rightEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
-                                triggerRemind(pair.u2, amounts);
-                              }}
-                              className={btn3D}
-                              aria-label={t("remind_debt") as string}
-                              title={t("remind_debt") as string}
-                            >
-                              <Bell size={18} />
-                            </button>
-                          ) : null;
+                            const iAmU1 = myId === pair.u1.id;
+                            const iAmU2 = myId === pair.u2.id;
 
-                        const LeftBell =
-                          iAmU2 && Lfull > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const amounts: Record<string, number> = {};
-                                for (const [ccy, amt] of leftEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
-                                triggerRemind(pair.u1, amounts);
-                              }}
-                              className={btn3D}
-                              aria-label={t("remind_debt") as string}
-                              title={t("remind_debt") as string}
-                            >
-                              <Bell size={18} />
-                            </button>
-                          ) : null;
-
-                        // вычислим высоты для вертикального центрирования колокольчика
-                        const leftMinH = Math.max(1, Math.min(2, Lfull)) * LINE_H + (Math.max(0, Math.min(2, Lfull) - 1)) * V_GAP;
-                        const rightMinH =
-                          Math.max(1, Math.min(2, Rfull)) * LINE_H + (Math.max(0, Math.min(2, Rfull) - 1)) * V_GAP;
-
-                        return (
-                          <div key={`${pair.u1.id}-${pair.u2.id}-${idx}`} className="py-2">
-                            {/* header пары */}
-                            {PairHeader}
-
-                            {/* две колонки сумм */}
-                            <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                              {/* Левый столбец u1 -> u2 (красные) + одна кнопка Напомнить (если я u2-кредитор) */}
-                              <div className="min-w-0">
-                                <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
+                            const PairHeader = (
+                              <div
+                                className="grid items-center"
+                                style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA} />
                                   <div
-                                    className="flex flex-col gap-[6px]"
-                                    style={{ minHeight: leftMinH, justifyContent: "flex-start" }}
+                                    className="text-[14px] font-medium truncate"
+                                    style={{ color: "var(--tg-text-color)" }}
+                                    title={firstOnly(pair.u1)}
                                   >
-                                    {leftEntries.slice(0, 2).map(([ccy, amt], i) => (
-                                      <div
-                                        key={`pair-L-${ccy}-${i}`}
-                                        className="grid items-center"
-                                        style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
-                                      >
-                                        <DebtLine amount={amt} currency={ccy} color="red" arrow="right" locale={locale} />
-                                        {/* «Рассчитаться» если я должник (u1) */}
-                                        {iAmU1 ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => onRepay?.(pair.u2, amt, ccy)}
-                                            className={btn3D}
-                                            aria-label={t("repay_debt") as string}
-                                            title={t("repay_debt") as string}
-                                          >
-                                            <HandCoins size={18} />
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                    ))}
+                                    {firstOnly(pair.u1)}
                                   </div>
-                                  <div className="flex items-center justify-end">{LeftBell}</div>
+                                </div>
+                                <div className="justify-self-center">
+                                  <ArrowLeftRight
+                                    size={20}
+                                    style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
+                                    aria-hidden
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2 min-w-0 justify-end">
+                                  <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA} />
+                                  <div
+                                    className="text-[14px] font-medium truncate"
+                                    style={{ color: "var(--tg-text-color)" }}
+                                    title={firstOnly(pair.u2)}
+                                  >
+                                    {firstOnly(pair.u2)}
+                                  </div>
                                 </div>
                               </div>
+                            );
 
-                              {/* Правый столбец u2 -> u1 (зелёные) + одна кнопка Напомнить (если я u1-кредитор) */}
-                              <div className="min-w-0">
-                                <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
-                                  <div
-                                    className="flex flex-col gap-[6px]"
-                                    style={{ minHeight: rightMinH, justifyContent: "flex-start" }}
-                                  >
-                                    {rightEntries.slice(0, 2).map(([ccy, amt], i) => (
+                            const RightBell =
+                              (pair.u1.id === u.id) && Rfull > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const amounts: Record<string, number> = {};
+                                    for (const [ccy, amt] of rightEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
+                                    triggerRemind(pair.u2, amounts);
+                                  }}
+                                  className={btn3D}
+                                  aria-label={t("remind_debt") as string}
+                                  title={t("remind_debt") as string}
+                                >
+                                  <Bell size={18} />
+                                </button>
+                              ) : null;
+
+                            const LeftBell =
+                              (pair.u1.id === u.id) && Lfull > 0 && myId === pair.u2.id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const amounts: Record<string, number> = {};
+                                    for (const [ccy, amt] of leftEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
+                                    triggerRemind(pair.u1, amounts);
+                                  }}
+                                  className={btn3D}
+                                  aria-label={t("remind_debt") as string}
+                                  title={t("remind_debt") as string}
+                                >
+                                  <Bell size={18} />
+                                </button>
+                              ) : null;
+
+                            const leftMinH =
+                              Math.max(1, Math.min(2, Lfull)) * LINE_H +
+                              Math.max(0, Math.min(2, Lfull) - 1) * V_GAP;
+                            const rightMinH =
+                              Math.max(1, Math.min(2, Rfull)) * LINE_H +
+                              Math.max(0, Math.min(2, Rfull) - 1) * V_GAP;
+
+                            return (
+                              <div key={`pair-${u.id}-${pair.u2.id}-${pIdx}`} className="py-2">
+                                {PairHeader}
+
+                                <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                                  {/* u1 -> u2 (красные) */}
+                                  <div className="min-w-0">
+                                    <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
                                       <div
-                                        key={`pair-R-${ccy}-${i}`}
-                                        className="grid items-center"
-                                        style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                        className="flex flex-col gap-[6px]"
+                                        style={{ minHeight: leftMinH, justifyContent: "flex-start" }}
                                       >
-                                        <DebtLine amount={amt} currency={ccy} color="green" arrow="left" locale={locale} />
-                                        {/* «Рассчитаться» если я должник (u2) */}
-                                        {iAmU2 ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => onRepay?.(pair.u1, amt, ccy)}
-                                            className={btn3D}
-                                            aria-label={t("repay_debt") as string}
-                                            title={t("repay_debt") as string}
+                                        {leftEntries.slice(0, 2).map(([ccy, amt], i) => (
+                                          <div
+                                            key={`pair-L-${ccy}-${i}`}
+                                            className="grid items-center"
+                                            style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
                                           >
-                                            <HandCoins size={18} />
-                                          </button>
-                                        ) : null}
+                                            <DebtLine
+                                              amount={amt}
+                                              currency={ccy}
+                                              color="red"
+                                              arrow="right"
+                                              locale={locale}
+                                            />
+                                            {/* «Рассчитаться» если я должник (u1) */}
+                                            {iAmU1 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => onRepay?.(pair.u2, amt, ccy)}
+                                                className={btn3D}
+                                                aria-label={t("repay_debt") as string}
+                                                title={t("repay_debt") as string}
+                                              >
+                                                <HandCoins size={18} />
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                      <div className="flex items-center justify-end">{LeftBell}</div>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-end">{RightBell}</div>
-                                </div>
-                              </div>
-                            </div>
 
-                            {/* разделитель между парами (начиная сразу после аватара) */}
-                            {idx !== sec.pairs.length - 1 && (
-                              <div className="mt-2">
-                                <Divider />
+                                  {/* u2 -> u1 (зелёные) */}
+                                  <div className="min-w-0">
+                                    <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
+                                      <div
+                                        className="flex flex-col gap-[6px]"
+                                        style={{ minHeight: rightMinH, justifyContent: "flex-start" }}
+                                      >
+                                        {rightEntries.slice(0, 2).map(([ccy, amt], i) => (
+                                          <div
+                                            key={`pair-R-${ccy}-${i}`}
+                                            className="grid items-center"
+                                            style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}
+                                          >
+                                            <DebtLine
+                                              amount={amt}
+                                              currency={ccy}
+                                              color="green"
+                                              arrow="left"
+                                              locale={locale}
+                                            />
+                                            {/* «Рассчитаться» если я должник (u2) */}
+                                            {iAmU2 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => onRepay?.(pair.u1, amt, ccy)}
+                                                className={btn3D}
+                                                aria-label={t("repay_debt") as string}
+                                                title={t("repay_debt") as string}
+                                              >
+                                                <HandCoins size={18} />
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="flex items-center justify-end">{RightBell}</div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* разделитель между парами */}
+                                {pIdx !== sec.pairs.length - 1 && (
+                                  <div className="mt-2">
+                                    <Divider />
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+
+                    {/* разделитель между участниками (как в ContactsList) */}
+                    {idx !== participants.length - 1 && expanded && (
+                      <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
+                    )}
                   </div>
                 );
               })
+            )}
+
+            {/* Кнопка «Раскрыть все» */}
+            {participants.length > 0 && (
+              <div className="px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => expandAll(participants.map((u) => u.id))}
+                  className="w-full h-10 rounded-xl bg-[var(--tg-accent-color,#40A7E3)] text-white font-semibold active:scale-95 transition"
+                >
+                  {t("expand_all") || "Раскрыть все"}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -981,7 +1081,10 @@ export default function GroupBalanceTabSmart({
             <div className="text-[15px] font-semibold mb-1">{t("reminder_copied_title")}</div>
             <div className="text-[14px] opacity-80 mb-3">{t("reminder_copied_desc")}</div>
 
-            <div className="max-h-[200px] overflow-auto rounded-lg border p-2 text-[13px] mb-3" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+            <div
+              className="max-h-[200px] overflow-auto rounded-lg border p-2 text-[13px] mb-3"
+              style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+            >
               <pre className="whitespace-pre-wrap break-words m-0">{remindMessage}</pre>
             </div>
 
