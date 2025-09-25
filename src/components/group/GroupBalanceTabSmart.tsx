@@ -40,7 +40,7 @@ type Props = {
 
 /* ---------- utils ---------- */
 const AVA_MINE = 32;       // для вкладки "Мой баланс"
-const AVA_ALL = 48;        // для вкладки "Все балансы" — как в UserCard
+const AVA_ALL = 48;        // для вкладки "Все балансы" — аватар контакта в списке (свернутая карточка)
 
 const firstOnly = (u?: User) => {
   if (!u) return "";
@@ -753,12 +753,12 @@ export default function GroupBalanceTabSmart({
           /* ================= Все балансы -> СПИСОК УЧАСТНИКОВ ================= */
           <div className="overflow-hidden">
             {membersLoading && (
-              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
+              <div className="px-2 py-3 text-sm text-[var(--tg-hint-color)]">{t("loading")}</div>
             )}
 
             {/* Если в группе реально нет долгов */}
             {participants.length === 0 && !membersLoading ? (
-              <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
+              <div className="px-2 py-3 text-sm text-[var(--tg-hint-color)]">
                 {t("group_balance_no_debts_all")}
               </div>
             ) : (
@@ -791,14 +791,14 @@ export default function GroupBalanceTabSmart({
 
                 return (
                   <div key={`u-${u.id}`} className="relative">
-                    {/* Свёрнутое состояние — всё по левому краю */}
+                    {/* Свёрнутое состояние — всё по левому краю (уменьшили боковые паддинги и верхний у первой карточки) */}
                     {!expanded && (
                       <button
                         type="button"
                         onClick={() => toggleAllItem(u.id)}
                         className="w-full active:opacity-70 text-left"
                       >
-                        <div className="flex items-start px-3 py-3 gap-4">
+                        <div className={`flex items-start px-2 ${idx === 0 ? "pt-0 pb-3" : "py-3"} gap-4`}>
                           <Avatar url={u.photo_url} alt={displayName(u)} size={AVA_ALL} />
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-base truncate">{displayName(u)}</div>
@@ -827,14 +827,14 @@ export default function GroupBalanceTabSmart({
                       </button>
                     )}
 
-                    {/* Разделитель как в ContactsList — когда элемент свернут */}
+                    {/* Разделитель когда элемент свернут — под текстом (с учётом новых боковых паддингов) */}
                     {idx !== participants.length - 1 && !expanded && (
-                      <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
+                      <div className="absolute left-[72px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                     )}
 
                     {/* Развёрнутое состояние */}
                     {expanded && (
-                      <div className="px-3 pb-3">
+                      <div className={`px-2 pb-3 ${idx === 0 ? "pt-0" : ""}`}>
                         {/* Кнопка свернуть (стрелка вверх) справа */}
                         <div className="flex justify-end">
                           <button
@@ -871,13 +871,13 @@ export default function GroupBalanceTabSmart({
 
                             return (
                               <div key={`pair-${u.id}-${pair.u2.id}-${pIdx}`} className="py-1">
-                                {/* Заголовок пары: u1 слева, стрелки строго по центру, u2 слева сразу после стрелок */}
+                                {/* Заголовок пары: u1 слева, стрелки по центру, u2 слева (аватары как на Мой баланс — 32px) */}
                                 <div
                                   className="grid items-center"
                                   style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
                                 >
                                   <div className="flex items-center gap-2 min-w-0 justify-start">
-                                    <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA_ALL} />
+                                    <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA_MINE} />
                                     <div
                                       className="text-[14px] font-medium truncate"
                                       style={{ color: "var(--tg-text-color)" }}
@@ -892,7 +892,7 @@ export default function GroupBalanceTabSmart({
                                   </div>
 
                                   <div className="flex items-center gap-2 min-w-0 justify-start">
-                                    <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA_ALL} />
+                                    <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA_MINE} />
                                     <div
                                       className="text-[14px] font-medium truncate"
                                       style={{ color: "var(--tg-text-color)" }}
@@ -988,7 +988,7 @@ export default function GroupBalanceTabSmart({
 
                                 {/* разделитель между u1-u2 — на всю ширину без боковых отступов */}
                                 {pIdx !== sec.pairs.length - 1 && (
-                                  <div className="-mx-3 mt-2">
+                                  <div className="-mx-2 mt-2">
                                     <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
                                   </div>
                                 )}
@@ -1001,7 +1001,7 @@ export default function GroupBalanceTabSmart({
 
                     {/* разделитель между участниками после разворота — на всю ширину */}
                     {idx !== participants.length - 1 && expanded && (
-                      <div className="-mx-3">
+                      <div className="-mx-2">
                         <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
                       </div>
                     )}
@@ -1012,7 +1012,7 @@ export default function GroupBalanceTabSmart({
 
             {/* Кнопка «Раскрыть все» / «Свернуть все» */}
             {participants.length > 0 && (
-              <div className="px-3 py-2">
+              <div className="px-2 py-2">
                 <button
                   type="button"
                   onClick={() => (anyExpanded ? collapseAll(participants.map((u) => u.id)) : expandAll(participants.map((u) => u.id)))}
