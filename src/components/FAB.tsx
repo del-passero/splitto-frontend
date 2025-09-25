@@ -20,7 +20,7 @@ const FAB = ({ actions }: Props) => {
   const [open, setOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
 
-  // клик вне — закрыть
+  // закрытие по клику вне
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -31,42 +31,62 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // показывать при скролле вниз, скрывать при скролле вверх
+  // показать при скролле вниз, скрыть при скролле вверх
   const [visible, setVisible] = useState(true)
+
   useEffect(() => {
-    // когда меню раскрыто — не скрываем FAB
+    // если меню открыто — не прячем FAB
     if (open) {
       setVisible(true)
       return
     }
 
-    let lastY = window.scrollY || 0
-    const THRESH = 6 // порог, чтобы избежать дрожания
-
-    const onScroll = () => {
-      const y = Math.max(0, window.scrollY || 0)
-      const dy = y - lastY
-      if (Math.abs(dy) < THRESH) {
-        lastY = y
-        return
-      }
-
-      if (y < 10) {
-        // у самого верха — всегда показываем
-        setVisible(true)
-      } else if (dy > 0) {
-        // прокрутка вниз — показываем
-        setVisible(true)
-      } else {
-        // прокрутка вверх — скрываем
-        setVisible(false)
-      }
-
-      lastY = y
+    const getScrollTop = () => {
+      const se = document.scrollingElement || document.documentElement
+      return (se ? se.scrollTop : window.scrollY) || 0
     }
 
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
+    let lastY = getScrollTop()
+    let raf = 0
+    const THRESH = 6 // порог чувствительности
+
+    const applyByDelta = (dy: number, yNow?: number) => {
+      // у самого верха — всегда видно
+      const y = yNow ?? getScrollTop()
+      if (y < 10) {
+        setVisible(true)
+        return
+      }
+      if (Math.abs(dy) < THRESH) return
+      if (dy > 0) setVisible(true)  // вниз — показать
+      else setVisible(false)        // вверх — скрыть
+    }
+
+    const onScroll = () => {
+      // ловим scroll со всех контейнеров (capture: true)
+      const y = getScrollTop()
+      const dy = y - lastY
+      lastY = y
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => applyByDelta(dy, y))
+    }
+
+    const onWheel = (e: Event) => {
+      const we = e as WheelEvent
+      // запасной канал: если скролл идёт во вложенном контейнере, wheel всё равно приходит
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => applyByDelta(we.deltaY))
+    }
+
+    // capture:true — чтобы перехватить scroll с вложенных контейнеров
+    window.addEventListener("scroll", onScroll, true)
+    window.addEventListener("wheel", onWheel, { passive: true, capture: true })
+
+    return () => {
+      window.removeEventListener("scroll", onScroll, true)
+      window.removeEventListener("wheel", onWheel as any, true)
+      cancelAnimationFrame(raf)
+    }
   }, [open])
 
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
@@ -78,7 +98,7 @@ const FAB = ({ actions }: Props) => {
         fixed z-50
         right-6 bottom-[90px]
         flex flex-col items-end
-        transition-opacity
+        transition-opacity duration-200
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
       `}
     >
@@ -86,7 +106,6 @@ const FAB = ({ actions }: Props) => {
         {open &&
           actions.map((action, idx) => (
             <div key={action.key} className="flex flex-row items-center justify-end w-full">
-              {/* Лейбл слева, кнопка справа */}
               {action.label && (
                 <span
                   className={`
