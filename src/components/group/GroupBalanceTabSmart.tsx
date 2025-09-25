@@ -13,7 +13,7 @@ import {
 import { useUserStore } from "../../store/userStore";
 import { useGroupsStore } from "../../store/groupsStore";
 import { useParams } from "react-router-dom";
-import { getGroupMembers } from "../../api/groupMembersApi"; // для списка ВСЕХ участников
+import { getGroupMembers } from "../../api/groupMembersApi"; // список ВСЕХ участников
 import type { GroupMember } from "../../types/group_member";
 
 /* ===== Types ===== */
@@ -230,7 +230,6 @@ export default function GroupBalanceTabSmart({
       try {
         setMembersLoading(true);
         const res = await getGroupMembers(groupId as number);
-        // допускаем оба формата ответа
         const arr: GroupMember[] = Array.isArray(res) ? (res as any) : (res?.items ?? []);
         const users: User[] = (arr || [])
           .map((gm: any) => gm?.user)
@@ -325,7 +324,7 @@ export default function GroupBalanceTabSmart({
     return rows;
   }, [leftCards, rightCards]);
 
-  /* ---------- Все балансы: агрегация пар (канонический вид) ---------- */
+  /* ---------- Все балансы: агрегация пар ---------- */
   type PairKey = string;
   type SumMap = Record<string, number>;
   type Agg = { low: User; high: User; lowToHigh: SumMap; highToLow: SumMap };
@@ -354,30 +353,24 @@ export default function GroupBalanceTabSmart({
     return byPair;
   }, [allDebts]);
 
-  // построить секцию "участник u1" -> список его пар и суммарные чипы (всегда показываем)
   const buildSectionForUser = useCallback(
     (u1: User) => {
       const sumsLeft: SumMap = {};
       const sumsRight: SumMap = {};
       const pairs: PairCard[] = [];
 
-      // собрать все пары, где участвует u1, и ориентировать так, чтобы u1 был слева
       for (const rec of pairAgg.values()) {
         const { low, high, lowToHigh, highToLow } = rec;
         if (u1.id === low.id) {
-          // u1 -> high
-          const left = { ...lowToHigh };
-          const right = { ...highToLow };
-          // отфильтруем нули и параллельно суммируем
           const l: SumMap = {};
           const r: SumMap = {};
-          for (const [ccy, amt] of Object.entries(left)) {
+          for (const [ccy, amt] of Object.entries(lowToHigh)) {
             if (amt > 0) {
               l[ccy] = amt;
               sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
             }
           }
-          for (const [ccy, amt] of Object.entries(right)) {
+          for (const [ccy, amt] of Object.entries(highToLow)) {
             if (amt > 0) {
               r[ccy] = amt;
               sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
@@ -387,18 +380,15 @@ export default function GroupBalanceTabSmart({
             pairs.push({ u1, u2: high, left: l, right: r });
           }
         } else if (u1.id === high.id) {
-          // u1 -> low (в обратную сторону)
-          const left = { ...highToLow };
-          const right = { ...lowToHigh };
           const l: SumMap = {};
           const r: SumMap = {};
-          for (const [ccy, amt] of Object.entries(left)) {
+          for (const [ccy, amt] of Object.entries(highToLow)) {
             if (amt > 0) {
               l[ccy] = amt;
               sumsLeft[ccy] = (sumsLeft[ccy] || 0) + amt;
             }
           }
-          for (const [ccy, amt] of Object.entries(right)) {
+          for (const [ccy, amt] of Object.entries(lowToHigh)) {
             if (amt > 0) {
               r[ccy] = amt;
               sumsRight[ccy] = (sumsRight[ccy] || 0) + amt;
@@ -410,7 +400,7 @@ export default function GroupBalanceTabSmart({
         }
       }
 
-      // отсортировать пары по имени u2
+      // сортировка пар по имени u2
       const nameKey = (u: User) => (displayName(u) || `#${u.id}`).toLowerCase();
       pairs.sort(
         (A, B) => nameKey(A.u2).localeCompare(nameKey(B.u2), locale, { sensitivity: "base" }) || A.u2.id - B.u2.id
@@ -450,7 +440,30 @@ export default function GroupBalanceTabSmart({
     }
   );
 
-  /* ===== Chips ===== */
+  /* ===== MoneyInline (как в GroupCard.MoneyScroller) ===== */
+  function MoneyInline({
+    entries,
+    colorClass,
+  }: {
+    entries: [string, number][];
+    colorClass: string; // "text-red-500" | "text-green-600"
+  }) {
+    return (
+      <span className="inline whitespace-normal break-normal">
+        {entries.map(([ccy, amt], i) => (
+          <span key={`${ccy}-${i}`} className="inline">
+            <span className={`font-semibold ${colorClass} whitespace-nowrap`}>
+              {/* держим вместе число+валюта через NBSP */}
+              {fmtAmountSmart(amt, ccy, locale)}
+            </span>
+            {i < entries.length - 1 ? "; " : ""}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  /* ===== Chips (оставляем ДЛЯ МОДАЛЕЙ/ДЕЙСТВИЙ и "Мой баланс") ===== */
   const Chip = ({
     dir,
     amount,
@@ -513,7 +526,7 @@ export default function GroupBalanceTabSmart({
       return next;
     });
 
-  // Полный список участников (из БД) + подстраховка пользователями из allDebts
+  // Полный список участников (из БД) + fallback участникам из allDebts
   const participants: User[] = useMemo(() => {
     const map = new Map<number, User>();
     for (const u of members) map.set(u.id, u);
@@ -563,7 +576,7 @@ export default function GroupBalanceTabSmart({
         {loading ? (
           <div className="py-6 text-center text-[var(--tg-hint-color)]">{t("loading")}</div>
         ) : tab === "mine" ? (
-          /* ================= Мой баланс (НЕ ТРОГАЕМ) ================= */
+          /* ================= Мой баланс — НЕ ТРОГАЕМ ================= */
           <div>
             {/* Заголовки */}
             <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -781,64 +794,67 @@ export default function GroupBalanceTabSmart({
                 const sec = buildSectionForUser(u);
                 const expanded = !!expandedAllMap[u.id];
 
-                const leftTotals = Object.entries(sec.sumsLeft).sort((a, b) => a[0].localeCompare(b[0]));
-                const rightTotals = Object.entries(sec.sumsRight).sort((a, b) => a[0].localeCompare(b[0]));
+                const leftTotals = Object.entries(sec.sumsLeft).sort((a, b) => a[0].localeCompare(b[0])) as [string, number][];
+                const rightTotals = Object.entries(sec.sumsRight).sort((a, b) => a[0].localeCompare(b[0])) as [string, number][];
 
-                // одна карточка участника как в UserCard, + чипы всегда + иконка разворота
                 return (
                   <div key={`u-${u.id}`} className="relative">
+                    {/* Шапка карточки участника — как UserCard, НО: превью-долгов строками (не чипы) */}
                     <button
                       type="button"
                       onClick={() => toggleAllItem(u.id)}
                       className="w-full active:opacity-70"
                     >
-                      <div className="flex items-center px-3 py-3 gap-4">
-                        <Avatar url={u.photo_url} alt={displayName(u)} size={48} />
+                      <div className="flex items-start px-3 py-3 gap-4">
+                        <Avatar url={u.photo_url} alt={displayName(u)} size={AVA} />
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-base truncate">{displayName(u)}</div>
                           <div className="text-[var(--tg-hint-color)] text-xs truncate">
                             {u.username ? `@${u.username}` : ""}
                           </div>
+
+                          {/* Превью: ДВЕ строки долгов (как MoneyScroller). Показываем ТОЛЬКО когда свернуто */}
+                          {!expanded && (
+                            <div className="mt-1 flex flex-col gap-[2px] text-[12px] leading-[14px] text-[var(--tg-text-color)]">
+                              <div className="min-w-0">
+                                {leftTotals.length === 0 ? (
+                                  <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
+                                ) : (
+                                  <>
+                                    <span>{t("i_owe")}: </span>
+                                    <MoneyInline entries={leftTotals} colorClass="text-red-500" />
+                                  </>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                {rightTotals.length === 0 ? (
+                                  <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</span>
+                                ) : (
+                                  <>
+                                    <span>{t("they_owe_me")}: </span>
+                                    <MoneyInline entries={rightTotals} colorClass="text-green-600" />
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Чипы: Я должен (out) — Мне должны (in). Показываем ВСЕГДА (для имеющихся валют) */}
-                        <div className="hidden sm:flex items-center gap-2 mr-2">
-                          {leftTotals.map(([ccy, sum]) => (
-                            <Chip key={`u-${u.id}-L-${ccy}`} dir="out" amount={sum} currency={ccy} />
-                          ))}
-                          {rightTotals.map(([ccy, sum]) => (
-                            <Chip key={`u-${u.id}-R-${ccy}`} dir="in" amount={sum} currency={ccy} />
-                          ))}
-                        </div>
-
-                        {/* На узких экранах чипы в две маленькие кучки */}
-                        <div className="sm:hidden flex flex-col items-end gap-1 mr-2">
-                          <div className="flex items-center gap-1 flex-wrap justify-end">
-                            {leftTotals.map(([ccy, sum]) => (
-                              <Chip key={`u-${u.id}-L-${ccy}`} dir="out" amount={sum} currency={ccy} />
-                            ))}
-                          </div>
-                          <div className="flex items-center gap-1 flex-wrap justify-end">
-                            {rightTotals.map(([ccy, sum]) => (
-                              <Chip key={`u-${u.id}-R-${ccy}`} dir="in" amount={sum} currency={ccy} />
-                            ))}
-                          </div>
-                        </div>
-
+                        {/* Иконка разворота */}
                         <ChevronDown
                           size={18}
-                          className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+                          className={`mt-1 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
                           aria-hidden
                         />
                       </div>
                     </button>
 
-                    {/* разделитель как в ContactsList — после шапки */}
+                    {/* Разделитель как в ContactsList — когда элемент свернут */}
                     {idx !== participants.length - 1 && !expanded && (
                       <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                     )}
 
-                    {/* Развёрнутый блок: Пары u1–u2 (БЕЗ чипов) */}
+                    {/* Развёрнутый блок: пары u1–u2 (БЕЗ чипов и без превью-строк) */}
                     {expanded && (
                       <div className="px-3 pb-3">
                         {sec.pairs.length === 0 ? (
@@ -1032,7 +1048,7 @@ export default function GroupBalanceTabSmart({
                       </div>
                     )}
 
-                    {/* разделитель между участниками (как в ContactsList) */}
+                    {/* разделитель между участниками */}
                     {idx !== participants.length - 1 && expanded && (
                       <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
                     )}
