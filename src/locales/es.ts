@@ -167,8 +167,8 @@ export default {
   /* Previsualizaciones y totales */
   group_balance_you_get: "Te deben {{sum}}",
   group_balance_you_owe: "Debes {{sum}}",
-  group_balance_he_get: "A él le deben {{sum}}",
-  group_balance_he_owes: "Él debe {{sum}}",
+  group_balance_he_get: "A él(ella) le deben {{sum}}",
+  group_balance_he_owes: "Él(Ella) debe {{sum}}",
   group_balance_zero: "Todo en cero",
   group_header_settings: "Ajustes",
   group_header_my_balance: "Mi balance",

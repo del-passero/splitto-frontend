@@ -167,8 +167,8 @@ export default {
   /* Preview and totals labels */
   group_balance_you_get: "You are owed {{sum}}",
   group_balance_you_owe: "You owe {{sum}}",
-  group_balance_he_get: "He is owed {{sum}}",
-  group_balance_he_owes: "He owes {{sum}}",
+  group_balance_he_get: "Owed {{sum}}",
+  group_balance_he_owes: "Owes {{sum}}",
   group_balance_zero: "All settled",
   group_header_settings: "Settings",
   group_header_my_balance: "My balance",

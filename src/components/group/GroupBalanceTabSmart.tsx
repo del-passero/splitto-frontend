@@ -39,7 +39,8 @@ type Props = {
 };
 
 /* ---------- utils ---------- */
-const AVA = 32;
+const AVA_MINE = 32;       // для вкладки "Мой баланс"
+const AVA_ALL = 48;        // для вкладки "Все балансы" — как в UserCard
 
 const firstOnly = (u?: User) => {
   if (!u) return "";
@@ -76,7 +77,7 @@ export function fmtAmountSmart(value: number, currency: string, locale?: string)
   }
 }
 
-function Avatar({ url, alt, size = AVA }: { url?: string; alt?: string; size?: number }) {
+function Avatar({ url, alt, size }: { url?: string; alt?: string; size: number }) {
   return url ? (
     <img
       src={url}
@@ -105,7 +106,7 @@ const btn3D =
 const LINE_H = 22;
 const V_GAP = 6;
 
-const Divider = ({ leftPx = AVA + 24 }) => (
+const Divider = ({ leftPx = AVA_MINE + 24 }) => (
   <div
     className="h-px bg-[var(--tg-hint-color)] opacity-15 w-full"
     style={{ marginLeft: leftPx, width: `calc(100% - ${leftPx}px)` }}
@@ -551,22 +552,11 @@ export default function GroupBalanceTabSmart({
         ) : tab === "mine" ? (
           /* ================= Мой баланс ================= */
           <div>
-            {/* Заголовки */}
-            <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <div className="min-w-0">
-                <div className="text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
-                  {t("i_owe") || "Я должен"}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
-                  {t("they_owe_me") || "Мне должны"}
-                </div>
-              </div>
-            </div>
-
-            {/* Превью-строки вместо чипов — в стиле GroupCard */}
-            <div className="grid gap-2 mb-2 text-[12px] leading-[14px] text-[var(--tg-text-color)]" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Превью-строки (без заголовков сверху) — в стиле GroupCard */}
+            <div
+              className="grid gap-2 mb-2 text-[12px] leading-[14px] text-[var(--tg-text-color)]"
+              style={{ gridTemplateColumns: "1fr 1fr" }}
+            >
               <div className="min-w-0">
                 {moneyEntriesFromTotals(leftTotals).length === 0 ? (
                   <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
@@ -589,7 +579,7 @@ export default function GroupBalanceTabSmart({
               </div>
             </div>
 
-            {/* Пары карточек (как было) */}
+            {/* Пары карточек */}
             <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {mineRows.map(({ left, right }, rowIdx) => {
                 if (!left && !right) return null;
@@ -618,9 +608,8 @@ export default function GroupBalanceTabSmart({
                             background: "var(--tg-card-bg)",
                           }}
                         >
-                          {/* шапка */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} size={AVA} />
+                            <Avatar url={left.user.photo_url} alt={firstOnly(left.user)} size={AVA_MINE} />
                             <div
                               className="text-[14px] font-medium truncate"
                               style={{ color: "var(--tg-text-color)" }}
@@ -630,7 +619,6 @@ export default function GroupBalanceTabSmart({
                             </div>
                           </div>
 
-                          {/* суммы */}
                           <div
                             className="flex flex-col gap-[6px]"
                             style={{
@@ -690,9 +678,8 @@ export default function GroupBalanceTabSmart({
                             background: "var(--tg-card-bg)",
                           }}
                         >
-                          {/* шапка */}
                           <div className="flex items-center gap-2 mb-1">
-                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} size={AVA} />
+                            <Avatar url={right.user.photo_url} alt={firstOnly(right.user)} size={AVA_MINE} />
                             <div
                               className="text-[14px] font-medium truncate"
                               style={{ color: "var(--tg-text-color)" }}
@@ -702,7 +689,6 @@ export default function GroupBalanceTabSmart({
                             </div>
                           </div>
 
-                          {/* суммы + одна кнопка Напомнить на колонку */}
                           <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
                             <div
                               className="flex flex-col gap-[6px]"
@@ -786,9 +772,26 @@ export default function GroupBalanceTabSmart({
                 const leftText = moneyPlainText(leftTotalsEntries, locale);
                 const rightText = moneyPlainText(rightTotalsEntries, locale);
 
+                // утилита: вставка цветной суммы внутрь шаблона t("group_balance_he_*", { sum })
+                const withColoredSum = (
+                  key: "group_balance_he_owes" | "group_balance_he_get",
+                  entries: [string, number][],
+                  colorClass: string
+                ) => {
+                  const tpl = t(key, { sum: "[[SUM]]" });
+                  const parts = String(tpl).split("[[SUM]]");
+                  return (
+                    <>
+                      {parts[0] || ""}
+                      <MoneyInline entries={entries} colorClass={colorClass} locale={locale} />
+                      {parts[1] || ""}
+                    </>
+                  );
+                };
+
                 return (
                   <div key={`u-${u.id}`} className="relative">
-                    {/* Свёрнутое состояние — как UserCard: всё по ЛЕВОМУ краю */}
+                    {/* Свёрнутое состояние — всё по левому краю */}
                     {!expanded && (
                       <button
                         type="button"
@@ -796,34 +799,30 @@ export default function GroupBalanceTabSmart({
                         className="w-full active:opacity-70 text-left"
                       >
                         <div className="flex items-start px-3 py-3 gap-4">
-                          <Avatar url={u.photo_url} alt={displayName(u)} size={AVA} />
+                          <Avatar url={u.photo_url} alt={displayName(u)} size={AVA_ALL} />
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-base truncate">{displayName(u)}</div>
                             <div className="text-[var(--tg-hint-color)] text-xs truncate">
                               {u.username ? `@${u.username}` : ""}
                             </div>
 
-                            {/* Две строки с ключами из п.2.8 */}
+                            {/* Две строки: суммы цветные как на GroupCard */}
                             <div className="mt-1 flex flex-col gap-[2px] text-[12px] leading-[14px] text-[var(--tg-text-color)]">
                               <div className="min-w-0 truncate" title={leftText || undefined}>
                                 {leftTotalsEntries.length === 0
                                   ? t("group_balance_no_debts_left_all")
-                                  : t("group_balance_he_owes", { sum: leftText })}
+                                  : withColoredSum("group_balance_he_owes", leftTotalsEntries, "text-red-500")}
                               </div>
                               <div className="min-w-0 truncate" title={rightText || undefined}>
                                 {rightTotalsEntries.length === 0
                                   ? t("group_balance_no_debts_right_all")
-                                  : t("group_balance_he_get", { sum: rightText })}
+                                  : withColoredSum("group_balance_he_get", rightTotalsEntries, "text-green-600")}
                               </div>
                             </div>
                           </div>
 
-                          {/* Иконка — можно оставить справа, но верстка всего блока левосторонняя */}
-                          <ChevronDown
-                            size={18}
-                            className="mt-1 shrink-0"
-                            aria-hidden
-                          />
+                          {/* Кнопка раскрыть (вниз) */}
+                          <ChevronDown size={18} className="mt-1 shrink-0" aria-hidden />
                         </div>
                       </button>
                     )}
@@ -833,9 +832,21 @@ export default function GroupBalanceTabSmart({
                       <div className="absolute left-[64px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15" />
                     )}
 
-                    {/* Развёрнутое состояние: скрываем шапку И суммарные строки — остаются только карточки пар */}
+                    {/* Развёрнутое состояние */}
                     {expanded && (
                       <div className="px-3 pb-3">
+                        {/* Кнопка свернуть (стрелка вверх) справа */}
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => toggleAllItem(u.id)}
+                            className="p-1 rounded-md text-[var(--tg-hint-color)] hover:opacity-80 active:scale-95"
+                            aria-label={t("close") || "Свернуть"}
+                          >
+                            <ChevronDown size={18} className="rotate-180" />
+                          </button>
+                        </div>
+
                         {sec.pairs.length === 0 ? (
                           <div className="text-[13px] text-[var(--tg-hint-color)]">
                             {t("group_balance_no_debts_all")}
@@ -851,55 +862,6 @@ export default function GroupBalanceTabSmart({
                             const Lfull = leftEntries.length;
                             const Rfull = rightEntries.length;
 
-                            // Заголовок пары: всё ПРИЖАТО К ЛЕВОМУ КРАЮ (u1 -> u2)
-                            const PairHeader = (
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA} />
-                                  <div
-                                    className="text-[14px] font-medium truncate"
-                                    style={{ color: "var(--tg-text-color)" }}
-                                    title={firstOnly(pair.u1)}
-                                  >
-                                    {firstOnly(pair.u1)}
-                                  </div>
-                                </div>
-                                <ArrowLeftRight
-                                  size={20}
-                                  style={{ opacity: 0.7, color: "var(--tg-hint-color)" }}
-                                  aria-hidden
-                                />
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA} />
-                                  <div
-                                    className="text-[14px] font-medium truncate"
-                                    style={{ color: "var(--tg-text-color)" }}
-                                    title={firstOnly(pair.u2)}
-                                  >
-                                    {firstOnly(pair.u2)}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-
-                            // Кнопки по п.2.7: только в своей секции пользователя
-                            const RightBell =
-                              viewerIsU && Rfull > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const amounts: Record<string, number> = {};
-                                    for (const [ccy, amt] of rightEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
-                                    triggerRemind(pair.u2, amounts);
-                                  }}
-                                  className={btn3D}
-                                  aria-label={t("remind_debt") as string}
-                                  title={t("remind_debt") as string}
-                                >
-                                  <Bell size={18} />
-                                </button>
-                              ) : null;
-
                             const leftMinH =
                               Math.max(1, Math.min(2, Lfull)) * LINE_H +
                               Math.max(0, Math.min(2, Lfull) - 1) * V_GAP;
@@ -908,10 +870,40 @@ export default function GroupBalanceTabSmart({
                               Math.max(0, Math.min(2, Rfull) - 1) * V_GAP;
 
                             return (
-                              <div key={`pair-${u.id}-${pair.u2.id}-${pIdx}`} className="py-2">
-                                {PairHeader}
+                              <div key={`pair-${u.id}-${pair.u2.id}-${pIdx}`} className="py-1">
+                                {/* Заголовок пары: u1 слева, стрелки строго по центру, u2 слева сразу после стрелок */}
+                                <div
+                                  className="grid items-center"
+                                  style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 8 }}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 justify-start">
+                                    <Avatar url={pair.u1.photo_url} alt={firstOnly(pair.u1)} size={AVA_ALL} />
+                                    <div
+                                      className="text-[14px] font-medium truncate"
+                                      style={{ color: "var(--tg-text-color)" }}
+                                      title={firstOnly(pair.u1)}
+                                    >
+                                      {firstOnly(pair.u1)}
+                                    </div>
+                                  </div>
 
-                                <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                                  <div className="justify-self-center">
+                                    <ArrowLeftRight size={20} style={{ opacity: 0.7, color: "var(--tg-hint-color)" }} aria-hidden />
+                                  </div>
+
+                                  <div className="flex items-center gap-2 min-w-0 justify-start">
+                                    <Avatar url={pair.u2.photo_url} alt={firstOnly(pair.u2)} size={AVA_ALL} />
+                                    <div
+                                      className="text-[14px] font-medium truncate"
+                                      style={{ color: "var(--tg-text-color)" }}
+                                      title={firstOnly(pair.u2)}
+                                    >
+                                      {firstOnly(pair.u2)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
                                   {/* u1 -> u2 (красные) + «Рассчитаться» ТОЛЬКО в своей секции и только слева */}
                                   <div className="min-w-0">
                                     <div className="grid" style={{ gridTemplateColumns: "1fr auto", columnGap: 6 }}>
@@ -945,7 +937,7 @@ export default function GroupBalanceTabSmart({
                                           </div>
                                         ))}
                                       </div>
-                                      {/* Слева никакого «Напомнить» */}
+                                      {/* Слева «Напомнить» не показываем */}
                                       <div />
                                     </div>
                                   </div>
@@ -969,19 +961,35 @@ export default function GroupBalanceTabSmart({
                                                 {fmtAmountSmart(amt, ccy, locale)}
                                               </span>
                                             </div>
-                                            {/* «Рассчитаться» справа — НЕ показываем */}
                                           </div>
                                         ))}
                                       </div>
-                                      <div className="flex items-center justify-end">{RightBell}</div>
+                                      {/* «Напомнить» справа только у кредитора */}
+                                      <div className="flex items-center justify-end">
+                                        {viewerIsU && rightEntries.length > 0 ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const amounts: Record<string, number> = {};
+                                              for (const [ccy, amt] of rightEntries) amounts[ccy] = (amounts[ccy] || 0) + amt;
+                                              triggerRemind(pair.u2, amounts);
+                                            }}
+                                            className={btn3D}
+                                            aria-label={t("remind_debt") as string}
+                                            title={t("remind_debt") as string}
+                                          >
+                                            <Bell size={18} />
+                                          </button>
+                                        ) : null}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* разделитель */}
+                                {/* разделитель между u1-u2 — на всю ширину без боковых отступов */}
                                 {pIdx !== sec.pairs.length - 1 && (
-                                  <div className="mt-2">
-                                    <Divider />
+                                  <div className="-mx-3 mt-2">
+                                    <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
                                   </div>
                                 )}
                               </div>
@@ -991,9 +999,11 @@ export default function GroupBalanceTabSmart({
                       </div>
                     )}
 
-                    {/* разделитель между участниками после разворота */}
+                    {/* разделитель между участниками после разворота — на всю ширину */}
                     {idx !== participants.length - 1 && expanded && (
-                      <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
+                      <div className="-mx-3">
+                        <div className="h-px bg-[var(--tg-hint-color)] opacity-15" />
+                      </div>
                     )}
                   </div>
                 );

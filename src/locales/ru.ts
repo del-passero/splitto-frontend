@@ -167,8 +167,8 @@ export default {
   /* Превью и итоговые подписи */
   group_balance_you_get: "Тебе должны {{sum}}",
   group_balance_you_owe: "Ты должен {{sum}}",
-  group_balance_he_get: "Ему должны {{sum}}",
-  group_balance_he_owes: "Он должен {{sum}}",
+  group_balance_he_get: "Ему (ей) должны {{sum}}",
+  group_balance_he_owes: "Должен(должна) {{sum}}",
   group_balance_zero: "Всё по нулям",
   group_header_settings: "Настройки",
   group_header_my_balance: "Мой баланс",
