@@ -802,10 +802,6 @@ export default function GroupBalanceTabSmart({
                           <Avatar url={u.photo_url} alt={displayName(u)} size={AVA_ALL} />
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-base truncate">{displayName(u)}</div>
-                            //<div className="text-[var(--tg-hint-color)] text-xs truncate">
-                              //{u.username ? `@${u.username}` : ""}
-                            //</div>
-
                             {/* Две строки: суммы цветные как на GroupCard */}
                             <div className="mt-1 flex flex-col gap-[2px] text-[12px] leading-[14px] text-[var(--tg-text-color)]">
                               <div className="min-w-0 truncate" title={leftText || undefined}>
