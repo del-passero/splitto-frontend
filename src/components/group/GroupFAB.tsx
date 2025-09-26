@@ -22,9 +22,9 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
 
     const onScroll = () => {
       const y = getY()
-      const goingDown = y > last
+      const goingUp = y < last
       const nearTop = y < 10
-      setVisible(goingDown || nearTop) // вниз -> показать, вверх -> скрыть (кроме самого верха)
+      setVisible(goingUp || nearTop) // вверх -> показать, вниз -> скрыть (кроме самого верха)
       last = y
     }
 
@@ -65,4 +65,3 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
 }
 
 export default GroupFAB
-
