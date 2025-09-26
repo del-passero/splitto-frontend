@@ -7,6 +7,7 @@ import { UserPlus, HandCoins } from "lucide-react"
 import InviteFriendModal from "../components/InviteFriendModal"
 import FiltersRow from "../components/FiltersRow"
 import ContactsList from "../components/ContactsList"
+import EmptyContacts from "../components/EmptyContacts"
 import { useFriendsStore } from "../store/friendsStore"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import { useGroupsStore } from "../store/groupsStore"
@@ -16,7 +17,7 @@ const ContactsPage = () => {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
   const [search, setSearch] = useState("")
-  const { fetchFriends, searchFriends, clearFriends } = useFriendsStore()
+  const { friends, loading, error, fetchFriends, searchFriends, clearFriends } = useFriendsStore()
   const { groups } = useGroupsStore()
 
   // Загружаем обычный список или поиск
@@ -47,6 +48,47 @@ const ContactsPage = () => {
     },
   ]
 
+  // Пустые состояния — как на странице групп
+  const isSearching = search.trim().length > 0
+  const nothingLoaded = !loading && !error && friends.length === 0
+  const notFound = isSearching && nothingLoaded
+  const noContacts = !isSearching && nothingLoaded
+
+  if (noContacts || notFound) {
+    return (
+      <MainLayout fabActions={fabActions}>
+        {/* Фильтр, поиск */}
+        <FiltersRow
+          search={search}
+          setSearch={setSearch}
+          placeholderKey="search_placeholder"
+        />
+
+        {/* Плейсхолдеры пустого состояния */}
+        <EmptyContacts notFound={notFound} />
+
+        {/* Модалка приглашения */}
+        <InviteFriendModal
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          inviteLink={null}
+        />
+
+        {/* Модалка создания транзакции */}
+        <CreateTransactionModal
+          open={createTxOpen}
+          onOpenChange={setCreateTxOpen}
+          groups={(groups ?? []).map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            icon: g.icon,
+            color: g.color,
+          }))}
+        />
+      </MainLayout>
+    )
+  }
+
   return (
     <MainLayout fabActions={fabActions}>
       {/* Фильтр, поиск */}
@@ -58,8 +100,8 @@ const ContactsPage = () => {
 
       {/* Список контактов (универсально — и поиск, и обычный режим) */}
       <ContactsList
-        isSearching={search.length > 0}
-        searchQuery={search.length > 0 ? search : undefined}
+        isSearching={isSearching}
+        searchQuery={isSearching ? search : undefined}
       />
 
       {/* Модалка приглашения */}
