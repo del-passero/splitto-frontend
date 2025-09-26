@@ -15,28 +15,12 @@ type Props = {
   actions: FabAction[]
 }
 
-const THRESHOLD_SCROLL = 1      // игнорируем микро-движения скролла
-const THRESHOLD_TOUCH = 8       // чувствительность к свайпу
-
-const findScrollEl = (from?: HTMLElement | null): HTMLElement | Window => {
-  const closest = from?.closest(".app-scroll") as HTMLElement | null
-  const global = document.querySelector(".app-scroll") as HTMLElement | null
-  const mainEl = document.querySelector("main") as HTMLElement | null
-  return closest || global || mainEl || window
-}
-
-const getScrollPos = (target: HTMLElement | Window) =>
-  target instanceof Window
-    ? window.scrollY || document.documentElement.scrollTop || 0
-    : (target as HTMLElement).scrollTop
-
 const FAB = ({ actions }: Props) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [visible, setVisible] = useState(true)
   const fabRef = useRef<HTMLDivElement>(null)
 
-  // Закрываем меню по клику вне FAB
+  // клик вне — закрыть меню
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -47,88 +31,27 @@ const FAB = ({ actions }: Props) => {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // Показывать FAB, когда вверху
-  const forceVisibleIfNearTop = (target: HTMLElement | Window) => {
-    const nearTop = getScrollPos(target) <= 10
-    if (nearTop) setVisible(true)
-    return nearTop
-  }
-
-  // Основная логика направления скролла/свайпа
+  // показать/скрыть по направлению скролла:
+  // вниз -> показываем, вверх -> скрываем; у самого верха (y < 10) всегда показываем
+  const [visible, setVisible] = useState(true)
   useEffect(() => {
-    const target = findScrollEl(fabRef.current)
+    const scroller = document.querySelector(".app-scroll") as HTMLElement | null
+    const target: HTMLElement | Window = scroller ?? window
 
-    let last = getScrollPos(target)
-    let touchY = 0
+    const getY = () => (target instanceof Window ? target.scrollY : target.scrollTop)
+    let last = getY()
 
     const onScroll = () => {
-      const cur = getScrollPos(target)
-      const diff = cur - last
-      if (Math.abs(diff) >= THRESHOLD_SCROLL) {
-        if (diff > 0) {
-          // скроллим вниз — показываем FAB
-          setVisible(true)
-        } else {
-          // скроллим вверх — прячем, кроме самого верха
-          if (!forceVisibleIfNearTop(target)) setVisible(false)
-        }
-        last = cur
-      } else {
-        // даже при микро-движении, если вверху — всегда видим
-        forceVisibleIfNearTop(target)
-      }
+      const y = getY()
+      const goingDown = y > last
+      const nearTop = y < 10
+      setVisible(goingDown || nearTop)
+      last = y
     }
 
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches?.[0]?.clientY ?? 0
-      // при начале жеста у самого верха — сразу показать
-      forceVisibleIfNearTop(target)
-    }
-
-    const onTouchMove = (e: TouchEvent) => {
-      const y = e.touches?.[0]?.clientY ?? 0
-      const dy = y - touchY
-      if (Math.abs(dy) >= THRESHOLD_TOUCH) {
-        if (dy < 0) {
-          // палец вверх => контент вниз => показываем
-          setVisible(true)
-        } else {
-          // палец вниз => контент вверх => прячем, кроме самого верха
-          if (!forceVisibleIfNearTop(target)) setVisible(false)
-        }
-        touchY = y
-      }
-    }
-
-    // Подписки на сам скроллер
-    const opts: AddEventListenerOptions = { passive: true }
-    ;(target as any).addEventListener?.("scroll", onScroll, opts)
-    ;(target as any).addEventListener?.("touchstart", onTouchStart, opts)
-    ;(target as any).addEventListener?.("touchmove", onTouchMove, opts)
-
-    // Дублируем на window — для случаев, когда скроллер «промахнулся»
-    window.addEventListener("scroll", onScroll, opts)
-    window.addEventListener("touchstart", onTouchStart, opts)
-    window.addEventListener("touchmove", onTouchMove, opts)
-
-    // Стартовое состояние — если уже не вверху, считаем «прокрутили вниз»
-    if (!forceVisibleIfNearTop(target)) setVisible(true)
-
-    return () => {
-      ;(target as any).removeEventListener?.("scroll", onScroll)
-      ;(target as any).removeEventListener?.("touchstart", onTouchStart)
-      ;(target as any).removeEventListener?.("touchmove", onTouchMove)
-
-      window.removeEventListener("scroll", onScroll)
-      window.removeEventListener("touchstart", onTouchStart)
-      window.removeEventListener("touchmove", onTouchMove)
-    }
+    target.addEventListener("scroll", onScroll as any, { passive: true })
+    return () => target.removeEventListener("scroll", onScroll as any)
   }, [])
-
-  // Если меню открыто — не прячем FAB
-  useEffect(() => {
-    if (open) setVisible(true)
-  }, [open])
 
   const FAB_COLOR = "bg-[var(--tg-link-color)]"
 
@@ -139,7 +62,7 @@ const FAB = ({ actions }: Props) => {
         fixed z-50
         right-6 bottom-[90px]
         flex flex-col items-end
-        transition-opacity duration-200
+        transition-opacity
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
       `}
     >
@@ -147,18 +70,19 @@ const FAB = ({ actions }: Props) => {
         {open &&
           actions.map((action, idx) => (
             <div key={action.key} className="flex flex-row items-center justify-end w-full">
+              {/* Лейбл слева, кнопка справа */}
               {action.label && (
                 <span
                   className={`
                     mr-3 px-3 py-[6px] rounded-lg text-sm font-medium fab-label-appear
-                    bg-transparent
-                    text-[var(--tg-hint-color)]
+                    bg-[var(--tg-fab-label-bg)] text-[var(--tg-fab-label-color)]
+                    shadow-[0_2px_8px_rgba(0,0,0,0.12)]
                     select-none pointer-events-none
                     transition
                   `}
                   style={{ animationDelay: `${idx * 60}ms` }}
                 >
-                  {t(action.label)}
+                  {action.label}
                 </span>
               )}
               <button
@@ -186,7 +110,6 @@ const FAB = ({ actions }: Props) => {
             </div>
           ))}
       </div>
-
       <button
         type="button"
         aria-label="Open actions"
@@ -210,3 +133,4 @@ const FAB = ({ actions }: Props) => {
 }
 
 export default FAB
+

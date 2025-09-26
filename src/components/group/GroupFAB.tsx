@@ -8,98 +8,28 @@ type Props = {
   className?: string
 }
 
-const SCROLL_EPS = 2    // игнорим микро-движения
-const TOUCH_EPS = 8     // чувствительность к свайпу
-const NEAR_TOP = 10     // порог «у самого верха»
-
-const getScrollEl = (): HTMLElement | Window => {
-  const el = document.querySelector(".app-scroll") as HTMLElement | null
-  return el || window
-}
-
-const getScrollPos = (target: HTMLElement | Window) =>
-  target instanceof Window
-    ? window.scrollY || document.documentElement.scrollTop || 0
-    : (target as HTMLElement).scrollTop
-
 const GroupFAB = ({ onClick, className = "" }: Props) => {
   const { t } = useTranslation()
   const [visible, setVisible] = useState(true)
   const fabRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const target = getScrollEl()
+    const scroller = document.querySelector(".app-scroll") as HTMLElement | null
+    const target: HTMLElement | Window = scroller ?? window
 
-    let last = getScrollPos(target)
-    let touchY = 0
-
-    const ensureTopVisible = () => {
-      if (getScrollPos(target) <= NEAR_TOP) {
-        setVisible(true)
-        return true
-      }
-      return false
-    }
+    const getY = () => (target instanceof Window ? target.scrollY : target.scrollTop)
+    let last = getY()
 
     const onScroll = () => {
-      const cur = getScrollPos(target)
-      const diff = cur - last
-      if (Math.abs(diff) > SCROLL_EPS) {
-        if (diff > 0) {
-          // скроллим ВНИЗ -> показываем
-          setVisible(true)
-        } else {
-          // скроллим ВВЕРХ -> скрываем (кроме самого верха)
-          if (!ensureTopVisible()) setVisible(false)
-        }
-        last = cur
-      } else {
-        ensureTopVisible()
-      }
+      const y = getY()
+      const goingDown = y > last
+      const nearTop = y < 10
+      setVisible(goingDown || nearTop) // вниз -> показать, вверх -> скрыть (кроме самого верха)
+      last = y
     }
 
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches?.[0]?.clientY ?? 0
-      ensureTopVisible()
-    }
-
-    const onTouchMove = (e: TouchEvent) => {
-      const y = e.touches?.[0]?.clientY ?? 0
-      const dy = y - touchY
-      if (Math.abs(dy) > TOUCH_EPS) {
-        if (dy < 0) {
-          // палец вверх (контент вниз) -> показываем
-          setVisible(true)
-        } else {
-          // палец вниз (контент вверх) -> скрываем, кроме самого верха
-          if (!ensureTopVisible()) setVisible(false)
-        }
-        touchY = y
-      }
-    }
-
-    const opts: AddEventListenerOptions = { passive: true }
-    ;(target as any).addEventListener?.("scroll", onScroll, opts)
-    ;(target as any).addEventListener?.("touchstart", onTouchStart, opts)
-    ;(target as any).addEventListener?.("touchmove", onTouchMove, opts)
-
-    // Дублируем на window — на случай, если скроллер не тот
-    window.addEventListener("scroll", onScroll, opts)
-    window.addEventListener("touchstart", onTouchStart, opts)
-    window.addEventListener("touchmove", onTouchMove, opts)
-
-    // стартовое состояние
-    ensureTopVisible()
-
-    return () => {
-      ;(target as any).removeEventListener?.("scroll", onScroll)
-      ;(target as any).removeEventListener?.("touchstart", onTouchStart)
-      ;(target as any).removeEventListener?.("touchmove", onTouchMove)
-
-      window.removeEventListener("scroll", onScroll)
-      window.removeEventListener("touchstart", onTouchStart)
-      window.removeEventListener("touchmove", onTouchMove)
-    }
+    target.addEventListener("scroll", onScroll as any, { passive: true })
+    return () => target.removeEventListener("scroll", onScroll as any)
   }, [])
 
   return (
@@ -108,7 +38,7 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
       className={`
         fixed z-50
         right-6 bottom-[90px]
-        transition-opacity duration-200
+        transition-opacity
         ${visible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
         ${className}
       `}
@@ -135,3 +65,4 @@ const GroupFAB = ({ onClick, className = "" }: Props) => {
 }
 
 export default GroupFAB
+
