@@ -32,7 +32,7 @@ const FAB = ({ actions }: Props) => {
   }, [open])
 
   // показать/скрыть по направлению скролла:
-  // вниз -> показываем, вверх -> скрываем; у самого верха (y < 10) всегда показываем
+  // вверх -> показываем, вниз -> скрываем; у самого верха (y < 10) всегда показываем
   const [visible, setVisible] = useState(true)
   useEffect(() => {
     const scroller = document.querySelector(".app-scroll") as HTMLElement | null
@@ -43,9 +43,9 @@ const FAB = ({ actions }: Props) => {
 
     const onScroll = () => {
       const y = getY()
-      const goingDown = y > last
+      const goingUp = y < last
       const nearTop = y < 10
-      setVisible(goingDown || nearTop)
+      setVisible(goingUp || nearTop)
       last = y
     }
 
@@ -75,7 +75,7 @@ const FAB = ({ actions }: Props) => {
                 <span
                   className={`
                     mr-3 px-3 py-[6px] rounded-lg text-sm font-medium fab-label-appear
-                    bg-[var(--tg-fab-label-bg)] text-[var(--tg-fab-label-color)]
+                    bg-[var(--tg-link-color)] text-white
                     shadow-[0_2px_8px_rgba(0,0,0,0.12)]
                     select-none pointer-events-none
                     transition
@@ -110,9 +110,10 @@ const FAB = ({ actions }: Props) => {
             </div>
           ))}
       </div>
+
       <button
         type="button"
-        aria-label="Open actions"
+        aria-label={t("actions") || "Open actions"}
         onClick={() => setOpen((v) => !v)}
         className={`
           w-14 h-14 rounded-full
@@ -133,4 +134,3 @@ const FAB = ({ actions }: Props) => {
 }
 
 export default FAB
-

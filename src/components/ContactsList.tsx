@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { useFriendsStore } from "../store/friendsStore"
 import UserCard from "./UserCard"
 import CardSection from "./CardSection"
+import TopInfoRow from "./TopInfoRow"
 import type { Friend, UserShort } from "../types/friend"
 
 const PAGE_SIZE = 20
@@ -22,7 +23,7 @@ function pickPerson(f: Friend): UserShort | undefined {
 
 const ContactsList = (_props: Props) => {
   const { t } = useTranslation()
-  const { friends, loading, error, hasMore, fetchFriends } = useFriendsStore()
+  const { friends, total, loading, error, hasMore, fetchFriends } = useFriendsStore()
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -52,6 +53,11 @@ const ContactsList = (_props: Props) => {
         <div className="px-3 py-3 text-sm text-[var(--tg-hint-color)]">
           {t("error")}
         </div>
+      )}
+
+      {/* Информер — как на странице групп: в той же CardSection, над первым контактом */}
+      {friends.length > 0 && (
+        <TopInfoRow count={total} labelKey="contacts_count" />
       )}
 
       {friends.map((f: Friend, idx: number) => {

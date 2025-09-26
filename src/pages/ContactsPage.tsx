@@ -6,7 +6,6 @@ import MainLayout from "../layouts/MainLayout"
 import { UserPlus, HandCoins } from "lucide-react"
 import InviteFriendModal from "../components/InviteFriendModal"
 import FiltersRow from "../components/FiltersRow"
-import TopInfoRow from "../components/TopInfoRow"
 import ContactsList from "../components/ContactsList"
 import { useFriendsStore } from "../store/friendsStore"
 import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
@@ -17,7 +16,7 @@ const ContactsPage = () => {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createTxOpen, setCreateTxOpen] = useState(false)
   const [search, setSearch] = useState("")
-  const { friends, total, loading, fetchFriends, searchFriends, clearFriends } = useFriendsStore()
+  const { fetchFriends, searchFriends, clearFriends } = useFriendsStore()
   const { groups } = useGroupsStore()
 
   // Загружаем обычный список или поиск
@@ -56,11 +55,6 @@ const ContactsPage = () => {
         setSearch={setSearch}
         placeholderKey="search_placeholder"
       />
-
-      {/* Информер */}
-      {friends.length > 0 && (
-        <TopInfoRow count={total} labelKey="contacts_count" />
-      )}
 
       {/* Список контактов (универсально — и поиск, и обычный режим) */}
       <ContactsList
