@@ -18,6 +18,9 @@ export interface Group {
   auto_archive: boolean
   default_currency_code: string
 
+  /** URL аватара группы (если установлен) */
+  avatar_url?: string | null
+
   members_count?: number
   members?: GroupMember[]
 
@@ -33,6 +36,9 @@ export interface GroupPreview {
   owner_id: number
   members_count: number
   preview_members: GroupMember[]
+
+  /** URL аватара группы в списках (если установлен) */
+  avatar_url?: string | null
 
   status?: GroupStatus
   archived_at?: string | null

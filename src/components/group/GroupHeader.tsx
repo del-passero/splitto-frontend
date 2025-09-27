@@ -30,7 +30,12 @@ const GroupHeader = ({
 
   return (
     <CardSection className="flex items-center px-0 py-0">
-      <GroupAvatar name={group.name} size={56} className="mr-4" />
+      <GroupAvatar
+        name={group.name}
+        src={(group as any).avatar_url || undefined}
+        size={56}
+        className="mr-4"
+      />
       <div className="flex flex-col flex-grow min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="font-bold text-xl break-words text-[var(--tg-text-color)] leading-tight truncate">

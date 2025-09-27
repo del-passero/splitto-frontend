@@ -181,3 +181,13 @@ export async function getDeletePreview(groupId: number): Promise<{
   const url = `${API_URL}/groups/${groupId}/delete-preview`
   return await fetchJson(url)
 }
+
+/** Установка аватара группы по публичному URL */
+export async function setGroupAvatarByUrl(groupId: number, url: string): Promise<Group> {
+  const endpoint = `${API_URL}/groups/${groupId}/avatar/url`
+  return await fetchJson<Group>(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+}

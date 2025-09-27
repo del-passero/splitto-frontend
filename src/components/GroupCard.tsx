@@ -143,7 +143,12 @@ export default function GroupCard({
         className="flex-shrink-0 relative"
         aria-label={(group as any).name}
       >
-        <GroupAvatar name={(group as any).name} size={AVATAR_SIZE} className="relative" />
+        <GroupAvatar
+          name={(group as any).name}
+          src={(group as any).avatar_url || undefined}
+          size={AVATAR_SIZE}
+          className="relative"
+        />
       </button>
 
       {/* Средняя колонка — 4 строки (карточка кликабельна) */}

@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import CurrencyPickerModal, { type CurrencyItem } from "./currency/CurrencyPickerModal"
 import CardSection from "./CardSection"
-import { createGroup, patchGroupCurrency, patchGroupSchedule } from "../api/groupsApi"
+import { createGroup, patchGroupCurrency, patchGroupSchedule, setGroupAvatarByUrl } from "../api/groupsApi"
+import GroupAvatar from "./GroupAvatar"
 
 type Props = {
   open: boolean
@@ -16,6 +17,31 @@ type Props = {
 
 const NAME_MAX = 40
 const DESC_MAX = 120
+
+const UPLOAD_ENDPOINT: string | undefined = import.meta.env.VITE_UPLOAD_URL as string | undefined
+
+async function uploadImageAndGetUrl(file: File): Promise<string> {
+  if (!UPLOAD_ENDPOINT) {
+    throw new Error("UPLOAD_ENDPOINT_NOT_CONFIGURED")
+  }
+  const form = new FormData()
+  form.append("file", file)
+  // при необходимости можно добавить доп. поля: папку, имя и т.п.
+  const res = await fetch(UPLOAD_ENDPOINT, { method: "POST", body: form })
+  if (!res.ok) {
+    let msg = ""
+    try { msg = await res.text() } catch {}
+    throw new Error(msg || `Upload failed: HTTP ${res.status}`)
+  }
+  // ожидаем JSON вида { url: "https://..."} или { Location: "https://..."}
+  const data = await res.json().catch(() => ({}))
+  const url: string | undefined =
+    data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
+  if (!url || typeof url !== "string") {
+    throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
+  }
+  return url
+}
 
 function Switch({
   checked,
@@ -109,6 +135,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
   const [endDate, setEndDate] = useState<string>("")
   const hiddenDateRef = useRef<HTMLInputElement | null>(null)
 
+  // --- Аватар: превью/загрузка ---
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarRemoteUrl, setAvatarRemoteUrl] = useState<string | null>(null)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
   useEffect(() => {
     if (!open) return
     const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
@@ -120,8 +153,60 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
+      // сбрасываем состояние аватара
+      setAvatarPreview(null)
+      setAvatarRemoteUrl(null)
+      setAvatarUploading(false)
+      setAvatarError(null)
+      if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }, [open])
+
+  // освобождаем objectURL при смене/закрытии
+  useEffect(() => {
+    return () => {
+      if (avatarPreview?.startsWith("blob:")) {
+        try { URL.revokeObjectURL(avatarPreview) } catch {}
+      }
+    }
+  }, [avatarPreview])
+
+  const onPickAvatarClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAvatarError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    // превью сразу
+    const objUrl = URL.createObjectURL(file)
+    setAvatarPreview(objUrl)
+
+    // если настроен эндпоинт загрузки — грузим прямо сейчас
+    if (UPLOAD_ENDPOINT) {
+      setAvatarUploading(true)
+      try {
+        const url = await uploadImageAndGetUrl(file)
+        setAvatarRemoteUrl(url)
+      } catch (err: any) {
+        setAvatarError(
+          (t("errors.upload_failed") as string) ||
+          err?.message ||
+          "Не удалось загрузить изображение"
+        )
+        setAvatarRemoteUrl(null)
+      } finally {
+        setAvatarUploading(false)
+      }
+    } else {
+      // если загрузчик не настроен — дадим понятный хинт
+      setAvatarError(
+        (t("group_form.upload_hint_no_endpoint") as string) ||
+        "Файл выбран. Чтобы загрузка работала, задайте VITE_UPLOAD_URL и перезапустите фронт."
+      )
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -129,6 +214,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
     if (!name.trim()) { setError(t("errors.group_name_required")); return }
     if (isTrip && !endDate) { setError(t("errors.group_trip_date_required")); return }
+    if (avatarUploading) { setError((t("group_form.avatar_still_uploading") as string) || "Дождитесь окончания загрузки аватара"); return }
 
     setLoading(true)
     try {
@@ -138,6 +224,12 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       const code = currency?.code || "USD"
       if (code !== "USD") promises.push(patchGroupCurrency(group.id, code))
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
+
+      // если есть загруженный (публичный) URL аватара — установим его
+      if (avatarRemoteUrl) {
+        promises.push(setGroupAvatarByUrl(group.id, avatarRemoteUrl))
+      }
+
       Promise.allSettled(promises).catch(() => {})
 
       onCreated?.(group)
@@ -179,6 +271,61 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
+
+            {/* ====== НОВОЕ: Блок аватара сверху ====== */}
+            <div className="w-full flex flex-col items-center gap-3 mb-2">
+              <GroupAvatar
+                name={name || "G"}
+                src={avatarPreview || undefined}
+                size={80}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onPickAvatarClick}
+                  className="px-3 py-2 rounded-xl font-semibold text-sm
+                             bg-[var(--tg-accent-color,#40A7E3)] text-white
+                             hover:opacity-95 active:scale-95 transition
+                             disabled:opacity-60 disabled:pointer-events-none"
+                  disabled={avatarUploading}
+                >
+                  {avatarUploading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {(t("uploading") as string) || "Загрузка..."}
+                    </span>
+                  ) : (
+                    (t("group_form.upload_image") as string) || "Загрузить изображение"
+                  )}
+                </button>
+                {/* скрытый input для выбора файла */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onFileSelected}
+                />
+              </div>
+              {/* тонкий хинт / ошибка под кнопкой */}
+              {avatarError && (
+                <div className="text-[12px] text-red-500 text-center px-4">
+                  {avatarError}
+                </div>
+              )}
+              {!avatarError && avatarRemoteUrl && (
+                <div className="text-[12px] text-[var(--tg-hint-color)] text-center">
+                  {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
+                </div>
+              )}
+              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
+                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
+                  {(t("group_form.upload_hint_no_endpoint") as string)
+                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
+                </div>
+              )}
+            </div>
+            {/* ====== /НОВОЕ ====== */}
 
             {/* Имя + хинт (вплотную) */}
             <div className="space-y-[4px]">
@@ -300,9 +447,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                            bg-[var(--tg-accent-color,#40A7E3)] text-white
                            flex items-center justify-center gap-2 active:scale-95
                            disabled:opacity-60 disabled:pointer-events-none transition"
-                disabled={loading}
+                disabled={loading || avatarUploading}
               >
-                {loading && <Loader2 className="animate-spin w-5 h-5" />}
+                {(loading || avatarUploading) && <Loader2 className="animate-spin w-5 h-5" />}
                 {t("create_group")}
               </button>
             </div>
