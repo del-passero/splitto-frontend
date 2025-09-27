@@ -140,6 +140,8 @@ export default {
   invite_error: "Could not create the link. Please try again later.",
   invite_message:
     "Join me on Splitto — a convenient way to manage shared expenses without leaving Telegram.\nHere is your invite link:\n{{link}}",
+  invite_group_message:
+    "Join the Splitto group “{{group}}” — the easy way to manage shared expenses.\nOpen this link to join:\n{{link}}",
   error_invite_link: "Failed to get the link",
 
   // --- Contacts ---

@@ -67,7 +67,7 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
 
   const handleCopy = () => {
     if (inviteLink) {
-      const msg = t("invite_message", { link: inviteLink })
+      const msg = t("invite_group_message", { link: inviteLink })
       navigator.clipboard.writeText(msg)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -76,7 +76,7 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
 
   const handleShare = () => {
     if (inviteLink) {
-      const msg = t("invite_message", { link: inviteLink })
+      const msg = t("invite_group_message", { link: inviteLink })
       navigator.clipboard.writeText(msg)
       setShared(true)
       setTimeout(() => setShared(false), 1000)

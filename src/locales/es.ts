@@ -140,6 +140,8 @@ export default {
   invite_error: "No se pudo crear el enlace. Inténtalo de nuevo más tarde.",
   invite_message:
     "Únete a mí en Splitto: una forma cómoda de gestionar gastos compartidos sin salir de Telegram.\nAquí tienes el enlace de invitación:\n{{link}}",
+  invite_group_message:
+    "Únete al grupo “{{group}}” en Splitto — la forma fácil de gestionar gastos compartidos.\nAbre este enlace para unirte:\n{{link}}",
   error_invite_link: "No se pudo obtener el enlace",
 
   // --- Contactos ---
