@@ -3,9 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { acceptGroupInvite, previewGroupInvite, type InvitePreview } from "../api/groupInvitesApi"
 
-/* =========================
-   i18n (ru / en / es)
-   ========================= */
+/* i18n */
 type Lang = "ru" | "en" | "es"
 const STRINGS: Record<Lang, Record<string, string>> = {
   en: {
@@ -15,6 +13,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     joining: "Joining...",
     inviteError: "Invite error",
     acceptFailed: "Failed to accept invite",
+    invalidInvite: "This invite link is invalid or expired.",
+    goHome: "Go to Home",
   },
   ru: {
     invitedYou: "пригласил(а) вас в группу",
@@ -23,6 +23,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     joining: "Вступаем...",
     inviteError: "Ошибка приглашения",
     acceptFailed: "Не удалось принять приглашение",
+    invalidInvite: "Ссылка приглашения недействительна или устарела.",
+    goHome: "На главную",
   },
   es: {
     invitedYou: "te invitó al grupo",
@@ -31,32 +33,24 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     joining: "Uniéndose...",
     inviteError: "Error de invitación",
     acceptFailed: "No se pudo aceptar la invitación",
+    invalidInvite: "Este enlace de invitación no es válido o expiró.",
+    goHome: "Ir al inicio",
   },
 }
-
-function normalizeLang(code?: string | null): Lang {
-  const c = (code || "").toLowerCase().split("-")[0]
-  return (["ru", "en", "es"].includes(c) ? c : "en") as Lang
+const normalizeLang = (c?: string | null): Lang => {
+  const x = (c || "").toLowerCase().split("-")[0]
+  return (["ru", "en", "es"].includes(x) ? x : "en") as Lang
 }
-
-function getLang(): Lang {
+const getLang = (): Lang => {
   const tg: any = (window as any)?.Telegram?.WebApp
-  const fromTg = normalizeLang(
-    tg?.initDataUnsafe?.user?.language_code ||
-      tg?.initDataUnsafe?.language ||
-      tg?.languageCode
-  )
-  return fromTg
+  return normalizeLang(tg?.initDataUnsafe?.user?.language_code || tg?.initDataUnsafe?.language || tg?.languageCode)
 }
-
-function useT() {
+const useT = () => {
   const lang = getLang()
-  return (key: keyof typeof STRINGS["en"]) => STRINGS[lang][key] || STRINGS.en[key]
+  return (k: keyof typeof STRINGS["en"]) => STRINGS[lang][k] || STRINGS.en[k]
 }
 
-/* =========================
-   Helpers: token из start_param/URL
-   ========================= */
+/* token helpers */
 function getStartParam(): string | null {
   const tg: any = (window as any)?.Telegram?.WebApp
   const fromTg =
@@ -64,8 +58,7 @@ function getStartParam(): string | null {
     (tg?.initDataUnsafe?.startParam as string | undefined) ??
     null
   const params = new URLSearchParams(window.location.search)
-  const fromUrl =
-    params.get("startapp") || params.get("start") || params.get("tgWebAppStartParam") || null
+  const fromUrl = params.get("startapp") || params.get("start") || params.get("tgWebAppStartParam") || null
   return fromTg || fromUrl
 }
 function normalizeToken(raw?: string | null): string | null {
@@ -79,24 +72,21 @@ function normalizeToken(raw?: string | null): string | null {
   return t || null
 }
 
-/* =========================
-   Тема (светлая/тёмная)
-   ========================= */
+/* theming */
 function useOverlayColor() {
   const tg = (window as any)?.Telegram?.WebApp
   const scheme = tg?.colorScheme as "light" | "dark" | undefined
   return scheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)"
 }
 
-/* =========================
-   Тип состояния
-   ========================= */
+/* state */
 type State =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "hidden" }
   | { status: "ready"; preview: InvitePreview; token?: string | null }
   | { status: "joining"; preview: InvitePreview; token?: string | null }
+  | { status: "invalid" } // ⬅️ новое: вместо редиректа на главную показываем понятный экран
   | { status: "error"; message: string }
 
 export default function InviteJoinModal() {
@@ -109,13 +99,10 @@ export default function InviteJoinModal() {
     let cancelled = false
     ;(async () => {
       setState({ status: "loading" })
-      const raw = getStartParam()
-      const token = normalizeToken(raw)
+      const token = normalizeToken(getStartParam())
 
-      // Требуем наличие токена; если его нет — уходим со страницы инвайта
       if (!token) {
-        setState({ status: "hidden" })
-        navigate("/", { replace: true })
+        setState({ status: "invalid" })
         return
       }
 
@@ -124,8 +111,7 @@ export default function InviteJoinModal() {
         if (cancelled) return
 
         if (!preview?.group?.id) {
-          setState({ status: "hidden" })
-          navigate("/", { replace: true })
+          setState({ status: "invalid" })
           return
         }
         if (preview.already_member) {
@@ -135,15 +121,49 @@ export default function InviteJoinModal() {
         }
         setState({ status: "ready", preview, token })
       } catch {
-        // bad_token / 401 и т.д. — просто уходим на главную
-        setState({ status: "hidden" })
-        navigate("/", { replace: true })
+        // 400 bad_token / 401 и т.п. — считаем инвайт некорректным
+        setState({ status: "invalid" })
       }
     })()
     return () => { cancelled = true }
   }, [navigate])
 
   if (state.status === "hidden" || state.status === "idle" || state.status === "loading") return null
+
+  // Экран «инвайт некорректен» — остаёмся на /invite и предлагаем уйти на главную
+  if (state.status === "invalid") {
+    const cardStyle: React.CSSProperties = {
+      background: "var(--tg-theme-bg-color,#fff)",
+      color: "var(--tg-theme-text-color,#111)",
+      border: "1px solid var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.06))",
+      boxShadow: "0 8px 28px rgba(0,0,0,0.12)",
+    }
+    const hintStyle: React.CSSProperties = {
+      color: "var(--tg-theme-hint-color,rgba(0,0,0,0.6))",
+    }
+    const secondaryBtnStyle: React.CSSProperties = {
+      background: "var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))",
+      color: "var(--tg-theme-text-color,#111)",
+    }
+    return (
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: overlayColor }}>
+        <div className="w-[92%] max-w-[460px] rounded-2xl p-5" style={cardStyle}>
+          <div className="text-base mb-2" style={{ fontWeight: 600 }}>Invite</div>
+          <div className="text-sm" style={hintStyle}>{t("invalidInvite")}</div>
+          <div className="flex gap-8 justify-end mt-6">
+            <button
+              onClick={() => navigate("/", { replace: true })}
+              className="px-4 py-2 rounded-xl"
+              style={secondaryBtnStyle}
+            >
+              {t("goHome")}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (state.status === "error") return null
 
   const { preview, token } =
@@ -210,12 +230,7 @@ export default function InviteJoinModal() {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: overlayColor }}
-    >
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: overlayColor }}>
       <div className="w-[92%] max-w-[460px] rounded-2xl p-5" style={cardStyle}>
         {/* Inviter */}
         <div className="flex items-center gap-3 mb-3">
