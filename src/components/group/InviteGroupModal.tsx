@@ -1,14 +1,10 @@
 // frontend/src/components/group/InviteGroupModal.tsx
-// Модалка «ПРИГЛАСИТЬ В ГРУППУ» — поведение как у дружеского инвайта:
-// 1) дергаем createGroupInvite()
-// 2) собираем ссылку вида https://t.me/<BOT_USERNAME>/?startapp=<token>
-// 3) даём кнопки «Скопировать», «Поделиться», «Закрыть»
 
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { createGroupInvite } from "../../api/groupInvitesApi"
 
-const BOT_USERNAME = "Splitto_Bot" // как в InviteFriendModal; при необходимости замените/вынесите в .env
+const BOT_USERNAME = (import.meta.env.VITE_TG_BOT_USERNAME as string) || "Splitto_Bot"
 
 type Props = {
   open: boolean
@@ -39,14 +35,28 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
     try {
       const res = await createGroupInvite(groupId) // { token, deep_link }
       const token = res?.token
+      const deep = res?.deep_link || null
 
       if (!token) {
         setError(t("invite_error"))
         return
       }
+      // ЖЁСТКО: только групповой формат
+      if (!token.startsWith("GINV_")) {
+        setError("Ошибка сервера: токен группы некорректен (ожидаем GINV_...)")
+        return
+      }
 
-      // как в дружеском инвайте — собираем ссылку сами по BOT_USERNAME
-      const url = `https://t.me/${BOT_USERNAME}/?startapp=${encodeURIComponent(token)}`
+      // Предпочитаем deep_link (если задан TELEGRAM_BOT_USERNAME на бэке)
+      const url =
+        deep ||
+        (BOT_USERNAME ? `https://t.me/${BOT_USERNAME}/?startapp=${encodeURIComponent(token)}` : null)
+
+      if (!url) {
+        setError("Имя бота не настроено. Задайте VITE_TG_BOT_USERNAME или TELEGRAM_BOT_USERNAME.")
+        return
+      }
+
       setInviteLink(url)
     } catch (e: any) {
       setError(e?.message || t("invite_error"))
@@ -80,7 +90,7 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
       <div className="bg-[var(--tg-bg-color)] rounded-2xl shadow-xl w-[90vw] max-w-xs p-6 flex flex-col">
         <div className="font-bold text-lg mb-3">{t("invite_group")}</div>
 
-        {error && <div className="mb-2 text-red-500 text-sm">{error}</div>}
+        {error && <div className="mb-2 text-red-500 text-sm whitespace-pre-wrap">{error}</div>}
 
         {inviteLink ? (
           <>
