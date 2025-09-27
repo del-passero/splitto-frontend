@@ -1,4 +1,3 @@
-// frontend/src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { useEffect } from "react"
 
@@ -18,35 +17,41 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 import { useAcceptInviteOnBoot } from "./hooks/useAcceptInviteOnBoot"
 
+// ВАЖНО: этот компонент живёт ВНУТРИ <BrowserRouter>, поэтому хуки роутера здесь валидны
+const RoutedApp = () => {
+  useAcceptInviteOnBoot()
+
+  return (
+    <MainLayout>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/invite" element={<InvitePage />} />
+        <Route path="/groups" element={<GroupsPage />} />
+        <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
+        <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
+        <Route path="/contacts" element={<ContactsPage />} />
+        <Route path="/contacts/:friendId" element={<ContactDetailsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/transactions/:txId" element={<TransactionEditPage />} />
+      </Routes>
+    </MainLayout>
+  )
+}
+
 const App = () => {
   useApplyTheme()
   useSyncI18nLanguage()
   useTelegramAuth()
 
-  // ВАЖНО: этот хук не содержит условных хуков, он только делает навигацию на /invite
-  useAcceptInviteOnBoot()
-
   useEffect(() => {
-    // можно оставить пустым; Telegram WebApp init уже произошёл в useTelegramAuth
+    // Telegram WebApp init происходит в useTelegramAuth
   }, [])
 
   return (
     <div className="app-viewport">
       <div className="app-scroll">
         <BrowserRouter>
-          <MainLayout>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/invite" element={<InvitePage />} />
-              <Route path="/groups" element={<GroupsPage />} />
-              <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-              <Route path="/groups/:groupId/settings" element={<GroupDetailsPageSettings />} />
-              <Route path="/contacts" element={<ContactsPage />} />
-              <Route path="/contacts/:friendId" element={<ContactDetailsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/transactions/:txId" element={<TransactionEditPage />} />
-            </Routes>
-          </MainLayout>
+          <RoutedApp />
         </BrowserRouter>
       </div>
     </div>
