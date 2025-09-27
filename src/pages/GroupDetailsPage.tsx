@@ -352,7 +352,12 @@ const GroupDetailsPage = () => {
         />
 
         {/* Модалка инвайта в группу */}
-        <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
+        <InviteGroupModal
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          groupId={id}
+          groupName={group.name}
+        />
 
         {/* Лёгкая модалка контакта */}
         <ContactQuickModal open={quickOpen} onClose={() => setQuickOpen(false)} userId={quickUserId} />

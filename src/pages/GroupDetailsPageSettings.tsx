@@ -1,4 +1,4 @@
-// frontend/src/pages/GroupDetailsPageSettings.tsx
+// src/pages/GroupDetailsPageSettings.tsx
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -249,7 +249,12 @@ const GroupDetailsPageSettings = () => {
       />
 
       {/* Модалка инвайта в группу */}
-      <InviteGroupModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={id} />
+      <InviteGroupModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        groupId={id}
+        groupName={group.name}
+      />
 
       {/* Модалка редактирования названия/описания группы */}
       <EditGroupModal

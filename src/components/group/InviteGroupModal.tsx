@@ -4,15 +4,18 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { createGroupInvite } from "../../api/groupInvitesApi"
 
-const BOT_USERNAME = (import.meta.env.VITE_TG_BOT_USERNAME as string) || "Splitto_Bot"
+const BOT_USERNAME =
+  (import.meta.env.VITE_TG_BOT_USERNAME as string) || "Splitto_Bot"
 
 type Props = {
   open: boolean
   onClose: () => void
   groupId: number
+  /** ПЕРЕДАЙТЕ сюда реальное имя группы из родительской страницы */
+  groupName?: string
 }
 
-const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
+const InviteGroupModal = ({ open, onClose, groupId, groupName }: Props) => {
   const { t } = useTranslation()
 
   const [inviteLink, setInviteLink] = useState<string | null>(null)
@@ -20,6 +23,9 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shared, setShared] = useState(false)
+
+  // Фолбэк названия — локализованный "Группа", если имя не передали
+  const groupTitle = groupName && groupName.trim() ? groupName : (t("group") as string)
 
   useEffect(() => {
     if (!open) return
@@ -50,10 +56,14 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
       // Предпочитаем deep_link (если задан TELEGRAM_BOT_USERNAME на бэке)
       const url =
         deep ||
-        (BOT_USERNAME ? `https://t.me/${BOT_USERNAME}/?startapp=${encodeURIComponent(token)}` : null)
+        (BOT_USERNAME
+          ? `https://t.me/${BOT_USERNAME}/?startapp=${encodeURIComponent(token)}`
+          : null)
 
       if (!url) {
-        setError("Имя бота не настроено. Задайте VITE_TG_BOT_USERNAME или TELEGRAM_BOT_USERNAME.")
+        setError(
+          "Имя бота не настроено. Задайте VITE_TG_BOT_USERNAME или TELEGRAM_BOT_USERNAME."
+        )
         return
       }
 
@@ -67,7 +77,10 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
 
   const handleCopy = () => {
     if (inviteLink) {
-      const msg = t("invite_group_message", { link: inviteLink })
+      const msg = t("invite_group_message", {
+        group: groupTitle,
+        link: inviteLink,
+      })
       navigator.clipboard.writeText(msg)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -76,7 +89,10 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
 
   const handleShare = () => {
     if (inviteLink) {
-      const msg = t("invite_group_message", { link: inviteLink })
+      const msg = t("invite_group_message", {
+        group: groupTitle,
+        link: inviteLink,
+      })
       navigator.clipboard.writeText(msg)
       setShared(true)
       setTimeout(() => setShared(false), 1000)
@@ -90,7 +106,11 @@ const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
       <div className="bg-[var(--tg-bg-color)] rounded-2xl shadow-xl w-[90vw] max-w-xs p-6 flex flex-col">
         <div className="font-bold text-lg mb-3">{t("invite_group")}</div>
 
-        {error && <div className="mb-2 text-red-500 text-sm whitespace-pre-wrap">{error}</div>}
+        {error && (
+          <div className="mb-2 text-red-500 text-sm whitespace-pre-wrap">
+            {error}
+          </div>
+        )}
 
         {inviteLink ? (
           <>
