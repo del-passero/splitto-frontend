@@ -4,6 +4,17 @@
 import type { Group, GroupPreview } from "../types/group"
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+// База для статических файлов = API без "/api"
+const FILES_BASE_URL: string = (import.meta.env.VITE_FILES_BASE_URL as string) || API_URL.replace(/\/api\/?$/i, "")
+
+function toAbsoluteUrl(input: string): string {
+  const url = String(input || "").trim()
+  if (!url) return ""
+  if (/^https?:\/\//i.test(url)) return url
+  const base = FILES_BASE_URL.replace(/\/$/, "")
+  const path = url.startsWith("/") ? url : `/${url}`
+  return `${base}${path}`
+}
 
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -76,7 +87,13 @@ export async function getGroupDetails(groupId: number, offset: number = 0, limit
   sp.set("offset", String(offset))
   if (typeof limit === "number") sp.set("limit", String(limit))
   const url = `${API_URL}/groups/${groupId}/detail/?` + sp.toString()
-  return await fetchJson<Group>(url)
+  const g = await fetchJson<Group>(url)
+  // Нормализуем avatar_url в абсолютный, если вдруг сервер вернул относительный
+  const any: any = g as any
+  if (any?.avatar_url && typeof any.avatar_url === "string") {
+    any.avatar_url = toAbsoluteUrl(any.avatar_url)
+  }
+  return g
 }
 
 export async function getGroupBalances(groupId: number) {
@@ -182,12 +199,13 @@ export async function getDeletePreview(groupId: number): Promise<{
   return await fetchJson(url)
 }
 
-/** Установка аватара группы по публичному URL */
+/** Установка аватара группы по публичному URL — ТЕПЕРЬ всегда абсолютный */
 export async function setGroupAvatarByUrl(groupId: number, url: string): Promise<Group> {
   const endpoint = `${API_URL}/groups/${groupId}/avatar/url`
+  const absolute = toAbsoluteUrl(url)
   return await fetchJson<Group>(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url: absolute }),
   })
 }

@@ -251,6 +251,7 @@ export default function EditGroupModal({
         await deleteAvatarOnServer(groupId)
         setCurrentAvatarUrl(null)
       } else if (stagedAvatarUrl && stagedAvatarUrl !== currentAvatarUrl) {
+        // setGroupAvatarByUrl теперь сам делает абсолютный URL — 422 больше не будет
         await setGroupAvatarByUrl(groupId, stagedAvatarUrl)
         setCurrentAvatarUrl(stagedAvatarUrl)
       }

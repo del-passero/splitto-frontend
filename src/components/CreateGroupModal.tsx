@@ -265,6 +265,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
 
       if (avatarRemoteUrl) {
+        // setGroupAvatarByUrl теперь сам сделает абсолютный URL
         promises.push(setGroupAvatarByUrl(group.id, avatarRemoteUrl))
       }
 
