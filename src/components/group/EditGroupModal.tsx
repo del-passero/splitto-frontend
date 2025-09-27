@@ -251,7 +251,6 @@ export default function EditGroupModal({
         await deleteAvatarOnServer(groupId)
         setCurrentAvatarUrl(null)
       } else if (stagedAvatarUrl && stagedAvatarUrl !== currentAvatarUrl) {
-        // setGroupAvatarByUrl теперь сам делает абсолютный URL — 422 больше не будет
         await setGroupAvatarByUrl(groupId, stagedAvatarUrl)
         setCurrentAvatarUrl(stagedAvatarUrl)
       }
@@ -268,14 +267,14 @@ export default function EditGroupModal({
     }
   }
 
-  const previewSrc =
-    stagedPreview || // локальный blob выбранного файла
-    stagedAvatarUrl || // если вдруг хотим показать уже загруженный URL (без blob)
-    currentAvatarUrl || // текущий с сервера
-    undefined
+  // ВАЖНО: если помечено на удаление — превью скрываем сразу
+  const previewSrc = avatarRemoveMarked
+    ? undefined
+    : (stagedPreview || stagedAvatarUrl || currentAvatarUrl || undefined)
 
-  const hasAnyAvatar =
-    !!previewSrc || !!currentAvatarUrl
+  const hasAnyAvatar = !avatarRemoveMarked && (
+    !!stagedPreview || !!stagedAvatarUrl || !!currentAvatarUrl
+  )
 
   return (
     <div className="fixed inset-0 z-[1300] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">

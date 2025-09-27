@@ -266,6 +266,8 @@ const GroupDetailsPageSettings = () => {
         onSaved={(updated) => {
           setGroup(prev => prev ? { ...prev, name: updated.name, description: updated.description ?? null } as Group : prev)
           setEditOpen(false)
+          // жёстко обновляем страницу, чтобы гарантированно подтянуть новый аватар и пр.
+          window.location.reload()
         }}
       />
     </div>
