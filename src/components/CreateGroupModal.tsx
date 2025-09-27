@@ -8,15 +8,23 @@ import CardSection from "./CardSection"
 import { createGroup, patchGroupCurrency, patchGroupSchedule, setGroupAvatarByUrl } from "../api/groupsApi"
 import GroupAvatar from "./GroupAvatar"
 
-// ===== Настройки компрессии изображений =====
-const MAX_DIM = 1024            // максимум по большей стороне
-const JPEG_QUALITY = 0.82       // качество JPEG
-const SIZE_SKIP_BYTES = 500 * 1024 // если файл уже <500 KB, можем не сжимать
+// ===== API и upload endpoints (важно: одинаковая база с остальным API) =====
+const API_URL: string =
+  (import.meta.env.VITE_API_URL as string) ||
+  "https://splitto-backend-prod-ugraf.amvera.io/api"
+const UPLOAD_ENDPOINT: string =
+  (import.meta.env.VITE_UPLOAD_URL as string) ||
+  `${API_URL}/upload/image`
 
-// ===== Эндпоинты =====
-const API_BASE = (import.meta.env.VITE_API_URL as string) || "/api"
-// Если VITE_UPLOAD_URL не задан — используем /api/upload/image
-const UPLOAD_ENDPOINT: string = (import.meta.env.VITE_UPLOAD_URL as string) || `${API_BASE}/upload/image`
+function getTelegramInitData(): string {
+  // @ts-ignore
+  return window?.Telegram?.WebApp?.initData || ""
+}
+
+// ===== Настройки компрессии изображений =====
+const MAX_DIM = 1024          // максимум по большей стороне
+const JPEG_QUALITY = 0.82     // качество JPEG
+const SIZE_SKIP_BYTES = 500 * 1024 // если файл уже <500 KB, можно не сжимать
 
 type Props = {
   open: boolean
@@ -28,12 +36,10 @@ type Props = {
 const NAME_MAX = 40
 const DESC_MAX = 120
 
-// ===== Утилиты для компрессии =====
+// ===== Утилиты компрессии =====
 async function blobToFile(blob: Blob, fileName: string): Promise<File> {
-  // Пересоздаём File, чтобы отправлять как "file"
   return new File([blob], fileName, { type: blob.type, lastModified: Date.now() })
 }
-
 function readAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader()
@@ -42,87 +48,45 @@ function readAsDataURL(file: File): Promise<string> {
     fr.readAsDataURL(file)
   })
 }
-
 function drawOnCanvas(img: HTMLImageElement, maxDim: number, fillWhiteBackground = true): HTMLCanvasElement {
-  const { naturalWidth: w, naturalHeight: h } = img
-  if (!w || !h) {
-    const c = document.createElement("canvas")
-    c.width = 1; c.height = 1
-    return c
-  }
-
+  const w = img.naturalWidth || img.width
+  const h = img.naturalHeight || img.height
   const ratio = w > h ? maxDim / w : maxDim / h
-  const scale = Math.min(1, ratio) // не увеличиваем
+  const scale = Math.min(1, ratio || 1)
   const outW = Math.max(1, Math.round(w * scale))
   const outH = Math.max(1, Math.round(h * scale))
 
   const canvas = document.createElement("canvas")
   canvas.width = outW
   canvas.height = outH
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return canvas
-
-  // Если PNG/WebP с прозрачностью — зальём фон белым, чтобы не получить чёрный фон в JPEG
-  if (fillWhiteBackground) {
-    ctx.fillStyle = "#fff"
-    ctx.fillRect(0, 0, outW, outH)
-  }
-
-  // Сглаживание
+  const ctx = canvas.getContext("2d")!
+  if (fillWhiteBackground) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, outW, outH) }
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = "high"
-
   ctx.drawImage(img, 0, 0, outW, outH)
   return canvas
 }
-
-/**
- * Сжать картинку до maxDim и JPEG качества.
- * Возвращает новый File (JPEG) либо оригинальный файл, если сжатие не требуется/не удалось.
- */
 async function compressImage(original: File, opts?: { maxDim?: number; quality?: number }): Promise<File> {
   try {
-    // Мелкие файлы не трогаем
     if (original.size <= SIZE_SKIP_BYTES) return original
-
     const maxDim = opts?.maxDim ?? MAX_DIM
     const quality = opts?.quality ?? JPEG_QUALITY
 
     const dataUrl = await readAsDataURL(original)
     const img = document.createElement("img")
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res()
-      img.onerror = rej
-      img.src = dataUrl
-    })
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl })
 
-    // Если уже маленькое по пикселям — можно не сжимать
     const maxSide = Math.max(img.naturalWidth || 0, img.naturalHeight || 0)
-    if (maxSide && maxSide <= maxDim && original.size <= 1024 * 1024) {
-      return original
-    }
+    if (maxSide && maxSide <= maxDim && original.size <= 1024 * 1024) return original
 
     const canvas = drawOnCanvas(img, maxDim, true)
-
-    const blob: Blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error("TO_BLOB_FAILED"))),
-        "image/jpeg",
-        quality
-      )
-    })
-
-    // Если вдруг «сжатый» больше оригинала — вернём оригинал
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("TO_BLOB_FAILED"))), "image/jpeg", quality)
+    )
     if (blob.size >= original.size) return original
-
-    // Сохраним имя с .jpg
     const base = original.name.replace(/\.[^.]+$/u, "")
-    const outName = `${base}.jpg`
-    return await blobToFile(blob, outName)
-  } catch {
-    // Если что-то пошло не так — вернём исходник
-    return original
-  }
+    return await blobToFile(blob, `${base}.jpg`)
+  } catch { return original }
 }
 
 // ===== Загрузка на бэкенд и получение публичной ссылки =====
@@ -133,7 +97,7 @@ async function uploadImageAndGetUrl(file: File): Promise<string> {
   const res = await fetch(UPLOAD_ENDPOINT, {
     method: "POST",
     body: form,
-    // Заголовок Telegram не обязателен для /upload, поэтому не добавляем.
+    headers: { "x-telegram-initdata": getTelegramInitData() },
   })
 
   if (!res.ok) {
@@ -146,16 +110,12 @@ async function uploadImageAndGetUrl(file: File): Promise<string> {
   const url: string | undefined =
     data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
 
-  if (!url || typeof url !== "string") {
-    throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
-  }
+  if (!url || typeof url !== "string") throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
   return url
 }
 
 function Switch({
-  checked,
-  onChange,
-  ariaLabel,
+  checked, onChange, ariaLabel,
 }: { checked: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
   return (
     <button
@@ -173,12 +133,7 @@ function Switch({
 }
 
 function Row({
-  icon,
-  label,
-  value,
-  right,
-  onClick,
-  isLast,
+  icon, label, value, right, onClick, isLast,
 }: {
   icon: React.ReactNode
   label: string
@@ -195,12 +150,8 @@ function Row({
         className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
-          {icon}
-        </span>
-
+        <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>{icon}</span>
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
-
         {right ? (
           <span className="mr-4">{right}</span>
         ) : (
@@ -210,7 +161,6 @@ function Row({
           </>
         )}
       </button>
-
       {!isLast && (
         <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
       )}
@@ -258,10 +208,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
-      setAvatarPreview(null)
-      setAvatarRemoteUrl(null)
-      setAvatarUploading(false)
-      setAvatarError(null)
+      setAvatarPreview(null); setAvatarRemoteUrl(null); setAvatarUploading(false); setAvatarError(null)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }, [open])
@@ -274,36 +221,26 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     }
   }, [avatarPreview])
 
-  const onPickAvatarClick = () => {
-    fileInputRef.current?.click()
-  }
+  const onPickAvatarClick = () => fileInputRef.current?.click()
 
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setAvatarError(null)
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Сжимаем перед превью и загрузкой
     setAvatarUploading(true)
     try {
       const compressed = await compressImage(file, { maxDim: MAX_DIM, quality: JPEG_QUALITY })
-
-      // Превью из того же, что и грузим
       const previewUrl = URL.createObjectURL(compressed)
       setAvatarPreview(previewUrl)
 
-      // Пытаемся отправить на сервер
       try {
         const url = await uploadImageAndGetUrl(compressed)
         setAvatarRemoteUrl(url)
         setAvatarError(null)
       } catch (err: any) {
         setAvatarRemoteUrl(null)
-        setAvatarError(
-          (t("errors.upload_failed") as string) ||
-          err?.message ||
-          "Не удалось загрузить изображение"
-        )
+        setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось загрузить изображение")
       }
     } finally {
       setAvatarUploading(false)
@@ -327,7 +264,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       if (code !== "USD") promises.push(patchGroupCurrency(group.id, code))
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
 
-      // если есть загруженный (публичный) URL аватара — установим его
       if (avatarRemoteUrl) {
         promises.push(setGroupAvatarByUrl(group.id, avatarRemoteUrl))
       }
@@ -366,7 +302,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Форма */}
           <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-1">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
@@ -374,11 +309,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
             {/* Аватар */}
             <div className="w-full flex flex-col items-center gap-3 mb-2">
-              <GroupAvatar
-                name={name || "G"}
-                src={avatarPreview || undefined}
-                size={80}
-              />
+              <GroupAvatar name={name || "G"} src={avatarPreview || undefined} size={80} />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -406,22 +337,12 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   onChange={onFileSelected}
                 />
               </div>
-
-              {/* Статус/ошибки */}
               {avatarError && (
-                <div className="text-[12px] text-red-500 text-center px-4">
-                  {avatarError}
-                </div>
+                <div className="text-[12px] text-red-500 text-center px-4">{avatarError}</div>
               )}
               {!avatarError && avatarRemoteUrl && (
                 <div className="text-[12px] text-[var(--tg-hint-color)] text-center">
                   {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
-                </div>
-              )}
-              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
-                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
-                  {(t("group_form.upload_hint_no_endpoint") as string)
-                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
                 </div>
               )}
             </div>
@@ -469,7 +390,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Блок валюта/трип */}
+            {/* Валюта / поездка */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <Row
@@ -518,10 +439,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </CardSection>
             </div>
 
-            {/* Ошибка формы */}
             {error && <div className="text-red-500 text-sm font-medium">{error}</div>}
 
-            {/* Кнопки */}
             <div className="flex flex-row gap-2 mt-1 w-full">
               <button
                 type="button"
@@ -550,7 +469,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
         </div>
       </div>
 
-      {/* выбор валюты */}
       <CurrencyPickerModal
         open={currencyModal}
         onClose={() => setCurrencyModal(false)}
