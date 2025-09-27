@@ -17,7 +17,11 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 
 import { acceptInvite as acceptFriendInvite } from "./api/friendsApi"
-import { acceptGroupInvite } from "./api/groupInvitesApi"
+// ⬇️ Больше НЕ импортируем group accept, т.к. теперь это делает модалка
+// import { acceptGroupInvite } from "./api/groupInvitesApi"
+
+// ✅ Подключаем модалку приглашения в группу
+import InviteJoinModal from "./components/InviteJoinModal"
 
 // Небольшая нормализация токена: убираем возможные префиксы
 function normalizeStartParam(raw: string | null | undefined): string | null {
@@ -44,7 +48,7 @@ const App = () => {
 
     const tg = (window as any)?.Telegram?.WebApp
 
-    // 1) берем start_param из WebApp
+    // 1) берём start_param из WebApp
     const fromInitData: string | null = tg?.initDataUnsafe?.start_param ?? null
 
     // 2) а также все известные вариации в URL (Android/iOS/Web)
@@ -58,28 +62,14 @@ const App = () => {
     const token = normalizeStartParam(fromInitData || fromUrl)
     if (!token) return
 
-    // Сначала пробуем принять КАК ГРУППОВОЙ инвайт.
-    // Если бэк ответил bad_token — пробуем дружеский инвайт.
+    // ❗ Больше НЕ принимаем групповой инвайт здесь — это делает InviteJoinModal
+    // Оставляем только тихий фолбэк для дружеского инвайта
     ;(async () => {
       try {
-        const res = await acceptGroupInvite(token)
-        if (res?.group_id) {
-          // жёсткий редирект, чтобы гарантированно оказаться внутри роутера нужной группы
-          window.location.replace(`/groups/${res.group_id}`)
-          return
-        }
-        // если без group_id — просто замолчим
-      } catch (e: any) {
-        const msg = (e?.message || "").toString().toLowerCase()
-        // fallback только при «не наш» токен
-        if (msg.includes("bad_token")) {
-          try {
-            await acceptFriendInvite(token)
-          } catch {
-            // молча игнорируем: это «чужой» или протухший дружеский
-          }
-        }
-        // для любых других ошибок по группам (например, group_not_found, cannot_join) — тоже молчим
+        await acceptFriendInvite(token)
+        // без редиректов и попапов — на успех/ошибку не реагируем
+      } catch {
+        // молча игнорируем: это не дружеский или протухший инвайт
       }
     })()
   }, [])
@@ -99,6 +89,9 @@ const App = () => {
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/transactions/:txId" element={<TransactionEditPage />} />
             </Routes>
+
+            {/* ✅ Модалка приглашения в группу — рендерится поверх всего и сама решает, показываться или нет */}
+            <InviteJoinModal />
           </MainLayout>
         </BrowserRouter>
       </div>
