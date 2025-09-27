@@ -18,40 +18,39 @@ type Props = {
 const NAME_MAX = 40
 const DESC_MAX = 120
 
-const UPLOAD_ENDPOINT: string | undefined = import.meta.env.VITE_UPLOAD_URL as string | undefined
+// === Конфиг загрузки изображений ===
+// Если VITE_UPLOAD_URL не задана в момент билда — используем дефолт: /api/upload/image
+const RAW_UPLOAD_ENDPOINT = (import.meta.env.VITE_UPLOAD_URL as string) || "/api/upload/image"
+const UPLOAD_ENDPOINT_ABS = RAW_UPLOAD_ENDPOINT.startsWith("http")
+  ? RAW_UPLOAD_ENDPOINT
+  : new URL(RAW_UPLOAD_ENDPOINT, window.location.origin).href
 
-// Загружаем файл и возвращаем ПОЛНЫЙ (абсолютный) URL
 async function uploadImageAndGetUrl(file: File): Promise<string> {
-  if (!UPLOAD_ENDPOINT) {
-    throw new Error("UPLOAD_ENDPOINT_NOT_CONFIGURED")
-  }
   const form = new FormData()
   form.append("file", file)
 
-  const res = await fetch(UPLOAD_ENDPOINT, { method: "POST", body: form })
+  const res = await fetch(UPLOAD_ENDPOINT_ABS, { method: "POST", body: form })
   if (!res.ok) {
     let msg = ""
     try { msg = await res.text() } catch {}
     throw new Error(msg || `Upload failed: HTTP ${res.status}`)
   }
 
-  // ожидаем JSON вида { url: "/data/uploads/..." } или { url: "https://..." }
+  // Ожидаем JSON вида { url: "https://..." } (бэкенд именно так и возвращает)
   const data = await res.json().catch(() => ({}))
-  const raw: string | undefined =
+  let url: string | undefined =
     data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
 
-  if (!raw || typeof raw !== "string") {
+  if (!url || typeof url !== "string") {
     throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
   }
 
-  // ⚠️ критично: делаем абсолютный URL, если пришёл относительный путь (например, "/data/...").
-  let abs: string
-  try {
-    abs = new URL(raw, window.location.origin).href
-  } catch {
-    abs = raw
+  // Нормализуем в абсолютный URL, если вдруг сервер вернул относительный
+  if (!/^https?:\/\//i.test(url)) {
+    url = new URL(url, window.location.origin).href
   }
-  return abs
+
+  return url
 }
 
 function Switch({
@@ -98,14 +97,12 @@ function Row({
         className="flex items-center w-full py-4 bg-transparent focus:outline-none active:opacity-90"
         style={{ minHeight: 48 }}
       >
-        {/* слева выравниваем по инпутам (контейнер формы даёт p-4) */}
         <span className="ml-4 mr-3 flex items-center" style={{ width: 22 }}>
           {icon}
         </span>
 
         <span className="flex-1 text-left text-[var(--tg-text-color)] text-[16px]">{label}</span>
 
-        {/* правая часть — к правому краю формы (p-4) */}
         {right ? (
           <span className="mr-4">{right}</span>
         ) : (
@@ -116,7 +113,6 @@ function Row({
         )}
       </button>
 
-      {/* Divider как в модалке валют: НЕ под иконкой */}
       {!isLast && (
         <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />
       )}
@@ -164,7 +160,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
-      // сбрасываем состояние аватара
+      // сброс аватара
       setAvatarPreview(null)
       setAvatarRemoteUrl(null)
       setAvatarUploading(false)
@@ -173,7 +169,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     }
   }, [open])
 
-  // освобождаем objectURL при смене/закрытии
   useEffect(() => {
     return () => {
       if (avatarPreview?.startsWith("blob:")) {
@@ -191,28 +186,15 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // превью сразу
     const objUrl = URL.createObjectURL(file)
     setAvatarPreview(objUrl)
 
-    if (!UPLOAD_ENDPOINT) {
-      setAvatarError(
-        (t("group_form.upload_hint_no_endpoint") as string) ||
-        "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."
-      )
-      return
-    }
-
     setAvatarUploading(true)
     try {
-      const url = await uploadImageAndGetUrl(file) // уже абсолютный
+      const url = await uploadImageAndGetUrl(file)
       setAvatarRemoteUrl(url)
     } catch (err: any) {
-      setAvatarError(
-        (t("errors.upload_failed") as string) ||
-        err?.message ||
-        "Не удалось загрузить изображение"
-      )
+      setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось загрузить изображение")
       setAvatarRemoteUrl(null)
     } finally {
       setAvatarUploading(false)
@@ -256,7 +238,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   if (!open) return null
 
-  // жёсткое ограничение по длине (обрезаем ввод)
   const onNameChange = (v: string) => setName(v.length > NAME_MAX ? v.slice(0, NAME_MAX) : v)
   const onDescChange = (v: string) => setDesc(v.length > DESC_MAX ? v.slice(0, DESC_MAX) : v)
   const nameLeft = Math.max(0, NAME_MAX - name.length)
@@ -264,7 +245,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
-      {/* full-screen контейнер с максимально стабильной высотой */}
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
         <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto bg-[var(--tg-card-bg,#111)]">
           <button
@@ -309,7 +289,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                     (t("group_form.upload_image") as string) || "Загрузить изображение"
                   )}
                 </button>
-                {/* скрытый input для выбора файла */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -318,7 +297,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   onChange={onFileSelected}
                 />
               </div>
-              {/* хинт/ошибка под кнопкой */}
+
               {avatarError && (
                 <div className="text-[12px] text-red-500 text-center px-4">
                   {avatarError}
@@ -329,16 +308,10 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
                 </div>
               )}
-              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
-                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
-                  {(t("group_form.upload_hint_no_endpoint") as string)
-                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
-                </div>
-              )}
             </div>
             {/* ====== /Блок аватара ====== */}
 
-            {/* Имя + хинт (вплотную) */}
+            {/* Имя + хинт */}
             <div className="space-y-[4px]">
               <input
                 type="text"
@@ -381,7 +354,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Один CardSection: валюта + тумблер + (при включении) поле даты */}
+            {/* Валюта + Трип + Дата */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <Row
@@ -398,7 +371,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   isLast
                 />
 
-                {/* Поле даты (при isTrip) */}
                 {isTrip && (
                   <div className="px-4 pt-2 pb-3">
                     <button
@@ -417,7 +389,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                       {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
                     </button>
 
-                    {/* скрытый input type="date" */}
                     <input
                       ref={hiddenDateRef}
                       type="date"
@@ -435,7 +406,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </CardSection>
             </div>
 
-            {/* Ошибка */}
+            {/* Ошибка формы */}
             {error && <div className="text-red-500 text-sm font-medium">{error}</div>}
 
             {/* Кнопки */}
