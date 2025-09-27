@@ -18,22 +18,36 @@ type Props = {
 const NAME_MAX = 40
 const DESC_MAX = 120
 
-const UPLOAD_ENDPOINT: string | undefined = import.meta.env.VITE_UPLOAD_URL as string | undefined
+// ---------- ВАЖНО: надёжный дефолт для upload-эндпоинта ----------
+const API_BASE: string =
+  (import.meta as any)?.env?.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+
+let API_ORIGIN = ""
+try {
+  API_ORIGIN = new URL(API_BASE).origin
+} catch {
+  API_ORIGIN = ""
+}
+
+// Если VITE_UPLOAD_URL не задана, грузим на {origin}/api/upload/image.
+// В dev без корректного VITE_API_URL упадём на относительный "/api/upload/image".
+const DEFAULT_UPLOAD = API_ORIGIN ? `${API_ORIGIN}/api/upload/image` : "/api/upload/image"
+const UPLOAD_ENDPOINT: string =
+  (import.meta as any)?.env?.VITE_UPLOAD_URL || DEFAULT_UPLOAD
+// -----------------------------------------------------------------
 
 async function uploadImageAndGetUrl(file: File): Promise<string> {
-  if (!UPLOAD_ENDPOINT) {
-    throw new Error("UPLOAD_ENDPOINT_NOT_CONFIGURED")
-  }
   const form = new FormData()
   form.append("file", file)
-  // при необходимости можно добавить доп. поля: папку, имя и т.п.
+
   const res = await fetch(UPLOAD_ENDPOINT, { method: "POST", body: form })
   if (!res.ok) {
     let msg = ""
     try { msg = await res.text() } catch {}
     throw new Error(msg || `Upload failed: HTTP ${res.status}`)
   }
-  // ожидаем JSON вида { url: "https://..."} или { Location: "https://..."}
+
+  // ожидаем JSON и вынимаем поле с публичной ссылкой
   const data = await res.json().catch(() => ({}))
   const url: string | undefined =
     data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
@@ -183,28 +197,20 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const objUrl = URL.createObjectURL(file)
     setAvatarPreview(objUrl)
 
-    // если настроен эндпоинт загрузки — грузим прямо сейчас
-    if (UPLOAD_ENDPOINT) {
-      setAvatarUploading(true)
-      try {
-        const url = await uploadImageAndGetUrl(file)
-        setAvatarRemoteUrl(url)
-      } catch (err: any) {
-        setAvatarError(
-          (t("errors.upload_failed") as string) ||
-          err?.message ||
-          "Не удалось загрузить изображение"
-        )
-        setAvatarRemoteUrl(null)
-      } finally {
-        setAvatarUploading(false)
-      }
-    } else {
-      // если загрузчик не настроен — дадим понятный хинт
+    // грузим прямо сейчас
+    setAvatarUploading(true)
+    try {
+      const url = await uploadImageAndGetUrl(file)
+      setAvatarRemoteUrl(url)
+    } catch (err: any) {
       setAvatarError(
-        (t("group_form.upload_hint_no_endpoint") as string) ||
-        "Файл выбран. Чтобы загрузка работала, задайте VITE_UPLOAD_URL и перезапустите фронт."
+        (t("errors.upload_failed") as string) ||
+        err?.message ||
+        "Не удалось загрузить изображение"
       )
+      setAvatarRemoteUrl(null)
+    } finally {
+      setAvatarUploading(false)
     }
   }
 
@@ -272,7 +278,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               {t("create_group")}
             </div>
 
-            {/* ====== НОВОЕ: Блок аватара сверху ====== */}
+            {/* ====== Блок аватара сверху ====== */}
             <div className="w-full flex flex-col items-center gap-3 mb-2">
               <GroupAvatar
                 name={name || "G"}
@@ -318,14 +324,8 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
                 </div>
               )}
-              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
-                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
-                  {(t("group_form.upload_hint_no_endpoint") as string)
-                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
-                </div>
-              )}
             </div>
-            {/* ====== /НОВОЕ ====== */}
+            {/* ====== /Блок аватара ====== */}
 
             {/* Имя + хинт (вплотную) */}
             <div className="space-y-[4px]">
