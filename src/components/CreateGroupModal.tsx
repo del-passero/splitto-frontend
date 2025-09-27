@@ -8,6 +8,16 @@ import CardSection from "./CardSection"
 import { createGroup, patchGroupCurrency, patchGroupSchedule, setGroupAvatarByUrl } from "../api/groupsApi"
 import GroupAvatar from "./GroupAvatar"
 
+// ===== Настройки компрессии изображений =====
+const MAX_DIM = 1024            // максимум по большей стороне
+const JPEG_QUALITY = 0.82       // качество JPEG
+const SIZE_SKIP_BYTES = 500 * 1024 // если файл уже <500 KB, можем не сжимать
+
+// ===== Эндпоинты =====
+const API_BASE = (import.meta.env.VITE_API_URL as string) || "/api"
+// Если VITE_UPLOAD_URL не задан — используем /api/upload/image
+const UPLOAD_ENDPOINT: string = (import.meta.env.VITE_UPLOAD_URL as string) || `${API_BASE}/upload/image`
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -18,38 +28,127 @@ type Props = {
 const NAME_MAX = 40
 const DESC_MAX = 120
 
-// === Конфиг загрузки изображений ===
-// Если VITE_UPLOAD_URL не задана в момент билда — используем дефолт: /api/upload/image
-const RAW_UPLOAD_ENDPOINT = (import.meta.env.VITE_UPLOAD_URL as string) || "/api/upload/image"
-const UPLOAD_ENDPOINT_ABS = RAW_UPLOAD_ENDPOINT.startsWith("http")
-  ? RAW_UPLOAD_ENDPOINT
-  : new URL(RAW_UPLOAD_ENDPOINT, window.location.origin).href
+// ===== Утилиты для компрессии =====
+async function blobToFile(blob: Blob, fileName: string): Promise<File> {
+  // Пересоздаём File, чтобы отправлять как "file"
+  return new File([blob], fileName, { type: blob.type, lastModified: Date.now() })
+}
 
+function readAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(String(fr.result))
+    fr.onerror = reject
+    fr.readAsDataURL(file)
+  })
+}
+
+function drawOnCanvas(img: HTMLImageElement, maxDim: number, fillWhiteBackground = true): HTMLCanvasElement {
+  const { naturalWidth: w, naturalHeight: h } = img
+  if (!w || !h) {
+    const c = document.createElement("canvas")
+    c.width = 1; c.height = 1
+    return c
+  }
+
+  const ratio = w > h ? maxDim / w : maxDim / h
+  const scale = Math.min(1, ratio) // не увеличиваем
+  const outW = Math.max(1, Math.round(w * scale))
+  const outH = Math.max(1, Math.round(h * scale))
+
+  const canvas = document.createElement("canvas")
+  canvas.width = outW
+  canvas.height = outH
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return canvas
+
+  // Если PNG/WebP с прозрачностью — зальём фон белым, чтобы не получить чёрный фон в JPEG
+  if (fillWhiteBackground) {
+    ctx.fillStyle = "#fff"
+    ctx.fillRect(0, 0, outW, outH)
+  }
+
+  // Сглаживание
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = "high"
+
+  ctx.drawImage(img, 0, 0, outW, outH)
+  return canvas
+}
+
+/**
+ * Сжать картинку до maxDim и JPEG качества.
+ * Возвращает новый File (JPEG) либо оригинальный файл, если сжатие не требуется/не удалось.
+ */
+async function compressImage(original: File, opts?: { maxDim?: number; quality?: number }): Promise<File> {
+  try {
+    // Мелкие файлы не трогаем
+    if (original.size <= SIZE_SKIP_BYTES) return original
+
+    const maxDim = opts?.maxDim ?? MAX_DIM
+    const quality = opts?.quality ?? JPEG_QUALITY
+
+    const dataUrl = await readAsDataURL(original)
+    const img = document.createElement("img")
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res()
+      img.onerror = rej
+      img.src = dataUrl
+    })
+
+    // Если уже маленькое по пикселям — можно не сжимать
+    const maxSide = Math.max(img.naturalWidth || 0, img.naturalHeight || 0)
+    if (maxSide && maxSide <= maxDim && original.size <= 1024 * 1024) {
+      return original
+    }
+
+    const canvas = drawOnCanvas(img, maxDim, true)
+
+    const blob: Blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("TO_BLOB_FAILED"))),
+        "image/jpeg",
+        quality
+      )
+    })
+
+    // Если вдруг «сжатый» больше оригинала — вернём оригинал
+    if (blob.size >= original.size) return original
+
+    // Сохраним имя с .jpg
+    const base = original.name.replace(/\.[^.]+$/u, "")
+    const outName = `${base}.jpg`
+    return await blobToFile(blob, outName)
+  } catch {
+    // Если что-то пошло не так — вернём исходник
+    return original
+  }
+}
+
+// ===== Загрузка на бэкенд и получение публичной ссылки =====
 async function uploadImageAndGetUrl(file: File): Promise<string> {
   const form = new FormData()
   form.append("file", file)
 
-  const res = await fetch(UPLOAD_ENDPOINT_ABS, { method: "POST", body: form })
+  const res = await fetch(UPLOAD_ENDPOINT, {
+    method: "POST",
+    body: form,
+    // Заголовок Telegram не обязателен для /upload, поэтому не добавляем.
+  })
+
   if (!res.ok) {
     let msg = ""
     try { msg = await res.text() } catch {}
     throw new Error(msg || `Upload failed: HTTP ${res.status}`)
   }
 
-  // Ожидаем JSON вида { url: "https://..." } (бэкенд именно так и возвращает)
   const data = await res.json().catch(() => ({}))
-  let url: string | undefined =
+  const url: string | undefined =
     data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
 
   if (!url || typeof url !== "string") {
     throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
   }
-
-  // Нормализуем в абсолютный URL, если вдруг сервер вернул относительный
-  if (!/^https?:\/\//i.test(url)) {
-    url = new URL(url, window.location.origin).href
-  }
-
   return url
 }
 
@@ -73,7 +172,6 @@ function Switch({
   )
 }
 
-/** Строка секции — edge-to-edge, divider как в CurrencyPickerModal */
 function Row({
   icon,
   label,
@@ -160,7 +258,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
-      // сброс аватара
       setAvatarPreview(null)
       setAvatarRemoteUrl(null)
       setAvatarUploading(false)
@@ -186,16 +283,28 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const objUrl = URL.createObjectURL(file)
-    setAvatarPreview(objUrl)
-
+    // Сжимаем перед превью и загрузкой
     setAvatarUploading(true)
     try {
-      const url = await uploadImageAndGetUrl(file)
-      setAvatarRemoteUrl(url)
-    } catch (err: any) {
-      setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось загрузить изображение")
-      setAvatarRemoteUrl(null)
+      const compressed = await compressImage(file, { maxDim: MAX_DIM, quality: JPEG_QUALITY })
+
+      // Превью из того же, что и грузим
+      const previewUrl = URL.createObjectURL(compressed)
+      setAvatarPreview(previewUrl)
+
+      // Пытаемся отправить на сервер
+      try {
+        const url = await uploadImageAndGetUrl(compressed)
+        setAvatarRemoteUrl(url)
+        setAvatarError(null)
+      } catch (err: any) {
+        setAvatarRemoteUrl(null)
+        setAvatarError(
+          (t("errors.upload_failed") as string) ||
+          err?.message ||
+          "Не удалось загрузить изображение"
+        )
+      }
     } finally {
       setAvatarUploading(false)
     }
@@ -257,13 +366,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
             <X className="w-6 h-6 text-[var(--tg-hint-color)]" />
           </button>
 
-          {/* Контейнер формы */}
+          {/* Форма */}
           <form onSubmit={handleSubmit} className="p-4 pt-4 flex flex-col gap-1">
             <div className="text-lg font-bold text-[var(--tg-text-color)] mb-1">
               {t("create_group")}
             </div>
 
-            {/* ====== Блок аватара сверху ====== */}
+            {/* Аватар */}
             <div className="w-full flex flex-col items-center gap-3 mb-2">
               <GroupAvatar
                 name={name || "G"}
@@ -298,6 +407,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                 />
               </div>
 
+              {/* Статус/ошибки */}
               {avatarError && (
                 <div className="text-[12px] text-red-500 text-center px-4">
                   {avatarError}
@@ -308,10 +418,15 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
                 </div>
               )}
+              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
+                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
+                  {(t("group_form.upload_hint_no_endpoint") as string)
+                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
+                </div>
+              )}
             </div>
-            {/* ====== /Блок аватара ====== */}
 
-            {/* Имя + хинт */}
+            {/* Имя */}
             <div className="space-y-[4px]">
               <input
                 type="text"
@@ -333,7 +448,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + хинт */}
+            {/* Описание */}
             <div className="grid gap-[4px]">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -354,7 +469,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Валюта + Трип + Дата */}
+            {/* Блок валюта/трип */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <Row
@@ -370,7 +485,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   onClick={() => setIsTrip((v) => !v)}
                   isLast
                 />
-
                 {isTrip && (
                   <div className="px-4 pt-2 pb-3">
                     <button
@@ -388,7 +502,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                     >
                       {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
                     </button>
-
                     <input
                       ref={hiddenDateRef}
                       type="date"
@@ -397,7 +510,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                       className="absolute opacity-0 pointer-events-none w-0 h-0"
                       tabIndex={-1}
                     />
-
                     <div className="text-[12px] text-[var(--tg-hint-color)] mt-[4px]">
                       {t("group_form.trip_date")}
                     </div>
