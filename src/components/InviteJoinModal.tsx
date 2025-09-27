@@ -86,7 +86,7 @@ type State =
   | { status: "hidden" }
   | { status: "ready"; preview: InvitePreview; token?: string | null }
   | { status: "joining"; preview: InvitePreview; token?: string | null }
-  | { status: "invalid" } // ⬅️ новое: вместо редиректа на главную показываем понятный экран
+  | { status: "invalid"; reason?: string } // показываем причину
   | { status: "error"; message: string }
 
 export default function InviteJoinModal() {
@@ -102,7 +102,7 @@ export default function InviteJoinModal() {
       const token = normalizeToken(getStartParam())
 
       if (!token) {
-        setState({ status: "invalid" })
+        setState({ status: "invalid", reason: "missing_token" })
         return
       }
 
@@ -111,7 +111,7 @@ export default function InviteJoinModal() {
         if (cancelled) return
 
         if (!preview?.group?.id) {
-          setState({ status: "invalid" })
+          setState({ status: "invalid", reason: "group_not_found" })
           return
         }
         if (preview.already_member) {
@@ -120,9 +120,10 @@ export default function InviteJoinModal() {
           return
         }
         setState({ status: "ready", preview, token })
-      } catch {
-        // 400 bad_token / 401 и т.п. — считаем инвайт некорректным
-        setState({ status: "invalid" })
+      } catch (e: any) {
+        // e.message содержит detail.code из бэка: bad_prefix, bad_signature, bad_token, ...
+        setState({ status: "invalid", reason: e?.message || "bad_token" })
+        console.warn("invite preview failed:", e?.message)
       }
     })()
     return () => { cancelled = true }
@@ -130,7 +131,6 @@ export default function InviteJoinModal() {
 
   if (state.status === "hidden" || state.status === "idle" || state.status === "loading") return null
 
-  // Экран «инвайт некорректен» — остаёмся на /invite и предлагаем уйти на главную
   if (state.status === "invalid") {
     const cardStyle: React.CSSProperties = {
       background: "var(--tg-theme-bg-color,#fff)",
@@ -145,11 +145,14 @@ export default function InviteJoinModal() {
       background: "var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))",
       color: "var(--tg-theme-text-color,#111)",
     }
+    const debug = state.reason ? `\n\n(code: ${state.reason})` : ""
     return (
       <div role="dialog" aria-modal="true" className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: overlayColor }}>
         <div className="w-[92%] max-w-[460px] rounded-2xl p-5" style={cardStyle}>
           <div className="text-base mb-2" style={{ fontWeight: 600 }}>Invite</div>
-          <div className="text-sm" style={hintStyle}>{t("invalidInvite")}</div>
+          <div className="text-sm whitespace-pre-line" style={hintStyle}>
+            {t("invalidInvite")}{debug}
+          </div>
           <div className="flex gap-8 justify-end mt-6">
             <button
               onClick={() => navigate("/", { replace: true })}
@@ -268,3 +271,4 @@ export default function InviteJoinModal() {
     </div>
   )
 }
+
