@@ -18,25 +18,13 @@ type Props = {
 const NAME_MAX = 40
 const DESC_MAX = 120
 
-// ---------- ВАЖНО: надёжный дефолт для upload-эндпоинта ----------
-const API_BASE: string =
-  (import.meta as any)?.env?.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+const UPLOAD_ENDPOINT: string | undefined = import.meta.env.VITE_UPLOAD_URL as string | undefined
 
-let API_ORIGIN = ""
-try {
-  API_ORIGIN = new URL(API_BASE).origin
-} catch {
-  API_ORIGIN = ""
-}
-
-// Если VITE_UPLOAD_URL не задана, грузим на {origin}/api/upload/image.
-// В dev без корректного VITE_API_URL упадём на относительный "/api/upload/image".
-const DEFAULT_UPLOAD = API_ORIGIN ? `${API_ORIGIN}/api/upload/image` : "/api/upload/image"
-const UPLOAD_ENDPOINT: string =
-  (import.meta as any)?.env?.VITE_UPLOAD_URL || DEFAULT_UPLOAD
-// -----------------------------------------------------------------
-
+// Загружаем файл и возвращаем ПОЛНЫЙ (абсолютный) URL
 async function uploadImageAndGetUrl(file: File): Promise<string> {
+  if (!UPLOAD_ENDPOINT) {
+    throw new Error("UPLOAD_ENDPOINT_NOT_CONFIGURED")
+  }
   const form = new FormData()
   form.append("file", file)
 
@@ -47,14 +35,23 @@ async function uploadImageAndGetUrl(file: File): Promise<string> {
     throw new Error(msg || `Upload failed: HTTP ${res.status}`)
   }
 
-  // ожидаем JSON и вынимаем поле с публичной ссылкой
+  // ожидаем JSON вида { url: "/data/uploads/..." } или { url: "https://..." }
   const data = await res.json().catch(() => ({}))
-  const url: string | undefined =
+  const raw: string | undefined =
     data?.url || data?.URL || data?.Location || data?.location || data?.publicUrl || data?.public_url
-  if (!url || typeof url !== "string") {
+
+  if (!raw || typeof raw !== "string") {
     throw new Error("UPLOAD_NO_URL_IN_RESPONSE")
   }
-  return url
+
+  // ⚠️ критично: делаем абсолютный URL, если пришёл относительный путь (например, "/data/...").
+  let abs: string
+  try {
+    abs = new URL(raw, window.location.origin).href
+  } catch {
+    abs = raw
+  }
+  return abs
 }
 
 function Switch({
@@ -193,14 +190,22 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     setAvatarError(null)
     const file = e.target.files?.[0]
     if (!file) return
+
     // превью сразу
     const objUrl = URL.createObjectURL(file)
     setAvatarPreview(objUrl)
 
-    // грузим прямо сейчас
+    if (!UPLOAD_ENDPOINT) {
+      setAvatarError(
+        (t("group_form.upload_hint_no_endpoint") as string) ||
+        "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."
+      )
+      return
+    }
+
     setAvatarUploading(true)
     try {
-      const url = await uploadImageAndGetUrl(file)
+      const url = await uploadImageAndGetUrl(file) // уже абсолютный
       setAvatarRemoteUrl(url)
     } catch (err: any) {
       setAvatarError(
@@ -313,7 +318,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   onChange={onFileSelected}
                 />
               </div>
-              {/* тонкий хинт / ошибка под кнопкой */}
+              {/* хинт/ошибка под кнопкой */}
               {avatarError && (
                 <div className="text-[12px] text-red-500 text-center px-4">
                   {avatarError}
@@ -322,6 +327,12 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               {!avatarError && avatarRemoteUrl && (
                 <div className="text-[12px] text-[var(--tg-hint-color)] text-center">
                   {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
+                </div>
+              )}
+              {!avatarError && !UPLOAD_ENDPOINT && avatarPreview && !avatarRemoteUrl && (
+                <div className="text-[12px] text-[var(--tg-hint-color)] text-center px-4">
+                  {(t("group_form.upload_hint_no_endpoint") as string)
+                    || "Файл выбран как превью. Чтобы загрузить на хостинг и сохранить в группу, настрой VITE_UPLOAD_URL."}
                 </div>
               )}
             </div>
@@ -349,7 +360,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Описание + хинт: фиксированный зазор 4px как у Name */}
+            {/* Описание + хинт */}
             <div className="grid gap-[4px]">
               <textarea
                 className="w-full px-4 py-3 rounded-xl border bg-[var(--tg-bg-color,#fff)]
@@ -384,7 +395,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   label={t("group_form.is_trip")}
                   right={<Switch checked={isTrip} onChange={setIsTrip} ariaLabel={t("group_form.is_trip")} />}
                   onClick={() => setIsTrip((v) => !v)}
-                  isLast  // divider под тумблером не рисуем
+                  isLast
                 />
 
                 {/* Поле даты (при isTrip) */}
@@ -406,7 +417,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                       {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}
                     </button>
 
-                    {/* скрытый input type="date" — чтобы showPicker()/click работал и дата сохранялась */}
+                    {/* скрытый input type="date" */}
                     <input
                       ref={hiddenDateRef}
                       type="date"
@@ -416,7 +427,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                       tabIndex={-1}
                     />
 
-                    {/* подпись под полем, как у хинтов: вплотную */}
                     <div className="text-[12px] text-[var(--tg-hint-color)] mt-[4px]">
                       {t("group_form.trip_date")}
                     </div>
@@ -433,7 +443,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               <button
                 type="button"
                 onClick={onClose}
-                style={{ color: "#000" }} // чёрный текст
+                style={{ color: "#000" }}
                 className="w-1/2 py-3 rounded-xl font-bold text-base
                            bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                            border border-[var(--tg-hint-color)]/30
