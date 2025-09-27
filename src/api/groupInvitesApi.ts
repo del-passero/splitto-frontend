@@ -27,7 +27,7 @@ export async function createGroupInvite(groupId: number): Promise<{ token: strin
   })
 }
 
-/** Принять инвайт в группу по токену */
+/** Принять инвайт по токену (как раньше) */
 export async function acceptGroupInvite(token: string): Promise<{ success: boolean; group_id?: number }> {
   return fetchJson<{ success: boolean; group_id?: number }>(`${API_URL}/groups/invite/accept`, {
     method: "POST",
@@ -36,10 +36,18 @@ export async function acceptGroupInvite(token: string): Promise<{ success: boole
   })
 }
 
-/** Достаём start_param из Telegram WebApp или из URL */
+/** НОВОЕ: принять инвайт напрямую из initData.start_param (токен в теле не нужен) */
+export async function acceptGroupInviteFromInit(): Promise<{ success: boolean; group_id?: number }> {
+  return fetchJson<{ success: boolean; group_id?: number }>(`${API_URL}/groups/invite/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // без body — бэкенд сам прочитает start_param из initData
+  })
+}
+
+/** Достаём start_param из Telegram WebApp или из URL (оставляем для обратной совместимости) */
 export function getStartParam(): string | null {
   const tg: any = (window as any)?.Telegram?.WebApp
-  // у типов Telegram.d.ts нет start_param — берём из any и поддерживаем обе формы
   const fromInitData: string | null =
     (tg?.initDataUnsafe?.start_param as string | undefined) ??
     (tg?.initDataUnsafe?.startParam as string | undefined) ??
@@ -55,15 +63,13 @@ export function getStartParam(): string | null {
   return fromInitData || fromUrl
 }
 
-/** Нормализуем токен: убираем префиксы типа join:, g:, а также token=... */
+/** Нормализация токена (оставляем для обратной совместимости) */
 export function normalizeInviteToken(raw?: string | null): string | null {
   if (!raw) return null
   let t = String(raw).trim()
   try {
     t = decodeURIComponent(t)
-  } catch {
-    // ignore
-  }
+  } catch {}
   const lower = t.toLowerCase()
   if (lower.startsWith("join:")) t = t.slice(5)
   if (lower.startsWith("g:")) t = t.slice(2)

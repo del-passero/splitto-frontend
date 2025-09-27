@@ -1,43 +1,49 @@
-// src/hooks/useAcceptInviteOnBoot.ts
+// frontend/src/hooks/useAcceptInviteOnBoot.ts
 import { useEffect, useRef } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
-import { acceptGroupInvite, getStartParam, normalizeInviteToken } from "../api/groupInvitesApi"
+import { useNavigate } from "react-router-dom"
+import { acceptGroupInviteFromInit, acceptGroupInvite, getStartParam, normalizeInviteToken } from "../api/groupInvitesApi"
 
 /**
- * Монтируй ЭТОТ хук в корневом компоненте (App), чтобы авто-принятие сработало сразу.
- * Он читает start_param из Telegram, принимает инвайт и мгновенно ведёт в /groups/:id.
+ * Монтируй в App. Алгоритм:
+ *  1) Пробуем принять инвайт БЕЗ токена — бэкенд сам достанет из initData.start_param.
+ *  2) Если backend сказал "bad_token" — откат к старой схеме: достаём токен на фронте и шлём его.
  */
 export default function useAcceptInviteOnBoot() {
   const ranRef = useRef(false)
   const navigate = useNavigate()
-  const location = useLocation()
 
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
 
-    const raw = getStartParam()
-    const token = normalizeInviteToken(raw)
-    if (!token) return
-
-    const cacheKey = `accepted_invite_${token}`
-    if (sessionStorage.getItem(cacheKey)) return
-
-    acceptGroupInvite(token)
-      .then((res) => {
-        if (res?.success && res?.group_id) {
-          sessionStorage.setItem(cacheKey, "1")
-          navigate(`/groups/${res.group_id}`, { replace: true })
+    ;(async () => {
+      // 1) Попытка через initData (более надёжно, фронт не парсит ничего)
+      try {
+        const r1 = await acceptGroupInviteFromInit()
+        if (r1?.success && r1?.group_id) {
+          sessionStorage.setItem(`accepted_invite_group_${r1.group_id}`, "1")
+          navigate(`/groups/${r1.group_id}`, { replace: true })
+          return
         }
-      })
-      .catch((err: any) => {
-        try {
-          ;(window as any)?.Telegram?.WebApp?.showPopup?.({
-            title: "Invite error",
-            message: String(err?.message || err || "Failed to accept invite"),
-            buttons: [{ type: "close" }],
-          })
-        } catch {}
-      })
-  }, [navigate, location.key])
+      } catch (e: any) {
+        // если это не "bad_token" — просто замолчим, перейдём к fallback
+      }
+
+      // 2) Fallback: старый путь — берём токен сами (если он вообще был)
+      const raw = getStartParam()
+      const token = normalizeInviteToken(raw)
+      if (!token) return
+
+      const cacheKey = `accepted_invite_${token}`
+      if (sessionStorage.getItem(cacheKey)) return
+
+      try {
+        const r2 = await acceptGroupInvite(token)
+        if (r2?.success && r2?.group_id) {
+          sessionStorage.setItem(cacheKey, "1")
+          navigate(`/groups/${r2.group_id}`, { replace: true })
+        }
+      } catch {}
+    })()
+  }, [navigate])
 }
