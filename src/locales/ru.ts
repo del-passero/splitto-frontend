@@ -359,6 +359,17 @@ export default {
     shown_of_total: "{{shown}} из {{total}}",
     no_name: "Без имени",
   },
+  
+    // --- Страница инвайта ---
+    invite_page: {
+    title: "Приглашение в группу Splitto",
+    invites_you: "приглашает вас в группу",
+    tagline: "в Splitto для управления совместными расходами",
+    join: "Присоединиться",
+    already_title: "Вы уже в группе",
+    loading_preview: "Загрузка приглашения…",
+    close_aria: "Закрыть",
+  },
 
   // Новые для модалки напоминания
   reminder_copied_title: "Текст скопирован",

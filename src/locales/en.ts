@@ -359,6 +359,17 @@ export default {
     shown_of_total: "{{shown}} of {{total}}",
     no_name: "No name",
   },
+   
+    // --- Invite page ---
+  invite_page: {
+    title: "Invitation to a Splitto group",
+    invites_you: "invites you to the group",
+    tagline: "in Splitto to manage shared expenses",
+    join: "Join",
+    already_title: "You're already in the group",
+    loading_preview: "Loading invitation…",
+    close_aria: "Close",
+  },
 
   // New for reminder modal
   reminder_copied_title: "Text copied",
