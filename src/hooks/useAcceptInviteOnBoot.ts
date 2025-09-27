@@ -1,49 +1,31 @@
 // frontend/src/hooks/useAcceptInviteOnBoot.ts
-import { useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
-import { acceptGroupInviteFromInit, acceptGroupInvite, getStartParam, normalizeInviteToken } from "../api/groupInvitesApi"
+// Безусловный порядок хуков. На старте выцепляем токен и переводим на /invite?token=...
 
-/**
- * Монтируй в App. Алгоритм:
- *  1) Пробуем принять инвайт БЕЗ токена — бэкенд сам достанет из initData.start_param.
- *  2) Если backend сказал "bad_token" — откат к старой схеме: достаём токен на фронте и шлём его.
- */
-export default function useAcceptInviteOnBoot() {
-  const ranRef = useRef(false)
-  const navigate = useNavigate()
+import { useEffect, useRef } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
+import { getStartParam, normalizeInviteToken } from "../api/groupInvitesApi"
+
+export function useAcceptInviteOnBoot() {
+  const onceRef = useRef(false)
+  const nav = useNavigate()
+  const loc = useLocation()
 
   useEffect(() => {
-    if (ranRef.current) return
-    ranRef.current = true
+    if (onceRef.current) return
+    onceRef.current = true
 
-    ;(async () => {
-      // 1) Попытка через initData (более надёжно, фронт не парсит ничего)
-      try {
-        const r1 = await acceptGroupInviteFromInit()
-        if (r1?.success && r1?.group_id) {
-          sessionStorage.setItem(`accepted_invite_group_${r1.group_id}`, "1")
-          navigate(`/groups/${r1.group_id}`, { replace: true })
-          return
-        }
-      } catch (e: any) {
-        // если это не "bad_token" — просто замолчим, перейдём к fallback
-      }
+    const raw = getStartParam()
+    const tok = normalizeInviteToken(raw)
 
-      // 2) Fallback: старый путь — берём токен сами (если он вообще был)
-      const raw = getStartParam()
-      const token = normalizeInviteToken(raw)
-      if (!token) return
+    if (!tok) return
 
-      const cacheKey = `accepted_invite_${token}`
-      if (sessionStorage.getItem(cacheKey)) return
+    const sp = new URLSearchParams()
+    sp.set("token", tok)
 
-      try {
-        const r2 = await acceptGroupInvite(token)
-        if (r2?.success && r2?.group_id) {
-          sessionStorage.setItem(cacheKey, "1")
-          navigate(`/groups/${r2.group_id}`, { replace: true })
-        }
-      } catch {}
-    })()
-  }, [navigate])
+    // Всегда ведём на единый безопасный роут, где нет условных хуков.
+    const target = `/invite?${sp.toString()}`
+    if (loc.pathname !== "/invite" || loc.search !== `?${sp.toString()}`) {
+      nav(target, { replace: true })
+    }
+  }, [nav, loc.pathname, loc.search])
 }
