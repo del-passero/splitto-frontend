@@ -97,18 +97,17 @@ export default function InvitePage() {
     }
   }
 
-  // ——— UI с переменными Telegram WebApp (как на других страницах) ———
-  // Страница: фон — var(--tg-bg-color), карточка — var(--tg-card-bg), тексты — var(--tg-text-color),
-  // ссылки/акценты — var(--tg-link-color), подсказки — var(--tg-hint-color)
+  // UI с переменными Telegram WebApp (как на других страницах).
+  // Страница без боковых отступов, карточка на всю ширину.
 
   return (
-    <div className="w-full min-h-[100dvh] flex items-center justify-center bg-[var(--tg-bg-color)]">
+    <div className="min-h-[100dvh] w-full bg-[var(--tg-bg-color)] flex flex-col">
+      {/* Верхняя "карточка" без горизонтальных отступов */}
       <div
-        className="w-[92%] max-w-[560px] rounded-2xl p-5 relative border"
+        className="w-full relative border-b px-4 pt-4 pb-5"
         style={{
           background: "var(--tg-card-bg)",
-          borderColor: "var(--tg-hint-color)",
-          boxShadow: "0 10px 28px -12px rgba(83,147,231,0.20)",
+          borderColor: "var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.06))",
           color: "var(--tg-text-color)",
         }}
       >
@@ -116,13 +115,13 @@ export default function InvitePage() {
         <button
           aria-label={t("invite_page.close_aria")}
           onClick={onClose}
-          className="absolute right-3 top-3 w-9 h-9 rounded-xl flex items-center justify-center hover:opacity-80 active:scale-[0.98]"
+          className="absolute right-2 top-2 w-10 h-10 rounded-xl flex items-center justify-center hover:opacity-80 active:scale-[0.98]"
           style={{
             background: "transparent",
             color: "var(--tg-hint-color)",
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
                xmlns="http://www.w3.org/2000/svg">
             <path d="M18 6L6 18M6 6l12 12"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -130,7 +129,7 @@ export default function InvitePage() {
         </button>
 
         {/* Заголовок */}
-        <div className="mb-4 pr-10">
+        <div className="pr-12">
           <div className="text-[18px] font-semibold text-[var(--tg-text-color)]">
             {t("invite_page.title")}
           </div>
@@ -138,40 +137,57 @@ export default function InvitePage() {
 
         {/* Состояния */}
         {loading && (
-          <div className="text-sm text-[var(--tg-text-color)]">{t("invite_page.loading_preview")}</div>
+          <div className="mt-3 text-[14px] text-[var(--tg-text-color)]">{t("invite_page.loading_preview")}</div>
         )}
 
         {!loading && error && (
-          <div className="text-sm text-red-500">{t(error) || error}</div>
+          <div className="mt-3 text-[14px] text-red-500">{t(error) || error}</div>
         )}
 
         {!loading && !error && (
           <>
-            {/* Если НЕ в группе: показываем пригласившего */}
+            {/* Если НЕ в группе: блок пригласившего */}
             {!already && (
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-[var(--tg-bg-color)]">
-                  <Avatar
-                    name={inviterName || inviterUsername || "U"}
-                    src={inviterAvatar || undefined}
-                    size={48}
-                  />
+              <div className="mt-4 flex items-center gap-3">
+                {/* Круглый аватар пригласившего — строго круг/cover */}
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-[var(--tg-bg-color)] flex items-center justify-center">
+                  {inviterAvatar ? (
+                    <img
+                      src={inviterAvatar}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Avatar
+                      name={inviterName || inviterUsername || "U"}
+                      size={56}
+                    />
+                  )}
                 </div>
+
+                {/* Имя/фамилия и username — как на UserCard: 1-я строка крупнее, 2-я — хинт */}
                 <div className="flex flex-col min-w-0">
-                  <div className="text-[15px] font-medium text-[var(--tg-text-color)] truncate">
-                    {inviterName} {inviterUsername && <span className="opacity-80">{inviterUsername}</span>}
+                  <div className="text-[16px] font-semibold text-[var(--tg-text-color)] truncate">
+                    {inviterName || inviterUsername || t("not_specified")}
                   </div>
-                  <div className="text-[12px] mt-0.5 text-[var(--tg-hint-color)]">
-                    {t("invite_page.invites_you")}
+                  <div className="text-[13px] text-[var(--tg-hint-color)] truncate">
+                    {inviterUsername}
                   </div>
                 </div>
               </div>
             )}
 
+            {/* Подпись “приглашает вас в группу” — нормальным (не мелким) шрифтом */}
+            {!already && (
+              <div className="mt-3 text-[14px] text-[var(--tg-text-color)]">
+                {t("invite_page.invites_you")}
+              </div>
+            )}
+
             {/* Блок группы */}
-            <div className="flex items-center gap-3 mt-2 mb-1">
-              {/* Квадратный аватар группы */}
-              <div className="w-14 h-14 rounded-lg overflow-hidden bg-[var(--tg-bg-color)] flex items-center justify-center">
+            <div className={`mt-3 flex items-center gap-3`}>
+              {/* Квадратный аватар группы — строго квадрат/cover */}
+              <div className="w-16 h-16 rounded-lg overflow-hidden bg-[var(--tg-bg-color)] flex items-center justify-center">
                 {groupAvatarUrl ? (
                   <img
                     src={groupAvatarUrl}
@@ -179,41 +195,39 @@ export default function InvitePage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <GroupAvatar name={groupName} size={56} className="relative" />
+                  <GroupAvatar name={groupName} size={64} className="relative" />
                 )}
               </div>
 
               <div className="flex flex-col min-w-0">
-                <div className="text-[16px] font-semibold text-[var(--tg-text-color)] truncate">
+                <div className="text-[17px] font-semibold text-[var(--tg-text-color)] truncate">
                   {groupName}
                 </div>
-
-                {/* Подзаголовок-слоган: только если ещё не в группе */}
-                {!already && (
-                  <div className="text-[12px] mt-0.5 text-[var(--tg-hint-color)]">
-                    {t("invite_page.tagline")}
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Уже в группе */}
-            {already && (
-              <div className="mt-3 text-[14px] font-medium text-[var(--tg-text-color)]">
+            {/* Если уже в группе — компактный текст */}
+            {already ? (
+              <div className="mt-3 text-[15px] font-medium text-[var(--tg-text-color)]">
                 {t("invite_page.already_title")}
+              </div>
+            ) : (
+              // Подзаголовок-слоган — нормальным шрифтом
+              <div className="mt-2 text-[14px] text-[var(--tg-hint-color)]">
+                {t("invite_page.tagline")}
               </div>
             )}
 
             {/* CTA */}
             {!already && (
-              <div className="flex justify-end mt-4">
+              <div className="mt-6 w-full flex justify-center">
                 <button
                   onClick={onJoin}
                   disabled={!canJoin || accepting}
-                  className="px-4 py-2 rounded-xl font-medium hover:opacity-90 active:scale-[0.99]"
+                  className="px-5 py-2.5 rounded-xl font-medium hover:opacity-90 active:scale-[0.99]"
                   style={{
                     background: "var(--tg-link-color)",
-                    color: "#fff",
+                    color: "var(--tg-theme-button-text-color,#fff)",
                     opacity: !canJoin || accepting ? 0.6 : 1,
                   }}
                 >
