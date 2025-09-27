@@ -1,172 +1,141 @@
 // frontend/src/components/group/InviteGroupModal.tsx
-// Модалка «ПРИГЛАСИТЬ В ГРУППУ» (генерит deep_link). Поддерживает prop `open`.
+// Модалка «ПРИГЛАСИТЬ В ГРУППУ» — поведение как у дружеского инвайта:
+// 1) дергаем createGroupInvite()
+// 2) собираем ссылку вида https://t.me/<BOT_USERNAME>/?startapp=<token>
+// 3) даём кнопки «Скопировать», «Поделиться», «Закрыть»
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { createGroupInvite } from "../../api/groupInvitesApi"
 
-type Lang = "ru" | "en" | "es"
-const STRINGS: Record<Lang, Record<string, string>> = {
-  en: {
-    title: "Invite to group",
-    description: "Share this link. People will see a join dialog for this group.",
-    copy: "Copy link",
-    openInTelegram: "Open in Telegram",
-    close: "Close",
-    creating: "Creating…",
-    created: "Link ready",
-    copied: "Link copied",
-    error: "Failed to create invite",
-  },
-  ru: {
-    title: "Приглашение в группу",
-    description: "Поделитесь ссылкой. Пользователь увидит окно вступления в ЭТУ группу.",
-    copy: "Скопировать ссылку",
-    openInTelegram: "Открыть в Telegram",
-    close: "Закрыть",
-    creating: "Создаём…",
-    created: "Ссылка готова",
-    copied: "Ссылка скопирована",
-    error: "Не удалось создать инвайт",
-  },
-  es: {
-    title: "Invitar al grupo",
-    description: "Comparte este enlace. La persona verá un diálogo para unirse a ESTE grupo.",
-    copy: "Copiar enlace",
-    openInTelegram: "Abrir en Telegram",
-    close: "Cerrar",
-    creating: "Creando…",
-    created: "Enlace listo",
-    copied: "Enlace copiado",
-    error: "No se pudo crear la invitación",
-  },
-}
-
-const normalizeLang = (c?: string | null): Lang => {
-  const x = (c || "").toLowerCase().split("-")[0]
-  return (["ru", "en", "es"].includes(x) ? x : "en") as Lang
-}
-const getLang = (): Lang => {
-  const tg: any = (window as any)?.Telegram?.WebApp
-  return normalizeLang(
-    tg?.initDataUnsafe?.user?.language_code || tg?.initDataUnsafe?.language || tg?.languageCode
-  )
-}
-const useT = () => {
-  const lang = getLang()
-  return (k: keyof typeof STRINGS["en"]) => STRINGS[lang][k] || STRINGS.en[k]
-}
-
-function useOverlayColor() {
-  const tg = (window as any)?.Telegram?.WebApp
-  const scheme = tg?.colorScheme as "light" | "dark" | undefined
-  return scheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)"
-}
+const BOT_USERNAME = "Splitto_Bot" // как в InviteFriendModal; при необходимости замените/вынесите в .env
 
 type Props = {
-  groupId: number
+  open: boolean
   onClose: () => void
-  /** управляемое открытие модалки; по умолчанию true */
-  open?: boolean
+  groupId: number
 }
 
-export default function InviteGroupModal({ groupId, onClose, open = true }: Props) {
-  const t = useT()
-  const overlay = useOverlayColor()
+const InviteGroupModal = ({ open, onClose, groupId }: Props) => {
+  const { t } = useTranslation()
 
-  const [creating, setCreating] = useState(true)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [link, setLink] = useState<string | null>(null)
+  const [shared, setShared] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    let cancelled = false
-    ;(async () => {
-      setCreating(true)
-      setError(null)
-      try {
-        const { deep_link, token } = await createGroupInvite(groupId)
-        if (cancelled) return
-        // Всегда используем deep_link; если нет BOT_USERNAME — соберём ссылку вручную (fallback)
-        const url =
-          deep_link ||
-          (token ? `https://t.me/${(window as any)?.__BOT_USERNAME__ || ""}?startapp=${encodeURIComponent(token)}` : null)
-        setLink(url)
-      } catch (e: any) {
-        setError(e?.message || "create_failed")
-      } finally {
-        setCreating(false)
+    setInviteLink(null)
+    setError(null)
+    setCopied(false)
+    setShared(false)
+  }, [open])
+
+  const handleCreateInvite = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await createGroupInvite(groupId) // { token, deep_link }
+      const token = res?.token
+
+      if (!token) {
+        setError(t("invite_error"))
+        return
       }
-    })()
-    return () => {
-      cancelled = true
+
+      // как в дружеском инвайте — собираем ссылку сами по BOT_USERNAME
+      const url = `https://t.me/${BOT_USERNAME}/?startapp=${encodeURIComponent(token)}`
+      setInviteLink(url)
+    } catch (e: any) {
+      setError(e?.message || t("invite_error"))
+    } finally {
+      setLoading(false)
     }
-  }, [groupId, open])
+  }
+
+  const handleCopy = () => {
+    if (inviteLink) {
+      const msg = t("invite_message", { link: inviteLink })
+      navigator.clipboard.writeText(msg)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleShare = () => {
+    if (inviteLink) {
+      const msg = t("invite_message", { link: inviteLink })
+      navigator.clipboard.writeText(msg)
+      setShared(true)
+      setTimeout(() => setShared(false), 1000)
+    }
+  }
 
   if (!open) return null
 
-  const tg = (window as any)?.Telegram?.WebApp
-
-  const onCopy = async () => {
-    if (!link) return
-    try {
-      await navigator.clipboard.writeText(link)
-      tg?.showToast?.(STRINGS[getLang()].copied)
-    } catch {
-      // no-op
-    }
-  }
-
-  const onOpenTelegram = () => {
-    if (!link) return
-    if (typeof tg?.openTelegramLink === "function") {
-      tg.openTelegramLink(link)
-    } else {
-      window.open(link, "_blank")
-    }
-  }
-
-  const cardStyle: React.CSSProperties = {
-    background: "var(--tg-theme-bg-color,#fff)",
-    color: "var(--tg-theme-text-color,#111)",
-    border: "1px solid var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.06))",
-    boxShadow: "0 8px 28px rgba(0,0,0,0.12)",
-  }
-  const hintStyle: React.CSSProperties = {
-    color: "var(--tg-theme-hint-color,rgba(0,0,0,0.6))",
-  }
-  const secondaryBtnStyle: React.CSSProperties = {
-    background: "var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))",
-    color: "var(--tg-theme-text-color,#111)",
-  }
-  const primaryBtnStyle: React.CSSProperties = {
-    background: "var(--tg-theme-button-color,#2ea6ff)",
-    color: "var(--tg-theme-button-text-color,#fff)",
-  }
-
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: overlay }}>
-      <div className="w-[92%] max-w-[520px] rounded-2xl p-5" style={cardStyle}>
-        <div className="text-lg font-semibold mb-1">{STRINGS[getLang()].title}</div>
-        <div className="text-sm mb-4" style={hintStyle}>{STRINGS[getLang()].description}</div>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+      <div className="bg-[var(--tg-bg-color)] rounded-2xl shadow-xl w-[90vw] max-w-xs p-6 flex flex-col">
+        <div className="font-bold text-lg mb-3">{t("invite_group")}</div>
 
-        <div className="rounded-xl px-3 py-2 mb-4" style={{ background: "var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))" }}>
-          <div className="text-xs break-all select-all">
-            {creating ? STRINGS[getLang()].creating : (link || error || STRINGS[getLang()].error)}
-          </div>
-        </div>
+        {error && <div className="mb-2 text-red-500 text-sm">{error}</div>}
 
-        <div className="flex gap-8 justify-end mt-4">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl" style={secondaryBtnStyle} disabled={creating}>
-            {STRINGS[getLang()].close}
-          </button>
-          <button onClick={onCopy} className="px-4 py-2 rounded-xl" style={secondaryBtnStyle} disabled={creating || !link}>
-            {STRINGS[getLang()].copy}
-          </button>
-          <button onClick={onOpenTelegram} className="px-4 py-2 rounded-xl font-medium" style={primaryBtnStyle} disabled={creating || !link}>
-            {STRINGS[getLang()].openInTelegram}
-          </button>
-        </div>
+        {inviteLink ? (
+          <>
+            <input
+              readOnly
+              className="w-full px-2 py-1 rounded-lg border bg-[var(--tg-card-bg)] mb-3 text-[var(--tg-text-color)]"
+              value={inviteLink}
+            />
+            <button
+              onClick={handleCopy}
+              className="w-full py-2 mb-2 rounded-xl font-medium bg-[var(--tg-link-color)] text-white hover:opacity-90 transition"
+            >
+              {copied ? t("copied") : t("copy_link")}
+            </button>
+            <button
+              onClick={handleShare}
+              disabled={!inviteLink}
+              className={`
+                w-full py-2 mb-2 rounded-xl font-medium border transition
+                ${
+                  inviteLink
+                    ? "bg-[var(--tg-bg-color)] text-[var(--tg-link-color)] border-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)]/10 active:bg-[var(--tg-link-color)]/20 hover:text-[var(--tg-link-color)]"
+                    : "bg-[var(--tg-bg-color)] text-[var(--tg-hint-color)] border-[var(--tg-hint-color)] opacity-50 cursor-not-allowed"
+                }
+              `}
+            >
+              {shared ? t("shared") : t("share_link")}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded-xl font-medium text-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)] hover:text-white transition"
+            >
+              {t("close")}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={handleCreateInvite}
+              className="w-full py-2 mb-2 rounded-xl font-medium bg-[var(--tg-link-color)] text-white hover:opacity-90 transition"
+              disabled={loading}
+            >
+              {loading ? t("loading") : t("create_invite_link")}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded-xl font-medium text-[var(--tg-link-color)] hover:bg-[var(--tg-link-color)] hover:text-white transition"
+            >
+              {t("close")}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
 }
+
+export default InviteGroupModal
