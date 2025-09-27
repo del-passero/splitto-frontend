@@ -1,4 +1,5 @@
 // src/components/GroupAvatar.tsx
+// фото должно работать
 
 type Props = {
   name?: string
