@@ -9,6 +9,24 @@ type Props = {
 
 const RADIUS = 12
 const DEFAULT_BG = "var(--tg-link-color)"
+const API_URL = (import.meta as any)?.env?.VITE_API_URL || ""
+
+/** Делает абсолютный URL для статики бэкенда, если пришёл относительный `/media/...` */
+function resolveSrc(src?: string): string | undefined {
+  if (!src) return undefined
+  // если уже абсолютный/встроенный — оставляем как есть
+  if (/^(https?:|blob:|data:)/i.test(src)) return src
+
+  // относительный путь (например, "/media/group_avatars/abc.jpg")
+  if (src.startsWith("/")) {
+    // убираем хвост "/api" у базового URL бэка, если он есть
+    const base = String(API_URL).replace(/\/+$/, "")
+    const origin = base.replace(/\/api\/?$/, "")
+    return origin + src
+  }
+
+  return src
+}
 
 const GroupAvatar = ({
   name = "",
@@ -16,8 +34,10 @@ const GroupAvatar = ({
   size = 52,
   className = "",
 }: Props) => {
+  const imgSrc = resolveSrc(src)
+
   // Картинка
-  if (src) {
+  if (imgSrc) {
     return (
       <div
         className={`
@@ -30,12 +50,14 @@ const GroupAvatar = ({
         style={{ width: size, height: size }}
       >
         <img
-          src={src}
+          src={imgSrc}
           alt={name || "group-avatar"}
           width={size}
           height={size}
           style={{ borderRadius: RADIUS, background: DEFAULT_BG }}
           className="object-cover w-full h-full"
+          loading="lazy"
+          decoding="async"
         />
       </div>
     )
@@ -58,6 +80,7 @@ const GroupAvatar = ({
         fontSize: size ? size / 2 : 26,
         borderRadius: RADIUS,
       }}
+      aria-label={name || "group"}
     >
       {name?.[0]?.toUpperCase() || "G"}
     </div>
