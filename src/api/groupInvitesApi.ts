@@ -23,7 +23,6 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   }
   const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
-    // Пытаемся вытащить код ошибки API
     const errorData = await res.json().catch(() => ({}))
     const message =
       (errorData?.detail?.code as string) ||
@@ -31,7 +30,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
       res.statusText
     throw new Error(message)
   }
-  // @ts-ignore — если ответ 204, вернём undefined
+  // @ts-ignore — для 204 вернём undefined
   return res.status === 204 ? undefined : ((await res.json()) as T)
 }
 
@@ -48,7 +47,7 @@ export async function createGroupInvite(
   )
 }
 
-/** Получить превью инвайта для модалки (по token или по start_param внутри initData) */
+/** Превью инвайта для модалки (по token или по start_param в initData) */
 export async function previewGroupInvite(token?: string): Promise<InvitePreview> {
   return fetchJson<InvitePreview>(`${API_URL}/groups/invite/preview`, {
     method: "POST",
@@ -71,7 +70,7 @@ export async function acceptGroupInvite(
   )
 }
 
-/** НОВОЕ: принять инвайт напрямую из initData.start_param (тело не нужно) */
+/** Опционально: принять инвайт напрямую из initData.start_param (без body) */
 export async function acceptGroupInviteFromInit(): Promise<{
   success: boolean
   group_id?: number
@@ -81,12 +80,11 @@ export async function acceptGroupInviteFromInit(): Promise<{
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // без body — бэкенд сам прочитает start_param из подписанного initData
     }
   )
 }
 
-/** Достаём start_param из Telegram WebApp или из URL (Android/iOS/Web) */
+/** Достаём start_param из Telegram WebApp или URL */
 export function getStartParam(): string | null {
   const tg: any = (window as any)?.Telegram?.WebApp
   const fromInitData: string | null =
@@ -104,15 +102,13 @@ export function getStartParam(): string | null {
   return fromInitData || fromUrl
 }
 
-/** Нормализуем токен: убираем префиксы join:, g:, а также token=... */
+/** Нормализация токена: убираем join:, g:, token= */
 export function normalizeInviteToken(raw?: string | null): string | null {
   if (!raw) return null
   let t = String(raw).trim()
   try {
     t = decodeURIComponent(t)
-  } catch {
-    // ignore
-  }
+  } catch {}
   const lower = t.toLowerCase()
   if (lower.startsWith("join:")) t = t.slice(5)
   if (lower.startsWith("g:")) t = t.slice(2)

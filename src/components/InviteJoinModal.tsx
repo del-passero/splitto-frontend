@@ -40,9 +40,12 @@ function normalizeLang(code?: string | null): Lang {
 }
 
 function getLang(): Lang {
-  // @ts-ignore
-  const tg = (window as any)?.Telegram?.WebApp
-  const fromTg = normalizeLang(tg?.initDataUnsafe?.user?.language_code || tg?.initDataUnsafe?.language || tg?.languageCode)
+  const tg: any = (window as any)?.Telegram?.WebApp
+  const fromTg = normalizeLang(
+    tg?.initDataUnsafe?.user?.language_code ||
+      tg?.initDataUnsafe?.language ||
+      tg?.languageCode
+  )
   return fromTg
 }
 
@@ -52,7 +55,7 @@ function useT() {
 }
 
 /* =========================
-   Helpers: token из start_param
+   Helpers: token из start_param/URL
    ========================= */
 function getStartParam(): string | null {
   const tg: any = (window as any)?.Telegram?.WebApp
@@ -61,16 +64,14 @@ function getStartParam(): string | null {
     (tg?.initDataUnsafe?.startParam as string | undefined) ??
     null
   const params = new URLSearchParams(window.location.search)
-  const fromUrl = params.get("startapp") || params.get("start") || params.get("tgWebAppStartParam") || null
+  const fromUrl =
+    params.get("startapp") || params.get("start") || params.get("tgWebAppStartParam") || null
   return fromTg || fromUrl
 }
-
 function normalizeToken(raw?: string | null): string | null {
   if (!raw) return null
   let t = String(raw).trim()
-  try {
-    t = decodeURIComponent(t)
-  } catch {}
+  try { t = decodeURIComponent(t) } catch {}
   const lower = t.toLowerCase()
   if (lower.startsWith("join:")) t = t.slice(5)
   if (lower.startsWith("g:")) t = t.slice(2)
@@ -82,10 +83,8 @@ function normalizeToken(raw?: string | null): string | null {
    Тема (светлая/тёмная)
    ========================= */
 function useOverlayColor() {
-  // @ts-ignore
   const tg = (window as any)?.Telegram?.WebApp
   const scheme = tg?.colorScheme as "light" | "dark" | undefined
-  // затемняем оверлей чуть сильнее в тёмной теме
   return scheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)"
 }
 
@@ -110,13 +109,23 @@ export default function InviteJoinModal() {
     let cancelled = false
     ;(async () => {
       setState({ status: "loading" })
-      const token = normalizeToken(getStartParam())
+      const raw = getStartParam()
+      const token = normalizeToken(raw)
+
+      // Требуем наличие токена; если его нет — уходим со страницы инвайта
+      if (!token) {
+        setState({ status: "hidden" })
+        navigate("/", { replace: true })
+        return
+      }
+
       try {
-        const preview = await previewGroupInvite(token ?? undefined)
+        const preview = await previewGroupInvite(token)
         if (cancelled) return
 
         if (!preview?.group?.id) {
           setState({ status: "hidden" })
+          navigate("/", { replace: true })
           return
         }
         if (preview.already_member) {
@@ -126,12 +135,12 @@ export default function InviteJoinModal() {
         }
         setState({ status: "ready", preview, token })
       } catch {
+        // bad_token / 401 и т.д. — просто уходим на главную
         setState({ status: "hidden" })
+        navigate("/", { replace: true })
       }
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [navigate])
 
   if (state.status === "hidden" || state.status === "idle" || state.status === "loading") return null
@@ -149,12 +158,15 @@ export default function InviteJoinModal() {
     return `${name}${username}`.trim()
   }, [inviter])
 
-  const onClose = () => setState({ status: "hidden" })
+  const onClose = () => {
+    setState({ status: "hidden" })
+    navigate("/", { replace: true })
+  }
 
   const onJoin = async () => {
     if (!group?.id) return onClose()
     try {
-      setState({ status: "joining", preview: preview!, token })
+      setState({ status: "joining", preview, token })
       const res = await acceptGroupInvite(token ?? undefined)
       if (res?.success && res?.group_id) {
         navigate(`/groups/${res.group_id}`, { replace: true })
@@ -166,18 +178,19 @@ export default function InviteJoinModal() {
           message: t("acceptFailed"),
           buttons: [{ type: "close" }],
         })
+        navigate("/", { replace: true })
       }
-    } catch (e: any) {
+    } catch {
       setState({ status: "error", message: t("acceptFailed") })
       ;(window as any)?.Telegram?.WebApp?.showPopup?.({
         title: t("inviteError"),
         message: t("acceptFailed"),
         buttons: [{ type: "close" }],
       })
+      navigate("/", { replace: true })
     }
   }
 
-  // Стили через Telegram CSS vars = автоматическая поддержка светлой/тёмной темы
   const cardStyle: React.CSSProperties = {
     background: "var(--tg-theme-bg-color,#fff)",
     color: "var(--tg-theme-text-color,#111)",
@@ -207,60 +220,32 @@ export default function InviteJoinModal() {
         {/* Inviter */}
         <div className="flex items-center gap-3 mb-3">
           {inviter?.photo_url ? (
-            <img
-              src={inviter.photo_url}
-              alt=""
-              className="w-12 h-12 rounded-full object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
+            <img src={inviter.photo_url} alt="" className="w-12 h-12 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-12 h-12 rounded-full" style={{ background: "rgba(0,0,0,0.08)" }} />
           )}
-          <div className="text-sm" style={hintStyle}>
-            {t("invitedYou")}
-          </div>
+          <div className="text-sm" style={hintStyle}>{t("invitedYou")}</div>
         </div>
 
         {/* Group */}
         <div className="flex items-center gap-3 mb-4">
           {group?.avatar_url ? (
-            <img
-              src={group.avatar_url}
-              alt=""
-              className="w-10 h-10 rounded-xl object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
+            <img src={group.avatar_url} alt="" className="w-10 h-10 rounded-xl object-cover" loading="lazy" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-10 h-10 rounded-xl" style={{ background: "rgba(0,0,0,0.06)" }} />
           )}
           <div className="flex flex-col">
             <div className="font-medium">{group?.name || `#${group?.id}`}</div>
-            {inviterTitle && (
-              <div className="text-sm" style={hintStyle}>
-                {inviterTitle}
-              </div>
-            )}
+            {inviterTitle && <div className="text-sm" style={hintStyle}>{inviterTitle}</div>}
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex gap-8 justify-end mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl"
-            style={secondaryBtnStyle}
-            disabled={joining}
-          >
+          <button onClick={onClose} className="px-4 py-2 rounded-xl" style={secondaryBtnStyle} disabled={joining}>
             {t("close")}
           </button>
-          <button
-            onClick={onJoin}
-            className="px-4 py-2 rounded-xl font-medium"
-            style={primaryBtnStyle}
-            disabled={joining}
-          >
+          <button onClick={onJoin} className="px-4 py-2 rounded-xl font-medium" style={primaryBtnStyle} disabled={joining}>
             {joining ? t("joining") : t("join")}
           </button>
         </div>
