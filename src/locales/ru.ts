@@ -206,6 +206,7 @@ export default {
   delete: "Удалить",
   clear: "Очистить",
   loading: "Загрузка...",
+  uploading: "Загрузка...", // ← добавлено
   save_failed: "Не удалось сохранить",
   delete_failed: "Не удалось удалить",
 
@@ -228,6 +229,7 @@ export default {
     delete_forbidden:
       "Удалять транзакцию может только автор или плативший/отправитель",
     amount_positive: "Сумма должна быть больше 0",
+    upload_failed: "Не удалось загрузить изображение", // ← добавлено
   },
 
   // --- Валюты ---
@@ -253,6 +255,14 @@ export default {
     desc_hint_initial: "Введите описание группы (до {{max}} символов)",
     desc_hint_remaining: "Осталось {{n}} символов",
     trip_date_placeholder: "ДД.ММ.ГГГГ",
+
+    // ↓↓↓ добавлено для работы с аватаром
+    upload_image: "Загрузить изображение",
+    change_image: "Изменить фото",
+    remove_image: "Удалить фото",
+    avatar_uploaded: "Изображение загружено — не забудьте сохранить",
+    avatar_marked_for_delete: "Фото будет удалено при сохранении",
+    avatar_still_uploading: "Дождитесь окончания загрузки аватара",
   },
 
   // --- Модалки ---
@@ -362,8 +372,8 @@ export default {
     no_name: "Без имени",
   },
   
-    // --- Страница инвайта ---
-    invite_page: {
+  // --- Страница инвайта ---
+  invite_page: {
     title: "Приглашение в группу Splitto",
     invites_you: "приглашает вас в группу",
     tagline: "в Splitto для управления совместными расходами",
