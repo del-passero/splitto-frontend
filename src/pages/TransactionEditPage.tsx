@@ -121,7 +121,7 @@ function parseAmountInput(raw: string, decimalsLimit = 2): string {
   const firstDot = s.indexOf(".");
   if (firstDot !== -1) {
     const head = s.slice(0, firstDot + 1);
-    const tail = s.slice(firstDot + 1).replace(/\./g, "");
+    const tail = s.slice(0 + firstDot + 1).replace(/\./g, "");
     s = head + tail;
   }
   if (s.includes(".")) {
@@ -819,6 +819,18 @@ export default function TransactionEditPage() {
           transfer_to: [toUser],
         };
         await updateTransaction(tx.id, payload);
+      }
+
+      // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — очищаем URL на бэке -----
+      if (receipt.removeMarked && !receipt.stagedFile) {
+        try {
+          await setTransactionReceiptUrl(tx.id, ""); // очистить поле на бэке
+          receipt.setServerUrl(null);
+          receipt.setServerPreviewUrl(null);
+          receipt.unmarkDeleted();
+        } catch {
+          // не блокируем сохранение из-за ошибки очистки
+        }
       }
 
       // ----- чек: если выбран локальный файл — грузим и сохраняем ссылку в транзакцию -----
