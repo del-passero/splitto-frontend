@@ -898,6 +898,7 @@ export default function CreateTransactionModal({
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
+                      {/* ВЫРОВНЕНО как «Категория + Комментарий»: две колонки */}
                       <div className="grid grid-cols-2 gap-2 mt-0.5">
                         {/* левая половина: валюта + сумма */}
                         <div className="flex items-center gap-2">
@@ -922,70 +923,73 @@ export default function CreateTransactionModal({
                           />
                         </div>
 
-                        {/* правая половина: мини-виджет чека */}
-                        <div>
-                          {/* превью-бокс */}
-                          <button
-                            type="button"
-                            className="w-full h-16 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] flex items-center justify-center overflow-hidden"
-                            onClick={() => receipt.displayUrl && setPreviewOpen(true)}
-                            title={receipt.displayUrl ? "Открыть предпросмотр" : "Чек не прикреплён"}
-                          >
-                            {receipt.displayUrl ? (
-                              receipt.displayIsPdf ? (
-                                <div className="text-[12px] opacity-80">PDF</div>
+                        {/* правая половина: квадратный бокс + пиктограммы справа, подпись под строкой (строго справа) */}
+                        <div className="flex flex-col items-end">
+                          <div className="w-full flex items-center justify-end gap-2">
+                            {/* квадратное превью (на ~20% ниже прежних 64px) */}
+                            <button
+                              type="button"
+                              className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] flex items-center justify-center overflow-hidden"
+                              onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())}
+                              title={receipt.displayUrl ? "Открыть предпросмотр" : "Прикрепить чек"}
+                            >
+                              {receipt.displayUrl ? (
+                                receipt.displayIsPdf ? (
+                                  <span className="text-[11px] opacity-80">PDF</span>
+                                ) : (
+                                  <img
+                                    src={receipt.displayUrl}
+                                    alt=""
+                                    className="max-h-full max-w-full object-contain"
+                                  />
+                                )
                               ) : (
-                                <img
-                                  src={receipt.displayUrl}
-                                  alt=""
-                                  className="max-h-full max-w-full object-contain"
-                                />
-                              )
-                            ) : (
-                              <Paperclip size={18} className="opacity-60" />
-                            )}
-                          </button>
+                                <span className="text-[10px] opacity-60">Фото чека</span>
+                              )}
+                            </button>
 
-                          {/* иконки действий */}
-                          <div className="mt-1 flex items-center justify-end gap-2">
-                            {!receipt.displayUrl ? (
-                              <button
-                                type="button"
-                                onClick={pickFile}
-                                className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                title="Прикрепить"
-                              >
-                                <Paperclip size={16} />
-                              </button>
-                            ) : (
-                              <>
+                            {/* вертикальная колонка иконок справа от превью */}
+                            <div className="flex flex-col gap-1">
+                              {!receipt.displayUrl ? (
                                 <button
                                   type="button"
-                                  onClick={onReplace}
+                                  onClick={pickFile}
                                   className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                  title="Заменить"
+                                  title="Прикрепить"
                                 >
-                                  <RefreshCcw size={16} />
+                                  <Paperclip size={16} />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={onRemove}
-                                  className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
-                                  title="Удалить"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </>
-                            )}
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={onReplace}
+                                    className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                    title="Заменить"
+                                  >
+                                    <RefreshCcw size={16} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={onRemove}
+                                    className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                                    title="Удалить"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* служебная подпись строго справа, под строкой */}
+                          <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
+                            {receiptHint}
                           </div>
                         </div>
                       </div>
 
-                      {/* подсказки под строкой с суммой/чеком */}
-                      <div className="pt-1 pb-1 text-[12px] text-[var(--tg-hint-color)]">
-                        {receiptHint}
-                      </div>
-
+                      {/* ошибки по сумме (оставляем под блоком) */}
                       {(showErrors || amountTouched) && errors.amount && (
                         <div className="pt-1 pb-1 text-[12px] text-red-500">
                           {errors.amount}
