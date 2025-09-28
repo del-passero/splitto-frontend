@@ -50,7 +50,7 @@ export default {
   delete_hard_note: "Будет удалено безвозвратно",
   delete_soft_note: "Будет удалено с возможностью восстановления",
   delete_forbidden_debts_note: "Нельзя удалить: есть непогашенные долги",
-  archive_forbidden_debts_note: "Нельзя удалить: есть непогашенные долги",
+  archive_forbidden_debts_note: "Нельзя архивировать: есть непогашенные долги",
 
   // --- Балансы и долги ---
   group_balance_you_get: "Тебе должны {{sum}}",

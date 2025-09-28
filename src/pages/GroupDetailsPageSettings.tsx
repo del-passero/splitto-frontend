@@ -23,8 +23,6 @@ import GroupSettingsTab from "../components/group/GroupSettingsTab"
 import GroupMembersTab from "../components/group/GroupMembersTab"
 import CardSection from "../components/CardSection"
 import AddGroupMembersModal from "../components/group/AddGroupMembersModal"
-import { HandCoins } from "lucide-react"
-import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 import InviteGroupModal from "../components/group/InviteGroupModal"
 import EditGroupModal from "../components/group/EditGroupModal"
 
@@ -51,7 +49,6 @@ const GroupDetailsPageSettings = () => {
 
   // модалки
   const [addOpen, setAddOpen] = useState(false)
-  const [createTxOpen, setCreateTxOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
 
@@ -190,15 +187,14 @@ const GroupDetailsPageSettings = () => {
   const handleHide = async () => {
     if (!id) return
     await hideGroup?.(id)
-    setHiddenLocal(true)
-    // также отметим в локальной группе, если поле присутствует
-    setGroup(prev => (prev ? ({ ...prev, is_hidden_for_me: true } as any) : prev))
+    // Поведение как у Архивировать/Удалить — сразу уходим на список групп
+    goToGroupsList()
   }
   const handleUnhide = async () => {
     if (!id) return
     await unhideGroup?.(id)
-    setHiddenLocal(false)
-    setGroup(prev => (prev ? ({ ...prev, is_hidden_for_me: false } as any) : prev))
+    // Аналогично — сразу уходим на список групп
+    goToGroupsList()
   }
   const handleArchive = async () => {
     if (!id) return
@@ -309,7 +305,6 @@ const GroupDetailsPageSettings = () => {
         existingMemberIds={existingMemberIds}
         onAdded={() => { /* window.location.reload() вызывается внутри модалки после успеха */ }}
       />
-
 
       {/* Модалка инвайта в группу */}
       <InviteGroupModal
