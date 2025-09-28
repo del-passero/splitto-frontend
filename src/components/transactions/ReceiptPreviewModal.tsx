@@ -32,41 +32,35 @@ export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props
           </button>
         </div>
 
-        {/* Контент: min-h-0 чтобы iframe корректно занимал высоту внутри flex */}
-        <div className="flex-1 min-h-0 overflow-hidden flex">
+        <div className="flex-1 overflow-auto flex items-center justify-center">
           {url ? (
             pdf ? (
-              <iframe
-                src={`${url}#view=FitH`}
-                title="Receipt PDF"
-                className="w-full h-full rounded-lg"
-              />
+              <div className="w-full h-full flex flex-col">
+                <iframe
+                  src={url}
+                  title="receipt-pdf"
+                  className="w-full h-full rounded-lg"
+                />
+                <div className="text-[var(--tg-text-color)] text-sm px-2 mt-2 text-center">
+                  Если PDF не отображается, попробуйте{" "}
+                  <a href={url} target="_blank" rel="noreferrer" className="underline">
+                    открыть в новой вкладке
+                  </a>
+                </div>
+              </div>
             ) : (
               <img
                 src={url}
                 alt=""
-                className="max-w-full max-h-full object-contain rounded-lg m-auto"
+                className="max-w-full max-h-full object-contain rounded-lg"
               />
             )
           ) : (
-            <div className="m-auto text-[var(--tg-text-color)] opacity-70 text-sm">
+            <div className="text-[var(--tg-text-color)] opacity-70 text-sm">
               Файл отсутствует
             </div>
           )}
         </div>
-
-        {url && pdf && (
-          <div className="pt-2 text-right">
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="underline text-[var(--tg-text-color)]/80"
-            >
-              Открыть в новой вкладке
-            </a>
-          </div>
-        )}
       </div>
     </div>
   );

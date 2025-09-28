@@ -15,7 +15,13 @@ import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
 import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal";
 import type { TransactionOut } from "../../types/transaction";
-import { createTransaction, updateTransaction, uploadReceipt, setTransactionReceiptUrl, deleteTransactionReceipt } from "../../api/transactionsApi";
+import {
+  createTransaction,
+  updateTransaction,
+  uploadReceipt,
+  setTransactionReceiptUrl,
+  deleteTransactionReceipt
+} from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import { getGroupDetails } from "../../api/groupsApi";
 
@@ -586,6 +592,21 @@ export default function CreateTransactionModal({
     receipt.clearAll();
   };
 
+  // Для мини-превью и модалки: если есть preview у PDF, мини-квадрат может быть картинкой,
+  // но модалка должна открывать ИМЕННО PDF (оригинальный serverUrl).
+  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
+  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
+  const previewModalUrl = useMemo(() => {
+    if (receipt.displayIsPdf) return receipt.displayUrl;
+    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl;
+    return receipt.displayUrl;
+  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl]);
+  const previewModalIsPdf = useMemo(() => {
+    if (receipt.displayIsPdf) return true;
+    if (originalIsPdf) return true;
+    return false;
+  }, [receipt.displayIsPdf, originalIsPdf]);
+
   const doSubmit = async (modeAfter: "close" | "again") => {
     if (saving) return;
     const ok = ensureValidOrGuide();
@@ -633,15 +654,18 @@ export default function CreateTransactionModal({
         else saved = await createTransaction(payload);
       }
 
-      // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — удаляем привязку -----
+      // ----- чек: если пользователь удалил старый и НЕ выбрал новый файл -----
       if (saved?.id && receipt.removeMarked && !receipt.stagedFile) {
         try {
+          // Пытаемся вызвать явный DELETE, если доступен
           await deleteTransactionReceipt(saved.id);
+        } catch {
+          // Фолбэк: очистка URL
+          try { await setTransactionReceiptUrl(saved.id, ""); } catch {}
+        } finally {
           receipt.setServerUrl(null);
           receipt.setServerPreviewUrl(null);
           receipt.unmarkDeleted();
-        } catch {
-          // не блокируем сохранение из-за ошибки удаления
         }
       }
 
@@ -662,7 +686,7 @@ export default function CreateTransactionModal({
             receipt.unmarkDeleted();
           }
         } catch {
-          // не блокируем создание/сохранение транзакции из-за фэйленного аплоада
+          // не блокируем создание транзакции из-за фэйленного аплоада
         }
       }
 
@@ -820,7 +844,7 @@ export default function CreateTransactionModal({
   // ---- подсказка под правой половиной (чек) ----
   const receiptHint = (() => {
     if (receipt.displayUrl) {
-      return receipt.displayIsPdf
+      return (receipt.displayIsPdf || originalIsPdf)
         ? t("tx_modal.receipt_attached_pdf")
         : t("tx_modal.receipt_attached_image");
     }
@@ -940,7 +964,7 @@ export default function CreateTransactionModal({
                         {/* правая половина: окно чека + кнопки справа, подпись под правой колонкой */}
                         <div className="flex flex-col items-end">
                           <div className="w-full flex items-center justify-end gap-2">
-                            {/* квадрат 51x51, фон по карточке (в тёмной теме не «чёрная дыра»), лёгкая внутренняя тень */}
+                            {/* квадрат 51x51 */}
                             <button
                               type="button"
                               className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center overflow-hidden"
@@ -949,7 +973,7 @@ export default function CreateTransactionModal({
                               aria-label={receipt.displayUrl ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                             >
                               {receipt.displayUrl ? (
-                                receipt.displayIsPdf ? (
+                                thumbIsPdf ? (
                                   <span className="text-[11px] opacity-80">PDF</span>
                                 ) : (
                                   <img
@@ -1097,7 +1121,7 @@ export default function CreateTransactionModal({
                                 <span
                                   role="button"
                                   aria-label={t("clear") || "Очистить"}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg:white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
                                 >
                                   <X size={12} />
@@ -1150,8 +1174,8 @@ export default function CreateTransactionModal({
                                 .filter((p) => !paidBy || p.user_id !== paidBy)
                                 .map((p) => (
                                   <div key={p.user_id} className="flex items-center gap-2 text-[13px]">
-                                    {p.avatar_url ? (
-                                      <img src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                    {(p as any).avatar_url ? (
+                                      <img src={(p as any).avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
                                     ) : (
                                       <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                     )}
@@ -1220,7 +1244,7 @@ export default function CreateTransactionModal({
 
                           <button
                             type="button"
-                            onClick={openRecipientPicker}
+                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(true); setSplitOpen(false); }}
                             className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {toUser ? (
@@ -1236,7 +1260,7 @@ export default function CreateTransactionModal({
                                 <span
                                   role="button"
                                   aria-label={t("clear") || "Очистить"}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg:white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setToUser(undefined); setToUserName(""); setToUserAvatar(undefined); }}
                                 >
                                   <X size={12} />
@@ -1362,8 +1386,8 @@ export default function CreateTransactionModal({
       <ReceiptPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        url={receipt.displayUrl}
-        isPdf={receipt.displayIsPdf}
+        url={previewModalUrl ?? null}
+        isPdf={previewModalIsPdf}
       />
 
       {/* Выбор группы */}
@@ -1444,7 +1468,7 @@ export default function CreateTransactionModal({
         groupId={selectedGroupId || 0}
         amount={Number((isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0"))}
         currency={{ code: currency.code || "", symbol: currency.code || "", decimals: currency.decimals }}
-        initial={splitData || { type: splitType, participants: [] as any[] }}
+        initial={splitData || { type: "equal", participants: [] as any[] }}
         paidById={paidBy}
         onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
       />
