@@ -32,39 +32,41 @@ export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto flex items-center justify-center">
+        {/* Контент: min-h-0 чтобы iframe корректно занимал высоту внутри flex */}
+        <div className="flex-1 min-h-0 overflow-hidden flex">
           {url ? (
             pdf ? (
-              <object
-                data={url}
-                type="application/pdf"
+              <iframe
+                src={`${url}#view=FitH`}
+                title="Receipt PDF"
                 className="w-full h-full rounded-lg"
-              >
-                <p className="text-[var(--tg-text-color)] text-sm px-2">
-                  Не удалось отобразить PDF.{" "}
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Открыть в новой вкладке
-                  </a>
-                </p>
-              </object>
+              />
             ) : (
               <img
                 src={url}
                 alt=""
-                className="max-w-full max-h-full object-contain rounded-lg"
+                className="max-w-full max-h-full object-contain rounded-lg m-auto"
               />
             )
           ) : (
-            <div className="text-[var(--tg-text-color)] opacity-70 text-sm">
+            <div className="m-auto text-[var(--tg-text-color)] opacity-70 text-sm">
               Файл отсутствует
             </div>
           )}
         </div>
+
+        {url && pdf && (
+          <div className="pt-2 text-right">
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="underline text-[var(--tg-text-color)]/80"
+            >
+              Открыть в новой вкладке
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

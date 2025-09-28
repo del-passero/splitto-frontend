@@ -15,7 +15,7 @@ import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
 import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal";
 import type { TransactionOut } from "../../types/transaction";
-import { createTransaction, updateTransaction, uploadReceipt, setTransactionReceiptUrl } from "../../api/transactionsApi";
+import { createTransaction, updateTransaction, uploadReceipt, setTransactionReceiptUrl, deleteTransactionReceipt } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import { getGroupDetails } from "../../api/groupsApi";
 
@@ -633,6 +633,18 @@ export default function CreateTransactionModal({
         else saved = await createTransaction(payload);
       }
 
+      // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — удаляем привязку -----
+      if (saved?.id && receipt.removeMarked && !receipt.stagedFile) {
+        try {
+          await deleteTransactionReceipt(saved.id);
+          receipt.setServerUrl(null);
+          receipt.setServerPreviewUrl(null);
+          receipt.unmarkDeleted();
+        } catch {
+          // не блокируем сохранение из-за ошибки удаления
+        }
+      }
+
       // ----- чек: если есть локально выбранный файл — грузим и сохраняем ссылку в транзакцию -----
       if (saved?.id && receipt.stagedFile) {
         try {
@@ -650,7 +662,7 @@ export default function CreateTransactionModal({
             receipt.unmarkDeleted();
           }
         } catch {
-          // не блокируем создание транзакции из-за фэйленного аплоада
+          // не блокируем создание/сохранение транзакции из-за фэйленного аплоада
         }
       }
 

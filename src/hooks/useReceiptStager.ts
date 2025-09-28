@@ -17,9 +17,13 @@ export type UseReceiptStagerOptions = {
 };
 
 export type UseReceiptStagerReturn = {
-  // что показывать
+  // что показывать в мини-превью (квадратик в форме)
   displayUrl: string | null;
   displayIsPdf: boolean;
+
+  // что открывать в модалке предпросмотра (предпочтительно PDF)
+  viewerUrl: string | null;
+  viewerIsPdf: boolean;
 
   // локально выбранный файл
   stagedFile: File | null;
@@ -110,7 +114,7 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
     [stagedPreview, serverPreviewUrl, serverUrl]
   );
 
-  // pdf считаем так:
+  // pdf в мини-превью считаем так:
   // - если локальный файл — по его типу
   // - если серверное превью есть — это почти всегда картинка => не pdf
   // - иначе смотрим на оригинальный серверный url по расширению
@@ -119,6 +123,27 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
     if (serverPreviewUrl) return false;
     return /\.pdf($|\?)/i.test(serverUrl ?? "");
   }, [stagedPreview, stagedIsPdf, serverPreviewUrl, serverUrl]);
+
+  // === новое: что отдавать в модалку предпросмотра ===
+  const originalIsPdf = useMemo(
+    () => /\.pdf($|\?)/i.test(serverUrl ?? ""),
+    [serverUrl]
+  );
+
+  // Для viewerUrl приоритет:
+  // 1) локальный файл (если выбран)
+  // 2) оригинальный PDF (если есть) — хотим открыть именно PDF, а не превью
+  // 3) серверное превью (картинка) или оригинальный файл
+  const viewerUrl = useMemo(() => {
+    if (stagedPreview) return stagedPreview;
+    if (originalIsPdf && serverUrl) return serverUrl;
+    return serverPreviewUrl ?? serverUrl;
+  }, [stagedPreview, originalIsPdf, serverUrl, serverPreviewUrl]);
+
+  const viewerIsPdf = useMemo(() => {
+    if (stagedPreview) return stagedIsPdf;
+    return originalIsPdf;
+  }, [stagedPreview, stagedIsPdf, originalIsPdf]);
 
   const clearAll = () => {
     setStagedFile(null);
@@ -131,6 +156,9 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
   return {
     displayUrl,
     displayIsPdf,
+
+    viewerUrl,
+    viewerIsPdf,
 
     stagedFile,
     setStagedFile,
@@ -217,4 +245,3 @@ export default function createReceiptStager(opts?: UseReceiptStagerOptions) {
     deleted: boolean;
   };
 }
-
