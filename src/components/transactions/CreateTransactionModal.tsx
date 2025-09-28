@@ -808,9 +808,11 @@ export default function CreateTransactionModal({
   // ---- подсказка под правой половиной (чек) ----
   const receiptHint = (() => {
     if (receipt.displayUrl) {
-      return receipt.displayIsPdf ? "Прикреплён PDF" : "Прикреплено изображение";
+      return receipt.displayIsPdf
+        ? t("tx_modal.receipt_attached_pdf")
+        : t("tx_modal.receipt_attached_image");
     }
-    return "Чек не прикреплён";
+    return t("tx_modal.receipt_not_attached");
   })();
 
   return (
@@ -834,7 +836,7 @@ export default function CreateTransactionModal({
           </div>
 
           {/* Content */}
-          <div className="p-3 flex flex-col gap-0.5">
+          <div className="p-3 flex flex-col gap-0">
             {/* Группа */}
             <div className="-mx-3">
               <CardSection className="py-0">
@@ -870,8 +872,8 @@ export default function CreateTransactionModal({
               <>
                 {/* Тип */}
                 <div className="-mx-3">
-                  <CardSection className="py-0.5">
-                    <div className="px-3 pb-0.5 flex justify-center">
+                  <CardSection className="py-0">
+                    <div className="px-3 pb-0 flex justify-center">
                       <div className="inline-flex rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden">
                         <button
                           type="button"
@@ -898,16 +900,16 @@ export default function CreateTransactionModal({
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
-                      {/* ВЫРОВНЕНО как «Категория + Комментарий»: две колонки */}
-                      <div className="grid grid-cols-2 gap-2 mt-0.5">
-                        {/* левая половина: валюта + сумма */}
-                        <div className="flex items-center gap-2">
+                      <div className="grid grid-cols-2 gap-1 mt-0">
+                        {/* левая половина: валюта + сумма (строго до середины) */}
+                        <div className="min-w-0 flex items-center gap-2">
                           {currency.code && (
                             <button
                               type="button"
                               onClick={() => setCurrencyModal(true)}
                               className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
-                              title={currency.code}
+                              title={t("tx_modal.currency") || ""}
+                              aria-label={t("tx_modal.currency") || ""}
                             >
                               {currency.code}
                             </button>
@@ -919,19 +921,20 @@ export default function CreateTransactionModal({
                             value={amount}
                             onChange={(e) => handleAmountChange(e.target.value)}
                             onBlur={handleAmountBlur}
-                            className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
+                            className="w-full h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
                           />
                         </div>
 
-                        {/* правая половина: квадратный бокс + пиктограммы справа, подпись под строкой (строго справа) */}
+                        {/* правая половина: окно чека + кнопки справа, подпись под правой колонкой */}
                         <div className="flex flex-col items-end">
                           <div className="w-full flex items-center justify-end gap-2">
-                            {/* квадратное превью (на ~20% ниже прежних 64px) */}
+                            {/* квадрат 51x51, фон по карточке (в тёмной теме не «чёрная дыра»), лёгкая внутренняя тень */}
                             <button
                               type="button"
-                              className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] flex items-center justify-center overflow-hidden"
+                              className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center overflow-hidden"
                               onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())}
-                              title={receipt.displayUrl ? "Открыть предпросмотр" : "Прикрепить чек"}
+                              title={receipt.displayUrl ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
+                              aria-label={receipt.displayUrl ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                             >
                               {receipt.displayUrl ? (
                                 receipt.displayIsPdf ? (
@@ -939,57 +942,60 @@ export default function CreateTransactionModal({
                                 ) : (
                                   <img
                                     src={receipt.displayUrl}
-                                    alt=""
+                                    alt={t("tx_modal.receipt_photo_alt") || ""}
                                     className="max-h-full max-w-full object-contain"
                                   />
                                 )
                               ) : (
-                                <span className="text-[10px] opacity-60">Фото чека</span>
+                                <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center">
+                                  {t("tx_modal.receipt_photo_label")}
+                                </span>
                               )}
                             </button>
 
-                            {/* вертикальная колонка иконок справа от превью */}
-                            <div className="flex flex-col gap-1">
-                              {!receipt.displayUrl ? (
+                            {/* Кнопки справа — в ряд */}
+                            {!receipt.displayUrl ? (
+                              <button
+                                type="button"
+                                onClick={pickFile}
+                                className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("tx_modal.receipt_attach") || ""}
+                                aria-label={t("tx_modal.receipt_attach") || ""}
+                              >
+                                <Paperclip size={16} />
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={pickFile}
-                                  className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                  title="Прикрепить"
+                                  onClick={onReplace}
+                                  className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                  title={t("tx_modal.receipt_replace") || ""}
+                                  aria-label={t("tx_modal.receipt_replace") || ""}
                                 >
-                                  <Paperclip size={16} />
+                                  <RefreshCcw size={16} />
                                 </button>
-                              ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={onReplace}
-                                    className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                    title="Заменить"
-                                  >
-                                    <RefreshCcw size={16} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={onRemove}
-                                    className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
-                                    title="Удалить"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                                <button
+                                  type="button"
+                                  onClick={onRemove}
+                                  className="px-2 h-9 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                                  title={t("tx_modal.receipt_remove") || ""}
+                                  aria-label={t("tx_modal.receipt_remove") || ""}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            )}
                           </div>
 
-                          {/* служебная подпись строго справа, под строкой */}
+                          {/* подпись строго справа, под строкой */}
                           <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
                             {receiptHint}
                           </div>
                         </div>
                       </div>
 
-                      {/* ошибки по сумме (оставляем под блоком) */}
+                      {/* ошибки по сумме */}
                       {(showErrors || amountTouched) && errors.amount && (
                         <div className="pt-1 pb-1 text-[12px] text-red-500">
                           {errors.amount}
@@ -1060,7 +1066,7 @@ export default function CreateTransactionModal({
                     {/* Paid by / Split */}
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                        <div className="px-3 py-0 grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={openPayerPicker}
@@ -1170,7 +1176,7 @@ export default function CreateTransactionModal({
                   <>
                     <div className="-mx-3">
                       <CardSection className="py-0">
-                        <div className="px-3 py-1 grid grid-cols-2 gap-2">
+                        <div className="px-3 py-0 grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={openPayerPicker}
