@@ -69,8 +69,26 @@ export interface TransactionCreateRequest {
   }>
 }
 
+/** (Опционально) Пэйлоад для PUT /transactions/{id} — если захочешь строгую типизацию */
+export interface TransactionUpdateRequest {
+  amount: string
+  date: string
+  comment?: string | null
+  currency_code: string
+  // expense-only:
+  category_id?: number | null
+  paid_by?: number | null
+  split_type?: SplitType | null
+  shares?: Array<{ user_id: number; amount: string; shares?: number | null }>
+  // transfer-only:
+  transfer_from?: number | null
+  transfer_to?: number[] | null
+  // чек (опционально, если когда-то решишь апдейтить через PUT):
+  receipt_url?: string | null
+  receipt_data?: Record<string, unknown> | null
+}
+
 export interface ListResponse<T> {
   items: T[]
   total: number
 }
-

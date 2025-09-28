@@ -147,3 +147,52 @@ export async function removeTransaction(transactionId: number): Promise<void> {
   })
   if (!res.ok) throw new Error(await res.text())
 }
+
+/* ===================== ЧЕКИ (upload/bind/delete) ===================== */
+
+/** Загрузить файл чека (image/* или PDF) и получить относительный URL */
+export async function uploadReceipt(file: File): Promise<{ url: string }> {
+  const fd = new FormData()
+  fd.append("file", file)
+  const res = await fetch(makeUrl("/upload/receipt"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "x-telegram-initdata": getTelegramInitData(),
+      // ВАЖНО: не ставим Content-Type вручную — boundary выставит браузер
+    },
+    body: fd,
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return (await res.json()) as { url: string }
+}
+
+/** Привязать чек к транзакции по URL (можно относительный "/media/receipts/...") */
+export async function setTransactionReceiptUrl(
+  transactionId: number,
+  url: string
+): Promise<TransactionOut> {
+  const res = await fetch(makeUrl(`/transactions/${transactionId}/receipt/url`), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+    body: JSON.stringify({ url }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return (await res.json()) as TransactionOut
+}
+
+/** Удалить прикреплённый к транзакции чек */
+export async function deleteTransactionReceipt(transactionId: number): Promise<void> {
+  const res = await fetch(makeUrl(`/transactions/${transactionId}/receipt`), {
+    method: "DELETE",
+    credentials: "include",
+    headers: {
+      "x-telegram-initdata": getTelegramInitData(),
+    },
+  })
+  if (!res.ok) throw new Error(await res.text())
+}

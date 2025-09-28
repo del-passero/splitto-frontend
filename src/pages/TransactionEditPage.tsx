@@ -1,4 +1,4 @@
-// frontend/src/pages/TransactionEditPage.tsx
+// src/pages/TransactionEditPage.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -15,7 +15,11 @@ import CurrencyPickerModal, { type CurrencyItem } from "../components/currency/C
 
 import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
-import { getTransaction, updateTransaction, removeTransaction } from "../api/transactionsApi";
+import { getTransaction, updateTransaction, removeTransaction, uploadReceipt, setTransactionReceiptUrl, deleteTransactionReceipt } from "../api/transactionsApi";
+
+import ReceiptAttachment from "../components/transactions/ReceiptAttachment";
+import ReceiptPreviewModal from "../components/transactions/ReceiptPreviewModal";
+import { useReceiptStager } from "../hooks/useReceiptStager";
 
 import {
   X,
@@ -64,6 +68,9 @@ type TxOut = {
   split_type?: "equal" | "shares" | "custom";
 
   related_users?: RelatedUser[];
+
+  // возможные поля, если у тебя так хранится чек
+  receipt_url?: string | null;
 };
 
 export interface MinimalGroup {
@@ -685,6 +692,25 @@ export default function TransactionEditPage() {
     return true;
   };
 
+  /* ======== ЧЕК: хук постановки ======== */
+  const {
+    serverUrl,
+    setServerUrl,
+    stagedFile,
+    setStagedFile,
+    stagedPreview,
+    stagedIsPdf,
+    displayIsPdf,
+  } = useReceiptStager({
+    initialUrl: tx?.receipt_url ?? null,
+  });
+
+  const displayUrl = stagedPreview ?? serverUrl;
+  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [removeMarked, setRemoveMarked] = useState(false);
+  const markRemove = () => setRemoveMarked(true);
+  const unmarkRemove = () => setRemoveMarked(false);
+
   // SAVE
   const doSave = async () => {
     if (!tx || !group?.id) return;
@@ -754,6 +780,22 @@ export default function TransactionEditPage() {
         await updateTransaction(tx.id, payload);
       }
 
+      // === ЧЕК: удалить / загрузить / привязать ===
+      try {
+        if (removeMarked && (serverUrl || tx.receipt_url)) {
+          await deleteTransactionReceipt(tx.id);
+        }
+        if (stagedFile) {
+          const uploaded: any = await uploadReceipt(stagedFile); // 1 аргумент
+          const url: string = typeof uploaded === "string" ? uploaded : uploaded?.url;
+          if (url) {
+            await setTransactionReceiptUrl(tx.id, url); // 2 аргумента
+          }
+        }
+      } catch (re) {
+        console.error("[TransactionEditPage] receipt link error", re);
+      }
+
       goBack();
     } catch (e) {
       const { code } = parseApiError(e);
@@ -812,13 +854,14 @@ export default function TransactionEditPage() {
     );
   }
   if (error || !tx) {
+    const go = () => navigate(-1);
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={go}>
         <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
-            onClick={goBack}
+            onClick={go}
             style={{ color: "var(--tg-text-color)" }}
             className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
@@ -1198,6 +1241,33 @@ export default function TransactionEditPage() {
             </>
           ) : null}
 
+          {/* === ЧЕК / вложение === */}
+          <div className="-mx-3">
+            <CardSection className="py-1">
+              <div className="px-3">
+                <ReceiptAttachment
+                  displayUrl={displayUrl}
+                  isPdf={displayIsPdf}
+                  busy={saving}
+                  removeMarked={removeMarked}
+                  onPick={(file: File) => {
+                    setStagedFile(file);
+                    if (removeMarked) unmarkRemove();
+                  }}
+                  onRemove={() => {
+                    if (stagedFile) {
+                      setStagedFile(null);
+                    } else {
+                      setServerUrl(null);
+                      markRemove();
+                    }
+                  }}
+                  onPreview={() => setReceiptPreviewOpen(true)}
+                />
+              </div>
+            </CardSection>
+          </div>
+
           {/* Дата */}
           <div className="-mx-3">
             <CardSection className="py-0">
@@ -1401,6 +1471,13 @@ export default function TransactionEditPage() {
             </div>
           </div>
         )}
+
+        {/* Превью чека */}
+        <ReceiptPreviewModal
+          open={receiptPreviewOpen}
+          onClose={() => setReceiptPreviewOpen(false)}
+          url={displayUrl}
+        />
       </div>
     </div>
   );
