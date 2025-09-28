@@ -1,4 +1,3 @@
-// src/components/group/EditGroupModal.tsx
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
@@ -140,8 +139,8 @@ export default function EditGroupModal({
 
   // avatar state
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null) // что сейчас на сервере
-  const [stagedAvatarUrl, setStagedAvatarUrl] = useState<string | null>(null)   // что хотим сохранить (URL из upload)
-  const [stagedPreview, setStagedPreview] = useState<string | null>(null)       // локальный blob: превью
+  const [stagedFile, setStagedFile] = useState<File | null>(null)              // <— файл держим локально до "Сохранить"
+  const [stagedPreview, setStagedPreview] = useState<string | null>(null)      // локальный blob: превью
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const [avatarRemoveMarked, setAvatarRemoveMarked] = useState(false)
@@ -155,7 +154,7 @@ export default function EditGroupModal({
     setSaving(false)
     setAvatarError(null)
     setStagedPreview(null)
-    setStagedAvatarUrl(null)
+    setStagedFile(null)
     setAvatarRemoveMarked(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
 
@@ -166,7 +165,7 @@ export default function EditGroupModal({
         const av = (g as any).avatar_url || (g as any).avatarUrl || (g as any).avatar || null
         setCurrentAvatarUrl(typeof av === "string" && av.trim() ? av : null)
       } catch {
-        // мягко игнорируем; редактирование имени/описания не зависит
+        // игнор
       }
     })()
 
@@ -205,14 +204,11 @@ export default function EditGroupModal({
         try { URL.revokeObjectURL(stagedPreview) } catch {}
       }
       setStagedPreview(previewUrl)
-
-      // заливаем на сторадж, но на саму группу не применяем до "Сохранить"
-      const url = await uploadImageAndGetUrl(compressed)
-      setStagedAvatarUrl(url)
-      setAvatarRemoveMarked(false) // выбрали новое фото — значит не удаляем
+      setStagedFile(compressed)      // <— НЕ загружаем сейчас
+      setAvatarRemoveMarked(false)   // выбрали новое фото — значит не удаляем
     } catch (err: any) {
-      setStagedAvatarUrl(null)
-      setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось загрузить изображение")
+      setStagedFile(null)
+      setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось подготовить изображение")
     } finally {
       setAvatarUploading(false)
     }
@@ -221,7 +217,7 @@ export default function EditGroupModal({
   function markAvatarRemove() {
     setAvatarError(null)
     setAvatarRemoveMarked(true)
-    setStagedAvatarUrl(null)
+    setStagedFile(null)
     if (stagedPreview?.startsWith("blob:")) {
       try { URL.revokeObjectURL(stagedPreview) } catch {}
     }
@@ -246,13 +242,19 @@ export default function EditGroupModal({
       // 1) имя/описание
       await patchGroupInfo(groupId, { name: name.trim(), description: desc.trim() || null })
 
-      // 2) аватар
+      // 2) аватар: удаление или установка нового
       if (avatarRemoveMarked && currentAvatarUrl) {
         await deleteAvatarOnServer(groupId)
         setCurrentAvatarUrl(null)
-      } else if (stagedAvatarUrl && stagedAvatarUrl !== currentAvatarUrl) {
-        await setGroupAvatarByUrl(groupId, stagedAvatarUrl)
-        setCurrentAvatarUrl(stagedAvatarUrl)
+      } else if (stagedFile) {
+        try {
+          setAvatarUploading(true)
+          const url = await uploadImageAndGetUrl(stagedFile)
+          await setGroupAvatarByUrl(groupId, url)
+          setCurrentAvatarUrl(url)
+        } finally {
+          setAvatarUploading(false)
+        }
       }
 
       // 3) дочитаем актуалку (для onSaved)
@@ -267,13 +269,13 @@ export default function EditGroupModal({
     }
   }
 
-  // ВАЖНО: если помечено на удаление — превью скрываем сразу
+  // если помечено на удаление — превью скрываем сразу
   const previewSrc = avatarRemoveMarked
     ? undefined
-    : (stagedPreview || stagedAvatarUrl || currentAvatarUrl || undefined)
+    : (stagedPreview || currentAvatarUrl || undefined)
 
   const hasAnyAvatar = !avatarRemoveMarked && (
-    !!stagedPreview || !!stagedAvatarUrl || !!currentAvatarUrl
+    !!stagedPreview || !!currentAvatarUrl
   )
 
   return (
@@ -344,11 +346,11 @@ export default function EditGroupModal({
                 {avatarError && (
                   <div className="text-[12px] text-red-500 text-center px-4">{avatarError}</div>
                 )}
-                {!avatarError && (stagedAvatarUrl || avatarRemoveMarked) && (
+                {!avatarError && (stagedPreview || avatarRemoveMarked) && (
                   <div className="text-[12px] text-[var(--tg-hint-color)] text-center">
                     {avatarRemoveMarked
                       ? ((t("group_form.avatar_marked_for_delete") as string) || "Фото будет удалено при сохранении")
-                      : ((t("group_form.avatar_uploaded") as string) || "Изображение загружено — не забудьте сохранить")}
+                      : ((t("group_form.avatar_uploaded") as string) || "Изображение выбрано — не забудьте сохранить")}
                   </div>
                 )}
               </div>

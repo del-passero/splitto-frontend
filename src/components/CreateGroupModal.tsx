@@ -1,4 +1,3 @@
-// src/components/CreateGroupModal.tsx
 import { useState, useEffect, useRef } from "react"
 import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -190,10 +189,10 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
   const [endDate, setEndDate] = useState<string>("")
   const hiddenDateRef = useRef<HTMLInputElement | null>(null)
 
-  // --- Аватар: превью/загрузка ---
+  // --- Аватар: превью и отложенная загрузка ---
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [stagedFile, setStagedFile] = useState<File | null>(null) // <— файл держим локально, грузим при сохранении
   const [avatarUploading, setAvatarUploading] = useState(false)
-  const [avatarRemoteUrl, setAvatarRemoteUrl] = useState<string | null>(null)
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -208,7 +207,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
-      setAvatarPreview(null); setAvatarRemoteUrl(null); setAvatarUploading(false); setAvatarError(null)
+      setAvatarPreview(null); setStagedFile(null); setAvatarUploading(false); setAvatarError(null)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }, [open])
@@ -228,20 +227,17 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setAvatarUploading(true)
     try {
+      setAvatarUploading(true)
       const compressed = await compressImage(file, { maxDim: MAX_DIM, quality: JPEG_QUALITY })
+      // локальное превью
       const previewUrl = URL.createObjectURL(compressed)
-      setAvatarPreview(previewUrl)
-
-      try {
-        const url = await uploadImageAndGetUrl(compressed)
-        setAvatarRemoteUrl(url)
-        setAvatarError(null)
-      } catch (err: any) {
-        setAvatarRemoteUrl(null)
-        setAvatarError((t("errors.upload_failed") as string) || err?.message || "Не удалось загрузить изображение")
+      if (avatarPreview?.startsWith("blob:")) {
+        try { URL.revokeObjectURL(avatarPreview) } catch {}
       }
+      setAvatarPreview(previewUrl)
+      // ОТЛОЖЕННО: НЕ загружаем сейчас, сохраним файл до сабмита
+      setStagedFile(compressed)
     } finally {
       setAvatarUploading(false)
     }
@@ -264,12 +260,22 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       if (code !== "USD") promises.push(patchGroupCurrency(group.id, code))
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
 
-      if (avatarRemoteUrl) {
-        // setGroupAvatarByUrl теперь сам сделает абсолютный URL
-        promises.push(setGroupAvatarByUrl(group.id, avatarRemoteUrl))
-      }
+      // Выполним фоновые патчи (валюта/расписание)
+      await Promise.allSettled(promises)
 
-      Promise.allSettled(promises).catch(() => {})
+      // Если выбран аватар — загрузим его ТОЛЬКО сейчас и применим к группе
+      if (stagedFile) {
+        try {
+          setAvatarUploading(true)
+          const url = await uploadImageAndGetUrl(stagedFile)
+          await setGroupAvatarByUrl(group.id, url)
+        } catch (err: any) {
+          // не блокируем переход — просто покажем ошибку
+          setAvatarError(err?.message || "Не удалось загрузить изображение")
+        } finally {
+          setAvatarUploading(false)
+        }
+      }
 
       onCreated?.(group)
       setName(""); setDesc("")
@@ -341,11 +347,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               {avatarError && (
                 <div className="text-[12px] text-red-500 text-center px-4">{avatarError}</div>
               )}
-              {!avatarError && avatarRemoteUrl && (
-                <div className="text-[12px] text-[var(--tg-hint-color)] text-center">
-                  {(t("group_form.avatar_uploaded") as string) || "Изображение загружено"}
-                </div>
-              )}
+              {/* Без «изображение загружено», т.к. фактически грузим при сохранении */}
             </div>
 
             {/* Имя */}
