@@ -2,7 +2,16 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { getGroupDetails, softDeleteGroup } from "../api/groupsApi"
+import {
+  getGroupDetails,
+  softDeleteGroup,
+  // корректные имена из groupsApi:
+  hideGroup,
+  unhideGroup,
+  archiveGroup,
+  unarchiveGroup,
+  restoreGroup,
+} from "../api/groupsApi"
 import { getGroupMembers, removeGroupMember, leaveGroup } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
 import type { Group } from "../types/group"
@@ -52,6 +61,14 @@ const GroupDetailsPageSettings = () => {
   const isOwner = !!(group && String(currentUserId) === String(group.owner_id))
   const canManageMembers = !!(isOwner && group?.status === "active")
   const canLeave = !!(!isOwner && group?.status === "active")
+
+  // производные флаги (для логики действий 1-в-1 с GroupCardMenu)
+  const isArchived = !!(group && group.status === "archived")
+  // soft-delete определяем по deleted_at / is_deleted; статус "deleted" у типа нет
+  const isDeleted =
+    !!(group && ((group as any).is_deleted || (group as any).deleted_at))
+  const isHiddenForMe =
+    !!(group && ((group as any).is_hidden_for_me || (group as any).hidden_for_me))
 
   // загрузка группы
   useEffect(() => {
@@ -136,21 +153,43 @@ const GroupDetailsPageSettings = () => {
     }
   }
 
+  // Confirm показан в самой вкладке (см. GroupSettingsTab — smartClick)
   const handleDelete = async () => {
-    try {
-      if (!id) return
-      if (!isOwner) {
-        alert("Удалять группу может только владелец")
-        return
-      }
-      const ok = window.confirm("Удалить группу? Действие можно будет отменить через восстановление.")
-      if (!ok) return
-      await softDeleteGroup(id)
-      goToGroupsList()
-    } catch (e: any) {
-      console.error("Failed to delete group", e)
-      alert(e?.message || "Не удалось удалить группу")
+    if (!id) return
+    if (!isOwner) {
+      alert("Удалять группу может только владелец")
+      return
     }
+    await softDeleteGroup(id)
+    goToGroupsList()
+  }
+
+  // Действия «как в GroupCardMenu»
+  const handleHide = async () => {
+    if (!id) return
+    await hideGroup?.(id)
+    setGroup(prev => prev ? ({ ...prev, is_hidden_for_me: true } as any) : prev)
+  }
+  const handleUnhide = async () => {
+    if (!id) return
+    await unhideGroup?.(id)
+    setGroup(prev => prev ? ({ ...prev, is_hidden_for_me: false } as any) : prev)
+  }
+  const handleArchive = async () => {
+    if (!id) return
+    await archiveGroup?.(id)
+    setGroup(prev => prev ? ({ ...prev, status: "archived" } as Group) : prev)
+  }
+  const handleUnarchive = async () => {
+    if (!id) return
+    await unarchiveGroup?.(id)
+    setGroup(prev => prev ? ({ ...prev, status: "active" } as Group) : prev)
+  }
+  const handleRestore = async (_opts?: { toActive?: boolean }) => {
+    if (!id) return
+    await restoreGroup?.(id)
+    const data = await getGroupDetails(id)
+    setGroup(data)
   }
 
   const handleSaveAndExit = goToGroup
@@ -196,8 +235,22 @@ const GroupDetailsPageSettings = () => {
             <GroupSettingsTab
               isOwner={isOwner}
               onLeave={() => {}}            // перенесено на вкладку участников
-              onDelete={handleDelete}
+              onDelete={handleDelete}       // confirm и ошибки теперь внутри вкладки
               onSaveAndExit={handleSaveAndExit}
+              // ↓ добавили для действий 1-в-1 как в GroupCardMenu
+              flags={{
+                isOwner,
+                isArchived,
+                isDeleted,
+                isHiddenForMe,
+              }}
+              actions={{
+                onHide: handleHide,
+                onUnhide: handleUnhide,
+                onArchive: handleArchive,
+                onUnarchive: handleUnarchive,
+                onRestore: handleRestore,
+              }}
             />
           )}
 

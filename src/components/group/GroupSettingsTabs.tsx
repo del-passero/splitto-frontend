@@ -1,5 +1,4 @@
 // src/components/group/GroupSettingsTabs.tsx
-
 import { useTranslation } from "react-i18next"
 import GroupTabs from "./GroupTabs"
 
@@ -31,4 +30,3 @@ const GroupSettingsTabs = ({ selected, onSelect, className = "" }: Props) => {
 }
 
 export default GroupSettingsTabs
-

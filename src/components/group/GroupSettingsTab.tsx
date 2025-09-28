@@ -1,6 +1,6 @@
 // src/components/group/GroupSettingsTab.tsx
 import { useEffect, useRef, useState } from "react"
-import { Save, Trash2, CircleDollarSign, CalendarDays, ChevronRight, X } from "lucide-react"
+import { Save, Trash2, CircleDollarSign, CalendarDays, ChevronRight, X, Archive, RotateCw, EyeOff, Eye } from "lucide-react"
 import CardSection from "../CardSection"
 import { useTranslation } from "react-i18next"
 import { useParams } from "react-router-dom"
@@ -13,6 +13,20 @@ type Props = {
   onDelete: () => void
   onSaveAndExit: () => void
   canLeave?: boolean
+  // ↓ добавлено: флаги и экшены для логики 1-в-1 с GroupCardMenu
+  flags?: {
+    isOwner: boolean
+    isArchived: boolean
+    isDeleted: boolean
+    isHiddenForMe?: boolean
+  }
+  actions?: {
+    onHide?: () => Promise<void> | void
+    onUnhide?: () => Promise<void> | void
+    onArchive?: () => Promise<void> | void
+    onUnarchive?: () => Promise<void> | void
+    onRestore?: (opts?: { toActive?: boolean }) => Promise<void> | void
+  }
 }
 
 /** Переключатель, как в CreateGroupModal */
@@ -86,12 +100,45 @@ function formatDateYmdToDmy(ymd: string): string {
   return `${d}.${m}.${y}`
 }
 
+// ==== Хелперы для логики «как в GroupCardMenu» ====
+
+const detectDebtMessage = (raw: string) =>
+  /unsettled|cannot\s+be\s+(deleted|archived)|долг|долги|задолж/i.test(raw || "")
+
+const normalizeErrorMessage = (raw: string, t: (k: string) => string, kind: "archive" | "delete" | "generic"): string => {
+  if (detectDebtMessage(raw)) {
+    if (kind === "archive") return (t("archive_forbidden_debts_note") as string) || raw
+    if (kind === "delete")  return (t("delete_forbidden_debts_note")  as string) || raw
+  }
+  return raw || (t("error") as string)
+}
+
+async function smartClick(
+  fn: (() => Promise<void> | void) | undefined,
+  t: (k: string) => string,
+  opts?: { confirmKey?: string; errorTitle?: string; kind?: "archive" | "delete" | "generic" }
+) {
+  try {
+    if (opts?.confirmKey) {
+      const ok = window.confirm(t(opts.confirmKey) as string)
+      if (!ok) return
+    }
+    await fn?.()
+  } catch (e: any) {
+    const raw = e?.message || ""
+    const msg = normalizeErrorMessage(raw, t, opts?.kind ?? "generic")
+    window.alert(`${opts?.errorTitle || (t("error") as string)}: ${msg}`)
+  }
+}
+
 const GroupSettingsTab = ({
   isOwner,
   onLeave: _onLeave, // перенесено в MembersTab
   onDelete,
   onSaveAndExit,
   canLeave = true,
+  flags,
+  actions,
 }: Props) => {
   const { t } = useTranslation()
   const { groupId } = useParams()
@@ -208,6 +255,18 @@ const GroupSettingsTab = ({
     onSaveAndExit()
   }
 
+  // флаги для действий
+  const isArchived = !!flags?.isArchived
+  const isDeleted  = !!flags?.isDeleted
+  const hidden     = !!flags?.isHiddenForMe
+  const owner      = !!flags?.isOwner
+
+  // видимость экшенов — ровно как в GroupCardMenu
+  const showHide       = true
+  const showArchive    = owner && !isDeleted && !isArchived
+  const showUnarchive  = owner && !isDeleted && isArchived
+  const showRestore    = owner && isDeleted
+
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
       {/* === Блок «Валюта + поездка» (edge-to-edge) === */}
@@ -271,23 +330,134 @@ const GroupSettingsTab = ({
         </CardSection>
       </div>
 
+      {/* === Действия с группой (логика 1-в-1 с GroupCardMenu) === */}
+      <div className="-mx-4">
+        <CardSection className="px-4 py-3">
+          <div className="flex flex-col gap-2">
+            {/* Скрыть / Показать */}
+            {showHide && (
+              <button
+                type="button"
+                aria-label={hidden ? (t("unhide") as string) : (t("hide") as string)}
+                onClick={() =>
+                  smartClick(hidden ? actions?.onUnhide : actions?.onHide, t as any, {
+                    errorTitle: t("error") as string,
+                    kind: "generic",
+                  })
+                }
+                className="w-full rounded-lg font-semibold
+                           text-black
+                           bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                           hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                           active:scale-95 transition
+                           border border-[var(--tg-hint-color)]/30
+                           flex items-center justify-center gap-2
+                           py-2"
+              >
+                {hidden ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                {hidden ? (t("unhide") || "Показать") : (t("hide") || "Скрыть")}
+              </button>
+            )}
+
+            {/* Архивировать */}
+            {showArchive && (
+              <button
+                type="button"
+                aria-label={t("archive")}
+                onClick={() =>
+                  smartClick(actions?.onArchive, t as any, {
+                    confirmKey: "group_modals.archive_confirm",
+                    errorTitle: t("error") as string,
+                    kind: "archive",
+                  })
+                }
+                className="w-full rounded-lg font-semibold
+                           text-black
+                           bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                           hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                           active:scale-95 transition
+                           border border-[var(--tg-hint-color)]/30
+                           flex items-center justify-center gap-2
+                           py-2"
+              >
+                <Archive className="w-5 h-5" />
+                {t("archive") || "Архивировать"}
+              </button>
+            )}
+
+            {/* Разархивировать */}
+            {showUnarchive && (
+              <button
+                type="button"
+                aria-label={t("unarchive")}
+                onClick={() =>
+                  smartClick(actions?.onUnarchive, t as any, {
+                    confirmKey: "group_modals.unarchive_confirm",
+                    errorTitle: t("error") as string,
+                    kind: "generic",
+                  })
+                }
+                className="w-full rounded-lg font-semibold
+                           text-black
+                           bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                           hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                           active:scale-95 transition
+                           border border-[var(--tg-hint-color)]/30
+                           flex items-center justify-center gap-2
+                           py-2"
+              >
+                <RotateCw className="w-5 h-5" />
+                {t("unarchive") || "Разархивировать"}
+              </button>
+            )}
+
+            {/* Восстановить (после удаления) */}
+            {showRestore && (
+              <button
+                type="button"
+                aria-label={t("restore")}
+                onClick={() =>
+                  smartClick(() => actions?.onRestore?.({ toActive: true }), t as any, {
+                    confirmKey: "group_modals.restore_confirm",
+                    errorTitle: t("error") as string,
+                    kind: "generic",
+                  })
+                }
+                className="w-full rounded-lg font-semibold
+                           text-black
+                           bg-[var(--tg-secondary-bg-color,#e6e6e6)]
+                           hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
+                           active:scale-95 transition
+                           border border-[var(--tg-hint-color)]/30
+                           flex items-center justify-center gap-2
+                           py-2"
+              >
+                <RotateCw className="w-5 h-5" />
+                {t("restore") || "Восстановить"}
+              </button>
+            )}
+          </div>
+        </CardSection>
+      </div>
+
       {/* === Кнопки управления (edge-to-edge, так же обёрнуты в CardSection) === */}
       <div className="-mx-4">
         <CardSection className="px-4 py-3">
           <div className="flex flex-col gap-2">
-            {/* Сохранить и выйти — primary */}
+            {/* Сохранить и выйти — primary (размеры как в ContactDetails: py-2, rounded-lg) */}
             <button
               type="button"
               onClick={handleSaveClick}
               aria-label={t("group_settings_save_and_exit")}
-              className="w-full h-12 rounded-xl font-semibold
+              className="w-full rounded-lg font-semibold
                          text-white
                          bg-[var(--tg-accent-color,#40A7E3)]
                          hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
                          active:scale-95 transition
                          shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
                          border border-[var(--tg-hint-color)]/20
-                         flex items-center justify-center gap-2"
+                         flex items-center justify-center gap-2
+                         py-2"
             >
               <Save className="w-5 h-5" />
               {t("group_settings_save_and_exit")}
@@ -298,30 +468,38 @@ const GroupSettingsTab = ({
               type="button"
               onClick={handleCancelClick}
               aria-label={t("group_settings_cancel_changes")}
-              className="w-full h-12 rounded-xl font-semibold
+              className="w-full rounded-lg font-semibold
                          text-black
                          bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                          hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
                          active:scale-95 transition
                          border border-[var(--tg-hint-color)]/30
-                         flex items-center justify-center gap-2"
+                         flex items-center justify-center gap-2
+                         py-2"
             >
               <X className="w-5 h-5" />
               {t("group_settings_cancel_changes")}
             </button>
 
-            {/* Удалить группу — danger (только владелец) */}
+            {/* Удалить группу — danger (только владелец), confirm/ошибки — как в GroupCardMenu */}
             {isOwner && (
               <button
                 type="button"
-                onClick={onDelete}
+                onClick={() =>
+                  smartClick(onDelete, t as any, {
+                    confirmKey: "group_modals.delete_soft_confirm",
+                    errorTitle: t("error") as string,
+                    kind: "delete",
+                  })
+                }
                 aria-label={t("group_settings_delete_group")}
-                className="w-full h-12 rounded-xl font-semibold
+                className="w-full rounded-lg font-semibold
                            text-white
                            bg-red-500 hover:bg-red-500/90
                            active:scale-95 transition
                            border border-red-500/70
-                           flex items-center justify-center gap-2"
+                           flex items-center justify-center gap-2
+                           py-2"
               >
                 <Trash2 className="w-5 h-5" />
                 {t("group_settings_delete_group")}

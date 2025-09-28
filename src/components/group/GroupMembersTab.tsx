@@ -47,14 +47,15 @@ const GroupMembersTab = ({
               type="button"
               onClick={onInvite}
               aria-label={t("group_members_invite")}
-              className="flex-1 h-11 rounded-xl font-semibold
+              className="flex-1 rounded-lg font-semibold
                          text-white
                          bg-[var(--tg-accent-color,#40A7E3)]
                          hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
                          active:scale-95 transition
                          shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
                          border border-[var(--tg-hint-color)]/20
-                         flex items-center justify-center gap-2"
+                         flex items-center justify-center gap-2
+                         py-2"
             >
               <Share2 className="w-5 h-5" />
               {t("group_members_invite")}
@@ -64,14 +65,15 @@ const GroupMembersTab = ({
               type="button"
               onClick={onAdd}
               aria-label={t("group_members_add")}
-              className="flex-1 h-11 rounded-xl font-semibold
+              className="flex-1 rounded-lg font-semibold
                          text-white
                          bg-[var(--tg-accent-color,#40A7E3)]
                          hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
                          active:scale-95 transition
                          shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
                          border border-[var(--tg-hint-color)]/20
-                         flex items-center justify-center gap-2"
+                         flex items-center justify-center gap-2
+                         py-2"
             >
               <UserPlus className="w-5 h-5" />
               {t("group_members_add")}
@@ -95,7 +97,7 @@ const GroupMembersTab = ({
 
       <div className="flex-1" />
 
-      {/* === Нижние кнопки (Выйти / Сохранить) — edge-to-edge === */}
+      {/* === Нижние кнопки (Выйти / Закрыть) — edge-to-edge === */}
       <div className="-mx-4">
         <CardSection className="px-4 py-3">
           <div className="flex flex-col gap-2">
@@ -105,33 +107,35 @@ const GroupMembersTab = ({
                 type="button"
                 onClick={onLeave}
                 aria-label={t("group_settings_leave_group")}
-                className="w-full h-12 rounded-xl font-semibold
+                className="w-full rounded-lg font-semibold
                            text-black
                            bg-[var(--tg-secondary-bg-color,#e6e6e6)]
                            hover:bg-[color:var(--tg-theme-button-color,#40A7E3)]/10
                            active:scale-95 transition
                            border border-[var(--tg-hint-color)]/30
-                           flex items-center justify-center gap-2"
+                           flex items-center justify-center gap-2
+                           py-2"
               >
                 <LogOut className="w-5 h-5" />
                 {t("group_settings_leave_group")}
               </button>
             )}
 
-            {/* Сохранить и выйти — primary */}
+            {/* Закрыть — вместо «Сохранить и выйти» */}
             <button
               type="button"
               onClick={onSaveAndExit}
-              aria-label={t("group_settings_save_and_exit")}
-              className="w-full h-12 rounded-xl font-semibold
+              aria-label={t("close")}
+              className="w-full rounded-lg font-semibold
                          text-white
                          bg-[var(--tg-accent-color,#40A7E3)]
                          hover:bg-[color:var(--tg-accent-color,#40A7E3)]/90
                          active:scale-95 transition
                          shadow-[0_6px_20px_-10px_rgba(0,0,0,.5)]
-                         border border-[var(--tg-hint-color)]/20"
+                         border border-[var(--tg-hint-color)]/20
+                         py-2"
             >
-              {t("group_settings_save_and_exit")}
+              {t("close")}
             </button>
           </div>
         </CardSection>
