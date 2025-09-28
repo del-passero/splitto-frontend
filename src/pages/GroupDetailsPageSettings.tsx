@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next"
 import {
   getGroupDetails,
   softDeleteGroup,
-  // корректные имена из groupsApi:
   hideGroup,
   unhideGroup,
   archiveGroup,
@@ -14,6 +13,7 @@ import {
 } from "../api/groupsApi"
 import { getGroupMembers, removeGroupMember, leaveGroup } from "../api/groupMembersApi"
 import { useUserStore } from "../store/userStore"
+import { useGroupsStore } from "../store/groupsStore"
 import type { Group } from "../types/group"
 import type { GroupMember } from "../types/group_member"
 
@@ -62,13 +62,35 @@ const GroupDetailsPageSettings = () => {
   const canManageMembers = !!(isOwner && group?.status === "active")
   const canLeave = !!(!isOwner && group?.status === "active")
 
+  // === hidden-state берём из стора (как на карточке группы), с фолбэком к данным details
+  const { groups } = useGroupsStore()
+  const groupFromStore = Array.isArray(groups)
+    ? (groups as any[]).find(g => Number(g?.id) === id)
+    : undefined
+
+  const deriveHidden = (localAny?: any, remoteAny?: any) => {
+    const x = localAny ?? remoteAny ?? {}
+    return Boolean(
+      x?.is_hidden_for_me ??
+      x?.hidden_for_me ??
+      x?.is_hidden ??
+      x?.hidden ??
+      false
+    )
+  }
+
+  const [hiddenLocal, setHiddenLocal] = useState<boolean>(deriveHidden(groupFromStore, group))
+
+  useEffect(() => {
+    setHiddenLocal(deriveHidden(groupFromStore, group))
+  }, [groupFromStore, group])
+
   // производные флаги (для логики действий 1-в-1 с GroupCardMenu)
   const isArchived = !!(group && group.status === "archived")
-  // soft-delete определяем по deleted_at / is_deleted; статус "deleted" у типа нет
+  // soft-delete определяем по deleted_at / is_deleted
   const isDeleted =
     !!(group && ((group as any).is_deleted || (group as any).deleted_at))
-  const isHiddenForMe =
-    !!(group && ((group as any).is_hidden_for_me || (group as any).hidden_for_me))
+  const isHiddenForMe = hiddenLocal
 
   // загрузка группы
   useEffect(() => {
@@ -168,22 +190,28 @@ const GroupDetailsPageSettings = () => {
   const handleHide = async () => {
     if (!id) return
     await hideGroup?.(id)
-    setGroup(prev => prev ? ({ ...prev, is_hidden_for_me: true } as any) : prev)
+    setHiddenLocal(true)
+    // также отметим в локальной группе, если поле присутствует
+    setGroup(prev => (prev ? ({ ...prev, is_hidden_for_me: true } as any) : prev))
   }
   const handleUnhide = async () => {
     if (!id) return
     await unhideGroup?.(id)
-    setGroup(prev => prev ? ({ ...prev, is_hidden_for_me: false } as any) : prev)
+    setHiddenLocal(false)
+    setGroup(prev => (prev ? ({ ...prev, is_hidden_for_me: false } as any) : prev))
   }
   const handleArchive = async () => {
     if (!id) return
     await archiveGroup?.(id)
-    setGroup(prev => prev ? ({ ...prev, status: "archived" } as Group) : prev)
+    // как просили: «закрыть» группу и перейти на список
+    goToGroupsList()
   }
   const handleUnarchive = async () => {
     if (!id) return
     await unarchiveGroup?.(id)
-    setGroup(prev => prev ? ({ ...prev, status: "active" } as Group) : prev)
+    // вернём в актив и обновим детали
+    const data = await getGroupDetails(id)
+    setGroup(data)
   }
   const handleRestore = async (_opts?: { toActive?: boolean }) => {
     if (!id) return
@@ -235,9 +263,9 @@ const GroupDetailsPageSettings = () => {
             <GroupSettingsTab
               isOwner={isOwner}
               onLeave={() => {}}            // перенесено на вкладку участников
-              onDelete={handleDelete}       // confirm и ошибки теперь внутри вкладки
+              onDelete={handleDelete}       // confirm и ошибки внутри вкладки
               onSaveAndExit={handleSaveAndExit}
-              // ↓ добавили для действий 1-в-1 как в GroupCardMenu
+              // ↓ флаги и экшены — строго как в GroupCardMenu
               flags={{
                 isOwner,
                 isArchived,
@@ -282,24 +310,6 @@ const GroupDetailsPageSettings = () => {
         onAdded={() => { /* window.location.reload() вызывается внутри модалки после успеха */ }}
       />
 
-      {/* FAB создания транзакции для КОНКРЕТНОЙ группы */}
-      <button
-        type="button"
-        onClick={() => setCreateTxOpen(true)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-[var(--tg-accent-color,#40A7E3)] text-white shadow-lg active:scale-95 transition flex items-center justify-center"
-        aria-label={t("add_transaction")}
-        title={t("add_transaction")}
-      >
-        <HandCoins size={24} strokeWidth={1.5} />
-      </button>
-
-      {/* Модалка создания транзакции: автоподставляем текущую группу */}
-      <CreateTransactionModal
-        open={createTxOpen}
-        onOpenChange={setCreateTxOpen}
-        groups={[{ id: group.id, name: group.name, icon: (group as any).icon, color: (group as any).color }]}
-        defaultGroupId={id}
-      />
 
       {/* Модалка инвайта в группу */}
       <InviteGroupModal
