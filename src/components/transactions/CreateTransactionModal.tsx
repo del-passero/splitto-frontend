@@ -896,12 +896,12 @@ export default function CreateTransactionModal({
                   </CardSection>
                 </div>
 
-                {/* Сумма + Чек (50/50) */}
+                {/* Сумма + Чек (60/40) */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
-                      <div className="grid grid-cols-2 gap-1 mt-0">
-                        {/* левая половина: валюта + сумма (строго до середины) */}
+                      <div className="grid grid-cols-[3fr_2fr] gap-1 mt-0">
+                        {/* левая половина: валюта + сумма (60 на 40) */}
                         <div className="min-w-0 flex items-center gap-2">
                           {currency.code && (
                             <button
