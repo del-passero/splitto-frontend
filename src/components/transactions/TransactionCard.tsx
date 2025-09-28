@@ -1,6 +1,6 @@
 // src/components/transactions/TransactionCard.tsx
 import React, { useRef } from "react";
-import { ArrowRightLeft, UserX } from "lucide-react";
+import { ArrowRightLeft, UserX, FileText, ReceiptText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 
@@ -215,6 +215,59 @@ function resolveCategory(
     icon: (catObj?.icon ?? fromMap?.icon) || null,
     color: (catObj?.color ?? fromMap?.color) || null,
   };
+}
+
+/** Пытаемся понять: есть ли прикреплённый чек и PDF он или нет */
+function pickReceipt(tx: any): { has: boolean; isPdf: boolean } {
+  try {
+    const url: string | undefined =
+      (typeof tx?.receipt_url === "string" && tx.receipt_url) ||
+      (typeof tx?.receipt?.url === "string" && tx.receipt.url) ||
+      (typeof tx?.receiptUrl === "string" && tx.receiptUrl) ||
+      undefined;
+
+    const mime: string | undefined =
+      (typeof tx?.receipt_mime === "string" && tx.receipt_mime) ||
+      (typeof tx?.receipt?.mime === "string" && tx.receipt.mime) ||
+      (typeof tx?.receipt?.mime_type === "string" && tx.receipt.mime_type) ||
+      undefined;
+
+    // attachments/files — ищем явный "receipt"
+    const files = Array.isArray(tx?.files) ? tx.files
+      : Array.isArray(tx?.attachments) ? tx.attachments
+      : [];
+
+    const fileCandidate = files.find((f: any) => {
+      const kind = String(f?.kind || "").toLowerCase();
+      const m = String(f?.mime || f?.mime_type || "").toLowerCase();
+      const u = String(f?.url || f?.href || "");
+      return (
+        kind.includes("receipt") ||
+        u.includes("/media/receipts/") ||
+        m.startsWith("image/") ||
+        m.includes("pdf")
+      );
+    });
+
+    const anyUrl = url || String(fileCandidate?.url || fileCandidate?.href || "");
+    const anyMime = (mime || fileCandidate?.mime || fileCandidate?.mime_type || "").toLowerCase();
+
+    const has =
+      Boolean(anyUrl) ||
+      Boolean(anyMime) ||
+      Boolean(tx?.receipt_attached) ||
+      Boolean(fileCandidate);
+
+    if (!has) return { has: false, isPdf: false };
+
+    const isPdf =
+      anyMime.includes("pdf") ||
+      /\.pdf(?:$|\?)/i.test(anyUrl);
+
+    return { has: true, isPdf };
+  } catch {
+    return { has: false, isPdf: false };
+  }
 }
 
 /* ---------- UI bits ---------- */
@@ -445,7 +498,7 @@ export default function TransactionCard({
     let myShare = 0;
     let payerShare = 0;
     let iParticipate = Number(payerId) === Number(currentUserId); // плательщик — всегда участник
-    for (const s of tx.shares as any[]) {
+    for (const s of (tx.shares as any[])) {
       const uid = Number(s?.user_id);
       const val = Number(s?.amount ?? 0);
       if (!Number.isFinite(val)) continue;
@@ -518,6 +571,8 @@ export default function TransactionCard({
   // компактные вертикальные отступы; для переводов ещё компактнее
   const cardPaddingY = isExpense ? "pt-[6px] pb-[2px]" : "pt-[4px] pb-[1px]";
 
+  const { has: hasReceipt, isPdf: isReceiptPdf } = pickReceipt(tx);
+
   const CardInner = (
     <div
       className={`relative ${cardPaddingY} px-1 ${hasId ? "transition hover:bg-[color:var(--tg-secondary-bg-color,#8a8a8f)]/10" : ""}`}
@@ -529,7 +584,7 @@ export default function TransactionCard({
       role="button"
       style={{ color: "var(--tg-text-color)" }}
     >
-      <div className={`grid grid-cols-[40px,1fr,1fr,auto] ${gridRowsClass} gap-x-3 gap-y-0 items-start`}>
+      <div className={`grid grid-cols-[40px,1fr,1fr,max-content] ${gridRowsClass} gap-x-3 gap-y-0 items-start`}>
         {/* Row1 / Col1 — YEAR */}
         <div className="col-start-1 row-start-1 self-center text-center">
           <div className="text-[11px] text-[var(--tg-hint-color)] leading-none">{yearStr}</div>
@@ -544,10 +599,33 @@ export default function TransactionCard({
           ) : null}
         </div>
 
-        {/* Row1 / Col4 — AMOUNT */}
-        <div className="col-start-4 row-start-1">
-          <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-            {fmtAmount(amountNum, tx.currency_code)}
+        {/* Row1 / Col4 — AMOUNT (+ receipt icon) */}
+        <div className="col-start-4 row-start-1 justify-self-end">
+          <div className="inline-flex items-center gap-1 text-[14px] font-semibold text-[var(--tg-text-color)] whitespace-nowrap text-right">
+            {hasReceipt ? (
+              <span
+                className="inline-flex items-center"
+                title={
+                  (t && (t(isReceiptPdf ? "receipt.attached_pdf" : "receipt.attached") as string)) ||
+                  (isReceiptPdf ? "Прикреплён чек (PDF)" : "Прикреплён чек")
+                }
+              >
+                {isReceiptPdf ? (
+                  <FileText
+                    className="opacity-80 shrink-0"
+                    size={16}
+                    aria-label={(t && (t("receipt.attached_pdf") as string)) || "Прикреплён чек (PDF)"}
+                  />
+                ) : (
+                  <ReceiptText
+                    className="opacity-80 shrink-0"
+                    size={16}
+                    aria-label={(t && (t("receipt.attached") as string)) || "Прикреплён чек"}
+                  />
+                )}
+              </span>
+            ) : null}
+            <span>{fmtAmount(amountNum, tx.currency_code)}</span>
           </div>
         </div>
 
