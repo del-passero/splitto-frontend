@@ -1,4 +1,4 @@
-// src/pages/TransactionEditPage.tsx
+// frontend/src/pages/TransactionEditPage.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -15,11 +15,7 @@ import CurrencyPickerModal, { type CurrencyItem } from "../components/currency/C
 
 import { getGroupDetails } from "../api/groupsApi";
 import { getGroupMembers } from "../api/groupMembersApi";
-import { getTransaction, updateTransaction, removeTransaction, uploadReceipt, setTransactionReceiptUrl, deleteTransactionReceipt } from "../api/transactionsApi";
-
-import ReceiptAttachment from "../components/transactions/ReceiptAttachment";
-import ReceiptPreviewModal from "../components/transactions/ReceiptPreviewModal";
-import { useReceiptStager } from "../hooks/useReceiptStager";
+import { getTransaction, updateTransaction, removeTransaction, uploadReceipt, setTransactionReceiptUrl } from "../api/transactionsApi";
 
 import {
   X,
@@ -28,7 +24,13 @@ import {
   FileText,
   ArrowLeft,
   UserX,
+  Paperclip,
+  RefreshCcw,
+  Trash2,
 } from "lucide-react";
+
+import { useReceiptStager } from "../hooks/useReceiptStager";
+import ReceiptPreviewModal from "../components/transactions/ReceiptPreviewModal";
 
 /* ====================== ВАЛЮТА/ФОРМАТЫ ====================== */
 type TxType = "expense" | "transfer";
@@ -69,8 +71,12 @@ type TxOut = {
 
   related_users?: RelatedUser[];
 
-  // возможные поля, если у тебя так хранится чек
+  // возможные поля чека из бэка
   receipt_url?: string | null;
+  receipt_preview_url?: string | null;
+  receipt?: string | null;
+  receipt_preview?: string | null;
+  receipt_data?: any | null;
 };
 
 export interface MinimalGroup {
@@ -370,6 +376,40 @@ export default function TransactionEditPage() {
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
 
+  /* ---------- ЧЕК: стейджер + предпросмотр ---------- */
+  const receipt = useReceiptStager();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const pickFile = () => fileInputRef.current?.click();
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    if (f) {
+      receipt.setStagedFile(f);
+      receipt.unmarkDeleted();
+    }
+    e.target.value = "";
+  };
+  const onReplace = () => pickFile();
+  const onRemove = () => {
+    if (receipt.serverUrl) {
+      // в режиме редактирования можно пометить к удалению
+      receipt.markDeleted();
+    }
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+  };
+
+  const receiptHint = useMemo(() => {
+    if (receipt.displayUrl) {
+      return receipt.displayIsPdf
+        ? (t("tx_modal.receipt_attached_pdf") as string)
+        : (t("tx_modal.receipt_attached_image") as string);
+    }
+    return t("tx_modal.receipt_not_attached") as string;
+  }, [receipt.displayUrl, receipt.displayIsPdf, t]);
+
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
     let alive = true;
@@ -416,6 +456,26 @@ export default function TransactionEditPage() {
     })();
     return () => { alive = false; };
   }, [id]);
+
+  /* ---------- 1.1) подставляем серверные ссылки чека, когда пришёл tx ---------- */
+  useEffect(() => {
+    if (!tx) return;
+    const url =
+      (tx as any).receipt_url ??
+      (tx as any).receipt ??
+      null;
+    const preview =
+      (tx as any).receipt_preview_url ??
+      (tx as any).receipt_preview ??
+      (tx as any)?.receipt_data?.preview_url ??
+      null;
+
+    receipt.setServerUrl(url);
+    receipt.setServerPreviewUrl(preview);
+    receipt.setData((tx as any)?.receipt_data ?? null);
+    receipt.unmarkDeleted();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tx?.id]);
 
   /* ---------- 2) участники группы ---------- */
   useEffect(() => {
@@ -692,25 +752,6 @@ export default function TransactionEditPage() {
     return true;
   };
 
-  /* ======== ЧЕК: хук постановки ======== */
-  const {
-    serverUrl,
-    setServerUrl,
-    stagedFile,
-    setStagedFile,
-    stagedPreview,
-    stagedIsPdf,
-    displayIsPdf,
-  } = useReceiptStager({
-    initialUrl: tx?.receipt_url ?? null,
-  });
-
-  const displayUrl = stagedPreview ?? serverUrl;
-  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
-  const [removeMarked, setRemoveMarked] = useState(false);
-  const markRemove = () => setRemoveMarked(true);
-  const unmarkRemove = () => setRemoveMarked(false);
-
   // SAVE
   const doSave = async () => {
     if (!tx || !group?.id) return;
@@ -780,20 +821,25 @@ export default function TransactionEditPage() {
         await updateTransaction(tx.id, payload);
       }
 
-      // === ЧЕК: удалить / загрузить / привязать ===
-      try {
-        if (removeMarked && (serverUrl || tx.receipt_url)) {
-          await deleteTransactionReceipt(tx.id);
-        }
-        if (stagedFile) {
-          const uploaded: any = await uploadReceipt(stagedFile); // 1 аргумент
-          const url: string = typeof uploaded === "string" ? uploaded : uploaded?.url;
+      // ----- чек: если выбран локальный файл — грузим и сохраняем ссылку в транзакцию -----
+      if (receipt.stagedFile) {
+        try {
+          const uploaded: any = await uploadReceipt(receipt.stagedFile); // { url, preview_url? } или string
+          const url: string | null =
+            (uploaded && typeof uploaded === "object" ? uploaded.url : uploaded) || null;
           if (url) {
-            await setTransactionReceiptUrl(tx.id, url); // 2 аргумента
+            await setTransactionReceiptUrl(tx.id, url);
+            // синхронизируем локально
+            receipt.setServerUrl(url);
+            if (uploaded && typeof uploaded === "object" && uploaded.preview_url) {
+              receipt.setServerPreviewUrl(uploaded.preview_url);
+            }
+            receipt.clearAll();
+            receipt.unmarkDeleted();
           }
+        } catch {
+          // не блокируем сохранение из-за фейла аплоада
         }
-      } catch (re) {
-        console.error("[TransactionEditPage] receipt link error", re);
       }
 
       goBack();
@@ -854,14 +900,13 @@ export default function TransactionEditPage() {
     );
   }
   if (error || !tx) {
-    const go = () => navigate(-1);
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={go}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={goBack}>
         <div className="w-full max-w-md rounded-2xl bg-[var(--tg-card-bg)] p-4 shadow-xl" onClick={(e)=>e.stopPropagation()}>
           <div className="text-red-500 mb-3">{error || "Transaction not found"}</div>
           <button
             type="button"
-            onClick={go}
+            onClick={goBack}
             style={{ color: "var(--tg-text-color)" }}
             className="px-3 h-10 rounded-xl font-bold text-[14px] bg-[var(--tg-secondary-bg-color,#e6e6e6)] border border-[var(--tg-hint-color)]/30 w-full"
           >
@@ -905,31 +950,105 @@ export default function TransactionEditPage() {
 
         {/* Content */}
         <div className="p-3 flex flex-col gap-0.5 max-w-xl mx-auto">
-          {/* Сумма + выбор валюты */}
+          {/* Сумма + Чек (50/50) */}
           <div className="-mx-3">
             <CardSection className="py-0">
               <div className="px-3 pb-0">
-                <div className="flex items-center gap-2 mt-0.5">
-                  {currency.code && (
+                <div className="grid grid-cols-2 gap-2 mt-0.5">
+                  {/* левая половина: валюта + сумма */}
+                  <div className="min-w-0 flex items-center gap-2">
+                    {currency.code && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrencyModal(true)}
+                        className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
+                        title={currency.code || ""}
+                      >
+                        {currency.code}
+                      </button>
+                    )}
+                    <input
+                      inputMode="decimal"
+                      placeholder={currency.decimals ? "0.00" : "0"}
+                      value={amount}
+                      onChange={(e) => setAmount(parseAmountInput(e.target.value, currency.decimals))}
+                      onBlur={() => setAmount((prev) => toFixedSafe(prev, currency.decimals))}
+                      className="w-full h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
+                    />
+                  </div>
+
+                  {/* правая половина: мини-виджет чека */}
+                  <div className="min-w-0 flex items-center justify-end gap-2">
+                    {/* превью-бокс (квадрат) */}
                     <button
                       type="button"
-                      onClick={() => setCurrencyModal(true)}
-                      className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
-                      title={currency.code}
+                      className={`
+                        relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl border
+                        border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                        overflow-hidden flex items-center justify-center
+                        bg-[var(--tg-card-bg)]
+                        dark:bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.04),transparent_42%),radial-gradient(circle_at_75%_75%,rgba(255,255,255,0.04),transparent_42%)]
+                      `}
+                      onClick={() => receipt.displayUrl && setPreviewOpen(true)}
+                      title={
+                        (receipt.displayUrl
+                          ? (t("tx_modal.receipt_open_preview") as string)
+                          : (t("tx_modal.receipt_not_attached") as string)) || ""
+                      }
                     >
-                      {currency.code}
+                      {receipt.displayUrl ? (
+                        receipt.displayIsPdf ? (
+                          <div className="text-[12px] opacity-80">PDF</div>
+                        ) : (
+                          <img
+                            src={receipt.displayUrl}
+                            alt={t("tx_modal.receipt_photo_alt") as string}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        )
+                      ) : (
+                        <span className="px-1 text-[10px] leading-[1.05] text-[var(--tg-hint-color)] text-center whitespace-pre-line select-none">
+                          {t("tx_modal.receipt_photo_label") as string}
+                        </span>
+                      )}
                     </button>
-                  )}
-                  <input
-                    inputMode="decimal"
-                    placeholder={currency.decimals ? "0.00" : "0"}
-                    value={amount}
-                    onChange={(e) => setAmount(parseAmountInput(e.target.value, currency.decimals))}
-                    onBlur={() =>
-                      setAmount((prev) => toFixedSafe(prev, currency.decimals))
-                    }
-                    className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
-                  />
+
+                    {/* иконки действий справа от квадрата */}
+                    {!receipt.displayUrl ? (
+                      <button
+                        type="button"
+                        onClick={pickFile}
+                        className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                        title={t("tx_modal.receipt_attach") as string}
+                      >
+                        <Paperclip size={16} />
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={onReplace}
+                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          title={t("tx_modal.receipt_replace") as string}
+                        >
+                          <RefreshCcw size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onRemove}
+                          className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                          title={t("tx_modal.receipt_remove") as string}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* подсказки под строкой: строго справа */}
+                <div className="pt-1 pb-1 text-[12px] text-[var(--tg-hint-color)] text-right">
+                  {receiptHint}
                 </div>
               </div>
             </CardSection>
@@ -1241,33 +1360,6 @@ export default function TransactionEditPage() {
             </>
           ) : null}
 
-          {/* === ЧЕК / вложение === */}
-          <div className="-mx-3">
-            <CardSection className="py-1">
-              <div className="px-3">
-                <ReceiptAttachment
-                  displayUrl={displayUrl}
-                  isPdf={displayIsPdf}
-                  busy={saving}
-                  removeMarked={removeMarked}
-                  onPick={(file: File) => {
-                    setStagedFile(file);
-                    if (removeMarked) unmarkRemove();
-                  }}
-                  onRemove={() => {
-                    if (stagedFile) {
-                      setStagedFile(null);
-                    } else {
-                      setServerUrl(null);
-                      markRemove();
-                    }
-                  }}
-                  onPreview={() => setReceiptPreviewOpen(true)}
-                />
-              </div>
-            </CardSection>
-          </div>
-
           {/* Дата */}
           <div className="-mx-3">
             <CardSection className="py-0">
@@ -1472,11 +1564,21 @@ export default function TransactionEditPage() {
           </div>
         )}
 
-        {/* Превью чека */}
+        {/* Preview modal for receipt */}
         <ReceiptPreviewModal
-          open={receiptPreviewOpen}
-          onClose={() => setReceiptPreviewOpen(false)}
-          url={displayUrl}
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          url={receipt.displayUrl}
+          isPdf={receipt.displayIsPdf}
+        />
+
+        {/* скрытый input для выбора файла чека */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={onFileChange}
         />
       </div>
     </div>
