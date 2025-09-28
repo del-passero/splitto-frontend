@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next";
 import {
   X, Layers, CalendarDays, ChevronRight,
-  Users, ChevronDown, ChevronRight as Chevron, FileText, Receipt, Send
+  Users, ChevronDown, ChevronRight as Chevron, FileText, Receipt, Send,
+  Paperclip, RefreshCcw, Trash2
 } from "lucide-react";
 import CardSection from "../CardSection";
 import GroupPickerModal from "../group/GroupPickerModal";
@@ -14,19 +15,12 @@ import MemberPickerModal from "../group/MemberPickerModal";
 import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
 import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal";
 import type { TransactionOut } from "../../types/transaction";
-import {
-  createTransaction,
-  updateTransaction,
-  uploadReceipt,
-  setTransactionReceiptUrl,
-  deleteTransactionReceipt,
-} from "../../api/transactionsApi";
+import { createTransaction, updateTransaction, uploadReceipt, setTransactionReceiptUrl } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
 import { getGroupDetails } from "../../api/groupsApi";
 
-import ReceiptAttachment from "./ReceiptAttachment";
-import ReceiptPreviewModal from "./ReceiptPreviewModal";
 import { useReceiptStager } from "../../hooks/useReceiptStager";
+import ReceiptPreviewModal from "./ReceiptPreviewModal";
 
 export type TxType = "expense" | "transfer";
 
@@ -49,7 +43,7 @@ type MemberMini = {
   name?: string;
 };
 
-/* ---------- small UI ---------- */
+/* ---------- helpers / small UI ---------- */
 function Row({
   icon, label, value, onClick, right, isLast
 }: {
@@ -204,7 +198,7 @@ export default function CreateTransactionModal({
     setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
   }, [groupsProp, groupsStoreItems]);
 
-  /* ===== FORM STATE ===== */
+  /* ===== FORM STATE (объявляем ДО эффектов) ===== */
   const [groupModal, setGroupModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
   const [type, setType] = useState<TxType>("expense");
@@ -254,7 +248,7 @@ export default function CreateTransactionModal({
     }
   }, [open, groupsProp, groupsStoreItems, user, fetchGroups]);
 
-  /* ===== MEMBERS ===== */
+  /* ===== MEMBERS (для автосплита и аватарок) ===== */
   const [membersMap, setMembersMap] = useState<Map<number, MemberMini>>(() => new Map());
   useEffect(() => {
     let abort = false;
@@ -297,12 +291,13 @@ export default function CreateTransactionModal({
   );
 
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
+  // Флаг-замок: если валюта установлена из транзакции (edit) или пользователем — не перезаписывать валютой группы
   const currencyLockedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (currencyLockedRef.current) return;
+      if (currencyLockedRef.current) return; // не трогаем валюту, если она уже «зафиксирована»
       const code = resolveCurrencyCodeFromGroup(selectedGroup);
       if (code) {
         if (!cancelled) setCurrencyCode(code);
@@ -327,6 +322,7 @@ export default function CreateTransactionModal({
     return () => { cancelled = true; };
   }, [selectedGroup, selectedGroupId]);
 
+  // При смене валюты — аккуратно нормализуем введённую сумму под новые decimals
   useEffect(() => {
     const dec = currencyCode ? (DECIMALS_BY_CODE[currencyCode] ?? 2) : 2;
     if (!amount) return;
@@ -349,7 +345,7 @@ export default function CreateTransactionModal({
   const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v);
   const commentLeft = Math.max(0, COMMENT_MAX - comment.length);
 
-  const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
+  const locale = useMemo(() => (i18n.language || "ru").split("-"[0]), [i18n.language]); // eslint-disable-line
   const amountNumber = useMemo(() => {
     const n = Number(amount);
     return isFinite(n) ? n : 0;
@@ -383,57 +379,57 @@ export default function CreateTransactionModal({
     if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
     if (!amount || amountNumber <= 0) {
       errs.amount =
-        locale === "ru" ? "Введите сумму больше 0" :
-        locale === "es" ? "Introduce un importe > 0" : "Enter amount > 0";
+        (i18n.language || "ru").startsWith("ru") ? "Введите сумму больше 0" :
+        (i18n.language || "en").startsWith("es") ? "Introduce un importe > 0" : "Enter amount > 0";
     }
     if (type === "expense" && !comment.trim()) {
       errs.comment =
-        locale === "ru" ? "Заполните комментарий" :
-        locale === "es" ? "Introduce un comentario" : "Enter a comment";
+        (i18n.language || "ru").startsWith("ru") ? "Заполните комментарий" :
+        (i18n.language || "en").startsWith("es") ? "Introduce un comentario" : "Enter a comment";
     }
     if (type === "expense" && !categoryId) {
       errs.category =
-        locale === "ru" ? "Выберите категорию" :
-        locale === "es" ? "Elige una categoría" : "Choose a category";
+        (i18n.language || "ru").startsWith("ru") ? "Выберите категорию" :
+        (i18n.language || "en").startsWith("es") ? "Elige una categoría" : "Choose a category";
     }
     if (type === "expense" && splitData) {
       if (splitData.type === "equal" && splitData.participants.length === 0) {
         errs.split =
-          locale === "ru" ? "Выберите участников" :
-          locale === "es" ? "Selecciona participantes" : "Select participants";
+          (i18n.language || "ru").startsWith("ru") ? "Выберите участников" :
+          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "shares") {
         const totalShares = splitData.participants.reduce((s, p) => s + (p.share || 0), 0);
         if (totalShares <= 0) errs.split =
-          locale === "ru" ? "Доли должны быть больше нуля" :
-          locale === "es" ? "Las cuotas deben ser > 0" : "Shares must be > 0";
+          (i18n.language || "ru").startsWith("ru") ? "Доли должны быть больше нуля" :
+          (i18n.language || "en").startsWith("es") ? "Las cuotas deben ser > 0" : "Shares must be > 0";
         if (splitData.participants.length === 0) errs.split =
-          locale === "ru" ? "Выберите участников" :
-          locale === "es" ? "Selecciona participantes" : "Select participants";
+          (i18n.language || "ru").startsWith("ru") ? "Выберите участников" :
+          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "custom" && customMismatch) {
         errs.split =
-          locale === "ru" ? "Сумма по участникам должна равняться общей" :
-          locale === "es" ? "La suma por participantes debe igualar el total" :
+          (i18n.language || "ru").startsWith("ru") ? "Сумма по участникам должна равняться общей" :
+          (i18n.language || "en").startsWith("es") ? "La suma por participantes debe igualar el total" :
           "Participants total must equal overall";
       }
     }
     if (type === "transfer") {
       if (!paidBy) errs.transfer =
-        locale === "ru" ? "Выберите отправителя" :
-        locale === "es" ? "Elige remitente" : "Select sender";
+        (i18n.language || "ru").startsWith("ru") ? "Выберите отправителя" :
+        (i18n.language || "en").startsWith("es") ? "Elige remitente" : "Select sender";
       if (!toUser) errs.transfer =
-        locale === "ru" ? "Выберите получателя" :
-        locale === "es" ? "Elige receptor" : "Select recipient";
+        (i18n.language || "ru").startsWith("ru") ? "Выберите получателя" :
+        (i18n.language || "en").startsWith("es") ? "Elige receptor" : "Select recipient";
       if (paidBy && toUser && paidBy === toUser) {
         errs.transfer =
-          locale === "ru" ? "Отправитель и получатель не могут совпадать" :
-          locale === "es" ? "Remitente y receptor no pueden ser iguales" :
+          (i18n.language || "ru").startsWith("ru") ? "Отправитель и получатель не могут совпадать" :
+          (i18n.language || "en").startsWith("es") ? "Remitente y receptor no pueden ser iguales" :
           "Sender and recipient must differ";
       }
     }
     return errs;
-  }, [selectedGroupId, amount, amountNumber, comment, locale, type, categoryId, splitData, customMismatch, t, paidBy, toUser]);
+  }, [selectedGroupId, amount, amountNumber, comment, type, categoryId, splitData, customMismatch, t, paidBy, toUser, i18n.language]);
 
   const handleAmountChange = (v: string) => {
     const decimals = currency.decimals;
@@ -489,14 +485,11 @@ export default function CreateTransactionModal({
     setShowErrors(false);
     setAmountTouched(false);
     setCommentTouched(false);
-
-    // чек (локальные)
-    if (pickedPreview) URL.revokeObjectURL(pickedPreview);
-    setPickedFile(null);
-    setPickedPreview(null);
-    setPickedIsPdf(false);
-    setServerUrl(null);
-    setRemoveMarked(false);
+    // чек
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+    receipt.unmarkDeleted();
   };
 
   const ensureValidOrGuide = (): boolean => {
@@ -561,29 +554,37 @@ export default function CreateTransactionModal({
     }));
   }
 
-  /* ======== ЧЕК: хук + локальное состояние выбранного файла ======== */
-  const { serverUrl, setServerUrl, displayIsPdf } = useReceiptStager({
-    initialUrl: initialTx?.receipt_url ?? null,
+  /* ===== ЧЕК: стейджер + предпросмотр ===== */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const receipt = useReceiptStager({
+    initialUrl:
+      (initialTx as any)?.receipt_url ??
+      (initialTx as any)?.receipt ??
+      null,
+    initialPreviewUrl:
+      (initialTx as any)?.receipt_preview_url ??
+      (initialTx as any)?.receipt_preview ??
+      (initialTx as any)?.receipt_data?.preview_url ??
+      null,
+    initialData: (initialTx as any)?.receipt_data ?? null,
   });
 
-  // локальная постановка нового файла (не из сервера)
-  const [pickedFile, setPickedFile] = useState<File | null>(null);
-  const [pickedPreview, setPickedPreview] = useState<string | null>(null);
-  const [pickedIsPdf, setPickedIsPdf] = useState<boolean>(false);
-
-  const displayUrl = pickedPreview ?? serverUrl;
-  const computedIsPdf = pickedFile ? pickedIsPdf : displayIsPdf;
-
-  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
-  const [removeMarked, setRemoveMarked] = useState(false);
-  const markRemove = () => setRemoveMarked(true);
-  const unmarkRemove = () => setRemoveMarked(false);
-
-  useEffect(() => {
-    return () => { // revoke при размонтировании
-      if (pickedPreview) URL.revokeObjectURL(pickedPreview);
-    };
-  }, [pickedPreview]);
+  const pickFile = () => fileInputRef.current?.click();
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    if (f) { receipt.setStagedFile(f); receipt.unmarkDeleted(); }
+    e.target.value = "";
+  };
+  const onReplace = () => pickFile();
+  const onRemove = () => {
+    if (receipt.serverUrl) {
+      // в режиме редактирования можно пометить к удалению — но для создания достаточно просто очистить
+      receipt.markDeleted();
+    }
+    receipt.clearAll();
+  };
 
   const doSubmit = async (modeAfter: "close" | "again") => {
     if (saving) return;
@@ -632,21 +633,24 @@ export default function CreateTransactionModal({
         else saved = await createTransaction(payload);
       }
 
-      // === ЧЕК: удалить/загрузить/привязать ===
-      if (saved?.id != null) {
+      // ----- чек: если есть локально выбранный файл — грузим и сохраняем ссылку в транзакцию -----
+      if (saved?.id && receipt.stagedFile) {
         try {
-          if (removeMarked && (serverUrl || initialTx?.receipt_url)) {
-            await deleteTransactionReceipt(saved.id);
-          }
-          if (pickedFile) {
-            const uploaded: any = await uploadReceipt(pickedFile);
-            const url: string = typeof uploaded === "string" ? uploaded : uploaded?.url;
-            if (url) {
-              await setTransactionReceiptUrl(saved.id, url);
+          const uploaded: any = await uploadReceipt(receipt.stagedFile); // ожидаем { url, preview_url? } или просто url
+          const url: string | null =
+            (uploaded && typeof uploaded === "object" ? uploaded.url : uploaded) || null;
+          if (url) {
+            await setTransactionReceiptUrl(saved.id, url);
+            // синхронизируем локально
+            receipt.setServerUrl(url);
+            if (uploaded && typeof uploaded === "object" && uploaded.preview_url) {
+              receipt.setServerPreviewUrl(uploaded.preview_url);
             }
+            receipt.clearAll();
+            receipt.unmarkDeleted();
           }
-        } catch (re) {
-          console.error("[CreateTransactionModal] receipt link error", re);
+        } catch {
+          // не блокируем создание транзакции из-за фэйленного аплоада
         }
       }
 
@@ -654,6 +658,7 @@ export default function CreateTransactionModal({
       if (modeAfter === "close") onOpenChange(false);
       else resetForNew();
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error("[CreateTransactionModal] submit error", e);
     } finally {
       setSaving(false);
@@ -690,27 +695,27 @@ export default function CreateTransactionModal({
     setSplitOpen(false);
     setSaving(false);
     setCurrencyCode(null);
-    currencyLockedRef.current = false;
+    currencyLockedRef.current = false; // сбрасываем замок
+    // чек
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+    receipt.unmarkDeleted();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultGroupId]);
 
-    // чек (локальные)
-    if (pickedPreview) URL.revokeObjectURL(pickedPreview);
-    setPickedFile(null);
-    setPickedPreview(null);
-    setPickedIsPdf(false);
-    setServerUrl(null);
-    setRemoveMarked(false);
-  }, [open, defaultGroupId, pickedPreview, setServerUrl]);
-
-  /* ===== PREFILL из initialTx ===== */
+  /* ===== PREFILL из initialTx (одноразово при открытии) ===== */
   const prefilledRef = useRef(false);
   useEffect(() => {
     if (!open) { prefilledRef.current = false; return; }
     if (prefilledRef.current) return;
     if (!initialTx) return;
 
+    // группа
     const gid = Number(initialTx.group_id ?? initialTx.groupId ?? defaultGroupId);
     if (gid) setSelectedGroupId(gid);
 
+    // валюта из транзакции (фиксируем, чтобы не затиралось валютой группы)
     const rawCode = (initialTx.currency_code || initialTx.currency) as string | undefined;
     if (typeof rawCode === "string" && rawCode.trim()) {
       const codeUp = rawCode.trim().toUpperCase();
@@ -718,10 +723,12 @@ export default function CreateTransactionModal({
       currencyLockedRef.current = true;
     }
 
+    // тип
     if (initialTx.type === "transfer" || initialTx.type === "expense") {
       setType(initialTx.type);
     }
 
+    // сумма
     if (initialTx.amount !== undefined && initialTx.amount !== null) {
       const parsed = typeof initialTx.amount === "number"
         ? initialTx.amount
@@ -735,12 +742,37 @@ export default function CreateTransactionModal({
       }
     }
 
+    // перевод: берём нормальные поля с бэка, иначе фоллбэки
+    if (initialTx.type === "transfer") {
+      const pb = Number(
+        initialTx.transfer_from ??
+        initialTx.paidBy ??
+        user?.id
+      );
+      const tu = Number(
+        Array.isArray(initialTx.transfer_to) ? initialTx.transfer_to[0] : (initialTx.toUser ?? undefined)
+      );
+      if (isFinite(pb)) setPaidBy(pb);
+      if (isFinite(tu)) setToUser(tu);
+
+      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : "";
+      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : "";
+
+      if (pbName) setPaidByName(pbName);
+      if (tuName) setToUserName(tuName);
+
+      const pbAv = membersMap.get(pb)?.photo_url;
+      const tuAv = membersMap.get(tu)?.photo_url;
+      if (pbAv) setPaidByAvatar(pbAv);
+      if (tuAv) setToUserAvatar(tuAv);
+    }
+
     if (typeof initialTx.comment === "string") setComment(initialTx.comment);
 
     prefilledRef.current = true;
-  }, [open, initialTx, currency.decimals, defaultGroupId]);
+  }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
 
-  /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ===== */
+  /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ПОСЛЕ ЗАГРУЗКИ membersMap ===== */
   useEffect(() => {
     if (!open) return;
 
@@ -770,12 +802,21 @@ export default function CreateTransactionModal({
 
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
-  const fromLabel = locale === "ru" ? "Отправитель" : locale === "es" ? "Remitente" : "From";
-  const toLabel = locale === "ru" ? "Получатель" : locale === "es" ? "Receptor" : "To";
+  const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
+  const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
+
+  // ---- подсказка под правой половиной (чек) ----
+  const receiptHint = (() => {
+    if (receipt.displayUrl) {
+      return receipt.displayIsPdf ? "Прикреплён PDF" : "Прикреплено изображение";
+    }
+    return "Чек не прикреплён";
+  })();
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
       <div className="w-full h-[100dvh] min-h-screen mx-0 my-0">
+        {/* добавил overflow-x-hidden чтобы не было артефактов прокрутки по X */}
         <div className="relative w-full h-[100dvh] min-h-screen overflow-y-auto overflow-x-hidden bg-[var(--tg-card-bg,#111)]">
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[var(--tg-card-bg)] border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
@@ -853,30 +894,96 @@ export default function CreateTransactionModal({
                   </CardSection>
                 </div>
 
-                {/* Сумма */}
+                {/* Сумма + Чек (50/50) */}
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {currency.code && (
+                      <div className="grid grid-cols-2 gap-2 mt-0.5">
+                        {/* левая половина: валюта + сумма */}
+                        <div className="flex items-center gap-2">
+                          {currency.code && (
+                            <button
+                              type="button"
+                              onClick={() => setCurrencyModal(true)}
+                              className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
+                              title={currency.code}
+                            >
+                              {currency.code}
+                            </button>
+                          )}
+                          <input
+                            ref={amountInputRef}
+                            inputMode="decimal"
+                            placeholder={currency.decimals === 0 ? "0" : "0.00"}
+                            value={amount}
+                            onChange={(e) => handleAmountChange(e.target.value)}
+                            onBlur={handleAmountBlur}
+                            className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
+                          />
+                        </div>
+
+                        {/* правая половина: мини-виджет чека */}
+                        <div>
+                          {/* превью-бокс */}
                           <button
                             type="button"
-                            onClick={() => setCurrencyModal(true)}
-                            className="min-w-[52px] h-9 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] flex items-center justify-center text-[12px] px-2"
-                            title={currency.code}
+                            className="w-full h-16 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)] flex items-center justify-center overflow-hidden"
+                            onClick={() => receipt.displayUrl && setPreviewOpen(true)}
+                            title={receipt.displayUrl ? "Открыть предпросмотр" : "Чек не прикреплён"}
                           >
-                            {currency.code}
+                            {receipt.displayUrl ? (
+                              receipt.displayIsPdf ? (
+                                <div className="text-[12px] opacity-80">PDF</div>
+                              ) : (
+                                <img
+                                  src={receipt.displayUrl}
+                                  alt=""
+                                  className="max-h-full max-w-full object-contain"
+                                />
+                              )
+                            ) : (
+                              <Paperclip size={18} className="opacity-60" />
+                            )}
                           </button>
-                        )}
-                        <input
-                          ref={amountInputRef}
-                          inputMode="decimal"
-                          placeholder={currency.decimals === 0 ? "0" : "0.00"}
-                          value={amount}
-                          onChange={(e) => handleAmountChange(e.target.value)}
-                          onBlur={handleAmountBlur}
-                          className="flex-1 h-9 rounded-md bg-transparent outline-none border-b border-[var(--tg-secondary-bg-color,#e7e7e7)] focus:border-[var(--tg-accent-color)] px-1 text-[17px]"
-                        />
+
+                          {/* иконки действий */}
+                          <div className="mt-1 flex items-center justify-end gap-2">
+                            {!receipt.displayUrl ? (
+                              <button
+                                type="button"
+                                onClick={pickFile}
+                                className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title="Прикрепить"
+                              >
+                                <Paperclip size={16} />
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={onReplace}
+                                  className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                  title="Заменить"
+                                >
+                                  <RefreshCcw size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={onRemove}
+                                  className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                                  title="Удалить"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* подсказки под строкой с суммой/чеком */}
+                      <div className="pt-1 pb-1 text-[12px] text-[var(--tg-hint-color)]">
+                        {receiptHint}
                       </div>
 
                       {(showErrors || amountTouched) && errors.amount && (
@@ -1012,7 +1119,7 @@ export default function CreateTransactionModal({
                                     {paidByLabel}: {firstNameOnly(paidByName) || t("not_specified")}
                                   </span>
                                   <span className="shrink-0 opacity-80">
-                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
                                   </span>
                                 </div>
                               )}
@@ -1021,8 +1128,8 @@ export default function CreateTransactionModal({
                                 .filter((p) => !paidBy || p.user_id !== paidBy)
                                 .map((p) => (
                                   <div key={p.user_id} className="flex items-center gap-2 text-[13px]">
-                                    {(p as any).avatar_url ? (
-                                      <img src={(p as any).avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                    {p.avatar_url ? (
+                                      <img src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
                                     ) : (
                                       <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                     )}
@@ -1030,7 +1137,7 @@ export default function CreateTransactionModal({
                                       {owesLabel}: {p.name}
                                     </span>
                                     <span className="shrink-0 opacity-80">
-                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale)}
+                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale as any)}
                                     </span>
                                   </div>
                                 ))}
@@ -1042,11 +1149,11 @@ export default function CreateTransactionModal({
                         )}
                         {customMismatch && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
-                            {locale === "ru"
-                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
-                              : locale === "es"
-                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
-                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`}
+                            {(i18n.language || "ru").startsWith("ru")
+                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`
+                              : (i18n.language || "en").startsWith("es")
+                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`
+                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`}
                           </div>
                         )}
                       </CardSection>
@@ -1140,7 +1247,7 @@ export default function CreateTransactionModal({
                                 <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
                               </span>
                               <span className="ml-auto shrink-0 opacity-80">
-                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
+                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
                               </span>
                             </div>
                           </div>
@@ -1153,39 +1260,6 @@ export default function CreateTransactionModal({
                     </div>
                   </>
                 ) : null}
-
-                {/* === ЧЕК / вложение === */}
-                <div className="-mx-3">
-                  <CardSection className="py-1">
-                    <div className="px-3">
-                      <ReceiptAttachment
-                        displayUrl={displayUrl}
-                        isPdf={computedIsPdf}
-                        busy={saving}
-                        removeMarked={removeMarked}
-                        onPick={(file: File) => {
-                          if (pickedPreview) URL.revokeObjectURL(pickedPreview);
-                          setPickedFile(file);
-                          setPickedIsPdf(file.type === "application/pdf");
-                          setPickedPreview(URL.createObjectURL(file));
-                          if (removeMarked) unmarkRemove();
-                        }}
-                        onClear={() => {
-                          if (pickedFile) {
-                            if (pickedPreview) URL.revokeObjectURL(pickedPreview);
-                            setPickedFile(null);
-                            setPickedPreview(null);
-                            setPickedIsPdf(false);
-                          } else {
-                            setServerUrl(null);
-                            markRemove();
-                          }
-                        }}
-                        onPreview={() => setReceiptPreviewOpen(true)}
-                      />
-                    </div>
-                  </CardSection>
-                </div>
 
                 {/* Дата */}
                 <div className="-mx-3">
@@ -1261,6 +1335,14 @@ export default function CreateTransactionModal({
           </div>
         </div>
       </div>
+
+      {/* Preview modal for receipt */}
+      <ReceiptPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        url={receipt.displayUrl}
+        isPdf={receipt.displayIsPdf}
+      />
 
       {/* Выбор группы */}
       <GroupPickerModal
@@ -1352,25 +1434,26 @@ export default function CreateTransactionModal({
         selectedCode={currency.code || "USD"}
         onSelect={(c: CurrencyItem) => {
           setCurrencyCode(c.code || "USD");
-          currencyLockedRef.current = true;
+          currencyLockedRef.current = true; // пользователь явно выбрал валюту — фиксируем
           setCurrencyModal(false);
         }}
       />
 
-      {/* Превью чека */}
-      <ReceiptPreviewModal
-        open={receiptPreviewOpen}
-        onClose={() => setReceiptPreviewOpen(false)}
-        url={displayUrl}
+      {/* скрытый input для выбора файла */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={onFileChange}
       />
     </div>
   );
 }
 
-/* --- локальный стиль --- */
+/* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках --- */
 const style = typeof document !== "undefined" ? document.createElement("style") : null;
 if (style) {
-  style.id = "date-input-clean-style-modal";
   style.innerHTML = `
   .date-input-clean {
     appearance: none;
@@ -1378,12 +1461,14 @@ if (style) {
     -moz-appearance: textfield;
     background-clip: padding-box;
   }
+  /* скрыть webkit-индикатор календаря/стрелки */
   .date-input-clean::-webkit-calendar-picker-indicator,
   .date-input-clean::-webkit-clear-button,
   .date-input-clean::-webkit-inner-spin-button {
     display: none;
     -webkit-appearance: none;
   }
+  /* для старых Edge/IE (не критично) */
   .date-input-clean::-ms-expand { display: none; }
   `;
   document.head.appendChild(style);

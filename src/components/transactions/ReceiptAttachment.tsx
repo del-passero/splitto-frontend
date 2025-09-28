@@ -1,114 +1,113 @@
 // src/components/transactions/ReceiptAttachment.tsx
-import React from "react";
+import React, { useRef } from "react";
+import { FileUp, Image as ImageIcon, Eye, Trash2 } from "lucide-react";
 
 type Props = {
-  /* Новый вариант */
-  displayUrl?: string | null;
-  isPdf?: boolean;
-
-  /* Старый вариант (оба поддерживаются) */
-  existingUrl?: string | null;
-  previewUrl?: string | null;
-
+  displayUrl: string | null;
+  isPdf: boolean;
   busy?: boolean;
-  disabled?: boolean;
   error?: string | null;
-
-  /* remove flags (любой из двух имён) */
   removeMarked?: boolean;
-  markedDeleted?: boolean;
 
-  /* Колбэки (любой из onClear/onRemove) */
-  onPick?: (file: File) => void;
-  onClear?: () => void;
-  onRemove?: () => void;
-
-  onPreview?: () => void;
+  onPick: (file: File) => void;
+  onClear?: () => void;     // локально очистить файл/превью
+  onRemove?: () => void;    // алиас для обратной совместимости
+  onPreview: () => void;
 
   className?: string;
 };
 
-export default function ReceiptAttachment(props: Props) {
-  const {
-    displayUrl,
-    isPdf,
-    existingUrl,
-    previewUrl,
-    busy,
-    disabled,
-    error,
-    removeMarked,
-    markedDeleted,
-    onPick,
-    onClear,
-    onRemove,
-    onPreview,
-    className,
-  } = props;
+export default function ReceiptAttachment({
+  displayUrl,
+  isPdf,
+  busy = false,
+  error = null,
+  removeMarked = false,
+  onPick,
+  onClear,
+  onRemove,
+  onPreview,
+  className = "",
+}: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Унифицируем данные для рендера
-  const url = displayUrl ?? previewUrl ?? existingUrl ?? null;
-  const computedIsPdf =
-    typeof isPdf === "boolean"
-      ? isPdf
-      : (url ? /\.pdf($|\?)/i.test(url) : false);
-  const removeFlag = Boolean(removeMarked ?? markedDeleted);
-  const isDisabled = Boolean(busy || disabled);
+  const doPick = () => inputRef.current?.click();
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) onPick(f);
+    e.target.value = "";
+  };
 
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const clear = () => {
+    if (onClear) onClear();
+    else if (onRemove) onRemove();
+  };
+
+  const hasPreview = !!displayUrl;
 
   return (
-    <div className={className ?? ""}>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={!url || isDisabled}
-          onClick={onPreview}
-          className="w-14 h-14 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] flex items-center justify-center overflow-hidden disabled:opacity-50"
-          title={url ? "Открыть" : "Нет файла"}
-        >
-          {url ? (
-            computedIsPdf ? (
-              <span className="text-[12px]">PDF</span>
-            ) : (
-              // eslint-disable-next-line jsx-a11y/alt-text
-              <img src={url} alt="" className="w-full h-full object-cover" />
-            )
-          ) : (
-            <span className="text-[12px] opacity-60">нет файла</span>
-          )}
-        </button>
+    <div className={`rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] p-3 ${className}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <ImageIcon size={16} className="opacity-70" />
+        <div className="text-[14px] font-medium">Чек</div>
+        {busy && <span className="ml-2 text-[12px] opacity-70">Загрузка…</span>}
+        {removeMarked && <span className="ml-2 text-[12px] text-red-500">Помечен к удалению</span>}
+        {error && <span className="ml-2 text-[12px] text-red-500">{error}</span>}
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] truncate">
-            {url ? (computedIsPdf ? "Прикреплён PDF" : "Прикреплено изображение") : "Чек не прикреплён"}
-          </div>
-          {removeFlag && (
-            <div className="text-[12px] text-red-500">Помечено на удаление</div>
-          )}
-          {error && <div className="text-[12px] text-red-500">{error}</div>}
+      {/* превью (картинка) */}
+      {hasPreview && !isPdf && (
+        <div className="mb-2">
+          <img
+            src={displayUrl!}
+            alt="Receipt"
+            className="w-full max-h-64 object-contain rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)]"
+          />
         </div>
+      )}
 
-        <div className="flex items-center gap-1">
+      {/* pdf — показываем плашку + кнопка «Открыть» */}
+      {hasPreview && isPdf && (
+        <div className="mb-2 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] p-3 flex items-center justify-between">
+          <div className="text-[14px]">PDF-файл</div>
           <button
             type="button"
-            className="px-2 h-8 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[12px]"
-            onClick={() => inputRef.current?.click()}
-            disabled={isDisabled}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--tg-accent-color,#40A7E3)] text-white text-[12px]"
+            onClick={onPreview}
           >
-            {url ? "Заменить" : "Прикрепить"}
+            <Eye size={14} /> Открыть
           </button>
-          {url && (
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={doPick}
+          className="h-9 px-3 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5 text-[14px] inline-flex items-center gap-1"
+          disabled={busy}
+        >
+          <FileUp size={16} /> Выбрать файл
+        </button>
+
+        {hasPreview && (
+          <>
             <button
               type="button"
-              className="px-2 h-8 rounded-lg border border-red-500/40 text-red-600 text-[12px]"
-              onClick={() => (onClear ? onClear() : onRemove && onRemove())}
-              disabled={isDisabled}
+              onClick={onPreview}
+              className="h-9 px-3 rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5 text-[14px] inline-flex items-center gap-1"
             >
-              Удалить
+              <Eye size={16} /> Предпросмотр
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={clear}
+              className="h-9 px-3 rounded-xl border border-red-400/50 text-red-600 hover:bg-red-500/10 text-[14px] inline-flex items-center gap-1"
+            >
+              <Trash2 size={16} /> Очистить
+            </button>
+          </>
+        )}
       </div>
 
       <input
@@ -116,12 +115,9 @@ export default function ReceiptAttachment(props: Props) {
         type="file"
         accept="image/*,application/pdf"
         className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file && onPick) onPick(file);
-          e.currentTarget.value = "";
-        }}
+        onChange={handleFile}
       />
     </div>
   );
 }
+

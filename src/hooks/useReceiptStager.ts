@@ -1,41 +1,92 @@
 // src/hooks/useReceiptStager.ts
 import { useEffect, useMemo, useState } from "react";
 
-/** Опции хука (с поддержкой обоих имён поля URL) */
+/** Опции хука (поддерживаем разные имена полей из бэка) */
 export type UseReceiptStagerOptions = {
-  /** Начальный URL чека, уже лежащего на сервере (новое «каноничное» имя) */
+  /** URL файла чека на сервере */
   initialServerUrl?: string | null;
-  /** Алиас для обратной совместимости со старым кодом */
+  /** URL превью на сервере (например, картинка для pdf) */
+  initialServerPreviewUrl?: string | null;
+
+  /** Алиасы для обратной совместимости */
   initialUrl?: string | null;
-  /** Начальные произвольные данные чека — для совместимости со старым кодом */
+  initialPreviewUrl?: string | null;
+
+  /** Произвольные данные — разбираем preview_url/is_pdf, если прилетит */
   initialData?: any | null;
 };
 
-/**
- * Единый «стейджер» для вложения чека с обратной совместимостью полей:
- * - stagedFile / setStagedFile и алиасы file / setFile
- * - stagedPreview и алиас previewUrl
- * - serverUrl и алиас existingUrl
- * - removeMarked и алиас deleted
- * - clearAll и алиас clear
- */
-export function useReceiptStager(opts?: UseReceiptStagerOptions) {
-  // серверный URL уже загруженного чека (поддерживаем оба имени поля)
-  const initialServer = opts?.initialServerUrl ?? opts?.initialUrl ?? null;
-  const [serverUrl, setServerUrl] = useState<string | null>(initialServer);
+export type UseReceiptStagerReturn = {
+  // что показывать
+  displayUrl: string | null;
+  displayIsPdf: boolean;
 
-  // локально выбранный, ещё не загруженный файл
+  // локально выбранный файл
+  stagedFile: File | null;
+  setStagedFile: (f: File | null) => void;
+  stagedPreview: string | null;
+  stagedIsPdf: boolean;
+
+  // серверные url
+  serverUrl: string | null;
+  setServerUrl: (s: string | null) => void;
+  serverPreviewUrl: string | null;
+  setServerPreviewUrl: (s: string | null) => void;
+
+  // допданные
+  data: any | null;
+  setData: (d: any | null) => void;
+
+  // логика удаления существующего чека
+  removeMarked: boolean;
+  markDeleted: () => void;
+  unmarkDeleted: () => void;
+
+  // утилиты
+  clearAll: () => void;
+  busy: boolean;
+  error: string | null;
+
+  // ===== алиасы для старого кода (обратная совместимость) =====
+  file: File | null;
+  setFile: (f: File | null) => void;
+  existingUrl: string | null;
+  previewUrl: string | null;
+  clear: () => void;
+  deleted: boolean;
+};
+
+export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStagerReturn {
+  // разруливаем входные поля
+  const initialServerUrl =
+    opts?.initialServerUrl ?? opts?.initialUrl ?? null;
+
+  // из initialData пробуем достать превью и признак pdf
+  const dataPreviewFromData =
+    opts?.initialData?.preview_url ??
+    opts?.initialData?.preview ??
+    null;
+
+  const initialServerPreviewUrl =
+    opts?.initialServerPreviewUrl ??
+    opts?.initialPreviewUrl ??
+    dataPreviewFromData ??
+    null;
+
+  const [serverUrl, setServerUrl] = useState<string | null>(initialServerUrl);
+  const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(
+    initialServerPreviewUrl
+  );
+
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedPreview, setStagedPreview] = useState<string | null>(null);
   const [stagedIsPdf, setStagedIsPdf] = useState<boolean>(false);
 
-  // произвольные данные чека (если где-то в коде нужно)
   const [data, setData] = useState<any | null>(opts?.initialData ?? null);
 
-  // пометка «удалить серверный чек»
-  const [removeMarked, setRemoveMarked] = useState<boolean>(false);
+  const [removeMarked, setRemoveMarked] = useState(false);
 
-  // превью для локально выбранного файла
+  // превью для локального файла
   useEffect(() => {
     if (!stagedFile) {
       setStagedPreview(null);
@@ -50,121 +101,120 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions) {
     return () => URL.revokeObjectURL(url);
   }, [stagedFile]);
 
-  // что отображать в UI
+  // что показывать в карточке:
+  // 1) если выбран локальный файл — его превью
+  // 2) иначе серверное превью (если есть)
+  // 3) иначе оригинальный серверный файл
   const displayUrl = useMemo(
-    () => stagedPreview ?? serverUrl,
-    [stagedPreview, serverUrl]
+    () => stagedPreview ?? serverPreviewUrl ?? serverUrl,
+    [stagedPreview, serverPreviewUrl, serverUrl]
   );
-  const displayIsPdf = useMemo(
-    () => (stagedPreview ? stagedIsPdf : /\.pdf($|\?)/i.test(serverUrl ?? "")),
-    [stagedPreview, stagedIsPdf, serverUrl]
-  );
+
+  // pdf считаем так:
+  // - если локальный файл — по его типу
+  // - если серверное превью есть — это почти всегда картинка => не pdf
+  // - иначе смотрим на оригинальный серверный url по расширению
+  const displayIsPdf = useMemo(() => {
+    if (stagedPreview) return stagedIsPdf;
+    if (serverPreviewUrl) return false;
+    return /\.pdf($|\?)/i.test(serverUrl ?? "");
+  }, [stagedPreview, stagedIsPdf, serverPreviewUrl, serverUrl]);
 
   const clearAll = () => {
     setStagedFile(null);
     setStagedPreview(null);
-    // serverUrl не трогаем — это делает mark/unmark или внешняя логика
   };
 
   const markDeleted = () => setRemoveMarked(true);
   const unmarkDeleted = () => setRemoveMarked(false);
 
   return {
-    // текущее «что показывать»
     displayUrl,
     displayIsPdf,
 
-    // серверный объект
-    serverUrl,
-    setServerUrl,
-
-    // локальный staged
     stagedFile,
     setStagedFile,
     stagedPreview,
     stagedIsPdf,
 
-    // произвольные данные
+    serverUrl,
+    setServerUrl,
+    serverPreviewUrl,
+    setServerPreviewUrl,
+
     data,
     setData,
 
-    // удаление существующего чека
     removeMarked,
     markDeleted,
     unmarkDeleted,
 
-    // утилиты
     clearAll,
 
-    // для UI
-    busy: false as boolean,
-    error: null as string | null,
+    busy: false,
+    error: null,
 
-    /* ===== Алиасы для старого кода (обратная совместимость) ===== */
-    // file/preview/existing
-    file: null as any, // геттер ниже
-    previewUrl: null as any,
+    // алиасы
+    file: null as any, // заменим геттером ниже
+    setFile: null as any,
     existingUrl: null as any,
-    // clear / deleted
+    previewUrl: null as any,
     clear: null as any,
     deleted: null as any,
-    // setFile
-    setFile: null as any,
   } as any;
 }
 
-// Экспорт по умолчанию оставляю — вдруг где-то он используется.
-// Переопределим алиасы геттерами/сеттерами, чтобы не терять типы при деструктуризации.
+// удобный «дефолтный экспорт» с алиасами-геттерами
 export default function createReceiptStager(opts?: UseReceiptStagerOptions) {
-  const stager = useReceiptStager(opts) as any;
+  const s = useReceiptStager(opts) as any;
 
-  Object.defineProperties(stager, {
+  Object.defineProperties(s, {
     file: {
       get() {
-        return stager.stagedFile;
+        return s.stagedFile;
       },
       set(v: File | null) {
-        stager.setStagedFile(v);
-      },
-    },
-    previewUrl: {
-      get() {
-        return stager.stagedPreview;
-      },
-    },
-    existingUrl: {
-      get() {
-        return stager.serverUrl;
-      },
-      set(v: string | null) {
-        stager.setServerUrl(v);
-      },
-    },
-    clear: {
-      get() {
-        return stager.clearAll;
-      },
-    },
-    deleted: {
-      get() {
-        return stager.removeMarked;
+        s.setStagedFile(v);
       },
     },
     setFile: {
       get() {
-        return stager.setStagedFile;
+        return s.setStagedFile;
+      },
+    },
+    existingUrl: {
+      get() {
+        return s.serverUrl;
+      },
+      set(v: string | null) {
+        s.setServerUrl(v);
+      },
+    },
+    previewUrl: {
+      get() {
+        // для обратной совместимости: отдаём локальное превью, а если его нет — серверное
+        return s.stagedPreview ?? s.serverPreviewUrl;
+      },
+    },
+    clear: {
+      get() {
+        return s.clearAll;
+      },
+    },
+    deleted: {
+      get() {
+        return s.removeMarked;
       },
     },
   });
 
-  return stager as ReturnType<typeof useReceiptStager> & {
+  return s as UseReceiptStagerReturn & {
     file: File | null;
-    previewUrl: string | null;
+    setFile: (f: File | null) => void;
     existingUrl: string | null;
+    previewUrl: string | null;
     clear: () => void;
     deleted: boolean;
-    setFile: (f: File | null) => void;
   };
 }
 
-export type UseReceiptStagerReturn = ReturnType<typeof useReceiptStager>;

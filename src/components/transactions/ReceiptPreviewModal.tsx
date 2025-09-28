@@ -1,62 +1,71 @@
 // src/components/transactions/ReceiptPreviewModal.tsx
-import React from "react";
 import { X } from "lucide-react";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  /* Нормализуем вход: можно передать url напрямую либо через displayUrl/previewUrl/existingUrl */
-  url?: string | null;
-  displayUrl?: string | null;
-  previewUrl?: string | null;
-  existingUrl?: string | null;
+  url: string | null;
+  /** Необязательный флаг. Если не передан — определим по url. */
   isPdf?: boolean;
 };
 
-export default function ReceiptPreviewModal({
-  open,
-  onClose,
-  url,
-  displayUrl,
-  previewUrl,
-  existingUrl,
-  isPdf,
-}: Props) {
+export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props) {
   if (!open) return null;
 
-  const u = url ?? displayUrl ?? previewUrl ?? existingUrl ?? null;
-  const pdf = typeof isPdf === "boolean" ? isPdf : (u ? /\.pdf($|\?)/i.test(u) : false);
+  const pdf = isPdf ?? /\.pdf(\?|$)/i.test(url || "");
 
   return (
-    <div className="fixed inset-0 z-[1200]">
+    <div className="fixed inset-0 z-[1400]">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="absolute inset-4 sm:inset-10 rounded-2xl overflow-hidden bg-[var(--tg-card-bg)] shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--tg-secondary-bg-color,#e7e7e7)]">
-          <div className="font-bold">Предпросмотр чека</div>
+      <div
+        className="absolute inset-4 sm:inset-10 rounded-2xl bg-[var(--tg-card-bg,#111)] shadow-2xl p-3 flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-end">
           <button
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-[var(--tg-accent-color)]/10 transition"
-            aria-label="Закрыть"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 text-[var(--tg-hint-color)]" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto flex items-center justify-center p-3">
-          {u ? (
+        <div className="flex-1 overflow-auto flex items-center justify-center">
+          {url ? (
             pdf ? (
-              <iframe title="receipt-pdf" src={u} className="w-full h-full rounded-md border" />
+              <object
+                data={url}
+                type="application/pdf"
+                className="w-full h-full rounded-lg"
+              >
+                <p className="text-[var(--tg-text-color)] text-sm px-2">
+                  Не удалось отобразить PDF.{" "}
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    Открыть в новой вкладке
+                  </a>
+                </p>
+              </object>
             ) : (
-              // eslint-disable-next-line jsx-a11y/alt-text
-              <img src={u} alt="" className="max-w-full max-h-full object-contain" />
+              <img
+                src={url}
+                alt=""
+                className="max-w-full max-h-full object-contain rounded-lg"
+              />
             )
           ) : (
-            <div className="text-[var(--tg-hint-color)]">Нет данных</div>
+            <div className="text-[var(--tg-text-color)] opacity-70 text-sm">
+              Файл отсутствует
+            </div>
           )}
         </div>
       </div>
     </div>
   );
 }
-
