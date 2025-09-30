@@ -1,3 +1,4 @@
+// src/components/group/EditGroupModal.tsx
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
@@ -8,6 +9,7 @@ import {
   setGroupAvatarByUrl,
 } from "../../api/groupsApi"
 import GroupAvatar from "../GroupAvatar"
+import { compressImage } from "../../utils/image"  // <— единая утилита
 
 // ===== API & Upload endpoints (как в CreateGroupModal) =====
 const API_URL: string =
@@ -24,60 +26,9 @@ function getTelegramInitData(): string {
 
 // ===== Настройки компрессии =====
 const MAX_DIM = 1024
-const JPEG_QUALITY = 0.82
-const SIZE_SKIP_BYTES = 500 * 1024
-
-async function blobToFile(blob: Blob, fileName: string): Promise<File> {
-  return new File([blob], fileName, { type: blob.type, lastModified: Date.now() })
-}
-function readAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onload = () => resolve(String(fr.result))
-    fr.onerror = reject
-    fr.readAsDataURL(file)
-  })
-}
-function drawOnCanvas(img: HTMLImageElement, maxDim: number, fillWhiteBackground = true): HTMLCanvasElement {
-  const w = img.naturalWidth || img.width
-  const h = img.naturalHeight || img.height
-  const ratio = w > h ? maxDim / w : maxDim / h
-  const scale = Math.min(1, ratio || 1)
-  const outW = Math.max(1, Math.round(w * scale))
-  const outH = Math.max(1, Math.round(h * scale))
-
-  const canvas = document.createElement("canvas")
-  canvas.width = outW
-  canvas.height = outH
-  const ctx = canvas.getContext("2d")!
-  if (fillWhiteBackground) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, outW, outH) }
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = "high"
-  ctx.drawImage(img, 0, 0, outW, outH)
-  return canvas
-}
-async function compressImage(original: File, opts?: { maxDim?: number; quality?: number }): Promise<File> {
-  try {
-    if (original.size <= SIZE_SKIP_BYTES) return original
-    const maxDim = opts?.maxDim ?? MAX_DIM
-    const quality = opts?.quality ?? JPEG_QUALITY
-
-    const dataUrl = await readAsDataURL(original)
-    const img = document.createElement("img")
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl })
-
-    const maxSide = Math.max(img.naturalWidth || 0, img.naturalHeight || 0)
-    if (maxSide && maxSide <= maxDim && original.size <= 1024 * 1024) return original
-
-    const canvas = drawOnCanvas(img, maxDim, true)
-    const blob: Blob = await new Promise((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("TO_BLOB_FAILED"))), "image/jpeg", quality)
-    )
-    if (blob.size >= original.size) return original
-    const base = original.name.replace(/\.[^.]+$/u, "")
-    return await blobToFile(blob, `${base}.jpg`)
-  } catch { return original }
-}
+const JPEG_QUALITY = 0.85
+const TARGET_BYTES = 460 * 1024
+const SERVER_HARD_LIMIT = 10 * 1024 * 1024
 
 async function uploadImageAndGetUrl(file: File): Promise<string> {
   const form = new FormData()
@@ -139,7 +90,7 @@ export default function EditGroupModal({
 
   // avatar state
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null) // что сейчас на сервере
-  const [stagedFile, setStagedFile] = useState<File | null>(null)              // <— файл держим локально до "Сохранить"
+  const [stagedFile, setStagedFile] = useState<File | null>(null)              // файл держим локально до "Сохранить"
   const [stagedPreview, setStagedPreview] = useState<string | null>(null)      // локальный blob: превью
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
@@ -196,15 +147,25 @@ export default function EditGroupModal({
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (file.size > SERVER_HARD_LIMIT) {
+      setAvatarError((t("errors.file_too_large_10mb") as string) || "Файл слишком большой (> 10 МБ)")
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
     setAvatarUploading(true)
     try {
-      const compressed = await compressImage(file, { maxDim: MAX_DIM, quality: JPEG_QUALITY })
+      const compressed = await compressImage(file, {
+        maxSide: MAX_DIM,
+        quality: JPEG_QUALITY,
+        targetBytes: TARGET_BYTES,
+      })
       const previewUrl = URL.createObjectURL(compressed)
       if (stagedPreview?.startsWith("blob:")) {
         try { URL.revokeObjectURL(stagedPreview) } catch {}
       }
       setStagedPreview(previewUrl)
-      setStagedFile(compressed)      // <— НЕ загружаем сейчас
+      setStagedFile(compressed)      // НЕ загружаем сейчас
       setAvatarRemoveMarked(false)   // выбрали новое фото — значит не удаляем
     } catch (err: any) {
       setStagedFile(null)
@@ -269,14 +230,8 @@ export default function EditGroupModal({
     }
   }
 
-  // если помечено на удаление — превью скрываем сразу
-  const previewSrc = avatarRemoveMarked
-    ? undefined
-    : (stagedPreview || currentAvatarUrl || undefined)
-
-  const hasAnyAvatar = !avatarRemoveMarked && (
-    !!stagedPreview || !!currentAvatarUrl
-  )
+  const previewSrc = avatarRemoveMarked ? undefined : (stagedPreview || currentAvatarUrl || undefined)
+  const hasAnyAvatar = !avatarRemoveMarked && (!!stagedPreview || !!currentAvatarUrl)
 
   return (
     <div className="fixed inset-0 z-[1300] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">

@@ -1,3 +1,4 @@
+// src/components/CreateGroupModal.tsx
 import { useState, useEffect, useRef } from "react"
 import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -6,6 +7,7 @@ import CurrencyPickerModal, { type CurrencyItem } from "./currency/CurrencyPicke
 import CardSection from "./CardSection"
 import { createGroup, patchGroupCurrency, patchGroupSchedule, setGroupAvatarByUrl } from "../api/groupsApi"
 import GroupAvatar from "./GroupAvatar"
+import { compressImage } from "../utils/image"  // <— единая утилита
 
 // ===== API и upload endpoints (важно: одинаковая база с остальным API) =====
 const API_URL: string =
@@ -22,8 +24,9 @@ function getTelegramInitData(): string {
 
 // ===== Настройки компрессии изображений =====
 const MAX_DIM = 1024          // максимум по большей стороне
-const JPEG_QUALITY = 0.82     // качество JPEG
-const SIZE_SKIP_BYTES = 500 * 1024 // если файл уже <500 KB, можно не сжимать
+const JPEG_QUALITY = 0.85     // стартовое качество JPEG (дальше уменьшается при необходимости)
+const TARGET_BYTES = 460 * 1024 // целевой размер ~460 KB
+const SERVER_HARD_LIMIT = 10 * 1024 * 1024 // 10 MB
 
 type Props = {
   open: boolean
@@ -34,59 +37,6 @@ type Props = {
 
 const NAME_MAX = 40
 const DESC_MAX = 120
-
-// ===== Утилиты компрессии =====
-async function blobToFile(blob: Blob, fileName: string): Promise<File> {
-  return new File([blob], fileName, { type: blob.type, lastModified: Date.now() })
-}
-function readAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onload = () => resolve(String(fr.result))
-    fr.onerror = reject
-    fr.readAsDataURL(file)
-  })
-}
-function drawOnCanvas(img: HTMLImageElement, maxDim: number, fillWhiteBackground = true): HTMLCanvasElement {
-  const w = img.naturalWidth || img.width
-  const h = img.naturalHeight || img.height
-  const ratio = w > h ? maxDim / w : maxDim / h
-  const scale = Math.min(1, ratio || 1)
-  const outW = Math.max(1, Math.round(w * scale))
-  const outH = Math.max(1, Math.round(h * scale))
-
-  const canvas = document.createElement("canvas")
-  canvas.width = outW
-  canvas.height = outH
-  const ctx = canvas.getContext("2d")!
-  if (fillWhiteBackground) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, outW, outH) }
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = "high"
-  ctx.drawImage(img, 0, 0, outW, outH)
-  return canvas
-}
-async function compressImage(original: File, opts?: { maxDim?: number; quality?: number }): Promise<File> {
-  try {
-    if (original.size <= SIZE_SKIP_BYTES) return original
-    const maxDim = opts?.maxDim ?? MAX_DIM
-    const quality = opts?.quality ?? JPEG_QUALITY
-
-    const dataUrl = await readAsDataURL(original)
-    const img = document.createElement("img")
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl })
-
-    const maxSide = Math.max(img.naturalWidth || 0, img.naturalHeight || 0)
-    if (maxSide && maxSide <= maxDim && original.size <= 1024 * 1024) return original
-
-    const canvas = drawOnCanvas(img, maxDim, true)
-    const blob: Blob = await new Promise((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("TO_BLOB_FAILED"))), "image/jpeg", quality)
-    )
-    if (blob.size >= original.size) return original
-    const base = original.name.replace(/\.[^.]+$/u, "")
-    return await blobToFile(blob, `${base}.jpg`)
-  } catch { return original }
-}
 
 // ===== Загрузка на бэкенд и получение публичной ссылки =====
 async function uploadImageAndGetUrl(file: File): Promise<string> {
@@ -191,7 +141,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
   // --- Аватар: превью и отложенная загрузка ---
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const [stagedFile, setStagedFile] = useState<File | null>(null) // <— файл держим локально, грузим при сохранении
+  const [stagedFile, setStagedFile] = useState<File | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -227,9 +177,22 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Жёсткий pre-check, чтобы не гонять гиганты (и совпасть с бэком)
+    if (file.size > SERVER_HARD_LIMIT) {
+      setAvatarError((t("errors.file_too_large_10mb") as string) || "Файл слишком большой (> 10 МБ)")
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
     try {
       setAvatarUploading(true)
-      const compressed = await compressImage(file, { maxDim: MAX_DIM, quality: JPEG_QUALITY })
+      // Упор на целевой размер + ограничение по стороне, белая подложка обеспечивается на уровне utils
+      const compressed = await compressImage(file, {
+        maxSide: MAX_DIM,
+        quality: JPEG_QUALITY,
+        targetBytes: TARGET_BYTES,
+        // mime по умолчанию image/jpeg
+      })
       // локальное превью
       const previewUrl = URL.createObjectURL(compressed)
       if (avatarPreview?.startsWith("blob:")) {
@@ -260,17 +223,14 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
       if (code !== "USD") promises.push(patchGroupCurrency(group.id, code))
       if (isTrip && endDate) promises.push(patchGroupSchedule(group.id, { end_date: endDate }))
 
-      // Выполним фоновые патчи (валюта/расписание)
       await Promise.allSettled(promises)
 
-      // Если выбран аватар — загрузим его ТОЛЬКО сейчас и применим к группе
       if (stagedFile) {
         try {
           setAvatarUploading(true)
           const url = await uploadImageAndGetUrl(stagedFile)
           await setGroupAvatarByUrl(group.id, url)
         } catch (err: any) {
-          // не блокируем переход — просто покажем ошибку
           setAvatarError(err?.message || "Не удалось загрузить изображение")
         } finally {
           setAvatarUploading(false)
@@ -347,7 +307,6 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               {avatarError && (
                 <div className="text-[12px] text-red-500 text-center px-4">{avatarError}</div>
               )}
-              {/* Без «изображение загружено», т.к. фактически грузим при сохранении */}
             </div>
 
             {/* Имя */}

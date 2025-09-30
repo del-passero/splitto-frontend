@@ -4,6 +4,8 @@ import ReactDOM from "react-dom/client"
 import App from "./App"
 import "./styles/index.css"
 import { useUserStore } from "./store/userStore"
+import "./pdfjs-setup";
+
 
 // 1) Прописать tg-переменные в :root и слушать смену темы
 function applyTgTheme(p: any = (window as any)?.Telegram?.WebApp?.themeParams || {}) {
