@@ -1,18 +1,18 @@
 // src/components/transactions/ReceiptPreviewModal.tsx
-import { X } from "lucide-react";
+import { X } from "lucide-react"
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
-  url: string | null;
+  open: boolean
+  onClose: () => void
+  url: string | null
   /** Необязательный флаг. Если не передан — определим по url. */
-  isPdf?: boolean;
-};
+  isPdf?: boolean
+}
 
 export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props) {
-  if (!open) return null;
+  if (!open) return null
 
-  const pdf = isPdf ?? /\.pdf(\?|$)/i.test(url || "");
+  const pdf = isPdf ?? /\.pdf(\?|$)/i.test(url || "")
 
   return (
     <div className="fixed inset-0 z-[1400]">
@@ -49,11 +49,15 @@ export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props
                 </div>
               </div>
             ) : (
-              <img
-                src={url}
-                alt=""
-                className="max-w-full max-h-full object-contain rounded-lg"
-              />
+              // «Книжное» превью 3:4 по центру модалки
+              <div className="w-[min(90vw,520px)] aspect-[3/4] rounded-lg overflow-hidden border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)]">
+                <img
+                  src={url}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+              </div>
             )
           ) : (
             <div className="text-[var(--tg-text-color)] opacity-70 text-sm">
@@ -63,5 +67,5 @@ export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props
         </div>
       </div>
     </div>
-  );
+  )
 }
