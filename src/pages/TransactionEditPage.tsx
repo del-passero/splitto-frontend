@@ -27,10 +27,12 @@ import {
   Paperclip,
   RefreshCcw,
   Trash2,
+  Camera,
 } from "lucide-react";
 
 import { useReceiptStager } from "../hooks/useReceiptStager";
 import ReceiptPreviewModal from "../components/transactions/ReceiptPreviewModal";
+import { compressImage as compressImg } from "../utils/image";
 
 /* ====================== ВАЛЮТА/ФОРМАТЫ ====================== */
 type TxType = "expense" | "transfer";
@@ -376,19 +378,37 @@ export default function TransactionEditPage() {
     return computePerPerson(splitData, amountNumber, currency.decimals);
   }, [splitData, amountNumber, currency.decimals]);
 
-  /* ---------- ЧЕК: стейджер + предпросмотр ---------- */
+  /* ---------- ЧЕК: стейджер + предпросмотр + камера + сжатие ---------- */
   const receipt = useReceiptStager();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const pickFile = () => fileInputRef.current?.click();
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null;
-    if (f) {
-      receipt.setStagedFile(f);
+  const openCamera = () => cameraInputRef.current?.click();
+
+  const stagePickedFile = async (raw: File | null) => {
+    if (!raw) return;
+    try {
+      const isImage =
+        raw.type.startsWith("image/") ||
+        /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif)$/i.test(raw.name);
+      const file = isImage
+        ? await compressImg(raw, { maxSide: 1024, quality: 0.82, mime: "image/jpeg", targetBytes: 500 * 1024 })
+        : raw;
+      receipt.setStagedFile(file);
+      receipt.unmarkDeleted();
+    } catch {
+      // в случае чего просто стейджим исходный файл
+      receipt.setStagedFile(raw);
       receipt.unmarkDeleted();
     }
+  };
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
     e.target.value = "";
+    await stagePickedFile(f);
   };
   const onReplace = () => pickFile();
   const onRemove = () => {
@@ -989,18 +1009,12 @@ export default function TransactionEditPage() {
                     />
                   </div>
 
-                  {/* правая половина: мини-виджет чека */}
+                  {/* правая половина: мини-виджет чека (книжный 3:4) */}
                   <div className="min-w-0 flex items-center justify-end gap-2">
-                    {/* превью-бокс (квадрат) */}
+                    {/* превью-бокс: aspect 3/4 */}
                     <button
                       type="button"
-                      className={`
-                        relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl border
-                        border-[var(--tg-secondary-bg-color,#e7e7e7)]
-                        overflow-hidden flex items-center justify-center
-                        bg-[var(--tg-card-bg)]
-                        dark:bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.04),transparent_42%),radial-gradient(circle_at_75%_75%,rgba(255,255,255,0.04),transparent_42%)]
-                      `}
+                      className="relative shrink-0 w-[51px] h-[68px] sm:w-[56px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] overflow-hidden flex items-center justify-center bg-[var(--tg-card-bg)] -ml-1"
                       onClick={() => receipt.displayUrl && setPreviewOpen(true)}
                       title={
                         (receipt.displayUrl
@@ -1015,7 +1029,7 @@ export default function TransactionEditPage() {
                           <img
                             src={receipt.displayUrl}
                             alt={t("tx_modal.receipt_photo_alt") as string}
-                            className="max-h-full max-w-full object-contain"
+                            className="w-full h-full object-cover"
                           />
                         )
                       ) : (
@@ -1025,16 +1039,26 @@ export default function TransactionEditPage() {
                       )}
                     </button>
 
-                    {/* иконки действий справа от квадрата */}
+                    {/* иконки действий справа */}
                     {!receipt.displayUrl ? (
-                      <button
-                        type="button"
-                        onClick={pickFile}
-                        className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                        title={t("tx_modal.receipt_attach") as string}
-                      >
-                        <Paperclip size={16} />
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={pickFile}
+                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          title={t("tx_modal.receipt_attach") as string}
+                        >
+                          <Paperclip size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openCamera}
+                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          title={t("tx_modal.receipt_attach") as string}
+                        >
+                          <Camera size={16} />
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button
@@ -1584,11 +1608,19 @@ export default function TransactionEditPage() {
           isPdf={receipt.displayIsPdf}
         />
 
-        {/* скрытый input для выбора файла чека */}
+        {/* скрытые input'ы для выбора файла/камеры */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*,application/pdf"
+          className="hidden"
+          onChange={onFileChange}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           className="hidden"
           onChange={onFileChange}
         />
