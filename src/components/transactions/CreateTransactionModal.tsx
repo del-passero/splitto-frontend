@@ -1,65 +1,64 @@
 // src/components/transactions/CreateTransactionModal.tsx
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
-import { useTranslation } from "react-i18next"
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import {
   X, Layers, CalendarDays, ChevronRight,
   Users, ChevronDown, ChevronRight as Chevron, FileText, Receipt, Send,
   Paperclip, RefreshCcw, Trash2, Camera
-} from "lucide-react"
-import CardSection from "../CardSection"
-import GroupPickerModal from "../group/GroupPickerModal"
-import { useUserStore } from "../../store/userStore"
-import { useGroupsStore } from "../../store/groupsStore"
-import CategoryPickerModal from "../category/CategoryPickerModal"
-import MemberPickerModal from "../group/MemberPickerModal"
-import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal"
-import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal"
-import type { TransactionOut } from "../../types/transaction"
+} from "lucide-react";
+import CardSection from "../CardSection";
+import GroupPickerModal from "../group/GroupPickerModal";
+import { useUserStore } from "../../store/userStore";
+import { useGroupsStore } from "../../store/groupsStore";
+import CategoryPickerModal from "../category/CategoryPickerModal";
+import MemberPickerModal from "../group/MemberPickerModal";
+import SplitPickerModal, { SplitSelection, PerPerson, computePerPerson } from "./SplitPickerModal";
+import CurrencyPickerModal, { type CurrencyItem } from "../currency/CurrencyPickerModal";
+import type { TransactionOut } from "../../types/transaction";
 import {
   createTransaction,
   updateTransaction,
   uploadReceipt,
   setTransactionReceiptUrl,
   deleteTransactionReceipt
-} from "../../api/transactionsApi"
-import { getGroupMembers } from "../../api/groupMembersApi"
-import { getGroupDetails } from "../../api/groupsApi"
+} from "../../api/transactionsApi";
+import { getGroupMembers } from "../../api/groupMembersApi";
+import { getGroupDetails } from "../../api/groupsApi";
 
-import { useReceiptStager } from "../../hooks/useReceiptStager"
-import ReceiptPreviewModal from "./ReceiptPreviewModal"
-import { compressImage as compressImg } from "../../utils/image"
+import { useReceiptStager } from "../../hooks/useReceiptStager";
+import ReceiptPreviewModal from "./ReceiptPreviewModal";
 
-export type TxType = "expense" | "transfer"
+export type TxType = "expense" | "transfer";
 
 export interface MinimalGroup {
-  id: number
-  name: string
-  color?: string | null
-  icon?: string | null
-  default_currency_code?: string | null
-  currency_code?: string | null
-  currency?: string | null
+  id: number;
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+  default_currency_code?: string | null;
+  currency_code?: string | null;
+  currency?: string | null;
 }
 
 type MemberMini = {
-  id: number
-  first_name?: string
-  last_name?: string
-  username?: string
-  photo_url?: string
-  name?: string
-}
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  name?: string;
+};
 
 /* ---------- helpers / small UI ---------- */
 function Row({
   icon, label, value, onClick, right, isLast
 }: {
-  icon: React.ReactNode
-  label: string
-  value?: string
-  onClick?: () => void
-  right?: React.ReactNode
-  isLast?: boolean
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  onClick?: () => void;
+  right?: React.ReactNode;
+  isLast?: boolean;
 }) {
   return (
     <div className="relative">
@@ -82,20 +81,20 @@ function Row({
       </button>
       {!isLast && <div className="absolute left-[50px] right-0 bottom-0 h-px bg-[var(--tg-hint-color)] opacity-15 pointer-events-none" />}
     </div>
-  )
+  );
 }
 
 function SelectedGroupPill({
   name, icon, color, onClick, locked,
 }: {
-  name: string
-  icon?: string | null
-  color?: string | null
-  onClick?: () => void
-  locked?: boolean
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  onClick?: () => void;
+  locked?: boolean;
 }) {
-  const ch = (name || "").trim().charAt(0).toUpperCase() || "👥"
-  const bg = (typeof color === "string" && color.trim().length) ? (color as string) : "var(--tg-link-color)"
+  const ch = (name || "").trim().charAt(0).toUpperCase() || "👥";
+  const bg = (typeof color === "string" && color.trim().length) ? (color as string) : "var(--tg-link-color)";
   return (
     <button
       type="button"
@@ -114,68 +113,94 @@ function SelectedGroupPill({
       </span>
       {!locked && <Chevron size={16} className="text-[var(--tg-hint-color)] ml-2 shrink-0" />}
     </button>
-  )
+  );
 }
 
-const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 }
+const DECIMALS_BY_CODE: Record<string, number> = { JPY: 0, KRW: 0, VND: 0 };
 
 const resolveCurrencyCodeFromGroup = (g?: MinimalGroup | null): string | null => {
   const raw =
     (g as any)?.default_currency_code ||
     (g as any)?.currency_code ||
     (g as any)?.currency ||
-    null
-  return (typeof raw === "string" && raw.trim()) ? raw.trim().toUpperCase() : null
-}
+    null;
+  return (typeof raw === "string" && raw.trim()) ? raw.trim().toUpperCase() : null;
+};
 
 function to6Hex(input?: unknown): string | null {
-  if (!input || typeof input !== "string") return null
-  let h = input.trim().replace(/^#/, "")
-  if (/^[0-9a-f]{3}$/i.test(h)) h = h.split("").map(ch => ch + ch).join("")
-  if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`
-  return null
+  if (!input || typeof input !== "string") return null;
+  let h = input.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(h)) h = h.split("").map(ch => ch + ch).join("");
+  if (/^[0-9a-f]{6}$/i.test(h)) return `#${h}`;
+  return null;
 }
 function hexWithAlpha(hex6: string, alpha: number) {
-  const h = hex6.replace("#", "")
-  const a = Math.round(alpha * 255).toString(16).padStart(2, "0")
-  return `#${h}${a}`
+  const h = hex6.replace("#", "");
+  const a = Math.round(alpha * 255).toString(16).padStart(2, "0");
+  return `#${h}${a}`;
 }
 function asRgbaFallback(color: string, alpha: number) {
   if (color.startsWith("rgb(") || color.startsWith("rgba(")) {
-    const nums = color.replace(/[rgba()]/g, "").split(",").map(s => s.trim())
-    const [r, g, b] = nums
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    const nums = color.replace(/[rgba()]/g, "").split(",").map(s => s.trim());
+    const [r, g, b] = nums;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  return color
+  return color;
 }
 function chipStyle(color?: string | null) {
-  if (!color) return {}
-  const hex6 = to6Hex(color)
+  if (!color) return {};
+  const hex6 = to6Hex(color);
   if (hex6) {
     return {
       backgroundColor: hexWithAlpha(hex6, 0.13),
       border: `1px solid ${hexWithAlpha(hex6, 0.33)}`,
-    } as CSSProperties
+    } as CSSProperties;
   }
-  return { backgroundColor: asRgbaFallback(color, 0.13) } as CSSProperties
+  return { backgroundColor: asRgbaFallback(color, 0.13) } as CSSProperties;
 }
 function fillStyle(color?: string | null) {
-  if (!color) return {}
-  const hex6 = to6Hex(color)
+  if (!color) return {};
+  const hex6 = to6Hex(color);
   if (hex6) {
-    return { backgroundColor: hexWithAlpha(hex6, 0.10), borderRadius: 12 } as CSSProperties
+    return { backgroundColor: hexWithAlpha(hex6, 0.10), borderRadius: 12 } as CSSProperties;
   }
-  return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as CSSProperties
+  return { backgroundColor: asRgbaFallback(color, 0.10), borderRadius: 12 } as CSSProperties;
 }
 
 const firstNameOnly = (s?: string) => {
-  const tok = (s || "").trim().split(/\s+/).filter(Boolean)
-  return tok[0] || ""
-}
+  const tok = (s || "").trim().split(/\s+/).filter(Boolean);
+  return tok[0] || "";
+};
 const nameFromMember = (m?: MemberMini) => {
-  if (!m) return ""
-  const composed = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim()
-  return composed || m.username || m.name || `#${m.id}`
+  if (!m) return "";
+  const composed = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim();
+  return composed || m.username || m.name || `#${m.id}`;
+};
+
+/* ===== нормализация ответа аплоада (image/pdf) ===== */
+function normalizeUploadReceiptResponse(uploaded: any): { url: string | null; previewUrl: string | null } {
+  if (!uploaded) return { url: null, previewUrl: null };
+
+  // Возможные форматы
+  const directString = typeof uploaded === "string" ? uploaded : null;
+
+  const obj = typeof uploaded === "object" && uploaded ? uploaded : (directString ? { url: directString } : null);
+  if (!obj) return { url: null, previewUrl: null };
+
+  const candidates = [
+    obj.url, obj.href, obj.file_url, obj.original_url, obj.receipt_url,
+    obj.file?.url, obj.file?.href,
+  ].filter((x) => typeof x === "string" && x.trim()) as string[];
+  const url = candidates[0] || null;
+
+  const previewCandidates = [
+    obj.preview_url, obj.thumbnail, obj.thumb_url,
+    obj.receipt?.preview_url, obj.receipt_data?.preview_url,
+    obj.preview, obj.previews?.[0],
+  ].filter((x) => typeof x === "string" && x.trim()) as string[];
+  const previewUrl = previewCandidates[0] || null;
+
+  return { url, previewUrl };
 }
 
 export default function CreateTransactionModal({
@@ -187,384 +212,384 @@ export default function CreateTransactionModal({
   initialTx,
   mode = "create",
 }: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  groups: MinimalGroup[]
-  defaultGroupId?: number
-  onCreated?: (tx: TransactionOut) => void
-  initialTx?: any
-  mode?: "create" | "edit"
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  groups: MinimalGroup[];
+  defaultGroupId?: number;
+  onCreated?: (tx: TransactionOut) => void;
+  initialTx?: any;
+  mode?: "create" | "edit";
 }) {
-  const { t, i18n } = useTranslation()
-  const user = useUserStore((s) => s.user)
-  const { groups: groupsStoreItems, fetchGroups } = useGroupsStore()
+  const { t, i18n } = useTranslation();
+  const user = useUserStore((s) => s.user);
+  const { groups: groupsStoreItems, fetchGroups } = useGroupsStore();
 
   /* ===== GROUPS ===== */
-  const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([])
+  const [localGroups, setLocalGroups] = useState<MinimalGroup[]>([]);
   useEffect(() => {
-    setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []))
-  }, [groupsProp, groupsStoreItems])
+    setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
+  }, [groupsProp, groupsStoreItems]);
 
   /* ===== FORM STATE (объявляем ДО эффектов) ===== */
-  const [groupModal, setGroupModal] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId)
-  const [type, setType] = useState<TxType>("expense")
+  const [groupModal, setGroupModal] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
+  const [type, setType] = useState<TxType>("expense");
 
-  const [categoryModal, setCategoryModal] = useState(false)
-  const [categoryId, setCategoryId] = useState<number | undefined>(undefined)
-  const [categoryName, setCategoryName] = useState<string | null>(null)
-  const [categoryColor, setCategoryColor] = useState<string | null>(null)
-  const [categoryIcon, setCategoryIcon] = useState<string | null>(null)
+  const [categoryModal, setCategoryModal] = useState(false);
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [categoryName, setCategoryName] = useState<string | null>(null);
+  const [categoryColor, setCategoryColor] = useState<string | null>(null);
+  const [categoryIcon, setCategoryIcon] = useState<string | null>(null);
 
-  const [amount, setAmount] = useState<string>("")
-  const [splitType, setSplitType] = useState<"equal" | "shares" | "custom">("equal")
-  const [splitData, setSplitData] = useState<SplitSelection | null>(null)
+  const [amount, setAmount] = useState<string>("");
+  const [splitType, setSplitType] = useState<"equal" | "shares" | "custom">("equal");
+  const [splitData, setSplitData] = useState<SplitSelection | null>(null);
 
-  const [paidBy, setPaidBy] = useState<number | undefined>(undefined)
-  const [paidByName, setPaidByName] = useState<string>("")
-  const [paidByAvatar, setPaidByAvatar] = useState<string | undefined>(undefined)
+  const [paidBy, setPaidBy] = useState<number | undefined>(undefined);
+  const [paidByName, setPaidByName] = useState<string>("");
+  const [paidByAvatar, setPaidByAvatar] = useState<string | undefined>(undefined);
 
-  const [recipientOpen, setRecipientOpen] = useState(false)
-  const [toUser, setToUser] = useState<number | undefined>(undefined)
-  const [toUserName, setToUserName] = useState<string>("")
-  const [toUserAvatar, setToUserAvatar] = useState<string | undefined>(undefined)
+  const [recipientOpen, setRecipientOpen] = useState(false);
+  const [toUser, setToUser] = useState<number | undefined>(undefined);
+  const [toUserName, setToUserName] = useState<string>("");
+  const [toUserAvatar, setToUserAvatar] = useState<string | undefined>(undefined);
 
-  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
-  const [comment, setComment] = useState<string>("")
+  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [comment, setComment] = useState<string>("");
 
-  const [payerOpen, setPayerOpen] = useState(false)
-  const [splitOpen, setSplitOpen] = useState(false)
+  const [payerOpen, setPayerOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
 
-  const [showErrors, setShowErrors] = useState(false)
-  const [amountTouched, setAmountTouched] = useState(false)
-  const [commentTouched, setCommentTouched] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [showErrors, setShowErrors] = useState(false);
+  const [amountTouched, setAmountTouched] = useState(false);
+  const [commentTouched, setCommentTouched] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const amountInputRef = useRef<HTMLInputElement>(null)
+  const amountInputRef = useRef<HTMLInputElement>(null);
 
   /* ===== AUTOLOAD GROUPS ===== */
-  const didLoadRef = useRef(false)
+  const didLoadRef = useRef(false);
   useEffect(() => {
-    if (!open) return
-    if (didLoadRef.current) return
-    const need = !(groupsProp && groupsProp.length) && !(groupsStoreItems && groupsStoreItems.length)
+    if (!open) return;
+    if (didLoadRef.current) return;
+    const need = !(groupsProp && groupsProp.length) && !(groupsStoreItems && groupsStoreItems.length);
     if (need && user?.id) {
-      didLoadRef.current = true
-      fetchGroups(user.id).catch(() => {}).finally(() => {})
+      didLoadRef.current = true;
+      fetchGroups(user.id).catch(() => {}).finally(() => {});
     }
-  }, [open, groupsProp, groupsStoreItems, user, fetchGroups])
+  }, [open, groupsProp, groupsStoreItems, user, fetchGroups]);
 
   /* ===== MEMBERS (для автосплита и аватарок) ===== */
-  const [membersMap, setMembersMap] = useState<Map<number, MemberMini>>(() => new Map())
+  const [membersMap, setMembersMap] = useState<Map<number, MemberMini>>(() => new Map());
   useEffect(() => {
-    let abort = false
-    ;(async () => {
-      if (!open || !selectedGroupId) return
-      const map = new Map<number, MemberMini>()
-      let offset = 0
-      const limit = 100
-      let total = Infinity
+    let abort = false;
+    (async () => {
+      if (!open || !selectedGroupId) return;
+      const map = new Map<number, MemberMini>();
+      let offset = 0;
+      const limit = 100;
+      let total = Infinity;
       try {
         while (!abort && offset < total) {
-          const res = await getGroupMembers(selectedGroupId, offset, limit)
-          total = res.total ?? 0
-          const items = res.items ?? []
+          const res = await getGroupMembers(selectedGroupId, offset, limit);
+          total = res.total ?? 0;
+          const items = res.items ?? [];
           for (const gm of items as any[]) {
-            const u = gm?.user
-            if (!u?.id) continue
+            const u = gm?.user;
+            if (!u?.id) continue;
             map.set(u.id, {
               id: u.id,
               first_name: u.first_name,
               last_name: u.last_name,
               username: u.username,
               photo_url: u.photo_url,
-            })
+            });
           }
-          offset += items.length
-          if (items.length === 0) break
+          offset += items.length;
+          if (items.length === 0) break;
         }
       } catch { /* ignore */ }
-      if (!abort) setMembersMap(map)
-    })()
-    return () => { abort = true }
-  }, [open, selectedGroupId])
+      if (!abort) setMembersMap(map);
+    })();
+    return () => { abort = true; };
+  }, [open, selectedGroupId]);
 
   /* ===== CURRENCY ===== */
-  const [currencyModal, setCurrencyModal] = useState(false)
+  const [currencyModal, setCurrencyModal] = useState(false);
   const selectedGroup = useMemo(
     () => localGroups.find((g) => g.id === selectedGroupId) || null,
     [localGroups, selectedGroupId]
-  )
+  );
 
-  const [currencyCode, setCurrencyCode] = useState<string | null>(null)
+  const [currencyCode, setCurrencyCode] = useState<string | null>(null);
   // Флаг-замок: если валюта установлена из транзакции (edit) или пользователем — не перезаписывать валютой группы
-  const currencyLockedRef = useRef(false)
+  const currencyLockedRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (currencyLockedRef.current) return // не трогаем валюту, если она уже «зафиксирована»
-      const code = resolveCurrencyCodeFromGroup(selectedGroup)
+    let cancelled = false;
+    (async () => {
+      if (currencyLockedRef.current) return; // не трогаем валюту, если она уже «зафиксирована»
+      const code = resolveCurrencyCodeFromGroup(selectedGroup);
       if (code) {
-        if (!cancelled) setCurrencyCode(code)
-        return
+        if (!cancelled) setCurrencyCode(code);
+        return;
       }
       if (selectedGroupId) {
         try {
-          const gd = await getGroupDetails(selectedGroupId)
+          const gd = await getGroupDetails(selectedGroupId);
           const raw =
             (gd as any)?.default_currency_code ||
             (gd as any)?.currency_code ||
-            (gd as any)?.currency || null
-          const detCode = typeof raw === "string" && raw.trim() ? raw.trim().toUpperCase() : null
-          if (!cancelled) setCurrencyCode(detCode || "USD")
+            (gd as any)?.currency || null;
+          const detCode = typeof raw === "string" && raw.trim() ? raw.trim().toUpperCase() : null;
+          if (!cancelled) setCurrencyCode(detCode || "USD");
         } catch {
-          if (!cancelled) setCurrencyCode("USD")
+          if (!cancelled) setCurrencyCode("USD");
         }
       } else {
-        if (!cancelled) setCurrencyCode(null)
+        if (!cancelled) setCurrencyCode(null);
       }
-    })()
-    return () => { cancelled = true }
-  }, [selectedGroup, selectedGroupId])
+    })();
+    return () => { cancelled = true; };
+  }, [selectedGroup, selectedGroupId]);
 
   // При смене валюты — аккуратно нормализуем введённую сумму под новые decimals
   useEffect(() => {
-    const dec = currencyCode ? (DECIMALS_BY_CODE[currencyCode] ?? 2) : 2
-    if (!amount) return
-    const n = Number(amount)
-    if (!isFinite(n)) return
-    setAmount(n.toFixed(dec))
+    const dec = currencyCode ? (DECIMALS_BY_CODE[currencyCode] ?? 2) : 2;
+    if (!amount) return;
+    const n = Number(amount);
+    if (!isFinite(n)) return;
+    setAmount(n.toFixed(dec));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currencyCode])
+  }, [currencyCode]);
 
   const currency = useMemo(() => {
-    const code = currencyCode || null
+    const code = currencyCode || null;
     return {
       code,
       symbol: code || "",
       decimals: code ? (DECIMALS_BY_CODE[code] ?? 2) : 2,
-    }
-  }, [currencyCode])
+    };
+  }, [currencyCode]);
 
-  const COMMENT_MAX = 32
-  const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v)
-  const commentLeft = Math.max(0, COMMENT_MAX - comment.length)
+  const COMMENT_MAX = 32;
+  const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v);
+  const commentLeft = Math.max(0, COMMENT_MAX - comment.length);
 
-  const locale = useMemo(() => (i18n.language || "ru").split("-"[0]), [i18n.language]) // eslint-disable-line
+  const locale = useMemo(() => (i18n.language || "ru").split("-"[0]), [i18n.language]); // eslint-disable-line
   const amountNumber = useMemo(() => {
-    const n = Number(amount)
-    return isFinite(n) ? n : 0
-  }, [amount])
+    const n = Number(amount);
+    return isFinite(n) ? n : 0;
+  }, [amount]);
 
   const fmtMoney = (n: number, decimals: number, code: string | null, loc: string) => {
     try {
-      const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-      return `${nf.format(n)} ${code ?? ""}`
+      const nf = new Intl.NumberFormat(loc, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return `${nf.format(n)} ${code ?? ""}`;
     } catch {
-      return `${n.toFixed(decimals)} ${code ?? ""}`
+      return `${n.toFixed(decimals)} ${code ?? ""}`;
     }
-  }
+  };
 
   const perPerson: PerPerson[] = useMemo(() => {
-    if (!splitData || amountNumber <= 0) return []
-    return computePerPerson(splitData, amountNumber, currency.decimals)
-  }, [splitData, amountNumber, currency.decimals])
+    if (!splitData || amountNumber <= 0) return [];
+    return computePerPerson(splitData, amountNumber, currency.decimals);
+  }, [splitData, amountNumber, currency.decimals]);
 
   const customMismatch: null | { sumParts: number; total: number } = useMemo(() => {
-    if (!splitData || splitData.type !== "custom") return null
-    const totalParts = perPerson.reduce((s, p) => s + p.amount, 0)
-    const total = amountNumber
-    const eps = 1 / Math.pow(10, currency.decimals)
-    return Math.abs(totalParts - total) > eps ? { sumParts: totalParts, total } : null
-  }, [splitData, perPerson, amountNumber, currency.decimals])
+    if (!splitData || splitData.type !== "custom") return null;
+    const totalParts = perPerson.reduce((s, p) => s + p.amount, 0);
+    const total = amountNumber;
+    const eps = 1 / Math.pow(10, currency.decimals);
+    return Math.abs(totalParts - total) > eps ? { sumParts: totalParts, total } : null;
+  }, [splitData, perPerson, amountNumber, currency.decimals]);
 
   /* ===== VALIDATION ===== */
   const errors = useMemo(() => {
-    const errs: Record<string, string> = {}
-    if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first")
+    const errs: Record<string, string> = {};
+    if (!selectedGroupId) errs.group = t("tx_modal.choose_group_first");
     if (!amount || amountNumber <= 0) {
       errs.amount =
         (i18n.language || "ru").startsWith("ru") ? "Введите сумму больше 0" :
-        (i18n.language || "en").startsWith("es") ? "Introduce un importe > 0" : "Enter amount > 0"
+        (i18n.language || "en").startsWith("es") ? "Introduce un importe > 0" : "Enter amount > 0";
     }
     if (type === "expense" && !comment.trim()) {
       errs.comment =
         (i18n.language || "ru").startsWith("ru") ? "Заполните комментарий" :
-        (i18n.language || "en").startsWith("es") ? "Introduce un comentario" : "Enter a comment"
+        (i18n.language || "en").startsWith("es") ? "Introduce un comentario" : "Enter a comment";
     }
     if (type === "expense" && !categoryId) {
       errs.category =
         (i18n.language || "ru").startsWith("ru") ? "Выберите категорию" :
-        (i18n.language || "en").startsWith("es") ? "Elige una categoría" : "Choose a category"
+        (i18n.language || "en").startsWith("es") ? "Elige una categoría" : "Choose a category";
     }
     if (type === "expense" && splitData) {
       if (splitData.type === "equal" && splitData.participants.length === 0) {
         errs.split =
           (i18n.language || "ru").startsWith("ru") ? "Выберите участников" :
-          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants"
+          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "shares") {
-        const totalShares = splitData.participants.reduce((s, p) => s + (p.share || 0), 0)
+        const totalShares = splitData.participants.reduce((s, p) => s + (p.share || 0), 0);
         if (totalShares <= 0) errs.split =
           (i18n.language || "ru").startsWith("ru") ? "Доли должны быть больше нуля" :
-          (i18n.language || "en").startsWith("es") ? "Las cuotas deben ser > 0" : "Shares must be > 0"
+          (i18n.language || "en").startsWith("es") ? "Las cuotas deben ser > 0" : "Shares must be > 0";
         if (splitData.participants.length === 0) errs.split =
           (i18n.language || "ru").startsWith("ru") ? "Выберите участников" :
-          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants"
+          (i18n.language || "en").startsWith("es") ? "Selecciona participantes" : "Select participants";
       }
       if (splitData.type === "custom" && customMismatch) {
         errs.split =
           (i18n.language || "ru").startsWith("ru") ? "Сумма по участникам должна равняться общей" :
           (i18n.language || "en").startsWith("es") ? "La suma por participantes debe igualar el total" :
-          "Participants total must equal overall"
+          "Participants total must equal overall";
       }
     }
     if (type === "transfer") {
       if (!paidBy) errs.transfer =
         (i18n.language || "ru").startsWith("ru") ? "Выберите отправителя" :
-        (i18n.language || "en").startsWith("es") ? "Elige remitente" : "Select sender"
+        (i18n.language || "en").startsWith("es") ? "Elige remitente" : "Select sender";
       if (!toUser) errs.transfer =
         (i18n.language || "ru").startsWith("ru") ? "Выберите получателя" :
-        (i18n.language || "en").startsWith("es") ? "Elige receptor" : "Select recipient"
+        (i18n.language || "en").startsWith("es") ? "Elige receptor" : "Select recipient";
       if (paidBy && toUser && paidBy === toUser) {
         errs.transfer =
           (i18n.language || "ru").startsWith("ru") ? "Отправитель и получатель не могут совпадать" :
           (i18n.language || "en").startsWith("es") ? "Remitente y receptor no pueden ser iguales" :
-          "Sender and recipient must differ"
+          "Sender and recipient must differ";
       }
     }
-    return errs
-  }, [selectedGroupId, amount, amountNumber, comment, type, categoryId, splitData, customMismatch, t, paidBy, toUser, i18n.language])
+    return errs;
+  }, [selectedGroupId, amount, amountNumber, comment, type, categoryId, splitData, customMismatch, t, paidBy, toUser, i18n.language]);
 
   const handleAmountChange = (v: string) => {
-    const decimals = currency.decimals
-    let s = v.replace(",", ".").replace(/[^\d.]/g, "")
-    const firstDot = s.indexOf(".")
+    const decimals = currency.decimals;
+    let s = v.replace(",", ".").replace(/[^\d.]/g, "");
+    const firstDot = s.indexOf(".");
     if (firstDot !== -1) {
-      const head = s.slice(0, firstDot + 1)
-      const tail = s.slice(firstDot + 1).replace(/\./g, "")
-      s = head + tail
+      const head = s.slice(0, firstDot + 1);
+      const tail = s.slice(firstDot + 1).replace(/\./g, "");
+      s = head + tail;
     }
-    if (decimals === 0) s = s.replace(/\./g, "")
+    if (decimals === 0) s = s.replace(/\./g, "");
     else if (s.includes(".")) {
-      const [int, dec] = s.split(".")
-      s = int + "." + dec.slice(0, decimals)
+      const [int, dec] = s.split(".");
+      s = int + "." + dec.slice(0, decimals);
     }
-    setAmount(s)
-  }
+    setAmount(s);
+  };
   const handleAmountBlur = () => {
-    setAmountTouched(true)
-    if (!amount) return
-    const n = Number(amount)
-    if (!isFinite(n)) return
-    setAmount(n.toFixed(currency.decimals))
-  }
-  const handleCommentBlur = () => setCommentTouched(true)
+    setAmountTouched(true);
+    if (!amount) return;
+    const n = Number(amount);
+    if (!isFinite(n)) return;
+    setAmount(n.toFixed(currency.decimals));
+  };
+  const handleCommentBlur = () => setCommentTouched(true);
 
   const handleSelectCategory = (it: { id: number; name: string; color?: string | null; icon?: string | null } & Record<string, any>) => {
-    const raw = (it as any).color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex
-    const hex6 = to6Hex(raw) ?? raw ?? null
-    setCategoryId(it.id)
-    setCategoryName(it.name)
-    setCategoryColor(hex6)
-    setCategoryIcon((it as any).icon ?? null)
-  }
+    const raw = (it as any).color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
+    const hex6 = to6Hex(raw) ?? raw ?? null;
+    setCategoryId(it.id);
+    setCategoryName(it.name);
+    setCategoryColor(hex6);
+    setCategoryIcon((it as any).icon ?? null);
+  };
 
   const resetForNew = () => {
-    setType("expense")
-    setCategoryId(undefined)
-    setCategoryName(null)
-    setCategoryColor(null)
-    setCategoryIcon(null)
-    setAmount("")
-    setSplitType("equal")
-    setSplitData(null)
-    setPaidBy(undefined)
-    setPaidByName("")
-    setPaidByAvatar(undefined)
-    setToUser(undefined)
-    setToUserName("")
-    setToUserAvatar(undefined)
-    setDate(new Date().toISOString().slice(0, 10))
-    setComment("")
-    setShowErrors(false)
-    setAmountTouched(false)
-    setCommentTouched(false)
+    setType("expense");
+    setCategoryId(undefined);
+    setCategoryName(null);
+    setCategoryColor(null);
+    setCategoryIcon(null);
+    setAmount("");
+    setSplitType("equal");
+    setSplitData(null);
+    setPaidBy(undefined);
+    setPaidByName("");
+    setPaidByAvatar(undefined);
+    setToUser(undefined);
+    setToUserName("");
+    setToUserAvatar(undefined);
+    setDate(new Date().toISOString().slice(0, 10));
+    setComment("");
+    setShowErrors(false);
+    setAmountTouched(false);
+    setCommentTouched(false);
     // чек
-    receipt.clearAll()
-    receipt.setServerUrl(null)
-    receipt.setServerPreviewUrl(null)
-    receipt.unmarkDeleted()
-  }
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+    receipt.unmarkDeleted();
+  };
 
   const ensureValidOrGuide = (): boolean => {
-    setShowErrors(true)
-    setAmountTouched(true)
-    if (type === "expense") setCommentTouched(true)
+    setShowErrors(true);
+    setAmountTouched(true);
+    if (type === "expense") setCommentTouched(true);
 
     if (!selectedGroupId) {
-      setGroupModal(true)
-      return false
+      setGroupModal(true);
+      return false;
     }
     if (!amount || Number(amount) <= 0) {
-      amountInputRef.current?.focus()
-      return false
+      amountInputRef.current?.focus();
+      return false;
     }
     if (type === "expense") {
-      if (!categoryId) { setCategoryModal(true); return false }
-      if (errors.split) { setSplitOpen(true); return false }
-      if (!paidBy) { setPayerOpen(true); return false }
-      return true
+      if (!categoryId) { setCategoryModal(true); return false; }
+      if (errors.split) { setSplitOpen(true); return false; }
+      if (!paidBy) { setPayerOpen(true); return false; }
+      return true;
     }
-    if (!paidBy) { setPayerOpen(true); return false }
-    if (!toUser) { setRecipientOpen(true); return false }
-    if (paidBy === toUser) return false
-    return true
-  }
+    if (!paidBy) { setPayerOpen(true); return false; }
+    if (!toUser) { setRecipientOpen(true); return false; }
+    if (paidBy === toUser) return false;
+    return true;
+  };
 
   function buildShares(
     sel: SplitSelection | null | undefined,
     total: number,
     decimals: number
   ): Array<{ user_id: number; amount: string; shares?: number | null }> {
-    if (!sel) return []
+    if (!sel) return [];
     const toFixed = (x: number) => {
-      const n = Number(x)
-      return isFinite(n) ? n.toFixed(decimals) : (0).toFixed(decimals)
-    }
+      const n = Number(x);
+      return isFinite(n) ? n.toFixed(decimals) : (0).toFixed(decimals);
+    };
     if (sel.type === "custom") {
       return sel.participants.map((p: any) => ({
         user_id: Number(p.user_id),
         amount: toFixed(Number(p.amount || 0)),
         shares: null,
-      }))
+      }));
     }
-    const list = computePerPerson(sel, total, decimals)
+    const list = computePerPerson(sel, total, decimals);
     if (sel.type === "shares") {
-      const sharesByUser = new Map<number, number>()
+      const sharesByUser = new Map<number, number>();
       for (const p of sel.participants as any[]) {
-        sharesByUser.set(Number(p.user_id), Number((p as any).share || 0))
+        sharesByUser.set(Number(p.user_id), Number((p as any).share || 0));
       }
       return list.map((p) => ({
         user_id: Number(p.user_id),
         amount: toFixed(p.amount || 0),
         shares: sharesByUser.get(Number(p.user_id)) || null,
-      }))
+      }));
     }
     // equal
     return list.map((p) => ({
       user_id: Number(p.user_id),
       amount: toFixed(p.amount || 0),
       shares: null,
-    }))
+    }));
   }
 
-  /* ===== ЧЕК: стейджер + предпросмотр + камера + сжатие ===== */
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
+  /* ===== ЧЕК: стейджер + предпросмотр ===== */
+  const fileInputRef = useRef<HTMLInputElement>(null);      // скрепка (image/pdf)
+  const cameraInputRef = useRef<HTMLInputElement>(null);    // камера (только image, задняя)
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const receipt = useReceiptStager({
     initialUrl:
@@ -577,72 +602,58 @@ export default function CreateTransactionModal({
       (initialTx as any)?.receipt_data?.preview_url ??
       null,
     initialData: (initialTx as any)?.receipt_data ?? null,
-  })
+  });
 
-  const pickFile = () => fileInputRef.current?.click()
-  const openCamera = () => cameraInputRef.current?.click()
+  const pickFile = () => fileInputRef.current?.click();
+  const takePhoto = () => cameraInputRef.current?.click();
 
-  const stagePickedFile = async (raw: File | null) => {
-    if (!raw) return
-    try {
-      // Сжимаем только изображения; PDF не трогаем
-      const isImage = raw.type.startsWith("image/") || /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif)$/i.test(raw.name)
-      const file = isImage
-        ? await compressImg(raw, { maxSide: 1024, quality: 0.82, mime: "image/jpeg", targetBytes: 500 * 1024 })
-        : raw
-      receipt.setStagedFile(file)
-      receipt.unmarkDeleted()
-    } catch {
-      receipt.setStagedFile(raw)
-      receipt.unmarkDeleted()
-    }
-  }
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    if (f) { receipt.setStagedFile(f); receipt.unmarkDeleted(); }
+    e.target.value = "";
+  };
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null
-    e.target.value = ""
-    await stagePickedFile(f)
-  }
-
-  const onReplace = () => pickFile()
+  const onReplace = () => pickFile();
   const onRemove = () => {
     if (receipt.serverUrl) {
-      // в режиме редактирования можно пометить к удалению — но для создания достаточно просто очистить
-      receipt.markDeleted()
+      // в режиме редактирования можно пометить к удалению
+      receipt.markDeleted();
     }
-    receipt.clearAll()
-  }
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+  };
 
-  // Для мини-превью и модалки: если есть preview у PDF, мини-прямоугольник может быть картинкой,
+  // Для мини-превью и модалки: если есть preview у PDF, мини-квадрат может быть картинкой,
   // но модалка должна открывать ИМЕННО PDF (оригинальный serverUrl).
-  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl])
-  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf
+  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
+  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
   const previewModalUrl = useMemo(() => {
-    if (receipt.displayIsPdf) return receipt.displayUrl
-    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl
-    return receipt.displayUrl
-  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl])
+    if (receipt.displayIsPdf) return receipt.displayUrl;
+    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl;
+    return receipt.displayUrl;
+  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl]);
   const previewModalIsPdf = useMemo(() => {
-    if (receipt.displayIsPdf) return true
-    if (originalIsPdf) return true
-    return false
-  }, [receipt.displayIsPdf, originalIsPdf])
+    if (receipt.displayIsPdf) return true;
+    if (originalIsPdf) return true;
+    return false;
+  }, [receipt.displayIsPdf, originalIsPdf]);
 
   const doSubmit = async (modeAfter: "close" | "again") => {
-    if (saving) return
-    const ok = ensureValidOrGuide()
-    if (!ok) return
+    if (saving) return;
+    const ok = ensureValidOrGuide();
+    if (!ok) return;
 
     try {
-      setSaving(true)
-      const gid = selectedGroupId as number
-      const amtStr = isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0"
+      setSaving(true);
+      const gid = selectedGroupId as number;
+      const amtStr = isFinite(Number(amount)) ? Number(amount).toFixed(currency.decimals) : "0";
 
-      let saved: TransactionOut | undefined
+      let saved: TransactionOut | undefined;
 
       if (type === "expense") {
-        const payerId = paidBy
-        if (!payerId) { setPayerOpen(true); setShowErrors(true); setSaving(false); return }
+        const payerId = paidBy;
+        if (!payerId) { setPayerOpen(true); setShowErrors(true); setSaving(false); return; }
 
         const payload: any = {
           type: "expense",
@@ -655,10 +666,10 @@ export default function CreateTransactionModal({
           paid_by: payerId,
           split_type: splitData?.type || "equal",
           shares: buildShares(splitData, Number(amtStr), currency.decimals),
-        }
+        };
 
-        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload)
-        else saved = await createTransaction(payload)
+        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload);
+        else saved = await createTransaction(payload);
       } else {
         const payload: any = {
           type: "transfer",
@@ -669,206 +680,218 @@ export default function CreateTransactionModal({
           comment: comment.trim() || null,
           transfer_from: paidBy as number,
           transfer_to: [toUser as number],
-        }
+        };
 
-        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload)
-        else saved = await createTransaction(payload)
+        if (mode === "edit" && initialTx?.id) saved = await updateTransaction(initialTx.id, payload);
+        else saved = await createTransaction(payload);
       }
 
-      // ----- чек: если пользователь удалил старый и НЕ выбрал новый файл -----
-      if (saved?.id && receipt.removeMarked && !receipt.stagedFile) {
+      if (!saved?.id) {
+        setSaving(false);
+        return;
+      }
+
+      // ----- чек: если пользователь удалил старый и НЕ выбрал новый файл ----- //
+      if (receipt.removeMarked && !receipt.stagedFile) {
         try {
-          await deleteTransactionReceipt(saved.id)
-        } catch {
-          try { await setTransactionReceiptUrl(saved.id, "") } catch {}
+          // пробуем явный DELETE; если на бэке его нет — фолбэк на очистку
+          try {
+            await deleteTransactionReceipt(saved.id);
+          } catch {
+            await setTransactionReceiptUrl(saved.id, "");
+          }
         } finally {
-          receipt.setServerUrl(null)
-          receipt.setServerPreviewUrl(null)
-          receipt.unmarkDeleted()
+          receipt.setServerUrl(null);
+          receipt.setServerPreviewUrl(null);
+          receipt.unmarkDeleted();
         }
       }
 
-      // ----- чек: если есть локально выбранный файл — грузим и сохраняем ссылку в транзакцию -----
-      if (saved?.id && receipt.stagedFile) {
+      // ----- чек: если есть локально выбранный файл — грузим и сохраняем ссылку в транзакцию ----- //
+      let savedForCallback: TransactionOut = saved;
+      if (receipt.stagedFile) {
         try {
-          const uploaded: any = await uploadReceipt(receipt.stagedFile) // ожидаем { url, preview_url? } или просто url
-          const url: string | null =
-            (uploaded && typeof uploaded === "object" ? uploaded.url : uploaded) || null
+          const uploadedRaw: any = await uploadReceipt(receipt.stagedFile);
+          const { url, previewUrl } = normalizeUploadReceiptResponse(uploadedRaw);
           if (url) {
-            await setTransactionReceiptUrl(saved.id, url)
+            await setTransactionReceiptUrl(saved.id, url);
             // синхронизируем локально
-            receipt.setServerUrl(url)
-            if (uploaded && typeof uploaded === "object" && uploaded.preview_url) {
-              receipt.setServerPreviewUrl(uploaded.preview_url)
-            }
-            receipt.clearAll()
-            receipt.unmarkDeleted()
+            receipt.setServerUrl(url);
+            if (previewUrl) receipt.setServerPreviewUrl(previewUrl);
+            receipt.clearAll();
+            receipt.unmarkDeleted();
+            // чтобы карточка сразу показала «скрепку», пробрасываем в onCreated уже обновлённую транзакцию
+            savedForCallback = { ...saved, receipt_url: url, receipt_preview_url: previewUrl ?? undefined } as any;
           }
         } catch {
-          // не блокируем создание транзакции из-за фэйленного аплоада
+          // не блокируем создание из-за фейла аплоада
         }
       }
 
-      if (!initialTx && saved && onCreated) onCreated(saved)
-      if (modeAfter === "close") onOpenChange(false)
-      else resetForNew()
+      // колбэк для листа — уже после всех receipt-операций
+      if (!initialTx && savedForCallback && onCreated) onCreated(savedForCallback);
+
+      if (modeAfter === "close") onOpenChange(false);
+      else resetForNew();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[CreateTransactionModal] submit error", e)
+      console.error("[CreateTransactionModal] submit error", e);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   /* ===== reset при закрытии ===== */
   useEffect(() => {
-    if (open) return
-    setSelectedGroupId(defaultGroupId)
-    setType("expense")
-    setCategoryModal(false)
-    setCategoryId(undefined)
-    setCategoryName(null)
-    setCategoryColor(null)
-    setCategoryIcon(null)
-    setAmount("")
-    setSplitType("equal")
-    setSplitData(null)
-    setPaidBy(undefined)
-    setPaidByName("")
-    setPaidByAvatar(undefined)
-    setToUser(undefined)
-    setToUserName("")
-    setToUserAvatar(undefined)
-    setDate(new Date().toISOString().slice(0, 10))
-    setComment("")
-    setShowErrors(false)
-    setAmountTouched(false)
-    setCommentTouched(false)
-    setMoreOpen(false)
-    setPayerOpen(false)
-    setRecipientOpen(false)
-    setSplitOpen(false)
-    setSaving(false)
-    setCurrencyCode(null)
-    currencyLockedRef.current = false // сбрасываем замок
+    if (open) return;
+    setSelectedGroupId(defaultGroupId);
+    setType("expense");
+    setCategoryModal(false);
+    setCategoryId(undefined);
+    setCategoryName(null);
+    setCategoryColor(null);
+    setCategoryIcon(null);
+    setAmount("");
+    setSplitType("equal");
+    setSplitData(null);
+    setPaidBy(undefined);
+    setPaidByName("");
+    setPaidByAvatar(undefined);
+    setToUser(undefined);
+    setToUserName("");
+    setToUserAvatar(undefined);
+    setDate(new Date().toISOString().slice(0, 10));
+    setComment("");
+    setShowErrors(false);
+    setAmountTouched(false);
+    setCommentTouched(false);
+    setMoreOpen(false);
+    setPayerOpen(false);
+    setRecipientOpen(false);
+    setSplitOpen(false);
+    setSaving(false);
+    setCurrencyCode(null);
+    currencyLockedRef.current = false; // сбрасываем замок
     // чек
-    receipt.clearAll()
-    receipt.setServerUrl(null)
-    receipt.setServerPreviewUrl(null)
-    receipt.unmarkDeleted()
+    receipt.clearAll();
+    receipt.setServerUrl(null);
+    receipt.setServerPreviewUrl(null);
+    receipt.unmarkDeleted();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultGroupId])
+  }, [open, defaultGroupId]);
 
   /* ===== PREFILL из initialTx (одноразово при открытии) ===== */
-  const prefilledRef = useRef(false)
+  const prefilledRef = useRef(false);
   useEffect(() => {
-    if (!open) { prefilledRef.current = false; return }
-    if (prefilledRef.current) return
-    if (!initialTx) return
+    if (!open) { prefilledRef.current = false; return; }
+    if (prefilledRef.current) return;
+    if (!initialTx) return;
 
     // группа
-    const gid = Number(initialTx.group_id ?? initialTx.groupId ?? defaultGroupId)
-    if (gid) setSelectedGroupId(gid)
+    const gid = Number(initialTx.group_id ?? initialTx.groupId ?? defaultGroupId);
+    if (gid) setSelectedGroupId(gid);
 
     // валюта из транзакции (фиксируем, чтобы не затиралось валютой группы)
-    const rawCode = (initialTx.currency_code || initialTx.currency) as string | undefined
+    const rawCode = (initialTx.currency_code || initialTx.currency) as string | undefined;
     if (typeof rawCode === "string" && rawCode.trim()) {
-      const codeUp = rawCode.trim().toUpperCase()
-      setCurrencyCode(codeUp)
-      currencyLockedRef.current = true
+      const codeUp = rawCode.trim().toUpperCase();
+      setCurrencyCode(codeUp);
+      currencyLockedRef.current = true;
     }
 
     // тип
     if (initialTx.type === "transfer" || initialTx.type === "expense") {
-      setType(initialTx.type)
+      setType(initialTx.type);
     }
 
     // сумма
     if (initialTx.amount !== undefined && initialTx.amount !== null) {
       const parsed = typeof initialTx.amount === "number"
         ? initialTx.amount
-        : parseFloat(String(initialTx.amount))
+        : parseFloat(String(initialTx.amount));
       if (isFinite(parsed)) {
         const dec =
           (typeof rawCode === "string" && rawCode.trim())
             ? (DECIMALS_BY_CODE[rawCode.trim().toUpperCase()] ?? 2)
-            : (currency.decimals ?? 2)
-        setAmount(parsed.toFixed(dec))
+            : (currency.decimals ?? 2);
+        setAmount(parsed.toFixed(dec));
       }
     }
 
-    // перевод: берём нормальные поля с бэка, иначе фолбэки
+    // перевод: берём нормальные поля с бэка, иначе фоллбэки
     if (initialTx.type === "transfer") {
       const pb = Number(
         initialTx.transfer_from ??
         initialTx.paidBy ??
         user?.id
-      )
+      );
       const tu = Number(
         Array.isArray(initialTx.transfer_to) ? initialTx.transfer_to[0] : (initialTx.toUser ?? undefined)
-      )
-      if (isFinite(pb)) setPaidBy(pb)
-      if (isFinite(tu)) setToUser(tu)
+      );
+      if (isFinite(pb)) setPaidBy(pb);
+      if (isFinite(tu)) setToUser(tu);
 
-      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : ""
-      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : ""
+      const pbName = membersMap.get(pb) ? nameFromMember(membersMap.get(pb)!) : "";
+      const tuName = membersMap.get(tu) ? nameFromMember(membersMap.get(tu)!) : "";
 
-      if (pbName) setPaidByName(pbName)
-      if (tuName) setToUserName(tuName)
+      if (pbName) setPaidByName(pbName);
+      if (tuName) setToUserName(tuName);
 
-      const pbAv = membersMap.get(pb)?.photo_url
-      const tuAv = membersMap.get(tu)?.photo_url
-      if (pbAv) setPaidByAvatar(pbAv)
-      if (tuAv) setToUserAvatar(tuAv)
+      const pbAv = membersMap.get(pb)?.photo_url;
+      const tuAv = membersMap.get(tu)?.photo_url;
+      if (pbAv) setPaidByAvatar(pbAv);
+      if (tuAv) setToUserAvatar(tuAv);
     }
 
-    if (typeof initialTx.comment === "string") setComment(initialTx.comment)
+    if (typeof initialTx.comment === "string") setComment(initialTx.comment);
 
-    prefilledRef.current = true
-  }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId])
+    prefilledRef.current = true;
+  }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
 
   /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ПОСЛЕ ЗАГРУЗКИ membersMap ===== */
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
 
     if (paidBy && !paidByName) {
-      const m = membersMap.get(paidBy)
+      const m = membersMap.get(paidBy);
       if (m) {
-        setPaidByName(nameFromMember(m))
-        setPaidByAvatar(m.photo_url || undefined)
+        setPaidByName(nameFromMember(m));
+        setPaidByAvatar(m.photo_url || undefined);
       }
     }
     if (toUser && !toUserName) {
-      const m = membersMap.get(toUser)
+      const m = membersMap.get(toUser);
       if (m) {
-        setToUserName(nameFromMember(m))
-        setToUserAvatar(m.photo_url || undefined)
+        setToUserName(nameFromMember(m));
+        setToUserAvatar(m.photo_url || undefined);
       }
     }
-  }, [open, membersMap, paidBy, toUser, paidByName, toUserName])
+  }, [open, membersMap, paidBy, toUser, paidByName, toUserName]);
 
-  if (!open) return null
+  if (!open) return null;
 
-  const mustPickGroupFirst = !selectedGroupId
-  const groupLocked = Boolean(defaultGroupId)
+  const mustPickGroupFirst = !selectedGroupId;
+  const groupLocked = Boolean(defaultGroupId);
 
-  const openPayerPicker = () => { setGroupModal(false); setRecipientOpen(false); setSplitOpen(false); setPayerOpen(true) }
-  const openRecipientPicker = () => { setGroupModal(false); setPayerOpen(false); setSplitOpen(false); setRecipientOpen(true) }
+  const openPayerPicker = () => { setGroupModal(false); setRecipientOpen(false); setSplitOpen(false); setPayerOpen(true); };
+  const openRecipientPicker = () => { setGroupModal(false); setPayerOpen(false); setSplitOpen(false); setRecipientOpen(true); };
 
-  const paidByLabel = t("tx_modal.paid_by_label")
-  const owesLabel = t("tx_modal.owes_label")
-  const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From"
-  const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To"
+  const paidByLabel = t("tx_modal.paid_by_label");
+  const owesLabel = t("tx_modal.owes_label");
+  const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
+  const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
 
   // ---- подсказка под правой половиной (чек) ----
   const receiptHint = (() => {
     if (receipt.displayUrl) {
       return (receipt.displayIsPdf || originalIsPdf)
         ? t("tx_modal.receipt_attached_pdf")
-        : t("tx_modal.receipt_attached_image")
+        : t("tx_modal.receipt_attached_image");
     }
-    return t("tx_modal.receipt_not_attached")
-  })()
+    return t("tx_modal.receipt_not_attached");
+  })();
+
+  const hasReceiptNow = Boolean(receipt.displayUrl) && !receipt.removeMarked;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
@@ -980,86 +1003,92 @@ export default function CreateTransactionModal({
                           />
                         </div>
 
-                        {/* правая половина: книжное окно чека + иконки справа, подпись под правой колонкой */}
-                        <div className="flex flex-col items-end">
-                          <div className="w-full flex items-center justify-end gap-2">
-                            {/* «книжное» превью 3:4, слегка сдвинуто влево */}
-                            <button
-                              type="button"
-                              className="h-[68px] w-[51px] sm:w-[56px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center overflow-hidden aspect-[3/4] -ml-1"
-                              onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())}
-                              title={receipt.displayUrl ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
-                              aria-label={receipt.displayUrl ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
-                            >
-                              {receipt.displayUrl ? (
-                                thumbIsPdf ? (
-                                  <span className="text-[11px] opacity-80">PDF</span>
-                                ) : (
-                                  <img
-                                    src={receipt.displayUrl}
-                                    alt={t("tx_modal.receipt_photo_alt") || ""}
-                                    className="w-full h-full object-cover"
-                                  />
-                                )
+                        {/* правая половина: превью + кнопки справа */}
+                        <div className="flex items-center justify-end gap-2">
+                          {/* квадрат 51x51 — при пустом превью кликается как скрепка */}
+                          <button
+                            type="button"
+                            className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center overflow-hidden"
+                            onClick={() => (hasReceiptNow ? setPreviewOpen(true) : pickFile())}
+                            title={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
+                            aria-label={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
+                          >
+                            {hasReceiptNow ? (
+                              thumbIsPdf ? (
+                                <span className="text-[11px] opacity-80">PDF</span>
                               ) : (
-                                <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center">
-                                  {t("tx_modal.receipt_photo_label")}
-                                </span>
-                              )}
-                            </button>
-
-                            {/* Кнопки справа — в ряд */}
-                            {!receipt.displayUrl ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={pickFile}
-                                  className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                  title={t("tx_modal.receipt_attach") || ""}
-                                  aria-label={t("tx_modal.receipt_attach") || ""}
-                                >
-                                  <Paperclip size={16} />
-                                </button>
-                                {/* камера — отдельная кнопка */}
-                                <button
-                                  type="button"
-                                  onClick={openCamera}
-                                  className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                  title={t("tx_modal.receipt_attach") || ""}
-                                  aria-label={t("tx_modal.receipt_attach") || ""}
-                                >
-                                  <Camera size={16} />
-                                </button>
-                              </>
+                                <img
+                                  src={receipt.displayUrl!}
+                                  alt={t("tx_modal.receipt_photo_alt") || ""}
+                                  className="max-h-full max-w-full object-contain"
+                                />
+                              )
                             ) : (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={onReplace}
-                                  className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                                  title={t("tx_modal.receipt_replace") || ""}
-                                  aria-label={t("tx_modal.receipt_replace") || ""}
-                                >
-                                  <RefreshCcw size={16} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={onRemove}
-                                  className="px-2 h-9 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
-                                  title={t("tx_modal.receipt_remove") || ""}
-                                  aria-label={t("tx_modal.receipt_remove") || ""}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
+                              <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center">
+                                {t("tx_modal.receipt_photo_label")}
+                              </span>
                             )}
-                          </div>
+                          </button>
 
-                          {/* подпись строго справа, под строкой */}
-                          <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
-                            {receiptHint}
-                          </div>
+                          {/* Кнопки справа — набор зависит от наличия файла */}
+                          {!hasReceiptNow ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={pickFile}
+                                className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("tx_modal.receipt_attach") || ""}
+                                aria-label={t("tx_modal.receipt_attach") || ""}
+                              >
+                                <Paperclip size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={takePhoto}
+                                className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("tx_modal.take_photo") || "Сделать фото"}
+                                aria-label={t("tx_modal.take_photo") || "Сделать фото"}
+                              >
+                                <Camera size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={onReplace}
+                                className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("tx_modal.receipt_replace") || ""}
+                                aria-label={t("tx_modal.receipt_replace") || ""}
+                              >
+                                <RefreshCcw size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={takePhoto}
+                                className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("tx_modal.take_photo") || "Сделать фото"}
+                                aria-label={t("tx_modal.take_photo") || "Сделать фото"}
+                              >
+                                <Camera size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={onRemove}
+                                className="px-2 h-9 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                                title={t("tx_modal.receipt_remove") || ""}
+                                aria-label={t("tx_modal.receipt_remove") || ""}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
+                      </div>
+
+                      {/* подпись строго справа, под строкой */}
+                      <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
+                        {receiptHint}
                       </div>
 
                       {/* ошибки по сумме */}
@@ -1115,7 +1144,8 @@ export default function CreateTransactionModal({
                             ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
                             : (i18n.language || "en").startsWith("es")
                             ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
-                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)}
+                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
+                          }
                         </div>
 
                         {(showErrors && errors.category) && (
@@ -1164,8 +1194,8 @@ export default function CreateTransactionModal({
 
                           <button
                             type="button"
-                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true) }}
-                            className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg:white/5 transition"
+                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(false); setSplitOpen(true); }}
+                            className="min-w-0 inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition"
                           >
                             <span className="truncate">{t("tx_modal.split")}</span>
                             <strong className="truncate">
@@ -1274,7 +1304,7 @@ export default function CreateTransactionModal({
 
                           <button
                             type="button"
-                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(true); setSplitOpen(false) }}
+                            onClick={() => { setGroupModal(false); setPayerOpen(false); setRecipientOpen(true); setSplitOpen(false); }}
                             className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {toUser ? (
@@ -1398,7 +1428,7 @@ export default function CreateTransactionModal({
                         <button
                           type="button"
                           className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
-                          onClick={() => { setMoreOpen(false); void doSubmit("again") }}
+                          onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
                         </button>
@@ -1425,7 +1455,7 @@ export default function CreateTransactionModal({
         open={groupModal && !groupLocked}
         onClose={() => setGroupModal(false)}
         selectedId={selectedGroupId}
-        onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false) }}
+        onSelect={(g) => { setSelectedGroupId(g.id); setGroupModal(false); }}
       />
 
       {/* Выбор категории */}
@@ -1436,16 +1466,16 @@ export default function CreateTransactionModal({
         selectedId={categoryId}
         onSelect={(it) => {
           // @ts-ignore
-          const color = (it as any).color
+          const color = (it as any).color;
           // @ts-ignore
-          const icon = (it as any).icon
-          const raw = color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex
-          const hex6 = to6Hex(raw) ?? raw ?? null
-          setCategoryId((it as any).id)
-          setCategoryName((it as any).name)
-          setCategoryColor(hex6)
-          setCategoryIcon(icon ?? null)
-          setCategoryModal(false)
+          const icon = (it as any).icon;
+          const raw = color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
+          const hex6 = to6Hex(raw) ?? raw ?? null;
+          setCategoryId((it as any).id);
+          setCategoryName((it as any).name);
+          setCategoryColor(hex6);
+          setCategoryIcon(icon ?? null);
+          setCategoryModal(false);
         }}
         closeOnSelect
       />
@@ -1457,21 +1487,21 @@ export default function CreateTransactionModal({
         groupId={selectedGroupId || 0}
         selectedUserId={paidBy}
         onSelect={(u) => {
-          setPaidBy(u.id)
-          setPaidByName(u.name || "")
+          setPaidBy(u.id);
+          setPaidByName(u.name || "");
           // @ts-ignore
-          setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined)
+          setPaidByAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
           // Автосплит equal со всеми участниками
           setSplitData((prev) => {
-            const alreadySet = !!prev && prev.participants && prev.participants.length > 0
-            if (alreadySet) return prev
+            const alreadySet = !!prev && prev.participants && prev.participants.length > 0;
+            if (alreadySet) return prev;
             const participants = Array.from(membersMap.values()).map((m) => ({
               user_id: m.id,
               name: (nameFromMember(m).split(/\s+/)[0]) || "",
               avatar_url: m.photo_url || undefined,
-            }))
-            return { type: "equal", participants } as SplitSelection
-          })
+            }));
+            return { type: "equal", participants } as SplitSelection;
+          });
         }}
         closeOnSelect
       />
@@ -1483,10 +1513,10 @@ export default function CreateTransactionModal({
         groupId={selectedGroupId || 0}
         selectedUserId={toUser}
         onSelect={(u) => {
-          setToUser(u.id)
-          setToUserName(u.name || "")
+          setToUser(u.id);
+          setToUserName(u.name || "");
           // @ts-ignore
-          setToUserAvatar(u.avatar_url || (u as any)?.photo_url || undefined)
+          setToUserAvatar(u.avatar_url || (u as any)?.photo_url || undefined);
         }}
         closeOnSelect
       />
@@ -1500,7 +1530,7 @@ export default function CreateTransactionModal({
         currency={{ code: currency.code || "", symbol: currency.code || "", decimals: currency.decimals }}
         initial={splitData || { type: "equal", participants: [] as any[] }}
         paidById={paidBy}
-        onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false) }}
+        onSave={(sel) => { setSplitType(sel.type); setSplitData(sel); setSplitOpen(false); }}
       />
 
       {/* Выбор валюты */}
@@ -1509,13 +1539,13 @@ export default function CreateTransactionModal({
         onClose={() => setCurrencyModal(false)}
         selectedCode={currency.code || "USD"}
         onSelect={(c: CurrencyItem) => {
-          setCurrencyCode(c.code || "USD")
-          currencyLockedRef.current = true // пользователь явно выбрал валюту — фиксируем
-          setCurrencyModal(false)
+          setCurrencyCode(c.code || "USD");
+          currencyLockedRef.current = true; // пользователь явно выбрал валюту — фиксируем
+          setCurrencyModal(false);
         }}
       />
 
-      {/* скрытые input'ы: файл и камера */}
+      {/* скрытые input'ы для файлов */}
       <input
         ref={fileInputRef}
         type="file"
@@ -1532,11 +1562,11 @@ export default function CreateTransactionModal({
         onChange={onFileChange}
       />
     </div>
-  )
+  );
 }
 
 /* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках --- */
-const style = typeof document !== "undefined" ? document.createElement("style") : null
+const style = typeof document !== "undefined" ? document.createElement("style") : null;
 if (style) {
   style.innerHTML = `
   .date-input-clean {
@@ -1554,6 +1584,6 @@ if (style) {
   }
   /* для старых Edge/IE (не критично) */
   .date-input-clean::-ms-expand { display: none; }
-  `
-  document.head.appendChild(style)
+  `;
+  document.head.appendChild(style);
 }

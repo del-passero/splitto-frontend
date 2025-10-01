@@ -1,71 +1,170 @@
 // src/components/transactions/ReceiptPreviewModal.tsx
-import { X } from "lucide-react"
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 type Props = {
-  open: boolean
-  onClose: () => void
-  url: string | null
-  /** Необязательный флаг. Если не передан — определим по url. */
-  isPdf?: boolean
-}
+  open: boolean;
+  onClose: () => void;
+  /** Cсылка на файл: может быть https://, blob:, data:; для PDF желательно абсолютный/blob URL */
+  url?: string | null;
+  /** Подсказываем модалке, что это PDF (для blob: часто невозможно определить по расширению) */
+  isPdf?: boolean;
+  /** Кастомный путь к pdf.js viewer, если он лежит не в /pdfjs/web/viewer.html */
+  pdfViewerPath?: string; // по умолчанию "/pdfjs/web/viewer.html"
+};
 
-export default function ReceiptPreviewModal({ open, onClose, url, isPdf }: Props) {
-  if (!open) return null
+const PAD = 24; // поля вокруг контента внутри окна
 
-  const pdf = isPdf ?? /\.pdf(\?|$)/i.test(url || "")
+export default function ReceiptPreviewModal({
+  open,
+  onClose,
+  url,
+  isPdf = false,
+  pdfViewerPath = "/pdfjs/web/viewer.html",
+}: Props) {
+  const overlayRef = useRef<HTMLDivElement>(null);
 
-  return (
-    <div className="fixed inset-0 z-[1400]">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+  // ==== закрытие по ESC и клику на фон ====
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const onOverlayMouseDown = (e: React.MouseEvent) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  if (!open) return null;
+
+  if (!url) {
+    return (
       <div
-        className="absolute inset-4 sm:inset-10 rounded-2xl bg-[var(--tg-card-bg,#111)] shadow-2xl p-3 flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        ref={overlayRef}
+        className="fixed inset-0 z-[1400] bg-black/70 flex items-center justify-center p-4"
+        onMouseDown={onOverlayMouseDown}
       >
-        <div className="flex items-center justify-end">
+        <div
+          className="relative max-w-[92vw] w-[440px] rounded-2xl bg-[var(--tg-card-bg,#111)] text-[var(--tg-text-color)] p-4 shadow-2xl"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--tg-accent-color)]/10 transition"
-            aria-label="Close"
+            className="absolute right-2 top-2 p-1 rounded-md hover:bg-white/10"
+            aria-label="Закрыть"
           >
-            <X className="w-5 h-5 text-[var(--tg-hint-color)]" />
+            <X size={18} />
           </button>
-        </div>
-
-        <div className="flex-1 overflow-auto flex items-center justify-center">
-          {url ? (
-            pdf ? (
-              <div className="w-full h-full flex flex-col">
-                <iframe
-                  src={url}
-                  title="receipt-pdf"
-                  className="w-full h-full rounded-lg"
-                />
-                <div className="text-[var(--tg-text-color)] text-sm px-2 mt-2 text-center">
-                  Если PDF не отображается, попробуйте{" "}
-                  <a href={url} target="_blank" rel="noreferrer" className="underline">
-                    открыть в новой вкладке
-                  </a>
-                </div>
-              </div>
-            ) : (
-              // «Книжное» превью 3:4 по центру модалки
-              <div className="w-[min(90vw,520px)] aspect-[3/4] rounded-lg overflow-hidden border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-bg-color,#fff)]">
-                <img
-                  src={url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
-              </div>
-            )
-          ) : (
-            <div className="text-[var(--tg-text-color)] opacity-70 text-sm">
-              Файл отсутствует
-            </div>
-          )}
+          <div className="text-[14px]">Файл не найден.</div>
         </div>
       </div>
+    );
+  }
+
+  if (isPdf) {
+    // ==== PDF через встроенный pdf.js viewer ====
+    // Работает и с blob: URL — pdf.js их понимает.
+    const viewerSrc = `${pdfViewerPath}?file=${encodeURIComponent(url)}`;
+
+    return (
+      <div
+        ref={overlayRef}
+        className="fixed inset-0 z-[1400] bg-black/80 p-0 md:p-2"
+        onMouseDown={onOverlayMouseDown}
+      >
+        <div
+          className="relative w-full h-full md:rounded-2xl overflow-hidden bg-black"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white"
+            aria-label="Закрыть"
+          >
+            <X size={18} />
+          </button>
+
+          <iframe
+            title="PDF Preview"
+            src={viewerSrc}
+            className="w-full h-full block bg-black"
+            // на случай CSP/iframe-ограничений дадим понятный фолбэк
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ==== IMAGE PREVIEW ====
+  // Задача: показываем в "натуральном размере", но ограничиваем окном.
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({
+    w: typeof window !== "undefined" ? window.innerWidth : 0,
+    h: typeof window !== "undefined" ? window.innerHeight : 0,
+  });
+
+  useLayoutEffect(() => {
+    const onResize = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setNatural({ w: img.naturalWidth, h: img.naturalHeight });
+  };
+
+  const box = useMemo(() => {
+    // пока не знаем natural size — занимаем до 90vh/90vw
+    const vw = viewport.w;
+    const vh = viewport.h;
+    const maxW = Math.max(0, vw - PAD * 2);
+    const maxH = Math.max(0, vh - PAD * 2);
+
+    if (!natural) return { w: Math.min(520, maxW), h: Math.min(520, maxH) };
+
+    const scale = Math.min(1, maxW / natural.w, maxH / natural.h);
+    return {
+      w: Math.max(0, Math.floor(natural.w * scale)),
+      h: Math.max(0, Math.floor(natural.h * scale)),
+    };
+  }, [natural, viewport]);
+
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-[1400] bg-black/80 flex items-center justify-center p-0"
+      onMouseDown={onOverlayMouseDown}
+    >
+      <div
+        className="relative rounded-2xl overflow-hidden bg-[var(--tg-card-bg,#111)]"
+        style={{ width: box.w, height: box.h }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-2 top-2 z-10 p-1.5 rounded-full bg-black/50 hover:bg-black/70 text-white"
+          aria-label="Закрыть"
+        >
+          <X size={18} />
+        </button>
+
+        {/* Само изображение: object-contain + чёткая подгонка под контейнер */}
+        <img
+          src={url}
+          alt="Receipt"
+          onLoad={onImgLoad}
+          className="w-full h-full block object-contain select-none"
+          draggable={false}
+        />
+      </div>
     </div>
-  )
+  );
 }
