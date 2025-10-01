@@ -181,9 +181,7 @@ const nameFromMember = (m?: MemberMini) => {
 function normalizeUploadReceiptResponse(uploaded: any): { url: string | null; previewUrl: string | null } {
   if (!uploaded) return { url: null, previewUrl: null };
 
-  // Возможные форматы
   const directString = typeof uploaded === "string" ? uploaded : null;
-
   const obj = typeof uploaded === "object" && uploaded ? uploaded : (directString ? { url: directString } : null);
   if (!obj) return { url: null, previewUrl: null };
 
@@ -323,13 +321,12 @@ export default function CreateTransactionModal({
   );
 
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
-  // Флаг-замок: если валюта установлена из транзакции (edit) или пользователем — не перезаписывать валютой группы
   const currencyLockedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (currencyLockedRef.current) return; // не трогаем валюту, если она уже «зафиксирована»
+      if (currencyLockedRef.current) return;
       const code = resolveCurrencyCodeFromGroup(selectedGroup);
       if (code) {
         if (!cancelled) setCurrencyCode(code);
@@ -354,7 +351,6 @@ export default function CreateTransactionModal({
     return () => { cancelled = true; };
   }, [selectedGroup, selectedGroupId]);
 
-  // При смене валюты — аккуратно нормализуем введённую сумму под новые decimals
   useEffect(() => {
     const dec = currencyCode ? (DECIMALS_BY_CODE[currencyCode] ?? 2) : 2;
     if (!amount) return;
@@ -588,7 +584,7 @@ export default function CreateTransactionModal({
 
   /* ===== ЧЕК: стейджер + предпросмотр ===== */
   const fileInputRef = useRef<HTMLInputElement>(null);      // скрепка (image/pdf)
-  const cameraInputRef = useRef<HTMLInputElement>(null);    // камера (только image, задняя)
+  const cameraInputRef = useRef<HTMLInputElement>(null);    // фолбэк-камера (только image, задняя)
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const receipt = useReceiptStager({
@@ -605,7 +601,6 @@ export default function CreateTransactionModal({
   });
 
   const pickFile = () => fileInputRef.current?.click();
-  const takePhoto = () => cameraInputRef.current?.click();
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -614,18 +609,20 @@ export default function CreateTransactionModal({
   };
 
   const onReplace = () => pickFile();
+
+  // ВАЖНО: не сбрасываем markDeleted
   const onRemove = () => {
     if (receipt.serverUrl) {
-      // в режиме редактирования можно пометить к удалению
-      receipt.markDeleted();
+      receipt.markDeleted();             // пометили к удалению (стейджер сам чистит локальное превью)
+      receipt.setServerUrl(null);        // сразу прячем серверный превью/урл из UI
+      receipt.setServerPreviewUrl(null);
+    } else {
+      // если был только локальный файл — просто очищаем
+      receipt.clearAll();
     }
-    receipt.clearAll();
-    receipt.setServerUrl(null);
-    receipt.setServerPreviewUrl(null);
   };
 
-  // Для мини-превью и модалки: если есть preview у PDF, мини-квадрат может быть картинкой,
-  // но модалка должна открывать ИМЕННО PDF (оригинальный serverUrl).
+  // Для мини-превью и модалки
   const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
   const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
   const previewModalUrl = useMemo(() => {
@@ -638,6 +635,82 @@ export default function CreateTransactionModal({
     if (originalIsPdf) return true;
     return false;
   }, [receipt.displayIsPdf, originalIsPdf]);
+
+  /* ====== КАМЕРА: нормальный запуск через getUserMedia с фолбэком ====== */
+  const [camOpen, setCamOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [camError, setCamError] = useState<string | null>(null);
+
+  const startCamera = async () => {
+    setCamError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        // фолбэк — системный файл-пикер с capture
+        cameraInputRef.current?.click();
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCamOpen(true);
+      // srcObject привяжем в эффекте ниже
+    } catch (e: any) {
+      setCamError("Не удалось открыть камеру");
+      // фолбэк
+      cameraInputRef.current?.click();
+    }
+  };
+
+  useEffect(() => {
+    if (!camOpen) return;
+    const v = videoRef.current;
+    if (v && streamRef.current) {
+      (v as any).srcObject = streamRef.current;
+      v.play?.().catch(() => {});
+    }
+    return () => {
+      // при закрытии останавливаем стрим
+      const s = streamRef.current;
+      if (s) s.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, [camOpen]);
+
+  const takePhoto = async () => {
+    // пробуем нормальную камеру, если провал — откроется фолбэк-инпут
+    await startCamera();
+  };
+
+  const confirmShot = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const canvas = document.createElement("canvas");
+    const w = v.videoWidth || 1280;
+    const h = v.videoHeight || 720;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(v, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (blob) {
+      const file = new File([blob], `receipt_${Date.now()}.jpg`, { type: "image/jpeg" });
+      receipt.setStagedFile(file);
+      receipt.unmarkDeleted();
+    }
+    setCamOpen(false);
+  };
+
+  const cancelShot = () => {
+    setCamOpen(false);
+  };
 
   const doSubmit = async (modeAfter: "close" | "again") => {
     if (saving) return;
@@ -691,10 +764,9 @@ export default function CreateTransactionModal({
         return;
       }
 
-      // ----- чек: если пользователь удалил старый и НЕ выбрал новый файл ----- //
+      // ----- чек: удаление (если пометили и нет нового файла) ----- //
       if (receipt.removeMarked && !receipt.stagedFile) {
         try {
-          // пробуем явный DELETE; если на бэке его нет — фолбэк на очистку url
           try {
             await deleteTransactionReceipt(saved.id);
           } catch {
@@ -707,7 +779,7 @@ export default function CreateTransactionModal({
         }
       }
 
-      // ----- чек: если есть локально выбранный файл — грузим и сохраняем ссылку в транзакцию ----- //
+      // ----- чек: загрузка нового файла ----- //
       let savedForCallback: TransactionOut = saved;
       if (receipt.stagedFile) {
         try {
@@ -720,21 +792,19 @@ export default function CreateTransactionModal({
             if (previewUrl) receipt.setServerPreviewUrl(previewUrl);
             receipt.clearAll();
             receipt.unmarkDeleted();
-            // чтобы карточка сразу показала «скрепку», пробрасываем в onCreated уже обновлённую транзакцию
             savedForCallback = { ...saved, receipt_url: url, receipt_preview_url: previewUrl ?? undefined } as any;
           }
         } catch {
-          // не блокируем создание/сохранение из-за фейла аплоада
+          // не блокируем создание из-за фейла аплоада
         }
       }
 
-      // колбэк для списка — уже после всех receipt-операций
+      // колбэк для списка
       if (!initialTx && savedForCallback && onCreated) onCreated(savedForCallback);
 
       if (modeAfter === "close") onOpenChange(false);
       else resetForNew();
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("[CreateTransactionModal] submit error", e);
     } finally {
       setSaving(false);
@@ -771,12 +841,14 @@ export default function CreateTransactionModal({
     setSplitOpen(false);
     setSaving(false);
     setCurrencyCode(null);
-    currencyLockedRef.current = false; // сбрасываем замок
+    currencyLockedRef.current = false;
     // чек
     receipt.clearAll();
     receipt.setServerUrl(null);
     receipt.setServerPreviewUrl(null);
     receipt.unmarkDeleted();
+    // камера
+    setCamOpen(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultGroupId]);
 
@@ -787,11 +859,9 @@ export default function CreateTransactionModal({
     if (prefilledRef.current) return;
     if (!initialTx) return;
 
-    // группа
     const gid = Number(initialTx.group_id ?? initialTx.groupId ?? defaultGroupId);
     if (gid) setSelectedGroupId(gid);
 
-    // валюта из транзакции (фиксируем, чтобы не затиралось валютой группы)
     const rawCode = (initialTx.currency_code || initialTx.currency) as string | undefined;
     if (typeof rawCode === "string" && rawCode.trim()) {
       const codeUp = rawCode.trim().toUpperCase();
@@ -799,12 +869,10 @@ export default function CreateTransactionModal({
       currencyLockedRef.current = true;
     }
 
-    // тип
     if (initialTx.type === "transfer" || initialTx.type === "expense") {
       setType(initialTx.type);
     }
 
-    // сумма
     if (initialTx.amount !== undefined && initialTx.amount !== null) {
       const parsed = typeof initialTx.amount === "number"
         ? initialTx.amount
@@ -818,7 +886,6 @@ export default function CreateTransactionModal({
       }
     }
 
-    // перевод: берём нормальные поля с бэка, иначе фоллбэки
     if (initialTx.type === "transfer") {
       const pb = Number(
         initialTx.transfer_from ??
@@ -878,11 +945,9 @@ export default function CreateTransactionModal({
 
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
   const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
 
-  // ---- подсказка под правой половиной (чек) ----
   const receiptHint = (() => {
     if (receipt.displayUrl) {
       return (receipt.displayIsPdf || originalIsPdf)
@@ -980,7 +1045,7 @@ export default function CreateTransactionModal({
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
                       <div className="grid grid-cols-2 gap-1 mt-0">
-                        {/* левая половина: валюта + сумма (строго до середины) */}
+                        {/* левая половина: валюта + сумма */}
                         <div className="min-w-0 flex items-center gap-2">
                           {currency.code && (
                             <button
@@ -1087,7 +1152,7 @@ export default function CreateTransactionModal({
                         </div>
                       </div>
 
-                      {/* подпись строго справа, под строкой */}
+                      {/* подпись */}
                       <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
                         {receiptHint}
                       </div>
@@ -1299,7 +1364,7 @@ export default function CreateTransactionModal({
                                 </span>
                               </>
                             ) : (
-                              <span className="opacity-70 truncate">{(i18n.language || "ru").startsWith("ru") ? "Отправитель" : "From"}</span>
+                              <span className="opacity-70 truncate">{fromLabel}</span>
                             )}
                           </button>
 
@@ -1328,7 +1393,7 @@ export default function CreateTransactionModal({
                                 </span>
                               </>
                             ) : (
-                              <span className="opacity-70 truncate">{(i18n.language || "ru").startsWith("ru") ? "Получатель" : "To"}</span>
+                              <span className="opacity-70 truncate">{toLabel}</span>
                             )}
                           </button>
                         </div>
@@ -1342,7 +1407,7 @@ export default function CreateTransactionModal({
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                 )}
-                                <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : "From"}</strong>
+                                <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : fromLabel}</strong>
                               </span>
                               <span className="opacity-60">→</span>
                               <span className="inline-flex items-center gap-1 min-w-0 truncate">
@@ -1351,7 +1416,7 @@ export default function CreateTransactionModal({
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                 )}
-                                <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : "To"}</strong>
+                                <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
                               </span>
                               <span className="ml-auto shrink-0 opacity-80">
                                 {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
@@ -1449,8 +1514,7 @@ export default function CreateTransactionModal({
         onClose={() => setPreviewOpen(false)}
         url={previewModalUrl ?? null}
         isPdf={previewModalIsPdf}
-        /* КРИТИЧНО: для локального PDF передаём сам файл — модалка сконвертирует в data:URL */
-        localFile={receipt.stagedIsPdf ? receipt.stagedFile : null}
+        localFile={receipt.stagedIsPdf ? (receipt.stagedFile as File) : null}
       />
 
       {/* Выбор группы */}
@@ -1467,19 +1531,7 @@ export default function CreateTransactionModal({
         onClose={() => setCategoryModal(false)}
         groupId={selectedGroupId || 0}
         selectedId={categoryId}
-        onSelect={(it) => {
-          // @ts-ignore
-          const color = (it as any).color;
-          // @ts-ignore
-          const icon = (it as any).icon;
-          const raw = color ?? (it as any).bg_color ?? (it as any).hex ?? (it as any).background_color ?? (it as any).color_hex;
-          const hex6 = to6Hex(raw) ?? raw ?? null;
-          setCategoryId((it as any).id);
-          setCategoryName((it as any).name);
-          setCategoryColor(hex6);
-          setCategoryIcon(icon ?? null);
-          setCategoryModal(false);
-        }}
+        onSelect={handleSelectCategory}
         closeOnSelect
       />
 
@@ -1543,7 +1595,7 @@ export default function CreateTransactionModal({
         selectedCode={currency.code || "USD"}
         onSelect={(c: CurrencyItem) => {
           setCurrencyCode(c.code || "USD");
-          currencyLockedRef.current = true; // пользователь явно выбрал валюту — фиксируем
+          currencyLockedRef.current = true;
           setCurrencyModal(false);
         }}
       />
@@ -1552,20 +1604,52 @@ export default function CreateTransactionModal({
       <input
         ref={fileInputRef}
         type="file"
-        /* ВАЖНО: разрешаем и images, и PDF; добавил .pdf для некоторых браузеров */
-        accept="image/*,.pdf,application/pdf"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={onFileChange}
       />
       <input
         ref={cameraInputRef}
         type="file"
-        /* ВАЖНО: задняя камера по capture="environment" (в Telegram WebView/Chrome обычно ок) */
         accept="image/*"
         capture="environment"
         className="hidden"
         onChange={onFileChange}
       />
+
+      {/* Оверлей камеры (getUserMedia) */}
+      {camOpen && (
+        <div className="fixed inset-0 z-[1100] bg-black/90 flex flex-col">
+          <div className="flex items-center justify-between px-3 py-2">
+            <button
+              type="button"
+              onClick={cancelShot}
+              className="px-3 py-1.5 rounded-md bg-white/10 text-white"
+            >
+              {t("cancel")}
+            </button>
+            <div className="text-white/80 text-sm">{camError || ""}</div>
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              style={{ maxWidth: "100vw", maxHeight: "80vh" }}
+            />
+          </div>
+          <div className="p-3">
+            <button
+              type="button"
+              onClick={confirmShot}
+              className="w-full h-11 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
+            >
+              {t("tx_modal.take_photo") || "Сделать фото"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1580,14 +1664,12 @@ if (style) {
     -moz-appearance: textfield;
     background-clip: padding-box;
   }
-  /* скрыть webkit-индикатор календаря/стрелки */
   .date-input-clean::-webkit-calendar-picker-indicator,
   .date-input-clean::-webkit-clear-button,
   .date-input-clean::-webkit-inner-spin-button {
     display: none;
     -webkit-appearance: none;
   }
-  /* для старых Edge/IE (не критично) */
   .date-input-clean::-ms-expand { display: none; }
   `;
   document.head.appendChild(style);

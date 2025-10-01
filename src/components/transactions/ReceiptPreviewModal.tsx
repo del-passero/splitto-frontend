@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 /**
  * Предпросмотр чека:
  *  • Картинка — показываем <img> (object-fit: contain).
- *  • PDF c сервера — iframe с /pdfjs/web/viewer.html?file=<url-encoded>.
+ *  • PDF с сервера — iframe с /pdfjs/web/viewer.html?file=<url-encoded>.
  *  • Локальный несохранённый PDF — читаем File в data:URL и только затем отдаём viewer'у.
  */
 type Props = {
@@ -13,7 +13,7 @@ type Props = {
   onClose: () => void;
 
   /** URL того, что показываем (из стейджера: displayUrl / serverUrl) */
-  url: string | null;
+  url?: string | null; // мягче к вызовам, где могут передать undefined
 
   /** Признак PDF для отображения */
   isPdf: boolean;
@@ -28,7 +28,7 @@ type Props = {
 export default function ReceiptPreviewModal({
   open,
   onClose,
-  url,
+  url = null,
   isPdf,
   localFile,
   alt = "",
@@ -67,15 +67,14 @@ export default function ReceiptPreviewModal({
     };
   }, [open, isPdf, localFile]);
 
-  const viewerSrc = useMemo(() => {
+  // Если прилетел относительный URL, pdf.js все равно откроет (один и тот же origin).
+  const encodedTarget = useMemo(() => {
     if (!isPdf) return "";
-    if (localFile) {
-      // для локального файла отдаём data:URL
-      return `/pdfjs/web/viewer.html?file=${encodeURIComponent(dataUrl || "")}`;
-    }
-    // серверный абсолютный/относительный URL
-    return `/pdfjs/web/viewer.html?file=${encodeURIComponent(url || "")}`;
+    if (localFile) return encodeURIComponent(dataUrl || "");
+    return encodeURIComponent(url || "");
   }, [isPdf, localFile, dataUrl, url]);
+
+  const viewerSrc = isPdf ? `/pdfjs/web/viewer.html?file=${encodedTarget}` : "";
 
   if (!open) return null;
 
