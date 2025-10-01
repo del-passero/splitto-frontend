@@ -76,6 +76,22 @@ function isImageFile(file: File | null): boolean {
   return t.startsWith("image/")
 }
 
+// --- ДОБАВЛЕНО: эвристики для "немых" PDF из Android/WebView/Telegram ---
+async function looksLikePdfByMagic(file: File): Promise<boolean> {
+  try {
+    const head = await file.slice(0, 5).text() // "%PDF-"
+    return head.startsWith("%PDF-")
+  } catch {
+    return false
+  }
+}
+function hasExtension(name?: string | null) {
+  return !!(name && /\.[a-z0-9]+$/i.test(name))
+}
+function withFixedMeta(file: File, name: string, type: string): File {
+  return new File([file], name, { type })
+}
+
 export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStagerReturn {
   // разруливаем входные поля
   const initialServerUrl = opts?.initialServerUrl ?? opts?.initialUrl ?? null
@@ -136,10 +152,8 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
 
   // pdf считаем так:
   // - если локальный файл — по его типу
-  // - если серверное превью есть — это почти всегда картинка => не pdf
-  // - иначе:
-  //    а) если бэк прислал явный флаг is_pdf — по нему
-  //    б) либо смотрим на расширение оригинального serverUrl
+  // - если серверное превью есть — это почти всегда картинка => не pdf (если бэк явно не пометил)
+  // - иначе: либо флаг из data, либо расширение serverUrl
   const displayIsPdf = useMemo(() => {
     if (stagedPreview) return stagedIsPdf
     if (serverPreviewUrl) {
@@ -166,7 +180,6 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
   const markDeleted = () => {
     setError(null)
     setRemoveMarked(true)
-    // локально выбранный файл теряем — аналогично аватару
     _setStagedFile(null)
     if (stagedPreview?.startsWith("blob:")) {
       try { URL.revokeObjectURL(stagedPreview) } catch {}
@@ -176,7 +189,7 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
   }
   const unmarkDeleted = () => setRemoveMarked(false)
 
-  // Обёртка над сеттером со сжатием «как у аватаров»
+  // Обёртка над сеттером со сжатием и «лечением» PDF-метаданных
   const setStagedFile = (f: File | null) => {
     setError(null)
 
@@ -188,36 +201,51 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
     // Если выбираем новый файл — снять отметку «удалить»
     setRemoveMarked(false)
 
-    // PDF не трогаем
-    if (isPdfFile(f)) {
-      _setStagedFile(f)
-      return
-    }
-
-    // Если это не изображение — просто прокинем как есть
-    if (!isImageFile(f)) {
-      _setStagedFile(f)
-      return
-    }
-
-    // Изображение: попробуем сжать/сконвертировать
-    setBusy(true)
     ;(async () => {
+      setBusy(true)
       try {
-        const useOriginal = f.size <= SIZE_SKIP_BYTES
+        let file = f
+
+        // Если файл "немой" (без type и без расширения) — пробуем определить PDF по сигнатуре
+        const quickPdf = isPdfFile(file)
+        const quickImg = isImageFile(file)
+        if (!quickPdf && !quickImg && !hasExtension(file.name || "") && !file.type) {
+          if (await looksLikePdfByMagic(file)) {
+            file = withFixedMeta(file, "receipt.pdf", "application/pdf")
+          }
+        }
+
+        const nowPdf = isPdfFile(file)
+        const nowImg = isImageFile(file)
+
+        if (nowPdf) {
+          _setStagedFile(file)
+          setStagedIsPdf(true)
+          return
+        }
+
+        if (!nowImg) {
+          _setStagedFile(file)
+          setStagedIsPdf(false)
+          return
+        }
+
+        // Изображение: попробуем сжать/сконвертировать
+        const useOriginal = file.size <= SIZE_SKIP_BYTES
         const processed = useOriginal
-          ? f
-          : await compressImage(f, {
+          ? file
+          : await compressImage(file, {
               maxSide: RECEIPT_MAX_DIM,
               quality: RECEIPT_QUALITY,
               mime: "image/jpeg",
               targetBytes: RECEIPT_TARGET_BYTES,
             })
 
-        _setStagedFile(processed || f)
+        _setStagedFile(processed || file)
+        setStagedIsPdf(false)
       } catch {
-        // Без ошибок локализации — просто используем оригинал
         _setStagedFile(f)
+        setStagedIsPdf(false)
       } finally {
         setBusy(false)
       }
@@ -251,7 +279,7 @@ export function useReceiptStager(opts?: UseReceiptStagerOptions): UseReceiptStag
     error,
 
     // алиасы для обратной совместимости
-    file: null as any,           // заменим геттером ниже
+    file: null as any,
     setFile: null as any,
     existingUrl: null as any,
     previewUrl: null as any,

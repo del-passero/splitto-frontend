@@ -694,7 +694,7 @@ export default function CreateTransactionModal({
       // ----- чек: если пользователь удалил старый и НЕ выбрал новый файл ----- //
       if (receipt.removeMarked && !receipt.stagedFile) {
         try {
-          // пробуем явный DELETE; если на бэке его нет — фолбэк на очистку
+          // пробуем явный DELETE; если на бэке его нет — фолбэк на очистку url
           try {
             await deleteTransactionReceipt(saved.id);
           } catch {
@@ -724,11 +724,11 @@ export default function CreateTransactionModal({
             savedForCallback = { ...saved, receipt_url: url, receipt_preview_url: previewUrl ?? undefined } as any;
           }
         } catch {
-          // не блокируем создание из-за фейла аплоада
+          // не блокируем создание/сохранение из-за фейла аплоада
         }
       }
 
-      // колбэк для листа — уже после всех receipt-операций
+      // колбэк для списка — уже после всех receipt-операций
       if (!initialTx && savedForCallback && onCreated) onCreated(savedForCallback);
 
       if (modeAfter === "close") onOpenChange(false);
@@ -878,6 +878,7 @@ export default function CreateTransactionModal({
 
   const paidByLabel = t("tx_modal.paid_by_label");
   const owesLabel = t("tx_modal.owes_label");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
   const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
 
@@ -1298,7 +1299,7 @@ export default function CreateTransactionModal({
                                 </span>
                               </>
                             ) : (
-                              <span className="opacity-70 truncate">{fromLabel}</span>
+                              <span className="opacity-70 truncate">{(i18n.language || "ru").startsWith("ru") ? "Отправитель" : "From"}</span>
                             )}
                           </button>
 
@@ -1327,7 +1328,7 @@ export default function CreateTransactionModal({
                                 </span>
                               </>
                             ) : (
-                              <span className="opacity-70 truncate">{toLabel}</span>
+                              <span className="opacity-70 truncate">{(i18n.language || "ru").startsWith("ru") ? "Получатель" : "To"}</span>
                             )}
                           </button>
                         </div>
@@ -1341,7 +1342,7 @@ export default function CreateTransactionModal({
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                 )}
-                                <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : fromLabel}</strong>
+                                <strong className="truncate">{paidBy ? (firstNameOnly(paidByName) || t("not_specified")) : "From"}</strong>
                               </span>
                               <span className="opacity-60">→</span>
                               <span className="inline-flex items-center gap-1 min-w-0 truncate">
@@ -1350,7 +1351,7 @@ export default function CreateTransactionModal({
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-[var(--tg-link-color)] inline-block" />
                                 )}
-                                <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
+                                <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : "To"}</strong>
                               </span>
                               <span className="ml-auto shrink-0 opacity-80">
                                 {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
@@ -1448,6 +1449,8 @@ export default function CreateTransactionModal({
         onClose={() => setPreviewOpen(false)}
         url={previewModalUrl ?? null}
         isPdf={previewModalIsPdf}
+        /* КРИТИЧНО: для локального PDF передаём сам файл — модалка сконвертирует в data:URL */
+        localFile={receipt.stagedIsPdf ? receipt.stagedFile : null}
       />
 
       {/* Выбор группы */}
@@ -1549,13 +1552,15 @@ export default function CreateTransactionModal({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf"
+        /* ВАЖНО: разрешаем и images, и PDF; добавил .pdf для некоторых браузеров */
+        accept="image/*,.pdf,application/pdf"
         className="hidden"
         onChange={onFileChange}
       />
       <input
         ref={cameraInputRef}
         type="file"
+        /* ВАЖНО: задняя камера по capture="environment" (в Telegram WebView/Chrome обычно ок) */
         accept="image/*"
         capture="environment"
         className="hidden"

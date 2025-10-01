@@ -1629,7 +1629,7 @@ export default function TransactionEditPage() {
         <ReceiptPreviewModal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
-          url={receipt.displayUrl || undefined}
+          url={receipt.displayUrl ?? null}
           isPdf={receipt.displayIsPdf}
         />
 
