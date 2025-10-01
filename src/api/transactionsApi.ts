@@ -152,20 +152,30 @@ export async function removeTransaction(transactionId: number): Promise<void> {
 
 /** Загрузить файл чека (image/* или PDF) и получить относительный URL */
 export async function uploadReceipt(file: File): Promise<{ url: string }> {
-  const fd = new FormData()
-  fd.append("file", file)
+  const fd = new FormData();
+
+  // Если имя без расширения — подставим понятное по типу
+  const hasExt = /\.[a-z0-9]+$/i.test(file.name || "");
+  const isPdf = (file.type || "").toLowerCase() === "application/pdf";
+  const safeName =
+    hasExt
+      ? (file.name || (isPdf ? "receipt.pdf" : "receipt.jpg"))
+      : (isPdf ? "receipt.pdf" : "receipt.jpg");
+
+  fd.append("file", file, safeName);
+
   const res = await fetch(makeUrl("/upload/receipt"), {
     method: "POST",
     credentials: "include",
     headers: {
       "x-telegram-initdata": getTelegramInitData(),
-      // ВАЖНО: не ставим Content-Type вручную — boundary выставит браузер
     },
     body: fd,
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return (await res.json()) as { url: string }
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { url: string };
 }
+
 
 /** Привязать чек к транзакции по URL (можно относительный "/media/receipts/...") */
 export async function setTransactionReceiptUrl(
