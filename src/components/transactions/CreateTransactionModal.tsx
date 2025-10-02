@@ -143,7 +143,7 @@ function asRgbaFallback(color: string, alpha: number) {
   if (color.startsWith("rgb(") || color.startsWith("rgba(")) {
     const nums = color.replace(/[rgba()]/g, "").split(",").map(s => s.trim());
     const [r, g, b] = nums;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    return `rgba(${r}, ${b ? b : nums[2]}, ${b ? b : nums[2]}, ${alpha})`; // safety
   }
   return color;
 }
@@ -177,7 +177,7 @@ const nameFromMember = (m?: MemberMini) => {
   return composed || m.username || m.name || `#${m.id}`;
 };
 
-/* ===== нормализация ответа аплоада (image/pdf) ===== */
+/* ===== нормализация ответа аплоада ===== */
 function normalizeUploadReceiptResponse(uploaded: any): { url: string | null; previewUrl: string | null } {
   if (!uploaded) return { url: null, previewUrl: null };
 
@@ -228,7 +228,7 @@ export default function CreateTransactionModal({
     setLocalGroups(groupsProp && groupsProp.length ? groupsProp : (groupsStoreItems ?? []));
   }, [groupsProp, groupsStoreItems]);
 
-  /* ===== FORM STATE (объявляем ДО эффектов) ===== */
+  /* ===== FORM STATE ===== */
   const [groupModal, setGroupModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(defaultGroupId);
   const [type, setType] = useState<TxType>("expense");
@@ -278,7 +278,7 @@ export default function CreateTransactionModal({
     }
   }, [open, groupsProp, groupsStoreItems, user, fetchGroups]);
 
-  /* ===== MEMBERS (для автосплита и аватарок) ===== */
+  /* ===== MEMBERS ===== */
   const [membersMap, setMembersMap] = useState<Map<number, MemberMini>>(() => new Map());
   useEffect(() => {
     let abort = false;
@@ -583,7 +583,7 @@ export default function CreateTransactionModal({
   }
 
   /* ===== ЧЕК: стейджер + предпросмотр ===== */
-  const fileInputRef = useRef<HTMLInputElement>(null);      // скрепка (image/pdf)
+  const fileInputRef = useRef<HTMLInputElement>(null);      // скрепка (только image/*)
   const cameraInputRef = useRef<HTMLInputElement>(null);    // фолбэк-камера (только image, задняя)
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -622,21 +622,10 @@ export default function CreateTransactionModal({
     }
   };
 
-  // Для мини-превью и модалки
-  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
-  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
-  const previewModalUrl = useMemo(() => {
-    if (receipt.displayIsPdf) return receipt.displayUrl;
-    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl;
-    return receipt.displayUrl;
-  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl]);
-  const previewModalIsPdf = useMemo(() => {
-    if (receipt.displayIsPdf) return true;
-    if (originalIsPdf) return true;
-    return false;
-  }, [receipt.displayIsPdf, originalIsPdf]);
+  // Для предпросмотра
+  const previewModalUrl = useMemo(() => receipt.displayUrl ?? receipt.serverUrl ?? null, [receipt.displayUrl, receipt.serverUrl]);
 
-  /* ====== КАМЕРА: нормальный запуск через getUserMedia с фолбэком ====== */
+  /* ====== КАМЕРА: getUserMedia с фолбэком ====== */
   const [camOpen, setCamOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -915,7 +904,7 @@ export default function CreateTransactionModal({
     prefilledRef.current = true;
   }, [open, initialTx, currency.decimals, user?.id, membersMap, defaultGroupId]);
 
-  /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ПОСЛЕ ЗАГРУЗКИ membersMap ===== */
+  /* ===== ДОЗАПОЛНЕНИЕ ИМЁН/АВАТАРОК ===== */
   useEffect(() => {
     if (!open) return;
 
@@ -948,14 +937,9 @@ export default function CreateTransactionModal({
   const fromLabel = (i18n.language || "ru").startsWith("ru") ? "Отправитель" : (i18n.language || "en").startsWith("es") ? "Remitente" : "From";
   const toLabel = (i18n.language || "ru").startsWith("ru") ? "Получатель" : (i18n.language || "en").startsWith("es") ? "Receptor" : "To";
 
-  const receiptHint = (() => {
-    if (receipt.displayUrl) {
-      return (receipt.displayIsPdf || originalIsPdf)
-        ? t("tx_modal.receipt_attached_pdf")
-        : t("tx_modal.receipt_attached_image");
-    }
-    return t("tx_modal.receipt_not_attached");
-  })();
+  const receiptHint = receipt.displayUrl
+    ? (t("tx_modal.receipt_attached_image") || "Прикреплено фото чека")
+    : (t("tx_modal.receipt_not_attached") || "Чек не прикреплён");
 
   const hasReceiptNow = Boolean(receipt.displayUrl) && !receipt.removeMarked;
 
@@ -1069,28 +1053,27 @@ export default function CreateTransactionModal({
                           />
                         </div>
 
-                        {/* правая половина: превью + кнопки справа */}
+                        {/* правая половина: портретное превью + кнопки справа */}
                         <div className="flex items-center justify-end gap-2">
-                          {/* квадрат 51x51 — при пустом превью кликается как скрепка */}
+                          {/* ПОРТРЕТНОЕ ПРЕВЬЮ 3:4 — кликается как скрепка при отсутствии изображения */}
                           <button
                             type="button"
-                            className="h-[51px] w-[51px] rounded-xl border border-[var(--tg-secondary-bg-color,#e7e7e7)] bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center overflow-hidden"
+                            className="relative -ml-1 w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden
+                                       border border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                       bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center"
                             onClick={() => (hasReceiptNow ? setPreviewOpen(true) : pickFile())}
                             title={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                             aria-label={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                           >
                             {hasReceiptNow ? (
-                              thumbIsPdf ? (
-                                <span className="text-[11px] opacity-80">PDF</span>
-                              ) : (
-                                <img
-                                  src={receipt.displayUrl!}
-                                  alt={t("tx_modal.receipt_photo_alt") || ""}
-                                  className="max-h-full max-w-full object-contain"
-                                />
-                              )
+                              <img
+                                src={receipt.displayUrl!}
+                                alt={t("tx_modal.receipt_photo_alt") || ""}
+                                className="w-full h-full object-cover"
+                                draggable={false}
+                              />
                             ) : (
-                              <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center">
+                              <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center px-1">
                                 {t("tx_modal.receipt_photo_label")}
                               </span>
                             )}
@@ -1342,7 +1325,7 @@ export default function CreateTransactionModal({
                           <button
                             type="button"
                             onClick={openPayerPicker}
-                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
+                            className="relative min-w-0 inline-flex items-center gap-2 pl-3 pr-7 py-1.5 rounded-lg border border-[var(--tg-secondary-bg-color,#e7e7е7)] text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition max-w-full"
                           >
                             {paidBy ? (
                               <>
@@ -1508,13 +1491,11 @@ export default function CreateTransactionModal({
         </div>
       </div>
 
-      {/* Preview modal for receipt */}
+      {/* Preview modal for receipt (только картинка) */}
       <ReceiptPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         url={previewModalUrl ?? null}
-        isPdf={previewModalIsPdf}
-        localFile={receipt.stagedIsPdf ? (receipt.stagedFile as File) : null}
       />
 
       {/* Выбор группы */}
@@ -1600,11 +1581,11 @@ export default function CreateTransactionModal({
         }}
       />
 
-      {/* скрытые input'ы для файлов */}
+      {/* Скрытые input'ы для файлов */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept="image/*"
         className="hidden"
         onChange={onFileChange}
       />
@@ -1654,7 +1635,7 @@ export default function CreateTransactionModal({
   );
 }
 
-/* --- локальный стиль, чтобы скрыть нативные стрелки/иконки у input[type="date"] на мобилках --- */
+/* --- локальный стиль для date input --- */
 const style = typeof document !== "undefined" ? document.createElement("style") : null;
 if (style) {
   style.innerHTML = `

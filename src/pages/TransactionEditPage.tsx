@@ -21,7 +21,7 @@ import {
   removeTransaction,
   uploadReceipt,
   setTransactionReceiptUrl,
-  deleteTransactionReceipt, // ← добавлено: явное удаление чека
+  deleteTransactionReceipt, // явное удаление чека
 } from "../api/transactionsApi";
 
 import {
@@ -34,7 +34,7 @@ import {
   Paperclip,
   RefreshCcw,
   Trash2,
-  Camera, // ← добавлено
+  Camera,
 } from "lucide-react";
 
 import { useReceiptStager } from "../hooks/useReceiptStager";
@@ -303,6 +303,29 @@ function resolveUserFromMaps(
   return { name: `#${uid}`, avatar_url: undefined, inactive: true };
 }
 
+/* ===== нормализация ответа аплоада (image/pdf) ===== */
+function normalizeUploadReceiptResponse(uploaded: any): { url: string | null; previewUrl: string | null } {
+  if (!uploaded) return { url: null, previewUrl: null };
+  const directString = typeof uploaded === "string" ? uploaded : null;
+  const obj = typeof uploaded === "object" && uploaded ? uploaded : (directString ? { url: directString } : null);
+  if (!obj) return { url: null, previewUrl: null };
+
+  const candidates = [
+    obj.url, obj.href, obj.file_url, obj.original_url, obj.receipt_url,
+    obj.file?.url, obj.file?.href,
+  ].filter((x) => typeof x === "string" && x.trim()) as string[];
+  const url = candidates[0] || null;
+
+  const previewCandidates = [
+    obj.preview_url, obj.thumbnail, obj.thumb_url,
+    obj.receipt?.preview_url, obj.receipt_data?.preview_url,
+    obj.preview, obj.previews?.[0],
+  ].filter((x) => typeof x === "string" && x.trim()) as string[];
+  const previewUrl = previewCandidates[0] || null;
+
+  return { url, previewUrl };
+}
+
 /* ====================== КОМПОНЕНТ ====================== */
 export default function TransactionEditPage() {
   const { t, i18n } = useTranslation();
@@ -387,11 +410,10 @@ export default function TransactionEditPage() {
   /* ---------- ЧЕК: стейджер + предпросмотр ---------- */
   const receipt = useReceiptStager();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null); // ← отдельный инпут для камеры
+  const cameraInputRef = useRef<HTMLInputElement>(null); // фолбэк «задняя камера»
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const pickFile = () => fileInputRef.current?.click();
-  const pickCamera = () => cameraInputRef.current?.click();
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -413,7 +435,7 @@ export default function TransactionEditPage() {
   const onReplace = () => pickFile();
   const onRemove = () => {
     if (receipt.serverUrl) {
-      // в режиме редактирования помечаем к удалению — реальное удаление сделаем на сохранении
+      // Помечаем к удалению на сохранении, а из UI прячем сразу:
       receipt.markDeleted();
     }
     // локально очищаем предпросмотр/стейдж
@@ -430,6 +452,90 @@ export default function TransactionEditPage() {
     }
     return t("tx_modal.receipt_not_attached") as string;
   }, [receipt.displayUrl, receipt.displayIsPdf, t]);
+
+  // ---- предпросмотр: корректная ссылка и признак pdf (если оригинал pdf, а превью — картинка)
+  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
+  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
+  const previewModalUrl = useMemo(() => {
+    if (receipt.displayIsPdf) return receipt.displayUrl;
+    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl;
+    return receipt.displayUrl;
+  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl]);
+
+  /* ---------- КАМЕРА: getUserMedia + фолбэк capture="environment" ---------- */
+  const [camOpen, setCamOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [camError, setCamError] = useState<string | null>(null);
+
+  const startCamera = async () => {
+    setCamError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        cameraInputRef.current?.click(); // фолбэк
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCamOpen(true);
+    } catch {
+      setCamError("Не удалось открыть камеру");
+      cameraInputRef.current?.click(); // фолбэк
+    }
+  };
+
+  useEffect(() => {
+    if (!camOpen) return;
+    const v = videoRef.current;
+    if (v && streamRef.current) {
+      (v as any).srcObject = streamRef.current;
+      v.play?.().catch(() => {});
+    }
+    return () => {
+      const s = streamRef.current;
+      if (s) s.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, [camOpen]);
+
+  const takePhoto = async () => {
+    await startCamera();
+  };
+
+  const confirmShot = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const canvas = document.createElement("canvas");
+    const w = v.videoWidth || 1280;
+    const h = v.videoHeight || 720;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(v, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.92)
+    );
+    if (blob) {
+      const file = new File([blob], `receipt_${Date.now()}.jpg`, {
+        type: "image/jpeg",
+      });
+      receipt.setStagedFile(file);
+      receipt.unmarkDeleted();
+    }
+    setCamOpen(false);
+  };
+
+  const cancelShot = () => {
+    setCamOpen(false);
+  };
 
   /* ---------- 1) загрузка транзакции + группы ---------- */
   useEffect(() => {
@@ -845,10 +951,8 @@ export default function TransactionEditPage() {
       // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — удаляем на бэке -----
       if (receipt.removeMarked && !receipt.stagedFile) {
         try {
-          // 1) явный DELETE, если API поддерживает
           await deleteTransactionReceipt(tx.id);
         } catch {
-          // 2) фолбэк — очистить URL
           try { await setTransactionReceiptUrl(tx.id, ""); } catch {}
         } finally {
           receipt.setServerUrl(null);
@@ -860,16 +964,12 @@ export default function TransactionEditPage() {
       // ----- чек: если выбран локальный файл — грузим и сохраняем ссылку в транзакцию -----
       if (receipt.stagedFile) {
         try {
-          const uploaded: any = await uploadReceipt(receipt.stagedFile); // { url, preview_url? } или string
-          const url: string | null =
-            (uploaded && typeof uploaded === "object" ? uploaded.url : uploaded) || null;
+          const uploadedRaw: any = await uploadReceipt(receipt.stagedFile);
+          const { url, previewUrl } = normalizeUploadReceiptResponse(uploadedRaw);
           if (url) {
             await setTransactionReceiptUrl(tx.id, url);
-            // синхронизируем локально
             receipt.setServerUrl(url);
-            if (uploaded && typeof uploaded === "object" && uploaded.preview_url) {
-              receipt.setServerPreviewUrl(uploaded.preview_url);
-            }
+            if (previewUrl) receipt.setServerPreviewUrl(previewUrl);
             receipt.clearAll();
             receipt.unmarkDeleted();
           }
@@ -986,7 +1086,7 @@ export default function TransactionEditPage() {
 
         {/* Content */}
         <div className="p-3 flex flex-col gap-0.5 max-w-xl mx-auto">
-          {/* Сумма + Чек (50/50) */}
+          {/* Сумма + Чек (портретное превью) */}
           <div className="-mx-3">
             <CardSection className="py-0">
               <div className="px-3 pb-0">
@@ -1013,33 +1113,38 @@ export default function TransactionEditPage() {
                     />
                   </div>
 
-                  {/* правая половина: мини-виджет чека */}
+                  {/* правая половина: мини-виджет чека (ПОРТРЕТ, не квадрат) */}
                   <div className="min-w-0 flex items-center justify-end gap-2">
-                    {/* превью-бокс (квадрат) */}
+                    {/* превью-бокс (портрет) */}
                     <button
                       type="button"
                       className={`
-                        relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl border
+                        relative shrink-0 w-14 h-20 sm:w-16 sm:h-24 rounded-xl border
                         border-[var(--tg-secondary-bg-color,#e7e7e7)]
                         overflow-hidden flex items-center justify-center
                         bg-[var(--tg-card-bg)]
                         dark:bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.04),transparent_42%),radial-gradient(circle_at_75%_75%,rgba(255,255,255,0.04),transparent_42%)]
                       `}
-                      onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())} // ← пустой превью как «скрепка»
+                      onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())}
                       title={
+                        (receipt.displayUrl
+                          ? (t("tx_modal.receipt_open_preview") as string)
+                          : (t("tx_modal.receipt_attach") as string)) || ""
+                      }
+                      aria-label={
                         (receipt.displayUrl
                           ? (t("tx_modal.receipt_open_preview") as string)
                           : (t("tx_modal.receipt_attach") as string)) || ""
                       }
                     >
                       {receipt.displayUrl ? (
-                        receipt.displayIsPdf ? (
+                        thumbIsPdf ? (
                           <div className="text-[12px] opacity-80">PDF</div>
                         ) : (
                           <img
                             src={receipt.displayUrl}
                             alt={t("tx_modal.receipt_photo_alt") as string}
-                            className="max-h-full max-w-full object-contain"
+                            className="h-full w-full object-contain"
                           />
                         )
                       ) : (
@@ -1062,13 +1167,13 @@ export default function TransactionEditPage() {
                         >
                           <Paperclip size={16} />
                         </button>
-                        {/* Камера: только фото с задней камеры */}
+                        {/* Камера: getUserMedia с фолбэком */}
                         <button
                           type="button"
-                          onClick={pickCamera}
+                          onClick={takePhoto}
                           className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                          title={t("tx_modal.receipt_take_photo") as string}
-                          aria-label={t("tx_modal.receipt_take_photo") as string}
+                          title={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
+                          aria-label={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
                         >
                           <Camera size={16} />
                         </button>
@@ -1086,10 +1191,10 @@ export default function TransactionEditPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={pickCamera}
+                          onClick={takePhoto}
                           className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                          title={t("tx_modal.receipt_take_photo") as string}
-                          aria-label={t("tx_modal.receipt_take_photo") as string}
+                          title={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
+                          aria-label={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
                         >
                           <Camera size={16} />
                         </button>
@@ -1143,7 +1248,7 @@ export default function TransactionEditPage() {
                     </button>
 
                     {/* Комментарий */}
-                    <div className="min-w-0 flex items-center gap-2">
+                    <div className="min-w-0 flex items-centered gap-2">
                       <FileText size={16} className="opacity-80 shrink-0" />
                       <input
                         value={comment}
@@ -1629,8 +1734,7 @@ export default function TransactionEditPage() {
         <ReceiptPreviewModal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
-          url={receipt.displayUrl ?? null}
-          isPdf={receipt.displayIsPdf}
+          url={previewModalUrl ?? null}
         />
 
         {/* скрытый input для выбора файла чека (изображение или PDF) */}
@@ -1641,7 +1745,7 @@ export default function TransactionEditPage() {
           className="hidden"
           onChange={onFileChange}
         />
-        {/* скрытый input для камеры: только фото, задняя камера */}
+        {/* скрытый input для камеры: только фото, задняя камера (фолбэк) */}
         <input
           ref={cameraInputRef}
           type="file"
@@ -1650,6 +1754,40 @@ export default function TransactionEditPage() {
           className="hidden"
           onChange={onCameraChange}
         />
+
+        {/* Оверлей камеры (getUserMedia) */}
+        {camOpen && (
+          <div className="fixed inset-0 z-[1400] bg-black/90 flex flex-col">
+            <div className="flex items-center justify-between px-3 py-2">
+              <button
+                type="button"
+                onClick={cancelShot}
+                className="px-3 py-1.5 rounded-md bg-white/10 text-white"
+              >
+                {t("cancel")}
+              </button>
+              <div className="text-white/80 text-sm">{camError || ""}</div>
+            </div>
+            <div className="flex-1 flex items-center justify-center">
+              <video
+                ref={videoRef}
+                playsInline
+                autoPlay
+                muted
+                style={{ maxWidth: "100vw", maxHeight: "80vh" }}
+              />
+            </div>
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={confirmShot}
+                className="w-full h-11 rounded-xl font-bold text-[14px] bg-[var(--tg-accent-color,#40A7E3)] text-white active:scale-95 transition"
+              >
+                {(t("tx_modal.take_photo") as string) || "Сделать фото"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
