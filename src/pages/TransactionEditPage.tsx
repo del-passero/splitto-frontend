@@ -303,7 +303,7 @@ function resolveUserFromMaps(
   return { name: `#${uid}`, avatar_url: undefined, inactive: true };
 }
 
-/* ===== нормализация ответа аплоада (image/pdf) ===== */
+/* ===== нормализация ответа аплоада (только image) ===== */
 function normalizeUploadReceiptResponse(uploaded: any): { url: string | null; previewUrl: string | null } {
   if (!uploaded) return { url: null, previewUrl: null };
   const directString = typeof uploaded === "string" ? uploaded : null;
@@ -413,7 +413,8 @@ export default function TransactionEditPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null); // фолбэк «задняя камера»
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const pickFile = () => fileInputRef.current?.click();
+  // алиас для «как в модалке создание»
+  const pickGallery = () => fileInputRef.current?.click();
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -432,7 +433,7 @@ export default function TransactionEditPage() {
     e.target.value = "";
   };
 
-  const onReplace = () => pickFile();
+  const onReplace = () => pickGallery();
   const onRemove = () => {
     if (receipt.serverUrl) {
       receipt.markDeleted();             // пометили к удалению (стейджер сам чистит локальное превью)
@@ -444,23 +445,16 @@ export default function TransactionEditPage() {
     }
   };
 
-  const receiptHint = useMemo(() => {
-    if (receipt.displayUrl) {
-      return receipt.displayIsPdf
-        ? (t("tx_modal.receipt_attached_pdf") as string)
-        : (t("tx_modal.receipt_attached_image") as string);
-    }
-    return t("tx_modal.receipt_not_attached") as string;
-  }, [receipt.displayUrl, receipt.displayIsPdf, t]);
+  const hasReceiptNow = Boolean(receipt.displayUrl) && !receipt.removeMarked;
 
-  // ---- предпросмотр: корректная ссылка и признак pdf (если оригинал pdf, а превью — картинка)
-  const originalIsPdf = useMemo(() => /\.pdf($|\?)/i.test(receipt.serverUrl ?? ""), [receipt.serverUrl]);
-  const thumbIsPdf = receipt.displayIsPdf || originalIsPdf;
-  const previewModalUrl = useMemo(() => {
-    if (receipt.displayIsPdf) return receipt.displayUrl;
-    if (originalIsPdf) return receipt.serverUrl ?? receipt.displayUrl;
-    return receipt.displayUrl;
-  }, [receipt.displayIsPdf, originalIsPdf, receipt.displayUrl, receipt.serverUrl]);
+  const receiptHint = useMemo(() => {
+    return hasReceiptNow
+      ? (t("tx_modal.receipt_attached_image") as string)
+      : (t("tx_modal.receipt_not_attached") as string);
+  }, [hasReceiptNow, t]);
+
+  // предпросмотр (только изображение)
+  const previewModalUrl = useMemo(() => receipt.displayUrl ?? receipt.serverUrl ?? null, [receipt.displayUrl, receipt.serverUrl]);
 
   /* ---------- КАМЕРА: getUserMedia + фолбэк capture="environment" ---------- */
   const [camOpen, setCamOpen] = useState(false);
@@ -478,8 +472,6 @@ export default function TransactionEditPage() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
         },
         audio: false,
       });
@@ -948,7 +940,7 @@ export default function TransactionEditPage() {
         await updateTransaction(tx.id, payload);
       }
 
-      // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — удаляем на бэке -----
+      // ----- чек: если пользователь отметил удаление и НЕ выбрал новый файл — удаляем на бэке ----- //
       if (receipt.removeMarked && !receipt.stagedFile) {
         try {
           await deleteTransactionReceipt(tx.id);
@@ -961,7 +953,7 @@ export default function TransactionEditPage() {
         }
       }
 
-      // ----- чек: если выбран локальный файл — грузим и сохраняем ссылку в транзакцию -----
+      // ----- чек: если выбран локальный файл — грузим и сохраняем ссылку в транзакцию ----- //
       if (receipt.stagedFile) {
         try {
           const uploadedRaw: any = await uploadReceipt(receipt.stagedFile);
@@ -1090,7 +1082,7 @@ export default function TransactionEditPage() {
           <div className="-mx-3">
             <CardSection className="py-0">
               <div className="px-3 pb-0">
-                <div className="grid grid-cols-2 gap-2 mt-0.5">
+                <div className="grid grid-cols-2 items-start gap-1 mt-0">
                   {/* левая половина: валюта + сумма */}
                   <div className="min-w-0 flex items-center gap-2">
                     {currency.code && (
@@ -1114,54 +1106,47 @@ export default function TransactionEditPage() {
                   </div>
 
                   {/* правая половина: мини-виджет чека (ПОРТРЕТ, не квадрат) */}
-                  <div className="min-w-0 flex items-center justify-end gap-2">
-                    {/* превью-бокс (портрет) */}
+                  <div className="min-w-0 flex items-start justify-end gap-2">
+                    {/* превью-бокс (портрет 3:4) */}
                     <button
                       type="button"
-                      className={`
-                        relative shrink-0 w-14 h-20 sm:w-16 sm:h-24 rounded-xl border
-                        border-[var(--tg-secondary-bg-color,#e7e7e7)]
-                        overflow-hidden flex items-center justify-center
-                        bg-[var(--tg-card-bg)]
-                        dark:bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.04),transparent_42%),radial-gradient(circle_at_75%_75%,rgba(255,255,255,0.04),transparent_42%)]
-                      `}
-                      onClick={() => (receipt.displayUrl ? setPreviewOpen(true) : pickFile())}
+                      className="relative shrink-0 -ml-1 w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden
+                                 border border-[var(--tg-secondary-bg-color,#e7e7e7)]
+                                 bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center"
+                      onClick={() => (hasReceiptNow ? setPreviewOpen(true) : pickGallery())}
                       title={
-                        (receipt.displayUrl
-                          ? (t("tx_modal.receipt_open_preview") as string)
-                          : (t("tx_modal.receipt_attach") as string)) || ""
+                        hasReceiptNow
+                          ? ((t("tx_modal.receipt_open_preview") as string) || "")
+                          : ((t("tx_modal.receipt_attach") as string) || "")
                       }
                       aria-label={
-                        (receipt.displayUrl
-                          ? (t("tx_modal.receipt_open_preview") as string)
-                          : (t("tx_modal.receipt_attach") as string)) || ""
+                        hasReceiptNow
+                          ? ((t("tx_modal.receipt_open_preview") as string) || "")
+                          : ((t("tx_modal.receipt_attach") as string) || "")
                       }
                     >
-                      {receipt.displayUrl ? (
-                        thumbIsPdf ? (
-                          <div className="text-[12px] opacity-80">PDF</div>
-                        ) : (
-                          <img
-                            src={receipt.displayUrl}
-                            alt={t("tx_modal.receipt_photo_alt") as string}
-                            className="h-full w-full object-contain"
-                          />
-                        )
+                      {hasReceiptNow ? (
+                        <img
+                          src={receipt.displayUrl!}
+                          alt={t("tx_modal.receipt_photo_alt") as string}
+                          className="w-full h-full object-cover"
+                          draggable={false}
+                        />
                       ) : (
-                        <span className="px-1 text-[10px] leading-[1.05] text-[var(--tg-hint-color)] text-center whitespace-pre-line select-none">
+                        <span className="text-[11px] leading-[1.05] text-[var(--tg-hint-color)] whitespace-pre-line text-center px-1 select-none">
                           {t("tx_modal.receipt_photo_label") as string}
                         </span>
                       )}
                     </button>
 
                     {/* кнопки справа от превью */}
-                    {!receipt.displayUrl ? (
+                    {!hasReceiptNow ? (
                       <>
-                        {/* Скрепка: файл (image или pdf) */}
+                        {/* Скрепка: файл (ТОЛЬКО image/*) */}
                         <button
                           type="button"
-                          onClick={pickFile}
-                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          onClick={pickGallery}
+                          className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
                           title={t("tx_modal.receipt_attach") as string}
                           aria-label={t("tx_modal.receipt_attach") as string}
                         >
@@ -1171,9 +1156,9 @@ export default function TransactionEditPage() {
                         <button
                           type="button"
                           onClick={takePhoto}
-                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                          title={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
-                          aria-label={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
+                          className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          title={(t("tx_modal.take_photo") as string) || "Сделать фото"}
+                          aria-label={(t("tx_modal.take_photo") as string) || "Сделать фото"}
                         >
                           <Camera size={16} />
                         </button>
@@ -1183,7 +1168,7 @@ export default function TransactionEditPage() {
                         <button
                           type="button"
                           onClick={onReplace}
-                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
                           title={t("tx_modal.receipt_replace") as string}
                           aria-label={t("tx_modal.receipt_replace") as string}
                         >
@@ -1192,16 +1177,16 @@ export default function TransactionEditPage() {
                         <button
                           type="button"
                           onClick={takePhoto}
-                          className="p-2 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
-                          title={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
-                          aria-label={(t("tx_modal.receipt_take_photo") as string) || (t("tx_modal.take_photo") as string)}
+                          className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
+                          title={(t("tx_modal.take_photo") as string) || "Сделать фото"}
+                          aria-label={(t("tx_modal.take_photo") as string) || "Сделать фото"}
                         >
                           <Camera size={16} />
                         </button>
                         <button
                           type="button"
                           onClick={onRemove}
-                          className="p-2 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
+                          className="px-2 h-9 rounded-md border border-red-400/50 text-red-600 hover:bg-red-500/10"
                           title={t("tx_modal.receipt_remove") as string}
                           aria-label={t("tx_modal.receipt_remove") as string}
                         >
@@ -1213,7 +1198,7 @@ export default function TransactionEditPage() {
                 </div>
 
                 {/* подсказки под строкой: строго справа */}
-                <div className="pt-1 pb-1 text-[12px] text-[var(--tg-hint-color)] text-right">
+                <div className="mt-1 text-right text-[12px] text-[var(--tg-hint-color)]">
                   {receiptHint}
                 </div>
               </div>
@@ -1248,7 +1233,7 @@ export default function TransactionEditPage() {
                     </button>
 
                     {/* Комментарий */}
-                    <div className="min-w-0 flex items-centered gap-2">
+                    <div className="min-w-0 flex items-center gap-2">
                       <FileText size={16} className="opacity-80 shrink-0" />
                       <input
                         value={comment}
@@ -1730,18 +1715,18 @@ export default function TransactionEditPage() {
           </div>
         )}
 
-        {/* Preview modal for receipt */}
+        {/* Preview modal for receipt (только картинка) */}
         <ReceiptPreviewModal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
           url={previewModalUrl ?? null}
         />
 
-        {/* скрытый input для выбора файла чека (изображение или PDF) */}
+        {/* скрытый input для выбора файла чека (ТОЛЬКО изображение) */}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*"
           className="hidden"
           onChange={onFileChange}
         />

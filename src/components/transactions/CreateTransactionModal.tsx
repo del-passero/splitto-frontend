@@ -143,7 +143,7 @@ function asRgbaFallback(color: string, alpha: number) {
   if (color.startsWith("rgb(") || color.startsWith("rgba(")) {
     const nums = color.replace(/[rgba()]/g, "").split(",").map(s => s.trim());
     const [r, g, b] = nums;
-    return `rgba(${r}, ${b ? b : nums[2]}, ${b ? b : nums[2]}, ${alpha})`; // safety
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
   return color;
 }
@@ -373,7 +373,7 @@ export default function CreateTransactionModal({
   const onCommentChange = (v: string) => setComment(v.length > COMMENT_MAX ? v.slice(0, COMMENT_MAX) : v);
   const commentLeft = Math.max(0, COMMENT_MAX - comment.length);
 
-  const locale = useMemo(() => (i18n.language || "ru").split("-"[0]), [i18n.language]); // eslint-disable-line
+  const locale = useMemo(() => (i18n.language || "ru").split("-")[0], [i18n.language]);
   const amountNumber = useMemo(() => {
     const n = Number(amount);
     return isFinite(n) ? n : 0;
@@ -583,8 +583,12 @@ export default function CreateTransactionModal({
   }
 
   /* ===== ЧЕК: стейджер + предпросмотр ===== */
-  const fileInputRef = useRef<HTMLInputElement>(null);      // скрепка (только image/*)
-  const cameraInputRef = useRef<HTMLInputElement>(null);    // фолбэк-камера (только image, задняя)
+  const fileInputRef = useRef<HTMLInputElement>(null);      // «галерея»: только image/*
+  const cameraInputRef = useRef<HTMLInputElement>(null);    // «камера»: только image/* (capture)
+  const pickGallery = () => fileInputRef.current?.click();  // <- добавлено
+  // алиас на случай, если где-то ещё дергаешь старое имя
+  const pickFile = pickGallery;
+
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const receipt = useReceiptStager({
@@ -600,15 +604,13 @@ export default function CreateTransactionModal({
     initialData: (initialTx as any)?.receipt_data ?? null,
   });
 
-  const pickFile = () => fileInputRef.current?.click();
-
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
     if (f) { receipt.setStagedFile(f); receipt.unmarkDeleted(); }
     e.target.value = "";
   };
 
-  const onReplace = () => pickFile();
+  const onReplace = () => pickGallery();
 
   // ВАЖНО: не сбрасываем markDeleted
   const onRemove = () => {
@@ -623,6 +625,7 @@ export default function CreateTransactionModal({
   };
 
   // Для предпросмотра
+  const hasReceiptNow = Boolean(receipt.displayUrl) && !receipt.removeMarked;
   const previewModalUrl = useMemo(() => receipt.displayUrl ?? receipt.serverUrl ?? null, [receipt.displayUrl, receipt.serverUrl]);
 
   /* ====== КАМЕРА: getUserMedia с фолбэком ====== */
@@ -858,7 +861,7 @@ export default function CreateTransactionModal({
       currencyLockedRef.current = true;
     }
 
-    if (initialTx.type === "transfer" || initialTx.type === "expense") {
+    if ((initialTx.type === "transfer" || initialTx.type === "expense")) {
       setType(initialTx.type);
     }
 
@@ -940,8 +943,6 @@ export default function CreateTransactionModal({
   const receiptHint = receipt.displayUrl
     ? (t("tx_modal.receipt_attached_image") || "Прикреплено фото чека")
     : (t("tx_modal.receipt_not_attached") || "Чек не прикреплён");
-
-  const hasReceiptNow = Boolean(receipt.displayUrl) && !receipt.removeMarked;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-start justify-center bg-[var(--tg-bg-color,#000)]/70">
@@ -1028,7 +1029,8 @@ export default function CreateTransactionModal({
                 <div className="-mx-3">
                   <CardSection className="py-0">
                     <div className="px-3 pb-0">
-                      <div className="grid grid-cols-2 gap-1 mt-0">
+                      {/* выравниваю по верху, чтобы превью не «давило» инпут */}
+                      <div className="grid grid-cols-2 gap-2 items-start mt-0">
                         {/* левая половина: валюта + сумма */}
                         <div className="min-w-0 flex items-center gap-2">
                           {currency.code && (
@@ -1054,14 +1056,14 @@ export default function CreateTransactionModal({
                         </div>
 
                         {/* правая половина: портретное превью + кнопки справа */}
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-start justify-end gap-2">
                           {/* ПОРТРЕТНОЕ ПРЕВЬЮ 3:4 — кликается как скрепка при отсутствии изображения */}
                           <button
                             type="button"
-                            className="relative -ml-1 w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden
+                            className="relative w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden
                                        border border-[var(--tg-secondary-bg-color,#e7e7e7)]
-                                       bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center"
-                            onClick={() => (hasReceiptNow ? setPreviewOpen(true) : pickFile())}
+                                       bg-[var(--tg-card-bg)] shadow-inner flex items-center justify-center shrink-0"
+                            onClick={() => (hasReceiptNow ? setPreviewOpen(true) : pickGallery())}
                             title={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                             aria-label={hasReceiptNow ? (t("tx_modal.receipt_open_preview") || "") : (t("tx_modal.receipt_attach") || "")}
                           >
@@ -1084,7 +1086,7 @@ export default function CreateTransactionModal({
                             <>
                               <button
                                 type="button"
-                                onClick={pickFile}
+                                onClick={pickGallery}
                                 className="px-2 h-9 rounded-md border border-[var(--tg-secondary-bg-color,#e7e7e7)] hover:bg-black/5 dark:hover:bg-white/5"
                                 title={t("tx_modal.receipt_attach") || ""}
                                 aria-label={t("tx_modal.receipt_attach") || ""}
@@ -1193,8 +1195,7 @@ export default function CreateTransactionModal({
                             ? (comment.length === 0 ? `Введите комментарий (до ${COMMENT_MAX} символов)` : `Осталось ${commentLeft} символов`)
                             : (i18n.language || "en").startsWith("es")
                             ? (comment.length === 0 ? `Escribe un comentario (hasta ${COMMENT_MAX} caracteres)` : `Quedan ${commentLeft} caracteres`)
-                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)
-                          }
+                            : (comment.length === 0 ? `Enter a comment (up to ${COMMENT_MAX} chars)` : `${commentLeft} characters left`)}
                         </div>
 
                         {(showErrors && errors.category) && (
@@ -1230,7 +1231,7 @@ export default function CreateTransactionModal({
                                 <span
                                   role="button"
                                   aria-label={t("clear") || "Очистить"}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg:white/10 hover:bg-black/20"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-black/10 dark:bg-white/10 hover:bg-black/20"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaidBy(undefined); setPaidByName(""); setPaidByAvatar(undefined); }}
                                 >
                                   <X size={12} />
@@ -1274,7 +1275,7 @@ export default function CreateTransactionModal({
                                     {paidByLabel}: {firstNameOnly(paidByName) || t("not_specified")}
                                   </span>
                                   <span className="shrink-0 opacity-80">
-                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
+                                    {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
                                   </span>
                                 </div>
                               )}
@@ -1292,7 +1293,7 @@ export default function CreateTransactionModal({
                                       {owesLabel}: {p.name}
                                     </span>
                                     <span className="shrink-0 opacity-80">
-                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale as any)}
+                                      {fmtMoney(p.amount, currency.decimals, currency.code, locale)}
                                     </span>
                                   </div>
                                 ))}
@@ -1305,10 +1306,10 @@ export default function CreateTransactionModal({
                         {customMismatch && (
                           <div className="px-3 pb-1 -mt-0.5 text-[12px] text-red-500">
                             {(i18n.language || "ru").startsWith("ru")
-                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`
+                              ? `Сумма по участникам ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} не равна общей ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
                               : (i18n.language || "en").startsWith("es")
-                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`
-                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale as any)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale as any)}`}
+                              ? `La suma de participantes ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} no es igual al total ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`
+                              : `Participants total ${fmtMoney(customMismatch.sumParts, currency.decimals, currency.code, locale)} doesn't equal overall ${fmtMoney(customMismatch.total, currency.decimals, currency.code, locale)}`}
                           </div>
                         )}
                       </CardSection>
@@ -1402,7 +1403,7 @@ export default function CreateTransactionModal({
                                 <strong className="truncate">{toUser ? (firstNameOnly(toUserName) || t("not_specified")) : toLabel}</strong>
                               </span>
                               <span className="ml-auto shrink-0 opacity-80">
-                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale as any)}
+                                {fmtMoney(amountNumber, currency.decimals, currency.code, locale)}
                               </span>
                             </div>
                           </div>
@@ -1476,7 +1477,7 @@ export default function CreateTransactionModal({
                       >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg:white/5 rounded-xl"
+                          className="w-full text-left px-3 py-2.5 text-[14px] hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
                           onClick={() => { setMoreOpen(false); void doSubmit("again"); }}
                         >
                           {t("tx_modal.create_and_new")}
