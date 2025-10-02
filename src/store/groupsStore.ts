@@ -2,9 +2,10 @@
 // Пагинация + серверный поиск, защита от гонок и корректный offset.
 // Храним фильтры/сорт/поиск в сторе. fetchGroups/рефреш используют текущие значения.
 // Добавлено: хранение превью-долгов и загрузка батчем.
+// Обновлено: helper для локального обновления алгоритма settle_algorithm в списке групп.
 
 import { create } from "zustand"
-import type { GroupPreview } from "../types/group"
+import type { GroupPreview, SettleAlgorithm } from "../types/group"
 import { getUserGroups, getDebtsPreview } from "../api/groupsApi"
 
 interface DebtsMap {
@@ -51,6 +52,9 @@ interface GroupsStoreState {
 
   // батч-загрузка превью долгов для карточек
   fetchDebtsPreview: (groupIds: number[]) => Promise<void>
+
+  // локальный апдейт метаданных группы (минимально — алгоритм)
+  updateGroupAlgorithm: (groupId: number, algo: SettleAlgorithm) => void
 }
 
 const PAGE_SIZE = 20
@@ -192,5 +196,13 @@ export const useGroupsStore = create<GroupsStoreState>((set, get) => ({
     const miss = groupIds.filter((id) => !cached[id])
     if (miss.length === 0) return
     return
+  },
+
+  updateGroupAlgorithm(groupId, algo) {
+    set({
+      groups: get().groups.map(g =>
+        g.id === groupId ? { ...g, settle_algorithm: algo } : g
+      )
+    })
   },
 }))

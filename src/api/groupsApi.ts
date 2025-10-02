@@ -1,7 +1,7 @@
 // src/api/groupsApi.ts
 // Пагинация + серверный поиск. total берём из X-Total-Count.
 
-import type { Group, GroupPreview } from "../types/group"
+import type { Group, GroupPreview, SettleAlgorithm } from "../types/group"
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 // База для статических файлов = API без "/api"
@@ -96,17 +96,33 @@ export async function getGroupDetails(groupId: number, offset: number = 0, limit
   return g
 }
 
-export async function getGroupBalances(groupId: number) {
-  const url = `${API_URL}/groups/${groupId}/balances`
+/** Балансы. Можно запросить мультивалютно (true) */
+export async function getGroupBalances(groupId: number, opts?: { multicurrency?: boolean }) {
+  const sp = new URLSearchParams()
+  if (opts?.multicurrency) sp.set("multicurrency", "true")
+  const url = `${API_URL}/groups/${groupId}/balances` + (sp.toString() ? `?${sp.toString()}` : "")
   return await fetchJson(url)
 }
 
-export async function getGroupSettleUp(groupId: number) {
-  const url = `${API_URL}/groups/${groupId}/settle-up`
+/** План выплат. Поддерживает предпросмотр через ?algorithm=greedy|pairs и мультивалюту */
+export async function getGroupSettleUp(
+  groupId: number,
+  opts?: { algorithm?: SettleAlgorithm; multicurrency?: boolean }
+) {
+  const sp = new URLSearchParams()
+  if (opts?.algorithm) sp.set("algorithm", opts.algorithm)
+  if (opts?.multicurrency) sp.set("multicurrency", "true")
+  const url = `${API_URL}/groups/${groupId}/settle-up` + (sp.toString() ? `?${sp.toString()}` : "")
   return await fetchJson(url)
 }
 
-export async function createGroup(payload: { name: string; description: string; owner_id: number }): Promise<Group> {
+export async function createGroup(payload: {
+  name: string
+  description: string
+  owner_id: number
+  /** опционально задаём алгоритм при создании; по умолчанию на бэке 'greedy' */
+  settle_algorithm?: SettleAlgorithm
+}): Promise<Group> {
   const url = `${API_URL}/groups/`
   return await fetchJson<Group>(url, {
     method: "POST",
@@ -167,10 +183,10 @@ export async function patchGroupSchedule(
   })
 }
 
-/** Частичное обновление инфо группы */
+/** Частичное обновление инфо группы (+ смена алгоритма) */
 export async function patchGroupInfo(
   groupId: number,
-  payload: { name?: string; description?: string | null }
+  payload: { name?: string; description?: string | null; settle_algorithm?: SettleAlgorithm }
 ): Promise<Group> {
   const url = `${API_URL}/groups/${groupId}`
   return await fetchJson<Group>(url, {

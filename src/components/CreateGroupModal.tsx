@@ -1,6 +1,6 @@
 // src/components/CreateGroupModal.tsx
 import { useState, useEffect, useRef } from "react"
-import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight } from "lucide-react"
+import { X, Loader2, CircleDollarSign, CalendarDays, ChevronRight, Shuffle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import CurrencyPickerModal, { type CurrencyItem } from "./currency/CurrencyPickerModal"
@@ -8,6 +8,7 @@ import CardSection from "./CardSection"
 import { createGroup, patchGroupCurrency, patchGroupSchedule, setGroupAvatarByUrl } from "../api/groupsApi"
 import GroupAvatar from "./GroupAvatar"
 import { compressImage } from "../utils/image"  // <— единая утилита
+import type { SettleAlgorithm } from "../types/group"
 
 // ===== API и upload endpoints (важно: одинаковая база с остальным API) =====
 const API_URL: string =
@@ -23,9 +24,9 @@ function getTelegramInitData(): string {
 }
 
 // ===== Настройки компрессии изображений =====
-const MAX_DIM = 1024          // максимум по большей стороне
-const JPEG_QUALITY = 0.85     // стартовое качество JPEG (дальше уменьшается при необходимости)
-const TARGET_BYTES = 460 * 1024 // целевой размер ~460 KB
+const MAX_DIM = 1024
+const JPEG_QUALITY = 0.85
+const TARGET_BYTES = 460 * 1024
 const SERVER_HARD_LIMIT = 10 * 1024 * 1024 // 10 MB
 
 type Props = {
@@ -139,6 +140,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
   const [endDate, setEndDate] = useState<string>("")
   const hiddenDateRef = useRef<HTMLInputElement | null>(null)
 
+  // Алгоритм settle-up: true = greedy (минимум переводов), false = pairs
+  const [minTransfers, setMinTransfers] = useState<boolean>(true)
+
   // --- Аватар: превью и отложенная загрузка ---
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [stagedFile, setStagedFile] = useState<File | null>(null)
@@ -157,6 +161,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     if (open) {
       setName(""); setDesc(""); setError(null); setLoading(false)
       setIsTrip(false); setEndDate("")
+      setMinTransfers(true)
       setAvatarPreview(null); setStagedFile(null); setAvatarUploading(false); setAvatarError(null)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
@@ -177,7 +182,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Жёсткий pre-check, чтобы не гонять гиганты (и совпасть с бэком)
+    // Жёсткий pre-check
     if (file.size > SERVER_HARD_LIMIT) {
       setAvatarError((t("errors.file_too_large_10mb") as string) || "Файл слишком большой (> 10 МБ)")
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -186,20 +191,16 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
     try {
       setAvatarUploading(true)
-      // Упор на целевой размер + ограничение по стороне, белая подложка обеспечивается на уровне utils
       const compressed = await compressImage(file, {
         maxSide: MAX_DIM,
         quality: JPEG_QUALITY,
         targetBytes: TARGET_BYTES,
-        // mime по умолчанию image/jpeg
       })
-      // локальное превью
       const previewUrl = URL.createObjectURL(compressed)
       if (avatarPreview?.startsWith("blob:")) {
         try { URL.revokeObjectURL(avatarPreview) } catch {}
       }
       setAvatarPreview(previewUrl)
-      // ОТЛОЖЕННО: НЕ загружаем сейчас, сохраним файл до сабмита
       setStagedFile(compressed)
     } finally {
       setAvatarUploading(false)
@@ -216,7 +217,13 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
 
     setLoading(true)
     try {
-      const group = await createGroup({ name: name.trim(), description: desc.trim(), owner_id: ownerId })
+      const algo: SettleAlgorithm = minTransfers ? "greedy" : "pairs"
+      const group = await createGroup({
+        name: name.trim(),
+        description: desc.trim(),
+        owner_id: ownerId,
+        settle_algorithm: algo,
+      })
 
       const promises: Promise<any>[] = []
       const code = currency?.code || "USD"
@@ -352,7 +359,7 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
               </div>
             </div>
 
-            {/* Валюта / поездка */}
+            {/* Валюта / алгоритм / поездка */}
             <div className="-mx-4">
               <CardSection className="py-0">
                 <Row
@@ -360,6 +367,17 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                   label={t("currency.main_currency")}
                   value={currency?.code || "USD"}
                   onClick={() => setCurrencyModal(true)}
+                />
+                <Row
+                  icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
+                  label={t("settle.minimum_transfers") || "Минимум переводов"}
+                  right={
+                    <Switch
+                      checked={minTransfers}
+                      onChange={setMinTransfers}
+                      ariaLabel={t("settle.minimum_transfers") || "Минимум переводов"}
+                    />
+                  }
                 />
                 <Row
                   icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
@@ -377,10 +395,9 @@ const CreateGroupModal = ({ open, onClose, onCreated, ownerId }: Props) => {
                                  font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition"
                       onClick={() => {
                         const el = hiddenDateRef.current
-                        if (!el) return
                         // @ts-ignore
-                        if (typeof el.showPicker === "function") el.showPicker()
-                        else el.click()
+                        if (el && typeof el.showPicker === "function") el.showPicker()
+                        else el?.click()
                       }}
                     >
                       {endDate ? formatDateYmdToDmy(endDate) : t("group_form.trip_date_placeholder")}

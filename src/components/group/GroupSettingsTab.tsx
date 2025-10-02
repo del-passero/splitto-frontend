@@ -1,11 +1,12 @@
 // src/components/group/GroupSettingsTab.tsx
 import { useEffect, useRef, useState } from "react"
-import { Save, Trash2, CircleDollarSign, CalendarDays, ChevronRight, X, Archive, RotateCw, EyeOff, Eye } from "lucide-react"
+import { Save, Trash2, CircleDollarSign, CalendarDays, ChevronRight, X, Archive, RotateCw, EyeOff, Eye, Shuffle } from "lucide-react"
 import CardSection from "../CardSection"
 import { useTranslation } from "react-i18next"
 import { useParams } from "react-router-dom"
 import CurrencyPickerModal from "../currency/CurrencyPickerModal"
-import { getGroupDetails, patchGroupCurrency, patchGroupSchedule } from "../../api/groupsApi"
+import { getGroupDetails, patchGroupCurrency, patchGroupSchedule, patchGroupInfo } from "../../api/groupsApi"
+import type { SettleAlgorithm } from "../../types/group"
 
 type Props = {
   isOwner: boolean
@@ -144,9 +145,11 @@ const GroupSettingsTab = ({
   const { groupId } = useParams()
   const gid = Number(groupId)
 
-  // локальное состояние для «валюта + поездка»
+  // локальное состояние для «валюта + алгоритм + поездка»
   const [currencyCode, setCurrencyCode] = useState<string>("USD")
   const [currencyModal, setCurrencyModal] = useState(false)
+
+  const [minTransfers, setMinTransfers] = useState<boolean>(true) // true=greedy, false=pairs
 
   const [endDate, setEndDate] = useState<string>("")             // YYYY-MM-DD или ""
   const [tripEnabled, setTripEnabled] = useState<boolean>(false)  // UX-вариант A
@@ -156,11 +159,13 @@ const GroupSettingsTab = ({
 
   const [loadingCurrency, setLoadingCurrency] = useState(false)
   const [loadingSchedule, setLoadingSchedule] = useState(false)
+  const [loadingAlgo, setLoadingAlgo] = useState(false)
 
   // сохраняем исходные значения для "Отменить изменения"
   const initialCurrencyRef = useRef<string>("USD")
   const initialEndDateRef = useRef<string>("")
   const initialTripEnabledRef = useRef<boolean>(false)
+  const initialAlgoRef = useRef<SettleAlgorithm>("greedy")
 
   // первичная загрузка значений из БД
   useEffect(() => {
@@ -172,14 +177,17 @@ const GroupSettingsTab = ({
         if (cancelled || !g) return
         const cc = g.default_currency_code || "USD"
         const ymd = (g.end_date as string) || ""
+        const algo = (g.settle_algorithm as SettleAlgorithm) || "greedy"
 
         setCurrencyCode(cc)
         setEndDate(ymd)
         setTripEnabled(Boolean(ymd))
+        setMinTransfers(algo === "greedy")
 
         initialCurrencyRef.current = cc
         initialEndDateRef.current = ymd
         initialTripEnabledRef.current = Boolean(ymd)
+        initialAlgoRef.current = algo
       } catch {
         // ignore
       }
@@ -225,6 +233,14 @@ const GroupSettingsTab = ({
           initialCurrencyRef.current = currencyCode
           setLoadingCurrency(false)
         }
+        // алгоритм
+        const desiredAlgo: SettleAlgorithm = minTransfers ? "greedy" : "pairs"
+        if (desiredAlgo !== initialAlgoRef.current) {
+          setLoadingAlgo(true)
+          await patchGroupInfo(gid, { settle_algorithm: desiredAlgo })
+          initialAlgoRef.current = desiredAlgo
+          setLoadingAlgo(false)
+        }
         // график
         if (tripEnabled !== initialTripEnabledRef.current || endDate !== initialEndDateRef.current) {
           setLoadingSchedule(true)
@@ -252,6 +268,7 @@ const GroupSettingsTab = ({
     setCurrencyCode(initialCurrencyRef.current)
     setEndDate(initialEndDateRef.current)
     setTripEnabled(initialTripEnabledRef.current)
+    setMinTransfers(initialAlgoRef.current === "greedy")
     onSaveAndExit()
   }
 
@@ -267,9 +284,11 @@ const GroupSettingsTab = ({
   const showUnarchive  = owner && !isDeleted && isArchived
   const showRestore    = owner && isDeleted
 
+  const saving = loadingAlgo || loadingCurrency || loadingSchedule
+
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
-      {/* === Блок «Валюта + поездка» (edge-to-edge) === */}
+      {/* === Блок «Валюта + алгоритм + поездка» (edge-to-edge) === */}
       <div className="-mx-4">
         <CardSection className="py-0">
           <Row
@@ -277,6 +296,17 @@ const GroupSettingsTab = ({
             label={t("currency.main_currency")}
             value={currencyCode || "USD"}
             onClick={() => !loadingCurrency && setCurrencyModal(true)}
+          />
+          <Row
+            icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
+            label={t("settle.minimum_transfers") || "Минимум переводов"}
+            right={
+              <Switch
+                checked={minTransfers}
+                onChange={(v) => setMinTransfers(v)}
+                ariaLabel={t("settle.minimum_transfers") || "Минимум переводов"}
+              />
+            }
           />
           <Row
             icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
@@ -297,7 +327,7 @@ const GroupSettingsTab = ({
             <div ref={tripBlockRef} className="px-4 pt-2 pb-3">
               <button
                 type="button"
-                disabled={loadingSchedule}
+                disabled={saving}
                 className={`w-full px-4 py-3 rounded-xl border text-left bg-[var(--tg-bg-color,#fff)]
                            border-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]
                            font-normal text-base focus:border-[var(--tg-accent-color)] focus:outline-none transition disabled:opacity-60`}
@@ -440,11 +470,11 @@ const GroupSettingsTab = ({
         </CardSection>
       </div>
 
-      {/* === Кнопки управления (edge-to-edge, так же обёрнуты в CardSection) === */}
+      {/* === Кнопки управления === */}
       <div className="-mx-4">
         <CardSection className="px-4 py-3">
           <div className="flex flex-col gap-2">
-            {/* Сохранить и выйти — primary (размеры как в ContactDetails: py-2, rounded-lg) */}
+            {/* Сохранить и выйти */}
             <button
               type="button"
               onClick={handleSaveClick}
@@ -463,7 +493,7 @@ const GroupSettingsTab = ({
               {t("group_settings_save_and_exit")}
             </button>
 
-            {/* Отменить изменения — вторичная, закрывает страницу */}
+            {/* Отменить изменения */}
             <button
               type="button"
               onClick={handleCancelClick}
@@ -481,7 +511,7 @@ const GroupSettingsTab = ({
               {t("group_settings_cancel_changes")}
             </button>
 
-            {/* Удалить группу — danger (только владелец), confirm/ошибки — как в GroupCardMenu */}
+            {/* Удалить группу */}
             {isOwner && (
               <button
                 type="button"

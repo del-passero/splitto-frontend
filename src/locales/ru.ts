@@ -1,5 +1,8 @@
 // src/locales/ru.ts
 export default {
+  settle: {
+    minimum_transfers: "Минимум переводов",
+  },
   // --- Навигация и основные разделы ---
   main: "Главная",
   groups: "Группы",

@@ -1,5 +1,8 @@
 // src/locales/es.ts
 export default {
+  settle: {
+    minimum_transfers: "Mínimo de transferencias",
+  },	
   // --- Navegación y secciones principales ---
   main: "Inicio",
   groups: "Grupos",
