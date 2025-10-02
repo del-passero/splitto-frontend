@@ -435,13 +435,13 @@ export default function TransactionEditPage() {
   const onReplace = () => pickFile();
   const onRemove = () => {
     if (receipt.serverUrl) {
-      // Помечаем к удалению на сохранении, а из UI прячем сразу:
-      receipt.markDeleted();
+      receipt.markDeleted();             // пометили к удалению (стейджер сам чистит локальное превью)
+      receipt.setServerUrl(null);        // сразу прячем серверный превью/урл из UI
+      receipt.setServerPreviewUrl(null);
+    } else {
+      // если был только локальный файл — просто очищаем
+      receipt.clearAll();
     }
-    // локально очищаем предпросмотр/стейдж
-    receipt.clearAll();
-    receipt.setServerUrl(null);
-    receipt.setServerPreviewUrl(null);
   };
 
   const receiptHint = useMemo(() => {
