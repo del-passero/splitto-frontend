@@ -1,42 +1,61 @@
-// src/components/group/GroupBalanceTab.tsx
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import GroupBalanceTabSmart, { MyDebt, AllDebt } from "./GroupBalanceTabSmart";
-import { getTransactions } from "../../api/transactionsApi";
 import { getGroupMembers } from "../../api/groupMembersApi";
+import { getGroupBalances, getGroupSettleUp } from "../../api/groupsApi";
 import { useParams } from "react-router-dom";
 import { useUserStore } from "../../store/userStore";
 import type { GroupMember } from "../../types/group_member";
 import CreateTransactionModal from "../transactions/CreateTransactionModal";
 import CardSection from "../CardSection";
 
-// Точность по коду валюты
-const ZERO_DEC = new Set(["JPY", "KRW", "VND"]);
-const decimalsByCode = (code?: string | null) => (code && ZERO_DEC.has(code) ? 0 : 2);
-const roundBy = (n: number, d: number) => {
-  const p = Math.pow(10, d);
-  return Math.round(n * p) / p;
-};
-
-type TxShare = { user_id: number; amount: number | string };
-type Tx = {
-  id?: number;
-  type: "expense" | "transfer";
-  amount: number | string;
-  currency?: string | null;
-  currency_code?: string | null;
-  // expense
-  paid_by?: number;
-  created_by?: number;
-  shares?: TxShare[];
-  // transfer
-  from_user_id?: number;
-  to_user_id?: number;
-  transfer_from?: number;
-  transfer_to?: number;
-  transfer?: number[];
-};
-
 type SimpleUser = { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
+
+/**
+ * Унифицированный парсер ответа settle-up:
+ * поддерживает оба кейса:
+ *  - массив с объектами { from_user_id, to_user_id, amount, currency } или { from, to, ... }
+ *  - { pairs: [...] } где pairs — такой же массив
+ */
+function normalizeSettlePairs(raw: any): Array<{ from: number; to: number; amount: number; currency: string }> {
+  const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const out: Array<{ from: number; to: number; amount: number; currency: string }> = [];
+
+  for (const it of arr) {
+    if (!it) continue;
+    const from =
+      Number(it.from_user_id ?? it.from?.id ?? it.from ?? NaN);
+    const to =
+      Number(it.to_user_id ?? it.to?.id ?? it.to ?? NaN);
+    const amount = Number(it.amount);
+    const currency = String(it.currency || it.currency_code || "").toUpperCase();
+
+    if (Number.isFinite(from) && Number.isFinite(to) && Number.isFinite(amount) && amount > 0 && currency) {
+      out.push({ from, to, amount, currency });
+    }
+  }
+  return out;
+}
+
+/**
+ * Унифицированный парсер ответа balances:
+ * ждём либо { balances: { "USD": { "123": 10, "456": -10 }, ... } }
+ * либо простую карту валют → карта userId → нетто
+ */
+function normalizeBalances(raw: any): Map<string, Map<number, number>> {
+  const src = raw?.balances || raw || {};
+  const byCcy = new Map<string, Map<number, number>>();
+  for (const [ccy, users] of Object.entries(src)) {
+    if (!users || typeof users !== "object") continue;
+    const m = new Map<number, number>();
+    for (const [userId, net] of Object.entries(users as Record<string, number>)) {
+      const uid = Number(userId);
+      const v = Number(net);
+      if (Number.isFinite(uid) && Number.isFinite(v)) m.set(uid, v);
+    }
+    if (m.size > 0) byCcy.set(String(ccy).toUpperCase(), m);
+  }
+  return byCcy;
+}
 
 export default function GroupBalanceTab() {
   const params = useParams();
@@ -49,7 +68,7 @@ export default function GroupBalanceTab() {
   const [myDebts, setMyDebts] = useState<MyDebt[]>([]);
   const [myBalanceByCurrency, setMyBalanceByCurrency] = useState<Record<string, number>>({});
 
-  // справочник участников
+  // справочник участников (для имён/аватарок)
   const [membersMap, setMembersMap] = useState<Map<number, GroupMember>>(new Map());
 
   // ====== модалка перевода (погашение долга)
@@ -61,7 +80,7 @@ export default function GroupBalanceTab() {
   const wasOpenRef = useRef(false);
   const shouldRefreshOnCloseRef = useRef(false);
 
-  // загрузка участников
+  // загрузка участников (как было)
   useEffect(() => {
     let aborted = false;
     const loadMembersAll = async () => {
@@ -82,105 +101,42 @@ export default function GroupBalanceTab() {
     return () => { aborted = true; };
   }, [groupId]);
 
-  // загрузка транзакций и расчёт (по всем валютам)
+  // ====== загрузка пар и балансов с сервера (алгоритм учитывается на бэке)
   useEffect(() => {
     let aborted = false;
-    const LIMIT = 100;
 
-    const toNum = (v: any): number => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    const calc = async () => {
+    async function load() {
       setLoading(true);
       try {
-        // 1) Грузим все транзакции группы
-        const all: Tx[] = [];
-        let offset = 0;
-        while (true) {
-          const page = await getTransactions({ groupId, offset, limit: LIMIT });
-          const items: Tx[] = (page.items || []) as any[];
-          all.push(...items);
-          offset += items.length;
-          if (items.length < LIMIT || offset >= (page.total || 0)) break;
-        }
+        // 1) пары по выбранному алгоритму
+        const settleRaw = await getGroupSettleUp(groupId);
+        const pairs = normalizeSettlePairs(settleRaw);
 
-        // 2) Нетто-балансы по пользователям в разрезе валют
-        //    Map<CCY, Map<UserId, Net>>
-        const balByCcy = new Map<string, Map<number, number>>();
-        const add = (ccy: string, id: number, delta: number) => {
-          if (!Number.isFinite(delta) || id == null || !ccy) return;
-          const d = decimalsByCode(ccy);
-          const map = balByCcy.get(ccy) || new Map<number, number>();
-          map.set(id, roundBy((map.get(id) || 0) + delta, d));
-          balByCcy.set(ccy, map);
-        };
-
-        for (const tx of all) {
-          const txCcy = String(((tx as any).currency_code ?? (tx as any).currency) || "").toUpperCase();
-          if (!txCcy) continue;
-
-          if (tx.type === "expense") {
-            const payer = Number(tx.paid_by ?? tx.created_by ?? NaN);
-            const shares = Array.isArray(tx.shares) ? tx.shares : [];
-            for (const s of shares) {
-              const uid = Number(s.user_id);
-              const amt = toNum((s as any).amount);
-              if (!Number.isFinite(amt) || amt <= 0) continue;
-              if (uid === payer) continue;
-              add(txCcy, payer, amt); // участник должен payer'у
-              add(txCcy, uid, -amt); // участник должен
-            }
-          } else if (tx.type === "transfer") {
-            const from = Number(tx.from_user_id ?? tx.transfer_from ?? (Array.isArray(tx.transfer) ? tx.transfer[0] : NaN));
-            const to = Number(tx.to_user_id ?? tx.transfer_to ?? (Array.isArray(tx.transfer) ? tx.transfer[1] : NaN));
-            const amt = toNum(tx.amount);
-            if (Number.isFinite(from) && Number.isFinite(to) && Number.isFinite(amt) && amt > 0) {
-              add(txCcy, from, amt);
-              add(txCcy, to, -amt);
+        // 2) балансы (по валютам); если не получится — посчитаем из пар
+        let myBalance: Record<string, number> = {};
+        try {
+          const balancesRaw = await getGroupBalances(groupId);
+          const byCcy = normalizeBalances(balancesRaw);
+          const mine: Record<string, number> = {};
+          for (const [ccy, map] of byCcy.entries()) {
+            mine[ccy] = Number(map.get(Number(currentUserId)) || 0);
+          }
+          myBalance = mine;
+        } catch {
+          // fallback: считаем из пар
+          const mine: Record<string, number> = {};
+          for (const p of pairs) {
+            if (p.to === currentUserId) {
+              mine[p.currency] = (mine[p.currency] || 0) + p.amount;
+            } else if (p.from === currentUserId) {
+              mine[p.currency] = (mine[p.currency] || 0) - p.amount;
             }
           }
+          myBalance = mine;
         }
 
-        // 3) Для каждой валюты раскладываем в пары (debtor -> creditor)
-        type Node = { id: number; left: number };
-        const pairs: { from: number; to: number; amount: number; currency: string }[] = [];
-
-        const myBalanceObj: Record<string, number> = {};
-
-        for (const [ccy, bal] of balByCcy.entries()) {
-          const d = decimalsByCode(ccy);
-          const creditors: Node[] = [];
-          const debtors: Node[] = [];
-          for (const [id, net] of bal.entries()) {
-            const v = roundBy(net, d);
-            if (id === currentUserId) myBalanceObj[ccy] = v;
-            if (v > 0) creditors.push({ id, left: v });
-            else if (v < 0) debtors.push({ id, left: v });
-          }
-          creditors.sort((a, b) => b.left - a.left);
-          debtors.sort((a, b) => a.left - b.left);
-
-          let ci = 0, di = 0;
-          while (ci < creditors.length && di < debtors.length) {
-            const c = creditors[ci];
-            const dn = debtors[di];
-            const pay = roundBy(Math.min(c.left, -dn.left), d);
-            if (pay > 0) {
-              pairs.push({ from: dn.id, to: c.id, amount: pay, currency: ccy });
-              c.left = roundBy(c.left - pay, d);
-              dn.left = roundBy(dn.left + pay, d);
-            }
-            if (c.left <= 0 + 1 / Math.pow(10, d)) ci++;
-            if (dn.left >= 0 - 1 / Math.pow(10, d)) di++;
-          }
-
-          if (!(ccy in myBalanceObj)) myBalanceObj[ccy] = 0;
-        }
-
-        // 4) Собираем объекты с юзерами
-        const toUser = (id: number) => {
+        // 3) собрать объекты с юзерами для UI
+        const toUser = (id: number): SimpleUser => {
           const gm = membersMap.get(id);
           if (gm) {
             const u = gm.user;
@@ -195,35 +151,34 @@ export default function GroupBalanceTab() {
           return { id };
         };
 
-        const allDebtsBuilt: AllDebt[] = pairs.map((p) => ({
+        const allBuilt: AllDebt[] = pairs.map((p) => ({
           from: toUser(p.from),
           to: toUser(p.to),
           amount: p.amount,
           currency: p.currency,
         }));
 
-        // 5) Мои долги/требования (с валютой)
-        const myPairs: MyDebt[] = [];
-        for (const p of allDebtsBuilt) {
-          if (p.to.id === currentUserId) myPairs.push({ user: p.from, amount: p.amount, currency: p.currency });
-          else if (p.from.id === currentUserId) myPairs.push({ user: p.to, amount: -p.amount, currency: p.currency });
+        const minePairs: MyDebt[] = [];
+        for (const p of allBuilt) {
+          if (p.to.id === currentUserId) minePairs.push({ user: p.from, amount: p.amount, currency: p.currency });
+          else if (p.from.id === currentUserId) minePairs.push({ user: p.to, amount: -p.amount, currency: p.currency });
         }
 
         if (!aborted) {
-          setAllDebts(allDebtsBuilt);
-          setMyDebts(myPairs);
-          setMyBalanceByCurrency(myBalanceObj);
+          setAllDebts(allBuilt);
+          setMyDebts(minePairs);
+          setMyBalanceByCurrency(myBalance);
         }
       } finally {
         if (!aborted) setLoading(false);
       }
-    };
+    }
 
-    if (groupId) calc().catch(() => setLoading(false));
+    if (groupId) load().catch(() => setLoading(false));
     return () => { aborted = true; };
   }, [groupId, currentUserId, membersMap, refreshSeq]);
 
-  // ====== Колбэки для «погасить»/«напомнить» ======
+  // ====== Колбэки для «погасить» ======
   const handleRepay = useCallback(
     (u: SimpleUser, amount: number, currency: string) => {
       const amt = Math.abs(Number(amount) || 0);
@@ -233,19 +188,13 @@ export default function GroupBalanceTab() {
         paidBy: currentUserId,
         toUser: u.id,
         groupId,
-        currency_code: currency, // важное: подставляем валюту долга
+        currency_code: currency,
       });
       shouldRefreshOnCloseRef.current = true;
       setTxOpen(true);
     },
     [currentUserId, groupId]
   );
-
-  const handleRemind = useCallback((u: SimpleUser, amount: number, currency: string) => {
-    // заглушка (на будущее)
-    // eslint-disable-next-line no-console
-    console.log("remind", u, amount, currency);
-  }, []);
 
   // Автообновление после закрытия модалки
   useEffect(() => {
@@ -260,22 +209,20 @@ export default function GroupBalanceTab() {
     }
   }, [txOpen]);
 
-  // Мемо-обёртки, чтобы не дёргать детей по пустякам
-  const smartProps = useMemo(() => ({
-    myBalanceByCurrency,
-    myDebts,
-    allDebts,
-    loading,
-    onFabClick: () => {},
-    onRepay: (user: SimpleUser, amount: number, currency: string) => handleRepay(user, amount, currency),
-    onRemind: (user: SimpleUser, amount: number, currency: string) => handleRemind(user, amount, currency),
-  }), [myBalanceByCurrency, myDebts, allDebts, loading, handleRepay, handleRemind]);
+  const smartProps = useMemo(
+    () => ({
+      myBalanceByCurrency,
+      myDebts,
+      allDebts,
+      loading,
+      onFabClick: () => {},
+      onRepay: (user: SimpleUser, amount: number, currency: string) => handleRepay(user, amount, currency),
+    }),
+    [myBalanceByCurrency, myDebts, allDebts, loading, handleRepay]
+  );
 
   return (
-    <CardSection
-      noPadding
-      className="relative w-full h-full min-h-[320px] overflow-x-hidden overscroll-x-none"
-    >
+    <CardSection noPadding className="relative w-full h-full min-h-[320px] overflow-x-hidden overscroll-x-none">
       <div className="w-full min-w-0" style={{ color: "var(--tg-text-color)" }}>
         <GroupBalanceTabSmart {...smartProps} />
       </div>
@@ -287,7 +234,9 @@ export default function GroupBalanceTab() {
         groups={[]}
         defaultGroupId={groupId}
         initialTx={txInitial || undefined}
-        onCreated={() => { setRefreshSeq((v) => v + 1); }}
+        onCreated={() => {
+          setRefreshSeq((v) => v + 1);
+        }}
       />
     </CardSection>
   );
