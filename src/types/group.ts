@@ -4,6 +4,8 @@
 import type { GroupMember } from "./group_member"
 
 export type GroupStatus = "active" | "archived"
+
+// Алгоритм взаимозачёта
 export type SettleAlgorithm = "greedy" | "pairs"
 
 export interface Group {
@@ -19,7 +21,7 @@ export interface Group {
   auto_archive: boolean
   default_currency_code: string
 
-  /** Выбранный алгоритм взаимозачёта на уровне группы */
+  /** Выбранный алгоритм взаимозачёта */
   settle_algorithm: SettleAlgorithm
 
   /** URL аватара группы (если установлен) */
@@ -30,7 +32,7 @@ export interface Group {
 
   last_activity_at?: string | null
   is_telegram_linked?: boolean
-  is_hidden?: boolean
+  is_hidden?: boolean            // NEW
 }
 
 export interface GroupPreview {
@@ -44,14 +46,14 @@ export interface GroupPreview {
   /** URL аватара группы в списках (если установлен) */
   avatar_url?: string | null
 
-  /** Алгоритм (для бейджа/иконки на карточке, опционально) */
-  settle_algorithm?: SettleAlgorithm
-
   status?: GroupStatus
   archived_at?: string | null
   deleted_at?: string | null
   default_currency_code?: string
   last_activity_at?: string | null
   is_telegram_linked?: boolean
-  is_hidden?: boolean
+  is_hidden?: boolean            // NEW
+
+  /** Для совместимости — если бэк начнёт отдавать и в превью */
+  settle_algorithm?: SettleAlgorithm
 }

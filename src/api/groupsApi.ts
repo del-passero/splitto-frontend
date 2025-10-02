@@ -96,31 +96,29 @@ export async function getGroupDetails(groupId: number, offset: number = 0, limit
   return g
 }
 
-/** Балансы. Можно запросить мультивалютно (true) */
-export async function getGroupBalances(groupId: number, opts?: { multicurrency?: boolean }) {
-  const sp = new URLSearchParams()
-  if (opts?.multicurrency) sp.set("multicurrency", "true")
-  const url = `${API_URL}/groups/${groupId}/balances` + (sp.toString() ? `?${sp.toString()}` : "")
+export async function getGroupBalances(groupId: number) {
+  const url = `${API_URL}/groups/${groupId}/balances`
   return await fetchJson(url)
 }
 
-/** План выплат. Поддерживает предпросмотр через ?algorithm=greedy|pairs и мультивалюту */
+/** Предпросмотр графа выплат (добавлен опциональный override алгоритма) */
 export async function getGroupSettleUp(
   groupId: number,
   opts?: { algorithm?: SettleAlgorithm; multicurrency?: boolean }
 ) {
   const sp = new URLSearchParams()
   if (opts?.algorithm) sp.set("algorithm", opts.algorithm)
-  if (opts?.multicurrency) sp.set("multicurrency", "true")
-  const url = `${API_URL}/groups/${groupId}/settle-up` + (sp.toString() ? `?${sp.toString()}` : "")
+  if (typeof opts?.multicurrency === "boolean") sp.set("multicurrency", opts.multicurrency ? "true" : "false")
+  const qs = sp.toString()
+  const url = `${API_URL}/groups/${groupId}/settle-up${qs ? `?${qs}` : ""}`
   return await fetchJson(url)
 }
 
+/** Создание группы (+ поддержка settle_algorithm) */
 export async function createGroup(payload: {
   name: string
   description: string
   owner_id: number
-  /** опционально задаём алгоритм при создании; по умолчанию на бэке 'greedy' */
   settle_algorithm?: SettleAlgorithm
 }): Promise<Group> {
   const url = `${API_URL}/groups/`
@@ -183,7 +181,7 @@ export async function patchGroupSchedule(
   })
 }
 
-/** Частичное обновление инфо группы (+ смена алгоритма) */
+/** Частичное обновление инфо группы (+ поддержка settle_algorithm) */
 export async function patchGroupInfo(
   groupId: number,
   payload: { name?: string; description?: string | null; settle_algorithm?: SettleAlgorithm }
@@ -197,7 +195,10 @@ export async function patchGroupInfo(
 }
 
 /** Батч-превью долгов */
-export async function getDebtsPreview(userId: number, groupIds: number[]): Promise<Record<string, { owe?: Record<string, number>; owed?: Record<string, number> }>> {
+export async function getDebtsPreview(
+  userId: number,
+  groupIds: number[]
+): Promise<Record<string, { owe?: Record<string, number>; owed?: Record<string, number> }>> {
   if (!groupIds.length) return {}
   const sp = new URLSearchParams()
   sp.set("group_ids", groupIds.join(","))
