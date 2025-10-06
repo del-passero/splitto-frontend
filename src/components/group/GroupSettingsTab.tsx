@@ -5,7 +5,7 @@ import CardSection from "../CardSection"
 import { useTranslation } from "react-i18next"
 import { useParams } from "react-router-dom"
 import CurrencyPickerModal from "../currency/CurrencyPickerModal"
-import { getGroupDetails, patchGroupCurrency, patchGroupSchedule, patchGroupInfo } from "../../api/groupsApi"
+import { getGroupDetails, patchGroupCurrency, patchGroupSchedule, patchGroupSettleAlgorithm } from "../../api/groupsApi"
 import type { SettleAlgorithm } from "../../types/group"
 
 type Props = {
@@ -233,11 +233,11 @@ const GroupSettingsTab = ({
           initialCurrencyRef.current = currencyCode
           setLoadingCurrency(false)
         }
-        // алгоритм
+        // алгоритм — отдельным PATCH
         const desiredAlgo: SettleAlgorithm = minTransfers ? "greedy" : "pairs"
         if (desiredAlgo !== initialAlgoRef.current) {
           setLoadingAlgo(true)
-          await patchGroupInfo(gid, { settle_algorithm: desiredAlgo })
+          await patchGroupSettleAlgorithm(gid, desiredAlgo)
           initialAlgoRef.current = desiredAlgo
           setLoadingAlgo(false)
         }
@@ -370,7 +370,7 @@ const GroupSettingsTab = ({
                 type="button"
                 aria-label={hidden ? (t("unhide") as string) : (t("hide") as string)}
                 onClick={() =>
-                  smartClick(hidden ? actions?.onUnhide : actions?.onHide, t as any, {
+                  smartClick(hidden ? actions?.onUnhide : actions?.onHide, (t as unknown) as any, {
                     errorTitle: t("error") as string,
                     kind: "generic",
                   })
@@ -395,7 +395,7 @@ const GroupSettingsTab = ({
                 type="button"
                 aria-label={t("archive")}
                 onClick={() =>
-                  smartClick(actions?.onArchive, t as any, {
+                  smartClick(actions?.onArchive, (t as unknown) as any, {
                     confirmKey: "group_modals.archive_confirm",
                     errorTitle: t("error") as string,
                     kind: "archive",
@@ -421,7 +421,7 @@ const GroupSettingsTab = ({
                 type="button"
                 aria-label={t("unarchive")}
                 onClick={() =>
-                  smartClick(actions?.onUnarchive, t as any, {
+                  smartClick(actions?.onUnarchive, (t as unknown) as any, {
                     confirmKey: "group_modals.unarchive_confirm",
                     errorTitle: t("error") as string,
                     kind: "generic",
@@ -447,7 +447,7 @@ const GroupSettingsTab = ({
                 type="button"
                 aria-label={t("restore")}
                 onClick={() =>
-                  smartClick(() => actions?.onRestore?.({ toActive: true }), t as any, {
+                  smartClick(() => actions?.onRestore?.({ toActive: true }), (t as unknown) as any, {
                     confirmKey: "group_modals.restore_confirm",
                     errorTitle: t("error") as string,
                     kind: "generic",
@@ -516,7 +516,7 @@ const GroupSettingsTab = ({
               <button
                 type="button"
                 onClick={() =>
-                  smartClick(onDelete, t as any, {
+                  smartClick(onDelete, (t as unknown) as any, {
                     confirmKey: "group_modals.delete_soft_confirm",
                     errorTitle: t("error") as string,
                     kind: "delete",

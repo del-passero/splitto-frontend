@@ -96,12 +96,16 @@ export async function getGroupDetails(groupId: number, offset: number = 0, limit
   return g
 }
 
-export async function getGroupBalances(groupId: number) {
-  const url = `${API_URL}/groups/${groupId}/balances`
+/** Балансы группы; при opts.multicurrency=true — по каждой валюте */
+export async function getGroupBalances(groupId: number, opts?: { multicurrency?: boolean }) {
+  const sp = new URLSearchParams()
+  if (opts?.multicurrency) sp.set("multicurrency", "true")
+  const qs = sp.toString()
+  const url = `${API_URL}/groups/${groupId}/balances${qs ? `?${qs}` : ""}`
   return await fetchJson(url)
 }
 
-/** Предпросмотр графа выплат (добавлен опциональный override алгоритма) */
+/** Предпросмотр графа выплат; поддерживает override алгоритма и мультивалютность */
 export async function getGroupSettleUp(
   groupId: number,
   opts?: { algorithm?: SettleAlgorithm; multicurrency?: boolean }
@@ -114,7 +118,7 @@ export async function getGroupSettleUp(
   return await fetchJson(url)
 }
 
-/** Создание группы (+ поддержка settle_algorithm) */
+/** Создание группы (+ опционально settle_algorithm) */
 export async function createGroup(payload: {
   name: string
   description: string
@@ -181,16 +185,26 @@ export async function patchGroupSchedule(
   })
 }
 
-/** Частичное обновление инфо группы (+ поддержка settle_algorithm) */
+/** Частичное обновление инфо группы (без settle_algorithm) */
 export async function patchGroupInfo(
   groupId: number,
-  payload: { name?: string; description?: string | null; settle_algorithm?: SettleAlgorithm }
+  payload: { name?: string; description?: string | null }
 ): Promise<Group> {
   const url = `${API_URL}/groups/${groupId}`
   return await fetchJson<Group>(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  })
+}
+
+/** Отдельный PATCH для смены settle-алгоритма */
+export async function patchGroupSettleAlgorithm(groupId: number, settle_algorithm: SettleAlgorithm): Promise<Group> {
+  const url = `${API_URL}/groups/${groupId}/settle-algorithm`
+  return await fetchJson<Group>(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settle_algorithm }),
   })
 }
 
