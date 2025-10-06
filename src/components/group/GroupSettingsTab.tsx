@@ -1,11 +1,28 @@
 // src/components/group/GroupSettingsTab.tsx
 import { useEffect, useRef, useState } from "react"
-import { Save, Trash2, CircleDollarSign, CalendarDays, ChevronRight, X, Archive, RotateCw, EyeOff, Eye, Shuffle } from "lucide-react"
+import {
+  Save,
+  Trash2,
+  CircleDollarSign,
+  CalendarDays,
+  ChevronRight,
+  X,
+  Archive,
+  RotateCw,
+  EyeOff,
+  Eye,
+  Shuffle,
+} from "lucide-react"
 import CardSection from "../CardSection"
 import { useTranslation } from "react-i18next"
 import { useParams } from "react-router-dom"
 import CurrencyPickerModal from "../currency/CurrencyPickerModal"
-import { getGroupDetails, patchGroupCurrency, patchGroupSchedule, patchGroupSettleAlgorithm } from "../../api/groupsApi"
+import {
+  getGroupDetails,
+  patchGroupCurrency,
+  patchGroupSchedule,
+  patchGroupSettleAlgorithm,
+} from "../../api/groupsApi"
 import type { SettleAlgorithm } from "../../types/group"
 
 type Props = {
@@ -30,23 +47,39 @@ type Props = {
   }
 }
 
-/** Переключатель, как в CreateGroupModal */
+/** Переключатель, как в CreateGroupModal — добавили disabled и возможность отключить анимации на первый рендер */
 function Switch({
   checked,
   onChange,
   ariaLabel,
-}: { checked: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
+  disabled = false,
+  animated = true,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  ariaLabel: string
+  disabled?: boolean
+  animated?: boolean
+}) {
   return (
     <button
       type="button"
       aria-label={ariaLabel}
       aria-pressed={checked}
-      onClick={(e) => { e.stopPropagation(); onChange(!checked) }}
-      className={`relative inline-flex items-center w-12 h-7 rounded-full transition-colors
-        ${checked ? "bg-[var(--tg-theme-button-color,#40A7E3)]" : "bg-[var(--tg-secondary-bg-color,#e6e6e6)]"}`}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!disabled) onChange(!checked)
+      }}
+      className={`relative inline-flex items-center w-12 h-7 rounded-full ${
+        animated ? "transition-colors" : ""
+      } ${checked ? "bg-[var(--tg-theme-button-color,#40A7E3)]" : "bg-[var(--tg-secondary-bg-color,#e6e6e6)]"} disabled:opacity-60 disabled:pointer-events-none`}
     >
-      <span className={`absolute h-6 w-6 rounded-full bg-white shadow transform transition-transform
-        ${checked ? "translate-x-5" : "translate-x-1"}`} />
+      <span
+        className={`absolute h-6 w-6 rounded-full bg-white shadow transform ${
+          animated ? "transition-transform" : ""
+        } ${checked ? "translate-x-5" : "translate-x-1"}`}
+      />
     </button>
   )
 }
@@ -109,7 +142,7 @@ const detectDebtMessage = (raw: string) =>
 const normalizeErrorMessage = (raw: string, t: (k: string) => string, kind: "archive" | "delete" | "generic"): string => {
   if (detectDebtMessage(raw)) {
     if (kind === "archive") return (t("archive_forbidden_debts_note") as string) || raw
-    if (kind === "delete")  return (t("delete_forbidden_debts_note")  as string) || raw
+    if (kind === "delete") return (t("delete_forbidden_debts_note") as string) || raw
   }
   return raw || (t("error") as string)
 }
@@ -145,17 +178,20 @@ const GroupSettingsTab = ({
   const { groupId } = useParams()
   const gid = Number(groupId)
 
+  // Флаг «первичная гидрация значений из БД»
+  const [hydrating, setHydrating] = useState(true)
+
   // локальное состояние для «валюта + алгоритм + поездка»
   const [currencyCode, setCurrencyCode] = useState<string>("USD")
   const [currencyModal, setCurrencyModal] = useState(false)
 
   const [minTransfers, setMinTransfers] = useState<boolean>(true) // true=greedy, false=pairs
 
-  const [endDate, setEndDate] = useState<string>("")             // YYYY-MM-DD или ""
-  const [tripEnabled, setTripEnabled] = useState<boolean>(false)  // UX-вариант A
+  const [endDate, setEndDate] = useState<string>("") // YYYY-MM-DD или ""
+  const [tripEnabled, setTripEnabled] = useState<boolean>(false) // UX-вариант A
   const hiddenDateRef = useRef<HTMLInputElement | null>(null)
-  const tripBlockRef = useRef<HTMLDivElement | null>(null)        // для скролла к полю
-  const [tripDateError, setTripDateError] = useState(false)       // подсветка подписи красным
+  const tripBlockRef = useRef<HTMLDivElement | null>(null) // для скролла к полю
+  const [tripDateError, setTripDateError] = useState(false) // подсветка подписи красным
 
   const [loadingCurrency, setLoadingCurrency] = useState(false)
   const [loadingSchedule, setLoadingSchedule] = useState(false)
@@ -171,7 +207,10 @@ const GroupSettingsTab = ({
   useEffect(() => {
     let cancelled = false
     async function load() {
-      if (!gid) return
+      if (!gid) {
+        setHydrating(false)
+        return
+      }
       try {
         const g = await getGroupDetails(gid)
         if (cancelled || !g) return
@@ -190,10 +229,14 @@ const GroupSettingsTab = ({
         initialAlgoRef.current = algo
       } catch {
         // ignore
+      } finally {
+        if (!cancelled) setHydrating(false) // ← выключаем анимации только после первичной установки стейтов
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [gid])
 
   // Локально меняем значения, без немедленного PATCH
@@ -274,17 +317,17 @@ const GroupSettingsTab = ({
 
   // флаги для действий
   const isArchived = !!flags?.isArchived
-  const isDeleted  = !!flags?.isDeleted
-  const hidden     = !!flags?.isHiddenForMe
-  const owner      = !!flags?.isOwner
+  const isDeleted = !!flags?.isDeleted
+  const hidden = !!flags?.isHiddenForMe
+  const owner = !!flags?.isOwner
 
   // видимость экшенов — ровно как в GroupCardMenu
-  const showHide       = true
-  const showArchive    = owner && !isDeleted && !isArchived
-  const showUnarchive  = owner && !isDeleted && isArchived
-  const showRestore    = owner && isDeleted
+  const showHide = true
+  const showArchive = owner && !isDeleted && !isArchived
+  const showUnarchive = owner && !isDeleted && isArchived
+  const showRestore = owner && isDeleted
 
-  const saving = loadingAlgo || loadingCurrency || loadingSchedule
+  const saving = hydrating || loadingAlgo || loadingCurrency || loadingSchedule
 
   return (
     <CardSection className="flex flex-col gap-3 p-4 min-h-[280px]">
@@ -295,7 +338,7 @@ const GroupSettingsTab = ({
             icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
             label={t("currency.main_currency")}
             value={currencyCode || "USD"}
-            onClick={() => !loadingCurrency && setCurrencyModal(true)}
+            onClick={() => !loadingCurrency && !hydrating && setCurrencyModal(true)}
           />
           <Row
             icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
@@ -305,6 +348,8 @@ const GroupSettingsTab = ({
                 checked={minTransfers}
                 onChange={(v) => setMinTransfers(v)}
                 ariaLabel={t("settle.minimum_transfers") || "Минимум переводов"}
+                disabled={saving}
+                animated={!hydrating}
               />
             }
           />
@@ -316,9 +361,11 @@ const GroupSettingsTab = ({
                 checked={tripEnabled}
                 onChange={handleToggleTrip}
                 ariaLabel={t("group_form.is_trip")}
+                disabled={saving}
+                animated={!hydrating}
               />
             }
-            onClick={() => handleToggleTrip(!tripEnabled)}
+            onClick={() => !saving && handleToggleTrip(!tripEnabled)}
             isLast
           />
 
