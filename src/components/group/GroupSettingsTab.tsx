@@ -47,7 +47,14 @@ type Props = {
   }
 }
 
-/** Переключатель, как в CreateGroupModal — добавили disabled и возможность отключить анимации на первый рендер */
+/** Простой скелетон свитча на время загрузки */
+function ToggleSkeleton() {
+  return (
+    <div className="mr-4 h-7 w-12 rounded-full bg-[var(--tg-secondary-bg-color,#e6e6e6)] opacity-60" />
+  )
+}
+
+/** Переключатель, как в CreateGroupModal — с опциями disabled и отключением анимаций */
 function Switch({
   checked,
   onChange,
@@ -74,11 +81,13 @@ function Switch({
       className={`relative inline-flex items-center w-12 h-7 rounded-full ${
         animated ? "transition-colors" : ""
       } ${checked ? "bg-[var(--tg-theme-button-color,#40A7E3)]" : "bg-[var(--tg-secondary-bg-color,#e6e6e6)]"} disabled:opacity-60 disabled:pointer-events-none`}
+      style={animated ? undefined : { transition: "none" }}
     >
       <span
         className={`absolute h-6 w-6 rounded-full bg-white shadow transform ${
           animated ? "transition-transform" : ""
         } ${checked ? "translate-x-5" : "translate-x-1"}`}
+        style={animated ? undefined : { transition: "none" }}
       />
     </button>
   )
@@ -230,7 +239,7 @@ const GroupSettingsTab = ({
       } catch {
         // ignore
       } finally {
-        if (!cancelled) setHydrating(false) // ← выключаем анимации только после первичной установки стейтов
+        if (!cancelled) setHydrating(false) // выключаем «режим загрузки» и показываем свитчи
       }
     }
     load()
@@ -337,40 +346,59 @@ const GroupSettingsTab = ({
           <Row
             icon={<CircleDollarSign className="text-[var(--tg-link-color)]" size={22} />}
             label={t("currency.main_currency")}
-            value={currencyCode || "USD"}
+            value={hydrating ? undefined : (currencyCode || "USD")}
             onClick={() => !loadingCurrency && !hydrating && setCurrencyModal(true)}
           />
-          <Row
-            icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
-            label={t("settle.minimum_transfers") || "Минимум переводов"}
-            right={
-              <Switch
-                checked={minTransfers}
-                onChange={(v) => setMinTransfers(v)}
-                ariaLabel={t("settle.minimum_transfers") || "Минимум переводов"}
-                disabled={saving}
-                animated={!hydrating}
-              />
-            }
-          />
-          <Row
-            icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
-            label={t("group_form.is_trip")}
-            right={
-              <Switch
-                checked={tripEnabled}
-                onChange={handleToggleTrip}
-                ariaLabel={t("group_form.is_trip")}
-                disabled={saving}
-                animated={!hydrating}
-              />
-            }
-            onClick={() => !saving && handleToggleTrip(!tripEnabled)}
-            isLast
-          />
+          {/* Минимум переводов */}
+          {hydrating ? (
+            <Row
+              icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
+              label={t("settle.minimum_transfers") || "Минимум переводов"}
+              right={<ToggleSkeleton />}
+            />
+          ) : (
+            <Row
+              icon={<Shuffle className="text-[var(--tg-link-color)]" size={20} />}
+              label={t("settle.minimum_transfers") || "Минимум переводов"}
+              right={
+                <Switch
+                  checked={minTransfers}
+                  onChange={(v) => setMinTransfers(v)}
+                  ariaLabel={t("settle.minimum_transfers") || "Минимум переводов"}
+                  disabled={saving}
+                  animated={!hydrating}
+                />
+              }
+            />
+          )}
+          {/* Поездка */}
+          {hydrating ? (
+            <Row
+              icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
+              label={t("group_form.is_trip")}
+              right={<ToggleSkeleton />}
+              isLast
+            />
+          ) : (
+            <Row
+              icon={<CalendarDays className="text-[var(--tg-link-color)]" size={22} />}
+              label={t("group_form.is_trip")}
+              right={
+                <Switch
+                  checked={tripEnabled}
+                  onChange={handleToggleTrip}
+                  ariaLabel={t("group_form.is_trip")}
+                  disabled={saving}
+                  animated={!hydrating}
+                />
+              }
+              onClick={() => !saving && handleToggleTrip(!tripEnabled)}
+              isLast
+            />
+          )}
 
-          {/* Видимое поле даты — только когда тумблер включён */}
-          {tripEnabled && (
+          {/* Видимое поле даты — только когда тумблер включён и не в гидрации */}
+          {!hydrating && tripEnabled && (
             <div ref={tripBlockRef} className="px-4 pt-2 pb-3">
               <button
                 type="button"
