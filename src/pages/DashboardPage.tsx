@@ -7,6 +7,7 @@ import TopCategoriesCard from "../components/dashboard/TopCategoriesCard"
 import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
 import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
+import SafeSection from "../components/SafeSection"
 
 export default function DashboardPage() {
   const { t } = useTranslation()
@@ -34,10 +35,8 @@ export default function DashboardPage() {
     hydrateIfNeeded()
   }, [hydrateIfNeeded])
 
-  // флаги «что-то уже пришло», чтобы не падать на пустых данных
   const hasAnyData = useMemo(
-    () =>
-      !!(balance || topCategories || topPartners || recentGroups || events),
+    () => !!(balance || topCategories || topPartners || recentGroups || events),
     [balance, topCategories, topPartners, recentGroups, events]
   )
 
@@ -51,29 +50,34 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Баланс */}
       <div className="mb-4">
-        <DashboardBalanceCard />
+        <SafeSection title="Баланс">
+          <DashboardBalanceCard />
+        </SafeSection>
       </div>
 
-      {/* Топ категории */}
       <div className="mb-4">
-        <TopCategoriesCard />
+        <SafeSection title="Топ категории">
+          <TopCategoriesCard />
+        </SafeSection>
       </div>
 
-      {/* Партнёры */}
       <div className="mb-4">
-        <TopPartnersCarousel />
+        <SafeSection title="Партнёры">
+          <TopPartnersCarousel />
+        </SafeSection>
       </div>
 
-      {/* Последние группы */}
       <div className="mb-4">
-        <RecentGroupsCarousel />
+        <SafeSection title="Последние группы">
+          <RecentGroupsCarousel />
+        </SafeSection>
       </div>
 
-      {/* Лента событий */}
       <div className="mb-4">
-        <DashboardEventsFeed />
+        <SafeSection title="Лента событий">
+          <DashboardEventsFeed />
+        </SafeSection>
       </div>
 
       {loading && (
