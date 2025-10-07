@@ -1,13 +1,14 @@
 // src/main.tsx
 import "./i18n"
+import React, { Suspense } from "react"
 import ReactDOM from "react-dom/client"
 import App from "./App"
 import "./styles/index.css"
+import "./pdfjs-setup"
 import { useUserStore } from "./store/userStore"
-import "./pdfjs-setup";
+import { ErrorBoundary } from "./components/ErrorBoundary"
 
-
-// 1) Прописать tg-переменные в :root и слушать смену темы
+// Телеграм-тема → CSS-переменные
 function applyTgTheme(p: any = (window as any)?.Telegram?.WebApp?.themeParams || {}) {
   const root = document.documentElement
   const map: Record<string, string | undefined> = {
@@ -22,27 +23,28 @@ function applyTgTheme(p: any = (window as any)?.Telegram?.WebApp?.themeParams ||
     "--tg-secondary-bg-color": p.secondary_bg_color,
   }
   Object.entries(map).forEach(([k, v]) => v && root.style.setProperty(k, v))
-  // чтобы системные контролы/скроллбар корректно инвертировались
   root.style.colorScheme = "light dark"
 }
 
-// применяем сразу
 applyTgTheme()
-// и подписываемся на смену темы Telegram
 ;(window as any)?.Telegram?.WebApp?.onEvent?.("themeChanged", () =>
   applyTgTheme((window as any).Telegram.WebApp.themeParams)
 )
-// (необязательно) Telegram рекомендует вызывать ready
 try { (window as any).Telegram?.WebApp?.ready?.() } catch {}
 
-// 2) Bootstrap userStore (авторизация по Telegram + сброс остальных стора при смене юзера)
+// Авторизация/бутабстрап до рендера
 try {
-  // вызывем один раз до рендера; внутри bootstrap есть вся логика с userKey/resetAllStores
   useUserStore.getState().bootstrap().catch(console.error)
 } catch (e) {
   console.error(e)
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <App />
+  <React.StrictMode>
+    <ErrorBoundary>
+      <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+        <App />
+      </Suspense>
+    </ErrorBoundary>
+  </React.StrictMode>
 )

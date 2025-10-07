@@ -1,3 +1,4 @@
+// src/App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { useEffect } from "react"
 
@@ -17,7 +18,6 @@ import { useSyncI18nLanguage } from "./hooks/useSyncI18nLanguage"
 import { useTelegramAuth } from "./hooks/useTelegramAuth"
 import { useAcceptInviteOnBoot } from "./hooks/useAcceptInviteOnBoot"
 
-// ВАЖНО: этот компонент живёт ВНУТРИ <BrowserRouter>, поэтому хуки роутера здесь валидны
 const RoutedApp = () => {
   useAcceptInviteOnBoot()
 
@@ -44,7 +44,7 @@ const App = () => {
   useTelegramAuth()
 
   useEffect(() => {
-    // Telegram WebApp init происходит в useTelegramAuth
+    // init WebApp — внутри useTelegramAuth
   }, [])
 
   return (
