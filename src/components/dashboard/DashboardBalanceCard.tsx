@@ -30,49 +30,49 @@ export default function DashboardBalanceCard() {
     selected,
     setSelectedCurrencies,
   } = useDashboardStore((s) => {
-    // БЕЗОПАСНО читаем ui и last_currencies
-    const uiSelected = s.ui?.balanceCurrencies ?? []
-    const last = s.balance?.last_currencies ?? []
+    const uiSelected = Array.isArray(s.ui?.balanceCurrencies) ? s.ui!.balanceCurrencies! : []
+    const last = Array.isArray(s.balance?.last_currencies) ? s.balance!.last_currencies! : []
     return {
-      balance: s.balance,
-      selected: uiSelected.length ? uiSelected : last,
+      balance: s.balance ?? { i_owe: {}, they_owe_me: {}, last_currencies: [] as string[] },
+      selected: (uiSelected.length ? uiSelected : last) as string[],
       setSelectedCurrencies: s.setBalanceCurrencies,
     }
   })
 
-  const myOweByCurrency = balance?.i_owe ?? {}
-  const myOwedByCurrency = balance?.they_owe_me ?? {}
+  const myOweByCurrency: Record<string, string | number> = balance?.i_owe ?? {}
+  const myOwedByCurrency: Record<string, string | number> = balance?.they_owe_me ?? {}
 
+  // все валюты, которые вообще встречаются
   const currencies = useMemo(() => {
     const set = new Set<string>()
-    Object.keys(myOweByCurrency || {}).forEach((k) => set.add(k))
-    Object.keys(myOwedByCurrency || {}).forEach((k) => set.add(k))
+    Object.keys(myOweByCurrency).forEach((k) => set.add(k))
+    Object.keys(myOwedByCurrency).forEach((k) => set.add(k))
     return Array.from(set).sort()
   }, [myOweByCurrency, myOwedByCurrency])
 
+  const safeSelected = useMemo(
+    () => (Array.isArray(selected) ? selected.filter((c) => currencies.includes(c)) : []),
+    [selected, currencies]
+  )
+
   const toggleCurrency = (code: string) => {
-    const safeSelected = Array.isArray(selected) ? selected : []
-    const cur = new Set<string>(safeSelected.filter((c) => currencies.includes(c)))
+    const cur = new Set<string>(safeSelected)
     if (cur.has(code)) cur.delete(code)
     else cur.add(code)
     setSelectedCurrencies(Array.from(cur))
   }
 
-  const showList = (Array.isArray(selected) ? selected : []).length ? selected : currencies
+  const baseList = safeSelected.length ? safeSelected : currencies
 
   const oweEntries = useMemo(() => {
-    const arr = showList.map(
-      (ccy) => [ccy, Number(myOweByCurrency?.[ccy] ?? 0)] as const
-    )
+    const arr = baseList.map((ccy) => [ccy, Number(myOweByCurrency[ccy] ?? 0)] as const)
     return arr.filter(([, v]) => Number.isFinite(v) && Math.abs(v) > 0.00001)
-  }, [showList, myOweByCurrency])
+  }, [baseList, myOweByCurrency])
 
   const owedEntries = useMemo(() => {
-    const arr = showList.map(
-      (ccy) => [ccy, Number(myOwedByCurrency?.[ccy] ?? 0)] as const
-    )
+    const arr = baseList.map((ccy) => [ccy, Number(myOwedByCurrency[ccy] ?? 0)] as const)
     return arr.filter(([, v]) => Number.isFinite(v) && Math.abs(v) > 0.00001)
-  }, [showList, myOwedByCurrency])
+  }, [baseList, myOwedByCurrency])
 
   return (
     <div className="w-full max-w-md mx-auto">
@@ -82,7 +82,7 @@ export default function DashboardBalanceCard() {
             <Chip
               key={ccy}
               label={ccy}
-              active={(selected ?? []).includes(ccy)}
+              active={safeSelected.includes(ccy)}
               onToggle={() => toggleCurrency(ccy)}
             />
           ))}
