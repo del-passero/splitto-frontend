@@ -1,5 +1,5 @@
 // src/store/dashboardStore.ts
-// Zustand store для кэширования данных дашборда
+// Zustand store для главного дашборда (кэш + UI-состояние)
 
 import { create } from "zustand"
 import {
@@ -21,9 +21,30 @@ import type {
   DashboardEventFeed,
 } from "../types/dashboard"
 
+type Period = "week" | "month" | "year"
+type SummaryPeriod = "day" | "week" | "month" | "year"
+
+interface UIState {
+  balanceCurrencies: string[]
+  categoriesPeriod: Period
+  partnersPeriod: Period
+  activityPeriod: Period
+  summaryPeriod: SummaryPeriod
+  summaryCurrency: string
+}
+
+interface LoadingState {
+  global: boolean
+  balance: boolean
+  activity: boolean
+  categories: boolean
+  summary: boolean
+  recentGroups: boolean
+  partners: boolean
+  events: boolean
+}
+
 interface DashboardState {
-  loading: boolean
-  error?: string | null
   balance?: DashboardBalance
   activity?: DashboardActivity
   topCategories?: TopCategories
@@ -32,17 +53,72 @@ interface DashboardState {
   topPartners?: TopPartner[]
   events?: DashboardEventFeed
 
-  fetchAll: (currency: string, period?: "week" | "month" | "year") => Promise<void>
+  loading: LoadingState
+  error?: string | null
+  ui: UIState
+
+  hydrateIfNeeded: (currencyFallback?: string) => Promise<void>
+  fetchAll: (currency: string, period?: Period) => Promise<void>
+
+  setBalanceCurrencies: (codes: string[]) => void
+  setCategoriesPeriod: (p: Period) => void
+  setPartnersPeriod: (p: Period) => void
+  setActivityPeriod: (p: Period) => void
+  setSummaryPeriod: (p: SummaryPeriod) => void
+  setSummaryCurrency: (ccy: string) => void
 }
 
-export const useDashboardStore = create<DashboardState>((set) => ({
-  loading: false,
-  error: null,
+const defaultLoading: LoadingState = {
+  global: false,
+  balance: false,
+  activity: false,
+  categories: false,
+  summary: false,
+  recentGroups: false,
+  partners: false,
+  events: false,
+}
 
-  async fetchAll(currency: string, period: "week" | "month" | "year" = "month") {
+const defaultUI: UIState = {
+  balanceCurrencies: [],
+  categoriesPeriod: "month",
+  partnersPeriod: "month",
+  activityPeriod: "month",
+  summaryPeriod: "month",
+  summaryCurrency: "USD",
+}
+
+export const useDashboardStore = create<DashboardState>((set, get) => ({
+  loading: { ...defaultLoading },
+  error: null,
+  ui: { ...defaultUI },
+
+  async hydrateIfNeeded(currencyFallback?: string) {
+    const st = get()
+    if (st.balance && st.activity && st.topCategories && st.summary && st.recentGroups && st.topPartners && st.events) {
+      return
+    }
+    const ccy = st.ui.summaryCurrency || currencyFallback || "USD"
+    await get().fetchAll(ccy, st.ui.activityPeriod || "month")
+  },
+
+  async fetchAll(currency: string, period: Period = "month") {
+    set((s) => ({
+      loading: { ...s.loading, global: true, balance: true, activity: true, categories: true, summary: true, recentGroups: true, partners: true, events: true },
+      error: null,
+      ui: { ...s.ui, summaryCurrency: currency, activityPeriod: period, categoriesPeriod: period, partnersPeriod: period },
+    }))
+
     try {
-      set({ loading: true, error: null })
-      const [balance, activity, topCategories, summary, recentGroups, topPartners, events] = await Promise.all([
+      const [
+        balance,
+        activity,
+        topCategories,
+        summary,
+        recentGroups,
+        topPartners,
+        events,
+      ] = await Promise.all([
         getDashboardBalance(),
         getDashboardActivity(period),
         getTopCategories(period, currency),
@@ -51,8 +127,8 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         getTopPartners(period, 20),
         getDashboardEvents(20),
       ])
-      set({
-        loading: false,
+
+      set((s) => ({
         balance,
         activity,
         topCategories,
@@ -60,10 +136,38 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         recentGroups,
         topPartners,
         events,
-      })
+        loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
+        error: null,
+      }))
+
+      const last = balance?.last_currencies || []
+      if (get().ui.balanceCurrencies.length === 0 && last.length) {
+        set((s) => ({ ui: { ...s.ui, balanceCurrencies: last.slice(0, 2) } }))
+      }
     } catch (e: any) {
-      console.error("Dashboard fetchAll error:", e)
-      set({ loading: false, error: e?.message || "Failed to load dashboard" })
+      set((s) => ({
+        loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
+        error: e?.message || "Failed to load dashboard",
+      }))
     }
+  },
+
+  setBalanceCurrencies(codes: string[]) {
+    set((s) => ({ ui: { ...s.ui, balanceCurrencies: Array.from(new Set(codes)) } }))
+  },
+  setCategoriesPeriod(p: Period) {
+    set((s) => ({ ui: { ...s.ui, categoriesPeriod: p } }))
+  },
+  setPartnersPeriod(p: Period) {
+    set((s) => ({ ui: { ...s.ui, partnersPeriod: p } }))
+  },
+  setActivityPeriod(p: Period) {
+    set((s) => ({ ui: { ...s.ui, activityPeriod: p } }))
+  },
+  setSummaryPeriod(p: SummaryPeriod) {
+    set((s) => ({ ui: { ...s.ui, summaryPeriod: p } }))
+  },
+  setSummaryCurrency(ccy: string) {
+    set((s) => ({ ui: { ...s.ui, summaryCurrency: ccy } }))
   },
 }))

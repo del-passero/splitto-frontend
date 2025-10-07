@@ -1,4 +1,5 @@
 // src/locales/ru.ts
+
 export default {
   settle: {
     minimum_transfers: "Минимум переводов",
@@ -258,8 +259,6 @@ export default {
     desc_hint_initial: "Введите описание группы (до {{max}} символов)",
     desc_hint_remaining: "Осталось {{n}} символов",
     trip_date_placeholder: "ДД.ММ.ГГГГ",
-
-    // ↓↓↓ добавлено для работы с аватаром
     upload_image: "Загрузить изображение",
     change_image: "Изменить фото",
     remove_image: "Удалить фото",
@@ -314,7 +313,7 @@ export default {
     next: "Далее",
     back: "Назад",
     choose_group_first: "Сначала выберите группу",
-	receipt_photo_label: "Фото\nчека",
+    receipt_photo_label: "Фото\nчека",
     receipt_photo_alt: "Фото чека",
     receipt_not_attached: "Чек не прикреплён",
     receipt_attached_pdf: "Прикреплён чек в PDF",
@@ -401,4 +400,32 @@ export default {
 
   cannot_edit_or_delete_inactive:
     "Вы не можете редактировать или удалять эту транзакцию, потому что один из её участников вышел из группы.",
-};
+
+  // ============ ДОБАВЛЕНО ДЛЯ ДАШБОРДА ============
+  period: {
+    day: "день",
+    week: "неделя",
+    month: "месяц",
+    year: "год",
+  },
+  dashboard: {
+    activity: "Активность",
+    top_categories: "Топ категорий",
+    no_categories: "Нет трат за выбранный период",
+    unknown_category: "Категория",
+    spent: "Потрачено",
+    avg_check: "Средний чек",
+    my_share: "Моя доля",
+    recent_groups: "Последние активные группы",
+    top_partners: "Часто делю расходы",
+    no_partners: "Нет данных за выбранный период",
+    events_feed: "Лента событий",
+    see_all_events: "Все события",
+    no_events: "Событий пока нет",
+    filter_all: "Все",
+    filter_tx: "Транзакции",
+    filter_edits: "Редактирования",
+    filter_groups: "Группы",
+    filter_users: "Юзеры",
+  },
+}
