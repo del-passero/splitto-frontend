@@ -24,56 +24,67 @@ function Chip({
 
 export default function DashboardBalanceCard() {
   const { t } = useTranslation()
+
   const {
     balance,
     selected,
     setSelectedCurrencies,
-  } = useDashboardStore((s) => ({
-    balance: s.balance,
-    selected: s.ui.balanceCurrencies.length
-      ? s.ui.balanceCurrencies
-      : (s.balance?.last_currencies || []),
-    setSelectedCurrencies: s.setBalanceCurrencies,
-  }))
+  } = useDashboardStore((s) => {
+    // БЕЗОПАСНО читаем ui и last_currencies
+    const uiSelected = s.ui?.balanceCurrencies ?? []
+    const last = s.balance?.last_currencies ?? []
+    return {
+      balance: s.balance,
+      selected: uiSelected.length ? uiSelected : last,
+      setSelectedCurrencies: s.setBalanceCurrencies,
+    }
+  })
 
-  const myOweByCurrency = balance?.i_owe || {}
-  const myOwedByCurrency = balance?.they_owe_me || {}
+  const myOweByCurrency = balance?.i_owe ?? {}
+  const myOwedByCurrency = balance?.they_owe_me ?? {}
 
   const currencies = useMemo(() => {
     const set = new Set<string>()
-    Object.keys(myOweByCurrency).forEach((k) => set.add(k))
-    Object.keys(myOwedByCurrency).forEach((k) => set.add(k))
+    Object.keys(myOweByCurrency || {}).forEach((k) => set.add(k))
+    Object.keys(myOwedByCurrency || {}).forEach((k) => set.add(k))
     return Array.from(set).sort()
   }, [myOweByCurrency, myOwedByCurrency])
 
   const toggleCurrency = (code: string) => {
-    const cur = new Set<string>(selected.filter((c) => currencies.includes(c)))
+    const safeSelected = Array.isArray(selected) ? selected : []
+    const cur = new Set<string>(safeSelected.filter((c) => currencies.includes(c)))
     if (cur.has(code)) cur.delete(code)
     else cur.add(code)
     setSelectedCurrencies(Array.from(cur))
   }
 
+  const showList = (Array.isArray(selected) ? selected : []).length ? selected : currencies
+
   const oweEntries = useMemo(() => {
-    const arr = (selected.length ? selected : currencies).map(
-      (ccy) => [ccy, Number(myOweByCurrency[ccy] || 0)] as const
+    const arr = showList.map(
+      (ccy) => [ccy, Number(myOweByCurrency?.[ccy] ?? 0)] as const
     )
-    // без деструктуризации, чтобы не спорить с readonly-кортежами
-    return arr.filter((pair) => Math.abs(pair[1]) > 0.00001)
-  }, [selected, currencies, myOweByCurrency])
+    return arr.filter(([, v]) => Number.isFinite(v) && Math.abs(v) > 0.00001)
+  }, [showList, myOweByCurrency])
 
   const owedEntries = useMemo(() => {
-    const arr = (selected.length ? selected : currencies).map(
-      (ccy) => [ccy, Number(myOwedByCurrency[ccy] || 0)] as const
+    const arr = showList.map(
+      (ccy) => [ccy, Number(myOwedByCurrency?.[ccy] ?? 0)] as const
     )
-    return arr.filter((pair) => Math.abs(pair[1]) > 0.00001)
-  }, [selected, currencies, myOwedByCurrency])
+    return arr.filter(([, v]) => Number.isFinite(v) && Math.abs(v) > 0.00001)
+  }, [showList, myOwedByCurrency])
 
   return (
     <div className="w-full max-w-md mx-auto">
       <div className="mb-2 flex flex-wrap gap-6">
         <div className="flex flex-wrap gap-2">
           {currencies.map((ccy) => (
-            <Chip key={ccy} label={ccy} active={selected.includes(ccy)} onToggle={() => toggleCurrency(ccy)} />
+            <Chip
+              key={ccy}
+              label={ccy}
+              active={(selected ?? []).includes(ccy)}
+              onToggle={() => toggleCurrency(ccy)}
+            />
           ))}
         </div>
       </div>
@@ -81,7 +92,9 @@ export default function DashboardBalanceCard() {
       <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="min-w-0 text-[12px] leading-[14px] text-[var(--tg-text-color)]">
           {oweEntries.length === 0 ? (
-            <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
+            <span className="text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_left")}
+            </span>
           ) : (
             <>
               <span>{t("i_owe")}: </span>
@@ -101,7 +114,9 @@ export default function DashboardBalanceCard() {
 
         <div className="min-w-0 text-[12px] leading-[14px] text-[var(--tg-text-color)] text-right">
           {owedEntries.length === 0 ? (
-            <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</span>
+            <span className="text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_right")}
+            </span>
           ) : (
             <>
               <span className="mr-1">{t("they_owe_me")}:</span>
