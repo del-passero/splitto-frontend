@@ -1,9 +1,8 @@
 // src/components/dashboard/TopCategoriesCard.tsx
-// Правая колонка «Топ категорий»: список + диаграмма (пока только список), период: неделя/месяц/год
-
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../../store/dashboardStore"
+import { tSafe } from "../../utils/tSafe"
 
 type Period = "week" | "month" | "year"
 
@@ -34,7 +33,6 @@ export default function TopCategoriesCard() {
   }))
 
   const totals = useMemo(() => {
-    // Группируем по валюте (на будущее, если понадобится диаграмма)
     const map = new Map<string, number>()
     for (const it of items) {
       const num = Number(it.sum || 0)
@@ -46,24 +44,25 @@ export default function TopCategoriesCard() {
 
   return (
     <div className="w-full">
-      {/* Хедер: чипы периода */}
       <div className="mb-2 flex gap-2">
-        <PeriodChip label={t("week") || "Неделя"} active={period === "week"} onClick={() => setPeriod("week")} />
-        <PeriodChip label={t("month") || "Месяц"} active={period === "month"} onClick={() => setPeriod("month")} />
-        <PeriodChip label={t("year") || "Год"} active={period === "year"} onClick={() => setPeriod("year")} />
+        <PeriodChip label={tSafe(t, "week", "Неделя")} active={period === "week"} onClick={() => setPeriod("week")} />
+        <PeriodChip label={tSafe(t, "month", "Месяц")} active={period === "month"} onClick={() => setPeriod("month")} />
+        <PeriodChip label={tSafe(t, "year", "Год")} active={period === "year"} onClick={() => setPeriod("year")} />
       </div>
 
       <div className="rounded-xl border p-3"
            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
         {loading ? (
-          <div className="text-[var(--tg-hint-color)]">{t("loading")}</div>
+          <div className="text-[var(--tg-hint-color)]">{tSafe(t, "loading", "Загрузка…")}</div>
         ) : items.length === 0 ? (
-          <div className="text-[var(--tg-hint-color)]">{t("group_transactions_not_found")}</div>
+          <div className="text-[var(--tg-hint-color)]">{tSafe(t, "group_transactions_not_found", "Транзакции не найдены")}</div>
         ) : (
           <div className="max-h-[260px] overflow-y-auto pr-1">
             <ul className="flex flex-col gap-2">
               {items.map((it) => {
-                const name = (it.name || "").trim() || `${t("category.not_found") || "Категория"} #${it.category_id}`
+                const name =
+                  (String(it.name || "").trim()) ||
+                  `${tSafe(t, "category.not_found", "Категория")} #${it.category_id}`
                 const sum = Number(it.sum || 0)
                 return (
                   <li key={`${it.category_id}-${it.currency}`} className="flex items-center justify-between gap-3">
@@ -79,10 +78,11 @@ export default function TopCategoriesCard() {
           </div>
         )}
 
-        {/* (Опционально) маленькая сводка по валютам */}
         {totals.length > 0 && (
           <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
-            <div className="text-[12px] text-[var(--tg-hint-color)] mb-1">{t("group_balance_totals_aria")}</div>
+            <div className="text-[12px] text-[var(--tg-hint-color)] mb-1">
+              {tSafe(t, "group_balance_totals_aria", "Итого по валютам")}
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {totals.map(([ccy, val]) => (
                 <div key={ccy} className="text-[13px]">

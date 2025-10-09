@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../../store/dashboardStore"
 import { useMemo } from "react"
 import { Loader2 } from "lucide-react"
+import { tSafe } from "../../utils/tSafe"
 
 type Period = "week" | "month" | "year"
 
@@ -18,7 +19,6 @@ const DashboardActivityChart = () => {
     loading: !!s.loading?.activity,
   }))
 
-  // ===== CHART COMPUTATION =====
   const svg = useMemo(() => {
     if (!points.length)
       return { path: "", width: 300, height: 120, pts: [] as { x: number; y: number }[] }
@@ -55,7 +55,7 @@ const DashboardActivityChart = () => {
   return (
     <div className="bg-[var(--tg-theme-bg-color)] rounded-2xl p-4 shadow-sm border border-[var(--tg-theme-hint-color)]">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="font-semibold text-base">{t("dashboard_activity")}</h3>
+        <h3 className="font-semibold text-base">{tSafe(t, "dashboard_activity", "Активность")}</h3>
         <div className="flex gap-2">
           {(["week", "month", "year"] as Period[]).map((p) => (
             <button
@@ -67,7 +67,7 @@ const DashboardActivityChart = () => {
               }`}
               onClick={() => setPeriod(p)}
             >
-              {t(`period_${p}`)}
+              {tSafe(t, `period_${p}`, p)}
             </button>
           ))}
         </div>

@@ -2,6 +2,7 @@
 import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../../store/dashboardStore"
 import { Loader2 } from "lucide-react"
+import { tSafe } from "../../utils/tSafe"
 
 type Period = "day" | "week" | "month" | "year"
 
@@ -42,7 +43,7 @@ const DashboardSummaryCard = () => {
               }`}
               onClick={() => setPeriod(p)}
             >
-              {t(`period_${p}`)}
+              {tSafe(t, `period_${p}`, p)}
             </button>
           ))}
         </div>
@@ -57,7 +58,7 @@ const DashboardSummaryCard = () => {
                   : "bg-[var(--tg-theme-secondary-bg-color)]"
               }`}
             >
-              {ccy}
+              {String(ccy)}
             </button>
           ))}
         </div>
@@ -70,21 +71,21 @@ const DashboardSummaryCard = () => {
       ) : (
         <div className="grid grid-cols-3 text-center gap-4 mt-2">
           <div>
-            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{t("spent")}</div>
+            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{tSafe(t, "spent", "Потрачено")}</div>
             <div className="font-medium">
-              {values.spent.toFixed(2)} {lastCurrency}
+              {values.spent.toFixed(2)} {String(lastCurrency)}
             </div>
           </div>
           <div>
-            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{t("avg_check")}</div>
+            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{tSafe(t, "avg_check", "Средний чек")}</div>
             <div className="font-medium">
-              {values.avg.toFixed(2)} {lastCurrency}
+              {values.avg.toFixed(2)} {String(lastCurrency)}
             </div>
           </div>
           <div>
-            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{t("my_share")}</div>
+            <div className="text-xs text-[var(--tg-theme-hint-color)] mb-1">{tSafe(t, "my_share", "Моя доля")}</div>
             <div className="font-medium">
-              {values.myShare.toFixed(2)} {lastCurrency}
+              {values.myShare.toFixed(2)} {String(lastCurrency)}
             </div>
           </div>
         </div>

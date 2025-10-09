@@ -1,9 +1,8 @@
 // src/components/dashboard/TopPartnersCarousel.tsx
-// «Часто делю расходы»: горизонтальная карусель 2 карточки, период: неделя/месяц/год
-
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../../store/dashboardStore"
+import { tSafe } from "../../utils/tSafe"
 
 type Period = "week" | "month" | "year"
 
@@ -37,26 +36,25 @@ export default function TopPartnersCarousel() {
 
   return (
     <div className="w-full">
-      {/* хедер — чипы периода */}
       <div className="mb-2 flex gap-2">
-        <PeriodChip label={t("week") || "Неделя"} active={period === "week"} onClick={() => setPeriod("week")} />
-        <PeriodChip label={t("month") || "Месяц"} active={period === "month"} onClick={() => setPeriod("month")} />
-        <PeriodChip label={t("year") || "Год"} active={period === "year"} onClick={() => setPeriod("year")} />
+        <PeriodChip label={tSafe(t, "week", "Неделя")} active={period === "week"} onClick={() => setPeriod("week")} />
+        <PeriodChip label={tSafe(t, "month", "Месяц")} active={period === "month"} onClick={() => setPeriod("month")} />
+        <PeriodChip label={tSafe(t, "year", "Год")} active={period === "year"} onClick={() => setPeriod("year")} />
       </div>
 
       <div className="rounded-xl border p-2"
            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
         {loading ? (
-          <div className="text-[var(--tg-hint-color)] px-2 py-4">{t("loading")}</div>
+          <div className="text-[var(--tg-hint-color)] px-2 py-4">{tSafe(t, "loading", "Загрузка…")}</div>
         ) : visible.length === 0 ? (
-          <div className="text-[var(--tg-hint-color)] px-2 py-4">{t("contacts_not_found")}</div>
+          <div className="text-[var(--tg-hint-color)] px-2 py-4">{tSafe(t, "contacts_not_found", "Контакты не найдены")}</div>
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-1" style={{ scrollSnapType: "x mandatory" }}>
             {visible.map((p) => {
-              const u = p.user || { id: 0 }
+              const u = p.user || { id: 0 as number, first_name: "", last_name: "" }
               const name =
-                `${(u.first_name || "").trim()} ${(u.last_name || "").trim()}`.trim() ||
-                u.username ||
+                `${String(u.first_name || "").trim()} ${String(u.last_name || "").trim()}`.trim() ||
+                String((u as any).username || "") ||
                 `#${u.id}`
               return (
                 <a
@@ -71,9 +69,9 @@ export default function TopPartnersCarousel() {
                     <div className="flex items-center gap-3">
                       <span className="relative inline-flex w-12 h-12 rounded-full overflow-hidden border"
                             style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
-                        {u.photo_url ? (
+                        {(u as any).photo_url ? (
                           <img
-                            src={u.photo_url}
+                            src={(u as any).photo_url}
                             alt={name}
                             className="w-full h-full object-cover"
                             loading="lazy"
@@ -86,7 +84,8 @@ export default function TopPartnersCarousel() {
                       <div className="min-w-0">
                         <div className="text-[14px] font-semibold truncate">{name}</div>
                         <div className="text-[12px] text-[var(--tg-hint-color)]">
-                          {t("joint_expense_count", { count: p.joint_expense_count }) || `${p.joint_expense_count} транзакций`}
+                          {tSafe(t, "joint_expense_count", `${p.joint_expense_count} транзакций`)
+                            .replace("{{count}}", String(p.joint_expense_count))}
                         </div>
                       </div>
                     </div>

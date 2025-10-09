@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../../store/dashboardStore"
 import type { DashboardEventFeedItem } from "../../types/dashboard"
+import { tSafe } from "../../utils/tSafe"
 
 type Filter = "all" | "transactions" | "members" | "groups"
 
@@ -34,7 +35,12 @@ export default function DashboardEventsFeed() {
             className={`h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition
             ${filter === f ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]"}`}
           >
-            {t(`feed_filter_${f}`)}
+            {tSafe(t, `feed_filter_${f}`, {
+              all: "Все",
+              transactions: "Транзакции",
+              members: "Участники",
+              groups: "Группы",
+            }[f])}
           </button>
         ))}
       </div>
@@ -42,16 +48,16 @@ export default function DashboardEventsFeed() {
       <div className="rounded-xl border"
            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
         {loading ? (
-          <div className="text-[var(--tg-hint-color)] px-3 py-4">{t("loading")}</div>
+          <div className="text-[var(--tg-hint-color)] px-3 py-4">{tSafe(t, "loading", "Загрузка…")}</div>
         ) : items.length === 0 ? (
-          <div className="text-[var(--tg-hint-color)] px-3 py-4">{t("events_not_found")}</div>
+          <div className="text-[var(--tg-hint-color)] px-3 py-4">{tSafe(t, "events_not_found", "События не найдены")}</div>
         ) : (
           <ul className="divide-y" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
             {items.map((it) => (
               <li key={it.id} className="px-3 py-2">
                 <div className="text-[12px] text-[var(--tg-hint-color)]">{new Date(it.created_at).toLocaleString()}</div>
-                <div className="text-[14px] font-medium">{it.title}</div>
-                {it.subtitle && <div className="text-[12px]">{it.subtitle}</div>}
+                <div className="text-[14px] font-medium">{String(it.title || "")}</div>
+                {it.subtitle && <div className="text-[12px]">{String(it.subtitle)}</div>}
               </li>
             ))}
           </ul>
