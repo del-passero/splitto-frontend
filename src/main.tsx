@@ -1,4 +1,5 @@
 // src/main.tsx
+import "./dev/react-child-guard" 
 import "./i18n"
 import React, { Suspense } from "react"
 import ReactDOM from "react-dom/client"
