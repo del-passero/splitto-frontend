@@ -1,5 +1,5 @@
 // src/api/dashboardApi.ts
-// API для главного дашборда (Главная страница)
+// Вернули заголовок к исходному 'x-telegram-initdata' и оставили остальное без изменений.
 
 import type {
   DashboardBalance,
@@ -21,8 +21,8 @@ function getTelegramInitData(): string {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    // В бекенде ожидается X-Telegram-Init-Data; HTTP заголовки регистронезависимы, но оставим каноническое имя
-    "X-Telegram-Init-Data": getTelegramInitData(),
+    // В проекте это поле исторически называется именно так (без дефиса между init и data)
+    "x-telegram-initdata": getTelegramInitData(),
   }
   const res = await fetch(url, { ...init, headers })
   if (!res.ok) {
