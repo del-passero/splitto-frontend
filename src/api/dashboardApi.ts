@@ -21,7 +21,8 @@ function getTelegramInitData(): string {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    "x-telegram-initdata": getTelegramInitData(),
+    // В бекенде ожидается X-Telegram-Init-Data; HTTP заголовки регистронезависимы, но оставим каноническое имя
+    "X-Telegram-Init-Data": getTelegramInitData(),
   }
   const res = await fetch(url, { ...init, headers })
   if (!res.ok) {
