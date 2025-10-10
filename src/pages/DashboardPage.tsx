@@ -7,15 +7,17 @@ import SafeSection from "../components/SafeSection"
 
 export default function DashboardPage() {
   const { t } = useTranslation()
-  const { hydrateIfNeeded, loading, error } = useDashboardStore((s) => ({
-    hydrateIfNeeded: s.hydrateIfNeeded,
-    loading: !!s.loading?.global,
-    error: s.error,
-  }))
+
+  // Не тянем сюда loading/error — чтобы не пересоздавать объект и не дёргать useEffect
+  const hydrateIfNeeded = useDashboardStore((s) => s.hydrateIfNeeded)
+  const loading = useDashboardStore((s) => !!s.loading?.global)
+  const error = useDashboardStore((s) => s.error)
 
   useEffect(() => {
+    // вызываем ровно один раз на маунт — без зависимости на ссылку функции
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     hydrateIfNeeded()
-  }, [hydrateIfNeeded])
+  }, [])
 
   return (
     <div className="p-3 text-[var(--tg-text-color)] bg-[var(--tg-bg-color)]">
@@ -28,7 +30,7 @@ export default function DashboardPage() {
       )}
 
       <div className="mb-4">
-        {/* Заголовок секции через i18n-ключ, как просили */}
+        {/* Заголовок секции по ключу */}
         <SafeSection title={t("group_header_my_balance")}>
           <DashboardBalanceCard />
         </SafeSection>

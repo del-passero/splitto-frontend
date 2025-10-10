@@ -1,5 +1,5 @@
 // src/store/dashboardStore.ts
-// Zustand store для главного дашборда (кэш + UI-состояние) с учётом порядка валют по последнему использованию
+// Zustand store: добавлены гарды от повторных запусков и фикс автозапуска эффекта
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
@@ -55,7 +55,7 @@ interface DashboardState {
   topPartners?: TopPartner[]
   events?: DashboardEventFeed
 
-  /** Полный упорядоченный список валют по давности использования (для сортировки чипов) */
+  /** Упорядоченный список валют по последнему использованию */
   lastCurrenciesOrdered?: string[]
 
   loading: LoadingState
@@ -105,9 +105,7 @@ function pickAvailableCurrencies(b?: DashboardBalance, orderHint?: string[]): st
     const up = String(ccy ?? "").trim().toUpperCase()
     if (up && !seen.has(up)) seen.add(up)
   }
-  // 1) упорядоченная подсказка по последнему использованию
   ;(orderHint ?? []).forEach(add)
-  // 2) дальше — из ответов баланса
   b?.last_currencies?.forEach(add)
   Object.keys(b?.i_owe ?? {}).forEach(add)
   Object.keys(b?.they_owe_me ?? {}).forEach(add)
@@ -138,7 +136,9 @@ export const useDashboardStore = create<DashboardState>()(
 
       async hydrateIfNeeded(currencyFallback?: string) {
         const st = get()
+        // если уже что-то грузим — выходим
         if (st.loading.global) return
+        // если всё есть — не грузим
         if (
           st.balance &&
           st.activity &&
@@ -157,6 +157,9 @@ export const useDashboardStore = create<DashboardState>()(
       },
 
       async fetchAll(currency: string, period: Period = "month") {
+        // анти-дребезг: если уже идёт global-загрузка — не стартуем вторую
+        if (get().loading.global) return
+
         set((s) => ({
           loading: {
             ...s.loading,
@@ -197,10 +200,9 @@ export const useDashboardStore = create<DashboardState>()(
             getRecentGroups(10),
             getTopPartners(period, 20),
             getDashboardEvents(20),
-            getLastCurrencies(50), // ← упорядоченный список для сортировки чипов
+            getLastCurrencies(50),
           ])
 
-          // Сохраняем сетевые данные
           set((s) => ({
             balance,
             activity,
@@ -224,7 +226,7 @@ export const useDashboardStore = create<DashboardState>()(
             error: null,
           }))
 
-          // Автосет чипов:
+          // автосет чипов
           const last = (lastOrdered || []).map((c) => (c || "").toUpperCase())
           const currentSel = get().ui.balanceCurrencies
           const avail = pickAvailableCurrencies(balance, last)
@@ -245,7 +247,6 @@ export const useDashboardStore = create<DashboardState>()(
             else if (!nextSel.length) nextSel = avail.slice(0, 2)
           }
 
-          // Обновляем, если изменилось
           const prev = get().ui.balanceCurrencies.map((c) => c.toUpperCase())
           const same =
             prev.length === nextSel.length && prev.every((c, i) => c === nextSel[i])
@@ -292,7 +293,6 @@ export const useDashboardStore = create<DashboardState>()(
     {
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
-      // храним только UI
       partialize: (state) => ({ ui: state.ui }),
       version: 1,
     }
