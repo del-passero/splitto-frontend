@@ -1,6 +1,6 @@
 // src/components/dashboard/DashboardBalanceCard.tsx
-// «Мой баланс» на Главной: стиль как у GroupCard (через CardSection), корректная работа с валютами,
-// чипы всех валют, по умолчанию активны 2 последние. Стрелки/цвета — как на балансе группы.
+// «Мой баланс» на Главной: стиль как у GroupCard, корректный учёт ВСЕХ валют,
+// две последние валюты активны по умолчанию, суммы берём как |value| из карт i_owe / they_owe_me.
 
 import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
@@ -8,90 +8,97 @@ import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
 import CardSection from "../CardSection"
 
-const nbsp = "\u00A0"
+const NBSP = "\u00A0"
 
 function toNum(x: unknown): number {
   const n = Number(String(x ?? "").replace(",", "."))
   return Number.isFinite(n) ? n : 0
 }
 
-/** Быстрый формат в стиле карточек (число + код, без лишних .00) */
-function fmtAmountSmart(value: number, currency: string, locale?: string) {
+/** формат: число + код валюты, без лишних .00 */
+function fmtAmount(value: number, currency: string, locale: string) {
   try {
-    const nfCurrency = new Intl.NumberFormat(locale, {
+    const parts = new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
       currencyDisplay: "code",
-    })
-    const parts = nfCurrency.formatToParts(Math.abs(value))
-    const fractionPart = parts.find((p) => p.type === "fraction")
-    const hasCents = !!fractionPart && Number(fractionPart.value) !== 0
-    const nfNumber = new Intl.NumberFormat(locale, {
+    }).formatToParts(Math.abs(value))
+    const frac = parts.find((p) => p.type === "fraction")
+    const hasCents = !!frac && Number(frac.value) !== 0
+    const nf = new Intl.NumberFormat(locale, {
       minimumFractionDigits: hasCents ? 2 : 0,
       maximumFractionDigits: hasCents ? 2 : 0,
       useGrouping: true,
     })
-    return `${nfNumber.format(value)}${nbsp}${currency}`
+    return `${nf.format(value)}${NBSP}${currency}`
   } catch {
     const rounded = Math.round(value * 100) / 100
-    const hasCents = Math.round((Math.abs(rounded) % 1) * 100) !== 0
-    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}${nbsp}${currency}`
+    const s = Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded))
+    return `${s}${NBSP}${currency}`
   }
 }
 
-/** Строим case-insensitive карту валют => значений (по верхнему регистру) */
-function buildUpperValueMap(map?: Record<string, string>): Record<string, number> {
-  const out: Record<string, number> = {}
-  if (!map) return out
-  for (const [k, v] of Object.entries(map)) {
-    const key = String(k || "").toUpperCase()
-    out[key] = toNum(v)
+/** case-insensitive маппер: берём значение по коду валюты без учёта регистра */
+function valueByCode(map: Record<string, string> | undefined, code: string): number {
+  if (!map) return 0
+  const uc = code.toUpperCase()
+  // прямое попадание
+  if (uc in Object.fromEntries(Object.keys(map).map(k => [k.toUpperCase(), 1])) === false) {
+    // noop — просто идём дальше к поиску
   }
-  return out
+  // быстрый поиск
+  const direct = (map as any)[code] ?? (map as any)[uc]
+  if (direct != null) return toNum(direct)
+  // линейный поиск по ключам в другом регистре
+  for (const [k, v] of Object.entries(map)) {
+    if (String(k).toUpperCase() === uc) return toNum(v)
+  }
+  return 0
 }
 
 export default function DashboardBalanceCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  // читаем стор
+  // читаем стор — по одному селектору на поле, чтобы не плодить лишние ререндеры
   const balance = useDashboardStore((s) => s.balance)
-  const selectedCurrencies = useDashboardStore((s) => s.ui.balanceCurrencies)
-  const setCurrencies = useDashboardStore((s) => s.setBalanceCurrencies)
+  const uiSelected = useDashboardStore((s) => s.ui.balanceCurrencies)
+  const setSelected = useDashboardStore((s) => s.setBalanceCurrencies)
   const isLoading = useDashboardStore((s) => s.loading.balance || s.loading.global)
 
-  // Мапы значений (по верхнему регистру ключей) — это фикс проблемы «Я должен пусто»
-  const iOweUpper = useMemo(() => buildUpperValueMap(balance?.i_owe), [balance?.i_owe])
-  const theyOweUpper = useMemo(() => buildUpperValueMap(balance?.they_owe_me), [balance?.they_owe_me])
+  const iOweMap = balance?.i_owe
+  const owedMap = balance?.they_owe_me
+  const last = balance?.last_currencies ?? []
 
-  // Доступные валюты: сначала last_currencies (как есть), затем ключи из обеих мап
+  // ВСЕ доступные валюты: сначала последние использованные (сохраняем порядок),
+  // затем все ключи карт; убираем дубли (без учёта регистра).
   const available = useMemo(() => {
-    const set = new Set<string>()
+    const seen = new Set<string>()
     const out: string[] = []
     const push = (code?: string | null) => {
-      const c = String(code ?? "").trim()
-      if (!c) return
-      const up = c.toUpperCase()
-      if (!set.has(up)) {
-        set.add(up)
-        out.push(up) // показываем чипы в верхнем регистре
+      const raw = String(code ?? "").trim()
+      if (!raw) return
+      const uc = raw.toUpperCase()
+      if (!seen.has(uc)) {
+        seen.add(uc)
+        out.push(raw.toUpperCase()) // показываем чипами в UC, как в остальных карточках
       }
     }
-    for (const c of balance?.last_currencies ?? []) push(c)
-    for (const k of Object.keys(balance?.i_owe ?? {})) push(k)
-    for (const k of Object.keys(balance?.they_owe_me ?? {})) push(k)
+    last.forEach(push)
+    Object.keys(iOweMap ?? {}).forEach(push)
+    Object.keys(owedMap ?? {}).forEach(push)
     return out
-  }, [balance?.last_currencies, balance?.i_owe, balance?.they_owe_me])
+  }, [last, iOweMap, owedMap])
 
-  // Активные чипы: из UI (фильтруем по доступным). Если пусто — первые 2 из available
+  // Активные чипы: из UI → валидируем по available; если пусто — берём 2 последние
   const active = useMemo(() => {
     const allow = new Set(available)
-    const filtered = (selectedCurrencies || []).map((c) => c.toUpperCase()).filter((c) => allow.has(c))
+    const filtered = (uiSelected || []).map((c) => c.toUpperCase()).filter((c) => allow.has(c))
     return filtered.length ? filtered : available.slice(0, 2)
-  }, [available, selectedCurrencies])
+  }, [available, uiSelected])
 
-  // Тоггл чипа (минимум 1 активная валюта)
-  const toggleCurrency = useCallback(
+  // Тоггл валюты (оставляем минимум одну)
+  const toggle = useCallback(
     (ccy: string) => {
       const set = new Set(active)
       if (set.has(ccy)) {
@@ -100,101 +107,97 @@ export default function DashboardBalanceCard() {
       } else {
         set.add(ccy)
       }
-      setCurrencies(Array.from(set))
+      setSelected(Array.from(set))
     },
-    [active, setCurrencies]
+    [active, setSelected]
   )
 
-  // Перечни значений по выбранным валютам (по ТЗ показываем суммы по каждой валюте; без межвалютного неттинга)
+  // Списки по сторонам: по ТЗ показываем суммы по КАЖДОЙ выбранной валюте (без межвалютного неттинга).
+  // ВАЖНО: в ответе i_owe/they_owe_me уже разделены по смыслу, поэтому берём |value| как есть.
   const oweList = useMemo(() => {
     const rows: string[] = []
     for (const c of active) {
-      // «Я должен»: берём значение из iOweUpper (там обычно отрицательные строки), отображаем модуль
-      const raw = iOweUpper[c] ?? 0
-      const val = Math.abs(raw < 0 ? raw : Math.min(0, raw)) // гарантия, что не попадём на случайный плюс
-      if (val > 0) rows.push(fmtAmountSmart(val, c, locale))
+      const val = Math.abs(valueByCode(iOweMap, c))
+      if (val > 0) rows.push(fmtAmount(val, c, locale))
     }
     return rows
-  }, [active, iOweUpper, locale])
+  }, [active, iOweMap, locale])
 
   const owedToMeList = useMemo(() => {
     const rows: string[] = []
     for (const c of active) {
-      // «Мне должны»: берём положительную часть theyOweUpper
-      const raw = theyOweUpper[c] ?? 0
-      const val = raw > 0 ? raw : Math.max(0, raw) // защита от случайного минуса
-      if (val > 0) rows.push(fmtAmountSmart(val, c, locale))
+      const val = Math.abs(valueByCode(owedMap, c))
+      if (val > 0) rows.push(fmtAmount(val, c, locale))
     }
     return rows
-  }, [active, theyOweUpper, locale])
+  }, [active, owedMap, locale])
 
   return (
     <CardSection noPadding className="overflow-hidden">
-      <div className="p-3">
-        {/* Чипы валют — показываем ВСЕ доступные; активные подсвечены */}
-        <div className="mb-3 flex items-center gap-2 overflow-x-auto pr-1">
-          {available.map((ccy) => {
-            const isActive = active.includes(ccy)
-            return (
-              <button
-                key={ccy}
-                type="button"
-                onClick={() => toggleCurrency(ccy)}
-                className={[
-                  "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition",
-                  "border",
-                  isActive
-                    ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
-                    : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]",
-                ].join(" ")}
-                aria-pressed={isActive}
-              >
-                {ccy}
-              </button>
-            )
-          })}
-          {available.length === 0 && (
-            <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>
-          )}
-        </div>
-
-        {/* Две колонки — слева «Я должен», справа «Мне должны». Цвета/иконки как на балансе группы */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Я должен */}
-          <div className="p-3 rounded-xl" style={{ background: "var(--tg-card-bg)" }}>
-            <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-              <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
-              <span>{t("i_owe")}</span>
-            </div>
-            {isLoading ? (
-              <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
-            ) : oweList.length ? (
-              <div className="text-lg font-semibold leading-tight" style={{ color: "var(--tg-destructive-text,#d7263d)" }}>
-                {oweList.join("; ")}
-              </div>
-            ) : (
-              <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">
-                {t("group_balance_no_debts_left")}
-              </div>
+      <div className="p-1.5">
+        {/* Внешняя обёртка — как у GroupCard: фон, бордер, тени */}
+        <div
+          className="
+            w-full rounded-lg p-1.5
+            border bg-[var(--tg-card-bg)] border-[var(--tg-hint-color)]
+            shadow-[0_4px_18px_-10px_rgba(83,147,231,0.14)]
+          "
+        >
+          {/* Чипы валют */}
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto pr-1">
+            {available.map((ccy) => {
+              const isActive = active.includes(ccy)
+              return (
+                <button
+                  key={ccy}
+                  type="button"
+                  onClick={() => toggle(ccy)}
+                  className={[
+                    "h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition",
+                    "border",
+                    isActive
+                      ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                      : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]",
+                  ].join(" ")}
+                  aria-pressed={isActive}
+                >
+                  {ccy}
+                </button>
+              )
+            })}
+            {available.length === 0 && (
+              <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>
             )}
           </div>
 
-          {/* Мне должны */}
-          <div className="p-3 rounded-xl text-right" style={{ background: "var(--tg-card-bg)" }}>
-            <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-              <span>{t("they_owe_me")}</span>
-              <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
-            </div>
+          {/* Две строки, как у GroupCard: */}
+          {/* 1) Я должен */}
+          <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0 mb-1.5">
+            <span className="inline-flex items-center gap-2 text-[var(--tg-hint-color)] mr-1.5">
+              <ArrowRight className="w-4 h-4 text-red-500" />
+              <span>{t("i_owe")}</span>
+            </span>
             {isLoading ? (
-              <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
-            ) : owedToMeList.length ? (
-              <div className="text-lg font-semibold leading-tight" style={{ color: "var(--tg-success-text,#1aab55)" }}>
-                {owedToMeList.join("; ")}
-              </div>
+              <span className="inline-block align-middle h-3 w-28 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            ) : oweList.length === 0 ? (
+              <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</span>
             ) : (
-              <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">
-                {t("group_balance_no_debts_right")}
-              </div>
+              <span className="text-red-500 font-semibold">{oweList.join(" · ")}</span>
+            )}
+          </div>
+
+          {/* 2) Мне должны */}
+          <div className="w-full text-[12px] leading-[14px] text-[var(--tg-text-color)] min-w-0">
+            <span className="inline-flex items-center gap-2 text-[var(--tg-hint-color)] mr-1.5">
+              <span>{t("they_owe_me")}</span>
+              <ArrowLeft className="w-4 h-4 text-green-600" />
+            </span>
+            {isLoading ? (
+              <span className="inline-block align-middle h-3 w-28 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            ) : owedToMeList.length === 0 ? (
+              <span className="text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</span>
+            ) : (
+              <span className="text-green-600 font-semibold">{owedToMeList.join(" · ")}</span>
             )}
           </div>
         </div>
