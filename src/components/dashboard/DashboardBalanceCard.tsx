@@ -1,35 +1,59 @@
 // src/components/dashboard/DashboardBalanceCard.tsx
-// Ультра-надёжный минимальный вариант «Мой баланс».
-// Без иконок, без кликов, только чтение стора и безопасный вывод.
-// Если он рендерится стабильно — источник падения был в предыдущей логике/иконках/кликах.
+// «Мой баланс» на Главной — локализовано, стилизовано как в других компонентах,
+// чипы всех доступных валют (2 последние активны по умолчанию), стрелки и цвета
+// как на балансе группы.
 
-import { useMemo } from "react"
+import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
 
+const nbsp = "\u00A0"
+
+// Формат как в GroupBalanceTabSmart: число + код валюты, без лишних копеек
+function fmtAmountSmart(value: number, currency: string, locale?: string) {
+  try {
+    const nfCurrency = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+    })
+    const parts = nfCurrency.formatToParts(Math.abs(value))
+    const fractionPart = parts.find((p) => p.type === "fraction")
+    const hasCents = !!fractionPart && Number(fractionPart.value) !== 0
+    const nfNumber = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: hasCents ? 2 : 0,
+      useGrouping: true,
+    })
+    return `${nfNumber.format(value)}${nbsp}${currency}`
+  } catch {
+    const rounded = Math.round(value * 100) / 100
+    const hasCents = Math.round((Math.abs(rounded) % 1) * 100) !== 0
+    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}${nbsp}${currency}`
+  }
+}
+
 function toNum(x: unknown): number {
-  // Принимаем строки "12.34" | "-5" | null | undefined
   const n = Number(String(x ?? "").replace(",", "."))
   return Number.isFinite(n) ? n : 0
 }
-function fmt2(n: number): string {
-  return n.toFixed(2)
-}
 
 export default function DashboardBalanceCard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = (i18n.language || "ru").split("-")[0]
 
-  // Берём строго необходимые поля по одному селектору — меньше шансов дернуть лишний ререндер
+  // читаем стор по одному полю — минимум лишних ререндеров
   const balance = useDashboardStore((s) => s.balance)
-  const uiCurrencies = useDashboardStore((s) => s.ui.balanceCurrencies)
+  const selectedCurrencies = useDashboardStore((s) => s.ui.balanceCurrencies)
+  const setCurrencies = useDashboardStore((s) => s.setBalanceCurrencies)
   const isLoading = useDashboardStore((s) => s.loading.balance || s.loading.global)
 
-  // Безопасные мапы
   const iOweMap = balance?.i_owe ?? {}
   const theyOweMap = balance?.they_owe_me ?? {}
   const last = balance?.last_currencies ?? []
 
-  // Список доступных валют = сначала последние использованные, затем те, что встречаются в балансах
+  // Доступные валюты: last_currencies первыми, затем ключи карт
   const available = useMemo(() => {
     const set = new Set<string>()
     const out: string[] = []
@@ -47,80 +71,129 @@ export default function DashboardBalanceCard() {
     return out
   }, [last, iOweMap, theyOweMap])
 
-  // Выбранные валюты — только те, что реально доступны. Если пусто — берём первые 2 из available
-  const selected = useMemo(() => {
-    if (uiCurrencies && uiCurrencies.length) {
-      const allow = new Set(available)
-      const filtered = uiCurrencies.filter((c) => allow.has(c))
-      if (filtered.length) return filtered
-    }
-    return available.slice(0, 2)
-  }, [uiCurrencies, available])
+  // Активные чипы: из UI → фильтруем по доступным; если пусто — первые 2 из available
+  const active = useMemo(() => {
+    const allow = new Set(available)
+    const filtered = (selectedCurrencies || []).filter((c) => allow.has(c))
+    return filtered.length ? filtered : available.slice(0, 2)
+  }, [available, selectedCurrencies])
 
-  // Формируем короткие списки "12.34 USD" без нулей
+  // Тоггл чипа (держим минимум 1 активную валюту)
+  const toggleCurrency = useCallback(
+    (ccy: string) => {
+      const set = new Set(active)
+      if (set.has(ccy)) {
+        if (set.size === 1) return
+        set.delete(ccy)
+      } else {
+        set.add(ccy)
+      }
+      setCurrencies(Array.from(set))
+    },
+    [active, setCurrencies]
+  )
+
+  // Собираем списки сумм по выбранным валютам (скрываем нули)
   const leftList = useMemo(() => {
-    const list: string[] = []
-    for (const c of selected) {
-      const raw = toNum((iOweMap as any)[c])
-      if (raw === 0) continue
-      list.push(`${fmt2(Math.abs(raw))} ${c}`)
+    const rows: string[] = []
+    for (const c of active) {
+      const raw = toNum((iOweMap as any)[c]) // в API могут прийти отрицательные строки
+      const val = Math.abs(raw)
+      if (val > 0) rows.push(fmtAmountSmart(val, c, locale))
     }
-    return list
-  }, [selected, iOweMap])
+    return rows
+  }, [active, iOweMap, locale])
 
   const rightList = useMemo(() => {
-    const list: string[] = []
-    for (const c of selected) {
+    const rows: string[] = []
+    for (const c of active) {
       const raw = toNum((theyOweMap as any)[c])
-      if (raw === 0) continue
-      list.push(`${fmt2(Math.abs(raw))} ${c}`)
+      const val = Math.abs(raw)
+      if (val > 0) rows.push(fmtAmountSmart(val, c, locale))
     }
-    return list
-  }, [selected, theyOweMap])
+    return rows
+  }, [active, theyOweMap, locale])
 
   return (
-    <div className="rounded-2xl p-3 bg-[var(--tg-secondary-bg-color)] border border-[color-mix(in_oklab,var(--tg-border-color)_80%,transparent)]">
-      {/* Чипы валют (без кликов, только показ кодов) */}
+    <div
+      className="
+        rounded-2xl p-3
+        border bg-[var(--tg-card-bg)] border-[var(--tg-hint-color)]
+        shadow-[0_4px_18px_-10px_rgba(83,147,231,0.14)]
+      "
+    >
+      {/* Чипы валют: показываем ВСЕ доступные, активные — подсвечены */}
       <div className="mb-3 flex items-center gap-2 overflow-x-auto pr-1">
-        {selected.length === 0 ? (
-          <span className="text-sm text-[var(--tg-hint-color)]">{t("no_data", { defaultValue: "Нет данных" })}</span>
-        ) : (
-          selected.map((ccy) => (
-            <span
+        {available.map((ccy) => {
+          const isActive = active.includes(ccy)
+          return (
+            <button
               key={ccy}
-              className="px-3 py-1 text-sm rounded-full border bg-[var(--tg-secondary-bg-color)] border-[color-mix(in_oklab,var(--tg-border-color)_80%,transparent)]"
+              type="button"
+              onClick={() => toggleCurrency(ccy)}
+              className={`
+                h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition
+                border
+                ${isActive
+                  ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                  : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]"}
+              `}
+              aria-pressed={isActive}
             >
               {ccy}
-            </span>
-          ))
+            </button>
+          )
+        })}
+        {available.length === 0 && (
+          <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>
         )}
       </div>
 
-      {/* Две колонки: слева «Я должен», справа «Мне должны». Никаких интеракций */}
+      {/* Две колонки — слева «Я должен», справа «Мне должны» */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 rounded-xl bg-[color-mix(in_oklab,var(--tg-secondary-bg-color)_60%,transparent)]">
-          <div className="text-xs text-[var(--tg-hint-color)] mb-1">
-            {t("home_i_owe", { defaultValue: "Я должен" })}
+        {/* Я должен */}
+        <div
+          className="p-3 rounded-xl"
+          style={{ background: "var(--tg-card-bg)" }}
+        >
+          <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
+            <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
+            <span>{t("i_owe")}</span>
           </div>
+
           {isLoading ? (
-            <div className="h-5 w-28 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
           ) : leftList.length ? (
-            <div className="text-lg font-semibold leading-tight">{leftList.join("; ")}</div>
+            <div className="text-lg font-semibold leading-tight" style={{ color: "var(--tg-destructive-text,#d7263d)" }}>
+              {leftList.join("; ")}
+            </div>
           ) : (
-            <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">—</div>
+            <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_left")}
+            </div>
           )}
         </div>
 
-        <div className="p-3 rounded-xl bg-[color-mix(in_oklab,var(--tg-secondary-bg-color)_60%,transparent)] text-right">
-          <div className="text-xs text-[var(--tg-hint-color)] mb-1">
-            {t("home_they_owe_me", { defaultValue: "Мне должны" })}
+        {/* Мне должны */}
+        <div
+          className="p-3 rounded-xl text-right"
+          style={{ background: "var(--tg-card-bg)" }}
+        >
+          <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
+            <span>{t("they_owe_me")}</span>
+            <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
           </div>
+
           {isLoading ? (
-            <div className="ml-auto h-5 w-28 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
           ) : rightList.length ? (
-            <div className="text-lg font-semibold leading-tight">{rightList.join("; ")}</div>
+            <div className="text-lg font-semibold leading-tight" style={{ color: "var(--tg-success-text,#1aab55)" }}>
+              {rightList.join("; ")}
+            </div>
           ) : (
-            <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">—</div>
+            <div className="text-lg font-semibold leading-tight text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_right")}
+            </div>
           )}
         </div>
       </div>
