@@ -1,5 +1,5 @@
 // src/store/dashboardStore.ts
-// Zustand store для главного дашборда (кэш + UI-состояние)
+// Zustand store для главного дашборда (кэш + UI-состояние) с учётом порядка валют по последнему использованию
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
@@ -11,6 +11,7 @@ import {
   getRecentGroups,
   getTopPartners,
   getDashboardEvents,
+  getLastCurrencies,
 } from "../api/dashboardApi"
 import type {
   DashboardBalance,
@@ -54,6 +55,9 @@ interface DashboardState {
   topPartners?: TopPartner[]
   events?: DashboardEventFeed
 
+  /** Полный упорядоченный список валют по давности использования (для сортировки чипов) */
+  lastCurrenciesOrdered?: string[]
+
   loading: LoadingState
   error?: string | null
   ui: UIState
@@ -95,29 +99,26 @@ function parseAbs(x?: string | null): number {
   return Number.isFinite(n) ? Math.abs(n) : 0
 }
 
-function pickAvailableCurrencies(b?: DashboardBalance): string[] {
-  const set = new Set<string>()
-  const out: string[] = []
-  const push = (code?: string | null) => {
-    const raw = String(code ?? "").trim()
-    if (!raw) return
-    const up = raw.toUpperCase()
-    if (!set.has(up)) {
-      set.add(up)
-      out.push(up)
-    }
+function pickAvailableCurrencies(b?: DashboardBalance, orderHint?: string[]): string[] {
+  const seen = new Set<string>()
+  const add = (ccy?: string | null) => {
+    const up = String(ccy ?? "").trim().toUpperCase()
+    if (up && !seen.has(up)) seen.add(up)
   }
-  b?.last_currencies?.forEach(push)
-  Object.keys(b?.i_owe ?? {}).forEach(push)
-  Object.keys(b?.they_owe_me ?? {}).forEach(push)
-  return out
+  // 1) упорядоченная подсказка по последнему использованию
+  ;(orderHint ?? []).forEach(add)
+  // 2) дальше — из ответов баланса
+  b?.last_currencies?.forEach(add)
+  Object.keys(b?.i_owe ?? {}).forEach(add)
+  Object.keys(b?.they_owe_me ?? {}).forEach(add)
+  return Array.from(seen)
 }
 
-function pickFirstTwoNonZero(b?: DashboardBalance): string[] {
+function pickFirstTwoNonZero(b?: DashboardBalance, avail?: string[]): string[] {
   const out: string[] = []
   if (!b) return out
-  const avail = pickAvailableCurrencies(b)
-  for (const c of avail) {
+  const list = avail ?? pickAvailableCurrencies(b)
+  for (const c of list) {
     const l = parseAbs((b.i_owe as any)?.[c])
     const r = parseAbs((b.they_owe_me as any)?.[c])
     if (l > 0 || r > 0) {
@@ -145,7 +146,8 @@ export const useDashboardStore = create<DashboardState>()(
           st.summary &&
           st.recentGroups &&
           st.topPartners &&
-          st.events
+          st.events &&
+          st.lastCurrenciesOrdered
         ) {
           return
         }
@@ -186,6 +188,7 @@ export const useDashboardStore = create<DashboardState>()(
             recentGroups,
             topPartners,
             events,
+            lastOrdered,
           ] = await Promise.all([
             getDashboardBalance(),
             getDashboardActivity(period),
@@ -194,8 +197,10 @@ export const useDashboardStore = create<DashboardState>()(
             getRecentGroups(10),
             getTopPartners(period, 20),
             getDashboardEvents(20),
+            getLastCurrencies(50), // ← упорядоченный список для сортировки чипов
           ])
 
+          // Сохраняем сетевые данные
           set((s) => ({
             balance,
             activity,
@@ -204,6 +209,7 @@ export const useDashboardStore = create<DashboardState>()(
             recentGroups,
             topPartners,
             events,
+            lastCurrenciesOrdered: (lastOrdered || []).map((c) => (c || "").toUpperCase()),
             loading: {
               ...s.loading,
               global: false,
@@ -218,13 +224,12 @@ export const useDashboardStore = create<DashboardState>()(
             error: null,
           }))
 
-          // Автовыбор валют:
-          // 1) если чипы ещё не выбраны — взять last_currencies (первые 2)
-          // 2) если выбранные дают нули по обеим сторонам — fallback на первые 2 валюты с ненулём
-          const last = (balance?.last_currencies ?? []).map((c) => (c || "").toUpperCase())
+          // Автосет чипов:
+          const last = (lastOrdered || []).map((c) => (c || "").toUpperCase())
           const currentSel = get().ui.balanceCurrencies
+          const avail = pickAvailableCurrencies(balance, last)
           let nextSel =
-            currentSel && currentSel.length ? currentSel.map((c) => c.toUpperCase()) : last.slice(0, 2)
+            currentSel && currentSel.length ? currentSel.map((c) => c.toUpperCase()) : (last.length ? last.slice(0, 2) : avail.slice(0, 2))
 
           const zeroSelected =
             !nextSel.length ||
@@ -235,15 +240,12 @@ export const useDashboardStore = create<DashboardState>()(
             })
 
           if (zeroSelected) {
-            const nonZero = pickFirstTwoNonZero(balance)
+            const nonZero = pickFirstTwoNonZero(balance, avail)
             if (nonZero.length) nextSel = nonZero
-            else if (!nextSel.length) {
-              const avail = pickAvailableCurrencies(balance)
-              nextSel = avail.slice(0, 2)
-            }
+            else if (!nextSel.length) nextSel = avail.slice(0, 2)
           }
 
-          // Обновляем только если реально изменилось
+          // Обновляем, если изменилось
           const prev = get().ui.balanceCurrencies.map((c) => c.toUpperCase())
           const same =
             prev.length === nextSel.length && prev.every((c, i) => c === nextSel[i])
@@ -290,6 +292,7 @@ export const useDashboardStore = create<DashboardState>()(
     {
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
+      // храним только UI
       partialize: (state) => ({ ui: state.ui }),
       version: 1,
     }

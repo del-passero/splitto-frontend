@@ -1,5 +1,5 @@
 // src/api/dashboardApi.ts
-// Вернули заголовок к исходному 'x-telegram-initdata' и оставили остальное без изменений.
+// API для главного дашборда (Главная страница)
 
 import type {
   DashboardBalance,
@@ -21,7 +21,6 @@ function getTelegramInitData(): string {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    // В проекте это поле исторически называется именно так (без дефиса между init и data)
     "x-telegram-initdata": getTelegramInitData(),
   }
   const res = await fetch(url, { ...init, headers })
@@ -40,6 +39,12 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 export async function getDashboardBalance(): Promise<DashboardBalance> {
   const url = `${API_URL}/dashboard/balance`
   return await fetchJson<DashboardBalance>(url)
+}
+
+// ---------------- LAST CURRENCIES (ordered by recency) ----------------
+export async function getLastCurrencies(limit = 50): Promise<string[]> {
+  const url = `${API_URL}/dashboard/last-currencies?limit=${limit}`
+  return await fetchJson<string[]>(url)
 }
 
 // ---------------- ACTIVITY ----------------
