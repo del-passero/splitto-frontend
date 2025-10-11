@@ -1,41 +1,55 @@
-// src/pages/DashboardPage.tsx
 import { useEffect } from "react"
-import CardSection from "../components/CardSection"
-import ErrorBoundary from "../components/ErrorBoundary"
-import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
+import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../store/dashboardStore"
+import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
+import SafeSection from "../components/SafeSection"
 
+// Главная: пока подключаем только «Мой баланс» — ЧЁТКО без боковых отступов, с автозапуском и лайв-обновлением
 export default function DashboardPage() {
-  const hydrateIfNeeded = useDashboardStore((s) => s.hydrateIfNeeded)
-  const refreshBalance = useDashboardStore((s) => s.refreshBalance)
+  const { t } = useTranslation()
 
+  const {
+    init,
+    startLive,
+    stopLive,
+    loading,
+    error,
+  } = useDashboardStore((s) => ({
+    init: s.init,
+    startLive: s.startLive,
+    stopLive: s.stopLive,
+    loading: !!s.loading?.balance,
+    error: s.error,
+  }))
+
+  // моментальный старт: грузим баланс и включаем лайв-обновление
   useEffect(() => {
-    hydrateIfNeeded()
-    const t = setTimeout(() => refreshBalance(), 600)
-    return () => clearTimeout(t)
+    void init()
+    startLive()
+    return () => stopLive()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    const onFocus = () => refreshBalance()
-    window.addEventListener("focus", onFocus)
-    const id = window.setInterval(onFocus, 30000)
-    return () => {
-      window.removeEventListener("focus", onFocus)
-      clearInterval(id)
-    }
-  }, [refreshBalance])
-
   return (
-    <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-3">
-      <div className="w-full max-w-md flex flex-col space-y-2">
-        {/* Важно: без боковых паддингов, как на ProfilePage */}
-        <CardSection noPadding className="py-2">
-          <ErrorBoundary>
-            <DashboardBalanceCard />
-          </ErrorBoundary>
-        </CardSection>
+    <div className="p-3 text-[var(--tg-text-color)] bg-[var(--tg-bg-color)]">
+      <h1 className="text-lg font-bold mb-3">{t("main")}</h1>
+
+      {error && (
+        <div className="mb-3 text-red-500">
+          {t("error", { defaultValue: "Ошибка" })}: {String(error)}
+        </div>
+      )}
+
+      {/* БЕЗ боковых отступов — как на Groups/Profile */}
+      <div className="mb-3">
+        <SafeSection>
+          <DashboardBalanceCard />
+        </SafeSection>
       </div>
+
+      {loading && (
+        <div className="text-[var(--tg-hint-color)]">{t("loading")}</div>
+      )}
     </div>
   )
 }

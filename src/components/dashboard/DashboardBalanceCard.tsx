@@ -1,161 +1,212 @@
 // src/components/dashboard/DashboardBalanceCard.tsx
-import { useMemo, useCallback } from "react"
+import { useEffect, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, ArrowRight } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
+import SectionTitle from "../SectionTitle"
+import CardSection from "../CardSection"
 
-const NBSP = "\u00A0"
-const toStr = (v: any) => String(v ?? "")
-const absNum = (x?: string | number | null) => {
-  if (x === null || x === undefined) return 0
-  const n = Number(String(x).replace(",", "."))
-  return Number.isFinite(n) ? Math.abs(n) : 0
+// Утилиты форматирования
+function parseNum(x?: string): number {
+  const n = Number(x)
+  return Number.isFinite(n) ? n : 0
 }
-function fmt(value: number, currency: string, locale: string) {
-  try {
-    const nf = new Intl.NumberFormat(locale, { minimumFractionDigits: value % 1 ? 2 : 0, maximumFractionDigits: 2 })
-    return `${nf.format(value)}${NBSP}${currency}`
-  } catch {
-    const v = Math.round(value * 100) / 100
-    return `${(v % 1 ? v.toFixed(2) : String(Math.trunc(v)))}${NBSP}${currency}`
-  }
+function fmtAbs(x: number): string {
+  return Math.abs(x).toFixed(2)
+}
+
+const Chip = ({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  onClick: () => void
+}) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        "px-2.5 h-8 text-[13px] font-medium",
+        "rounded-lg border",
+        active
+          ? "border-[var(--tg-accent-color,#40A7E3)] text-[var(--tg-accent-color,#40A7E3)] bg-transparent"
+          : "border-[color-mix(in_srgb,var(--tg-secondary-bg-color,#e7e7e7)_70%,transparent)] text-[var(--tg-hint-color)] bg-transparent",
+      ].join(" ")}
+      style={{ WebkitTapHighlightColor: "transparent" as any }}
+    >
+      {label}
+    </button>
+  )
 }
 
 export default function DashboardBalanceCard() {
-  const { t, i18n } = useTranslation()
-  const locale = (i18n.language || "ru").split("-")[0]
+  const { t } = useTranslation()
 
-  const { balance, lastCurrenciesOrdered, ui, setBalanceCurrencies, loading } = useDashboardStore((s) => ({
+  const {
+    balance,
+    loading,
+    error,
+    ui,
+    setBalanceCurrencies,
+    refreshBalance,
+  } = useDashboardStore((s) => ({
     balance: s.balance,
-    lastCurrenciesOrdered: s.lastCurrenciesOrdered || [],
+    loading: s.loading.balance,
+    error: s.error,
     ui: s.ui,
     setBalanceCurrencies: s.setBalanceCurrencies,
-    loading: s.loading.balance || s.loading.global,
+    refreshBalance: s.refreshBalance,
   }))
 
-  const iOwe = balance?.i_owe ?? {}
-  const theyOwe = balance?.they_owe_me ?? {}
-
-  // Валюты только с ненулём, отсортированные по «последнему использованию»
-  const available = useMemo(() => {
+  // список доступных валют: только с ненулевыми значениями в i_owe/they_owe_me
+  const allCurrencies = useMemo(() => {
+    if (!balance) return []
     const set = new Set<string>()
-    Object.entries(iOwe).forEach(([ccy, v]) => { if (absNum(v) > 0) set.add(toStr(ccy).toUpperCase()) })
-    Object.entries(theyOwe).forEach(([ccy, v]) => { if (absNum(v) > 0) set.add(toStr(ccy).toUpperCase()) })
-    const all = Array.from(set)
-    if (!all.length) return []
-    const order = new Map<string, number>()
-    lastCurrenciesOrdered.forEach((c, i) => order.set(toStr(c).toUpperCase(), i))
-    const inLast = all.filter((c) => order.has(c)).sort((a, b) => (order.get(a)! - order.get(b)!))
-    const others = all.filter((c) => !order.has(c)).sort()
-    return [...inLast, ...others]
-  }, [iOwe, theyOwe, lastCurrenciesOrdered])
+    for (const [ccy, v] of Object.entries(balance.i_owe || {})) {
+      if (Math.abs(parseNum(v)) > 0) set.add(ccy)
+    }
+    for (const [ccy, v] of Object.entries(balance.they_owe_me || {})) {
+      if (Math.abs(parseNum(v)) > 0) set.add(ccy)
+    }
+    // сортировка: сначала last_currencies (как пришло), потом остальные по алфавиту
+    const last = Array.isArray(balance.last_currencies) ? balance.last_currencies : []
+    const head = last.filter((c) => set.has(c))
+    const tail = Array.from(set).filter((c) => !head.includes(c)).sort()
+    return [...head, ...tail]
+  }, [balance])
 
-  // Активные чипы: сохранённые и валидные, иначе две последние
-  const active = useMemo(() => {
-    const sel = (ui.balanceCurrencies || []).map((c) => toStr(c).toUpperCase()).filter((c) => available.includes(c))
-    return sel.length ? sel : available.slice(0, 2)
-  }, [available, ui.balanceCurrencies])
+  // первичная автонастройка выбора, если стор ещё пуст
+  useEffect(() => {
+    if (!ui.balanceCurrencies?.length && allCurrencies.length) {
+      const last = Array.isArray(balance?.last_currencies) ? balance!.last_currencies : []
+      const initial = last.length ? last.slice(0, 2) : allCurrencies.slice(0, 2)
+      setBalanceCurrencies(initial)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCurrencies.length])
 
-  const toggle = useCallback(
-    (ccy: string) => {
-      const next = new Set(active)
-      if (next.has(ccy)) {
-        if (next.size === 1) return
-        next.delete(ccy)
-      } else next.add(ccy)
-      setBalanceCurrencies(Array.from(next))
-    },
-    [active, setBalanceCurrencies]
-  )
+  const selected = ui.balanceCurrencies || []
 
-  const left = useMemo(() => active.map((c) => ({ c, v: absNum((iOwe as any)[c]) })).filter((x) => x.v > 0), [active, iOwe])
-  const right = useMemo(() => active.map((c) => ({ c, v: absNum((theyOwe as any)[c]) })).filter((x) => x.v > 0), [active, theyOwe])
+  const leftRows = useMemo(() => {
+    // Я должен: выбранные валюты со знаком < 0
+    return selected
+      .filter((c) => parseNum(balance?.i_owe?.[c]) < 0)
+      .map((c) => ({ ccy: c, amount: fmtAbs(parseNum(balance?.i_owe?.[c])) }))
+  }, [selected, balance])
+
+  const rightRows = useMemo(() => {
+    // Мне должны: выбранные валюты со знаком > 0
+    return selected
+      .filter((c) => parseNum(balance?.they_owe_me?.[c]) > 0)
+      .map((c) => ({ ccy: c, amount: fmtAbs(parseNum(balance?.they_owe_me?.[c])) }))
+  }, [selected, balance])
+
+  const nothingLeft = leftRows.length === 0
+  const nothingRight = rightRows.length === 0
+
+  const toggleChip = (ccy: string) => {
+    const set = new Set(selected)
+    if (set.has(ccy)) set.delete(ccy)
+    else set.add(ccy)
+    setBalanceCurrencies(Array.from(set))
+  }
 
   return (
-    <div className="w-full">
-      {/* Заголовок по ключу group_header_my_balance */}
-      <div className="px-2 pt-1 pb-1">
-        <h2 className="text-[15px] font-semibold text-[var(--tg-link-color)]">
-          {toStr(t("group_header_my_balance"))}
-        </h2>
-      </div>
+    <CardSection noPadding>
+      {/* Заголовок через i18n — SectionTitle принимает children */}
+      <SectionTitle>{t("group_header_my_balance")}</SectionTitle>
 
-      {/* Чипы — скролл по оси X, только валюты с ненулём */}
-      <div className="mb-2 flex items-center gap-1.5 overflow-x-auto px-2">
-        {available.map((ccy) => {
-          const isActive = active.includes(ccy)
-          return (
-            <button
+      <div className="px-3 pb-3">
+        {/* Чипы валют — только коды */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {allCurrencies.map((ccy) => (
+            <Chip
               key={ccy}
-              type="button"
-              onClick={() => toggle(ccy)}
-              className={[
-                "h-8 px-3 rounded-md text-[13px] font-semibold active:scale-95 transition",
-                "border",
-                isActive
-                  ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
-                  : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]",
-              ].join(" ")}
-              aria-pressed={isActive}
-            >
-              {toStr(ccy)}
-            </button>
-          )
-        })}
-        {!available.length && !loading && (
-          <span className="text-sm text-[var(--tg-hint-color)]">{toStr(t("group_balance_no_debts_all"))}</span>
+              label={ccy}
+              active={selected.includes(ccy)}
+              onClick={() => toggleChip(ccy)}
+            />
+          ))}
+        </div>
+
+        {/* Две колонки: слева «Я должен», справа «Мне должны» */}
+        <div
+          className="w-full rounded-2xl border shadow-sm bg-[var(--tg-card-bg)]"
+          style={{
+            borderColor: "var(--tg-secondary-bg-color, #e7e7e7)",
+            color: "var(--tg-text-color)",
+          }}
+        >
+          <div className="grid grid-cols-2 divide-x" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
+            {/* LEFT */}
+            <div className="p-3">
+              <div className="text-[12px] font-semibold flex items-center gap-1 text-[var(--tg-hint-color)] mb-2">
+                <ArrowUpRight size={16} className="text-red-500" />
+                {t("i_owe")}
+              </div>
+              {nothingLeft ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_left")}</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {leftRows.map((row) => (
+                    <div key={`left-${row.ccy}`} className="flex items-baseline justify-between">
+                      <span className="text-[13px] text-[var(--tg-hint-color)]">{row.ccy}</span>
+                      <span className="text-[15px] font-semibold text-red-500">{row.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT */}
+            <div className="p-3">
+              <div className="text-[12px] font-semibold flex items-center gap-1 text-[var(--tg-hint-color)] mb-2">
+                <ArrowDownRight size={16} className="text-emerald-500" />
+                {t("they_owe_me")}
+              </div>
+              {nothingRight ? (
+                <div className="text-[13px] text-[var(--tg-hint-color)]">{t("group_balance_no_debts_right")}</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {rightRows.map((row) => (
+                    <div key={`right-${row.ccy}`} className="flex items-baseline justify-between">
+                      <span className="text-[13px] text-[var(--tg-hint-color)]">{row.ccy}</span>
+                      <span className="text-[15px] font-semibold text-emerald-500">{row.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* helper-строка (aria) */}
+          <div className="px-3 py-2 text-[11px] text-[var(--tg-hint-color)]">
+            {t("group_balance_totals_aria")}
+          </div>
+        </div>
+
+        {/* Кнопка тестового рефреша (по желанию можно скрыть) */}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => refreshBalance()}
+            className="px-3 h-9 text-[13px] font-semibold rounded-xl border bg-transparent active:scale-95 transition"
+            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", color: "var(--tg-link-color)" }}
+          >
+            {t("loading")}
+          </button>
+        </div>
+
+        {!!error && (
+          <div className="mt-2 text-[12px] text-red-500">
+            {String(error)}
+          </div>
         )}
-        {loading && <span className="text-sm text-[var(--tg-hint-color)]">{toStr(t("loading"))}</span>}
       </div>
-
-      {/* Две половины: слева — Я должен; справа — Мне должны */}
-      <div className="grid grid-cols-2 gap-2 px-2 pb-2">
-        {/* Я должен */}
-        <div className="p-2 rounded-lg">
-          <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-            <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
-            <span>{toStr(t("i_owe"))}</span>
-          </div>
-          {loading ? (
-            <div className="h-5 w-32 rounded bg-[var(--tg-secondary-bg-color)] opacity-50" />
-          ) : left.length ? (
-            <div className="space-y-1">
-              {left.map(({ c, v }) => (
-                <div key={`l-${c}`} className="text-[15px] font-semibold leading-tight" style={{ color: "var(--tg-destructive-text,#d7263d)" }}>
-                  {fmt(v, c, locale)}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {toStr(t("group_balance_no_debts_left"))}
-            </div>
-          )}
-        </div>
-
-        {/* Мне должны */}
-        <div className="p-2 rounded-lg text-right">
-          <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-            <span>{toStr(t("they_owe_me"))}</span>
-            <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
-          </div>
-          {loading ? (
-            <div className="ml-auto h-5 w-32 rounded bg-[var(--tg-secondary-bg-color)] opacity-50" />
-          ) : right.length ? (
-            <div className="space-y-1">
-              {right.map(({ c, v }) => (
-                <div key={`r-${c}`} className="text-[15px] font-semibold leading-tight" style={{ color: "var(--tg-success-text,#1aab55)" }}>
-                  {fmt(v, c, locale)}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {toStr(t("group_balance_no_debts_right"))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    </CardSection>
   )
 }
