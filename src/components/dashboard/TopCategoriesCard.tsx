@@ -1,66 +1,83 @@
-// src/components/dashboard/TopCategoriesCard.tsx
-import React from "react";
-import { useDashboardStore } from "../../store/dashboardStore";
-import SafeSection from "../SafeSection";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-
-type Period = "week" | "month" | "year";
-
-function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
-  const items: Period[] = ["week", "month", "year"];
-  return (
-    <div className="flex gap-1">
-      {items.map((p) => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`px-2 py-1 rounded-full text-xs ${value === p ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`}
-        >
-          {p}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { useEffect, useMemo } from "react"
+import { useDashboardStore } from "../../store/dashboardStore"
+import SafeSection from "../SafeSection"
+import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 
 export default function TopCategoriesCard() {
-  const period = useDashboardStore((s) => s.topCategoriesPeriod);
-  const setPeriod = useDashboardStore((s) => s.setTopPeriod);
-  const items = useDashboardStore((s) => s.topCategories);
-  const loading = useDashboardStore((s) => s.loading.top);
-  const error = useDashboardStore((s) => s.error.top);
+  const period = useDashboardStore((s) => s.topCategoriesPeriod)
+  const setPeriod = useDashboardStore((s) => s.setTopPeriod)
+  const itemsRaw = useDashboardStore((s) => s.topCategories)
+  const loading = useDashboardStore((s) => s.loading.top)
+  const error = useDashboardStore((s) => s.error.top || null)
+  const load = useDashboardStore((s) => s.loadTopCategories)
+
+  useEffect(() => {
+    if (!itemsRaw) void load(period)
+  }, []) // eslint-disable-line
+
+  const items = itemsRaw ?? []
+  const chartData = useMemo(
+    () =>
+      items.map((it) => ({
+        key: it.category_id,
+        name: it.name ?? "—",
+        total: Number(it.sum) || 0,
+        currency: it.currency,
+      })),
+    [items]
+  )
 
   return (
     <SafeSection
-      title="Топ категорий"
-      controls={<PeriodChips value={period} onChange={setPeriod} />}
-      loading={loading}
-      error={error || null}
-      onRetry={() => setPeriod(period)}
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="max-h-48 overflow-y-auto pr-1">
-          <ul className="flex flex-col gap-2">
-            {items.map((it) => (
-              <li key={it.id} className="flex items-center justify-between bg-white/5 rounded-xl px-2 py-2">
-                <div className="truncate">{it.name}</div>
-                <div className="text-sm font-medium">{it.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-              </li>
-            ))}
-          </ul>
+      title="Топ категории"
+      controls={
+        <div className="flex gap-1">
+          {(["week", "month", "year"] as const).map((p) => (
+            <button
+              key={p}
+              className={`px-2 py-1 rounded ${period === p ? "bg-white/10" : "bg-white/5"}`}
+              onClick={() => {
+                setPeriod(p)
+                void load(p)
+              }}
+            >
+              {p}
+            </button>
+          ))}
         </div>
-        <div className="h-48">
+      }
+      loading={loading}
+      error={error}
+      onRetry={() => load(period)}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <ul className="flex flex-col gap-2">
+          {chartData.map((it) => (
+            <li
+              key={it.key}
+              className="flex items-center justify-between bg-white/5 rounded-xl px-2 py-2"
+            >
+              <div className="truncate">{it.name}</div>
+              <div className="text-sm font-medium">
+                {it.total.toLocaleString(undefined, { maximumFractionDigits: 2 })} {it.currency}
+              </div>
+            </li>
+          ))}
+          {!chartData.length && !loading && <div className="opacity-60 text-sm">Нет данных</div>}
+        </ul>
+
+        <div className="h-44">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={items} dataKey="total" nameKey="name" innerRadius={50} outerRadius={70} paddingAngle={1}>
-                {items.map((it) => (<Cell key={it.id} />))}
+              <Pie data={chartData} dataKey="total" nameKey="name" innerRadius={50} outerRadius={70} paddingAngle={1}>
+                {chartData.map((it) => (
+                  <Cell key={it.key} />
+                ))}
               </Pie>
-              <Tooltip />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
-      <div className="text-xs opacity-60 mt-2">Вертикальный скролл. Только выбор периода кликабелен</div>
     </SafeSection>
-  );
+  )
 }

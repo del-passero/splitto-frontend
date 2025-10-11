@@ -1,49 +1,57 @@
-// src/components/dashboard/DashboardSummaryCard.tsx
-import React from "react";
-import { useDashboardStore } from "../../store/dashboardStore";
-import SafeSection from "../SafeSection";
+import { useEffect } from "react"
+import { useDashboardStore } from "../../store/dashboardStore"
+import SafeSection from "../SafeSection"
 
-type Period = "day" | "week" | "month" | "year";
-
-function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
-  const items: Period[] = ["day", "week", "month", "year"];
-  return (
-    <div className="flex gap-1">
-      {items.map((p) => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`px-2 py-1 rounded-full text-xs ${value === p ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`}
-        >
-          {p}
-        </button>
-      ))}
-    </div>
-  );
+const fmt = (s?: string) => {
+  if (!s && s !== "0") return "—"
+  const n = Number(s)
+  if (!Number.isFinite(n)) return s as string
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
 export default function DashboardSummaryCard() {
-  const period = useDashboardStore((s) => s.summaryPeriod);
-  const setPeriod = useDashboardStore((s) => s.setSummaryPeriod);
-  const currency = useDashboardStore((s) => s.summaryCurrency);
-  const setCurrency = useDashboardStore((s) => s.setSummaryCurrency);
-  const currencies = useDashboardStore((s) => s.currenciesRecent);
-  const summary = useDashboardStore((s) => s.summary);
-  const loading = useDashboardStore((s) => s.loading.summary);
-  const error = useDashboardStore((s) => s.error.summary);
+  const period = useDashboardStore((s) => s.summaryPeriod)
+  const setPeriod = useDashboardStore((s) => s.setSummaryPeriod)
+  const currency = useDashboardStore((s) => s.summaryCurrency)
+  const setCurrency = useDashboardStore((s) => s.setSummaryCurrency)
+  const currencies = useDashboardStore((s) => s.currenciesRecent)
+  const summary = useDashboardStore((s) => s.summary)
+  const loading = useDashboardStore((s) => s.loading.summary)
+  const error = useDashboardStore((s) => s.error.summary || null)
+  const load = useDashboardStore((s) => s.loadSummary)
+
+  useEffect(() => {
+    if (!summary) void load(period, currency)
+  }, []) // eslint-disable-line
 
   return (
     <SafeSection
       title="Сводка"
       controls={
-        <div className="flex items-center gap-3">
-          <PeriodChips value={period} onChange={setPeriod} />
+        <div className="flex gap-1">
+          <div className="flex gap-1 mr-2">
+            {(["day", "week", "month", "year"] as const).map((p) => (
+              <button
+                key={p}
+                className={`px-2 py-1 rounded ${period === p ? "bg-white/10" : "bg-white/5"}`}
+                onClick={() => {
+                  setPeriod(p)
+                  void load(p, currency)
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
           <div className="flex gap-1">
             {currencies.map((ccy) => (
               <button
                 key={ccy}
-                onClick={() => setCurrency(ccy)}
-                className={`px-2 py-1 rounded-full text-xs ${currency === ccy ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`}
+                className={`px-2 py-1 rounded ${currency === ccy ? "bg-white/10" : "bg-white/5"}`}
+                onClick={() => {
+                  setCurrency(ccy)
+                  void load(period, ccy)
+                }}
               >
                 {ccy}
               </button>
@@ -52,24 +60,29 @@ export default function DashboardSummaryCard() {
         </div>
       }
       loading={loading}
-      error={error || null}
-      onRetry={() => setPeriod(period)}
+      error={error}
+      onRetry={() => load(period, currency)}
     >
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-white/5 rounded-xl p-3">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl bg-white/5 p-3">
           <div className="text-xs opacity-70 mb-1">Потрачено</div>
-          <div className="text-lg font-semibold">{summary ? summary.spent.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"} {currency}</div>
+          <div className="text-lg font-semibold">
+            {summary ? fmt(summary.spent) : "—"} {currency}
+          </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
+        <div className="rounded-xl bg-white/5 p-3">
           <div className="text-xs opacity-70 mb-1">Средний чек</div>
-          <div className="text-lg font-semibold">{summary ? summary.avg_check.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"} {currency}</div>
+          <div className="text-lg font-semibold">
+            {summary ? fmt(summary.avg_check) : "—"} {currency}
+          </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
+        <div className="rounded-xl bg-white/5 p-3">
           <div className="text-xs opacity-70 mb-1">Моя доля</div>
-          <div className="text-lg font-semibold">{summary ? summary.my_share.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"} {currency}</div>
+          <div className="text-lg font-semibold">
+            {summary ? fmt(summary.my_share) : "—"} {currency}
+          </div>
         </div>
       </div>
-      <div className="text-xs opacity-60 mt-2">Элемент не кликабелен</div>
     </SafeSection>
-  );
+  )
 }

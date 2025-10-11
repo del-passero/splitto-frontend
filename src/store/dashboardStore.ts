@@ -1,281 +1,431 @@
 // src/store/dashboardStore.ts
-import { create } from "zustand";
-import {
-  getDashboardActivity,
-  getDashboardBalance,
-  getDashboardEvents,
-  getDashboardFrequentUsers,
-  getDashboardRecentGroups,
-  getDashboardSummary,
-  getDashboardTopCategories,
-  type ActivityPoint,
-  type BalanceEntry,
-  type EventItem,
-  type FrequentUser,
-  type GroupPreview,
-  type PeriodActivity,
-  type PeriodShort,
-  type TopCategory,
-} from "../api/dashboardApi";
+import { create } from "zustand"
 
-type LoadingState = { balance: boolean; activity: boolean; top: boolean; summary: boolean; groups: boolean; frequent: boolean; events: boolean };
-type ErrorState = Partial<Record<keyof LoadingState, string | null>>;
+// ---------------- Types from backend (сжато под нужды UI) ----------------
+type BalanceMap = Record<string, string>
 
-export type DashboardState = {
-  balance: BalanceEntry[];
-  currenciesRecent: string[];
-  balanceActive: string[];
-
-  activityPeriod: PeriodActivity;
-  activity: ActivityPoint[];
-
-  topCategoriesPeriod: PeriodActivity;
-  topCategories: TopCategory[];
-
-  summaryPeriod: PeriodShort;
-  summaryCurrency: string;
-  summary: { spent: number; avg_check: number; my_share: number } | null;
-
-  groups: GroupPreview[];
-  frequentPeriod: PeriodShort | PeriodActivity;
-  frequentUsers: FrequentUser[];
-
-  eventsFilter: "all" | "tx" | "edit" | "group" | "user";
-  events: EventItem[];
-
-  loading: LoadingState;
-  error: ErrorState;
-
-  init: () => Promise<void>;
-  refreshAll: () => Promise<void>;
-
-  setActivityPeriod: (p: PeriodActivity) => void;
-  setTopPeriod: (p: PeriodActivity) => void;
-
-  setSummaryPeriod: (p: PeriodShort) => void;
-  setSummaryCurrency: (c: string) => void;
-
-  setFrequentPeriod: (p: PeriodShort | PeriodActivity) => void;
-  setEventsFilter: (f: "all" | "tx" | "edit" | "group" | "user") => void;
-  setBalanceActive: (c: string) => void;
-
-  startLive: () => void;
-  stopLive: () => void;
-
-  _intervalId?: number | null;
-};
-
-function pickDefaultActive(recent: string[], available: string[]) {
-  const filtered = recent.filter((c) => available.includes(c));
-  if (filtered.length >= 2) return filtered.slice(0, 2);
-  const rest = available.filter((c) => !filtered.includes(c));
-  return [...filtered, ...rest].slice(0, 2);
+export type DashboardBalance = {
+  i_owe: BalanceMap
+  they_owe_me: BalanceMap
+  last_currencies?: string[]
 }
 
+type ActivityBucket = { date: string; count: number }
+type DashboardActivity = { period: "week" | "month" | "year"; buckets: ActivityBucket[] }
+
+type DashboardSummary = {
+  period: "day" | "week" | "month" | "year"
+  currency: string
+  spent: string
+  avg_check: string
+  my_share: string
+}
+
+type RecentGroupCard = {
+  id: number
+  name: string
+  avatar_url?: string | null
+  my_balance_by_currency: Record<string, string>
+  last_event_at?: string | null
+}
+
+type TopCategoryItem = {
+  category_id: number
+  name?: string | null
+  sum: string
+  currency: string
+}
+
+type TopCategories = {
+  period: "week" | "month" | "year"
+  items: TopCategoryItem[]
+  total: number
+}
+
+type TopPartnerItem = {
+  user: {
+    id: number
+    first_name?: string | null
+    last_name?: string | null
+    username?: string | null
+    photo_url?: string | null
+  }
+  joint_expense_count: number
+  period: "week" | "month" | "year"
+}
+
+type EventFeedItem = {
+  id: number
+  type: string
+  created_at: string
+  title: string
+  subtitle?: string | null
+  icon: string
+  entity: Record<string, unknown>
+}
+
+// ---------------- Store types ----------------
+type LoadingState = {
+  global: boolean
+  balance: boolean
+  activity: boolean
+  events: boolean
+  summary: boolean
+  groups: boolean
+  top: boolean
+  frequent: boolean
+}
+
+type ErrorState = Partial<{
+  global: string | null
+  balance: string | null
+  activity: string | null
+  events: string | null
+  summary: string | null
+  groups: string | null
+  top: string | null
+  frequent: string | null
+}>
+
+export type DashboardState = {
+  // Loading / Errors
+  loading: LoadingState
+  error: ErrorState
+
+  // BALANCE
+  balance: DashboardBalance | null
+  lastCurrenciesOrdered: string[]        // порядок последних валют (для чипов)
+  ui: {
+    balanceCurrencies: string[]          // выбранные чипы
+  }
+
+  // ACTIVITY
+  activityPeriod: "week" | "month" | "year"
+  activity: DashboardActivity | null
+
+  // EVENTS
+  eventsFilter: string
+  events: EventFeedItem[] | null
+
+  // SUMMARY
+  summaryPeriod: "day" | "week" | "month" | "year"
+  summaryCurrency: string
+  currenciesRecent: string[]
+  summary: DashboardSummary | null
+
+  // GROUPS
+  groups: RecentGroupCard[] | null
+
+  // TOP CATEGORIES
+  topCategoriesPeriod: "week" | "month" | "year"
+  topCategories: TopCategoryItem[] | null
+
+  // TOP PARTNERS
+  frequentPeriod: "week" | "month" | "year"
+  frequentUsers: TopPartnerItem[] | null
+
+  // Actions (balance)
+  init: () => Promise<void>
+  reloadBalance: () => Promise<void>
+  setBalanceCurrencies: (codes: string[]) => void
+  startLive: () => () => void
+
+  // Actions (activity)
+  setActivityPeriod: (p: "week" | "month" | "year") => void
+  loadActivity: (p?: "week" | "month" | "year") => Promise<void>
+
+  // Actions (events)
+  setEventsFilter: (f: string) => void
+  loadEvents: () => Promise<void>
+
+  // Actions (summary)
+  setSummaryPeriod: (p: "day" | "week" | "month" | "year") => void
+  setSummaryCurrency: (c: string) => void
+  loadSummary: (p?: "day" | "week" | "month" | "year", c?: string) => Promise<void>
+
+  // Actions (groups)
+  loadRecentGroups: () => Promise<void>
+
+  // Actions (top categories)
+  setTopPeriod: (p: "week" | "month" | "year") => void
+  loadTopCategories: (p?: "week" | "month" | "year") => Promise<void>
+
+  // Actions (top partners)
+  setFrequentPeriod: (p: "week" | "month" | "year") => void
+  loadTopPartners: (p?: "week" | "month" | "year") => Promise<void>
+
+  // Helpers
+  refreshAll: () => Promise<void>
+}
+
+// ---------------- Helpers ----------------
+const GET = async <T,>(url: string): Promise<T> => {
+  const res = await fetch(url, { credentials: "include" })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "")
+    throw new Error(`GET ${url} -> ${res.status} ${res.statusText} ${txt ? `: ${txt}` : ""}`)
+  }
+  return res.json()
+}
+
+// ---------------- Store ----------------
 export const useDashboardStore = create<DashboardState>((set, get) => ({
-  balance: [],
-  currenciesRecent: [],
-  balanceActive: [],
-
-  activityPeriod: "month",
-  activity: [],
-
-  topCategoriesPeriod: "month",
-  topCategories: [],
-
-  summaryPeriod: "month",
-  summaryCurrency: "USD",
-  summary: null,
-
-  groups: [],
-  frequentPeriod: "month",
-  frequentUsers: [],
-
-  eventsFilter: "all",
-  events: [],
-
-  loading: { balance: false, activity: false, top: false, summary: false, groups: false, frequent: false, events: false },
+  // base
+  loading: {
+    global: false,
+    balance: false,
+    activity: false,
+    events: false,
+    summary: false,
+    groups: false,
+    top: false,
+    frequent: false,
+  },
   error: {},
 
-  async init() {
-    await get().refreshAll();
+  // BALANCE
+  balance: null,
+  lastCurrenciesOrdered: [],
+  ui: { balanceCurrencies: [] },
+
+  // ACTIVITY
+  activityPeriod: "month",
+  activity: null,
+
+  // EVENTS
+  eventsFilter: "all",
+  events: null,
+
+  // SUMMARY
+  summaryPeriod: "month",
+  summaryCurrency: "USD",
+  currenciesRecent: [],
+  summary: null,
+
+  // GROUPS
+  groups: null,
+
+  // TOP CATEGORIES
+  topCategoriesPeriod: "month",
+  topCategories: null,
+
+  // TOP PARTNERS
+  frequentPeriod: "month",
+  frequentUsers: null,
+
+  // ---------- BALANCE ----------
+  setBalanceCurrencies: (codes) => {
+    set((s) => ({ ui: { ...s.ui, balanceCurrencies: codes.map((c) => (c || "").toUpperCase()) } }))
   },
 
-  async refreshAll() {
-    // Balance
-    set((s) => ({ loading: { ...s.loading, balance: true }, error: { ...s.error, balance: null } }));
+  reloadBalance: async () => {
+    set((s) => ({ loading: { ...s.loading, balance: true }, error: { ...s.error, balance: null } }))
     try {
-      const res = await getDashboardBalance();
-      const available = res.items.map((i) => i.currency);
-      const recent = res.last_used?.length ? res.last_used : available;
-      let active = get().balanceActive;
-      if (!active.length) active = pickDefaultActive(recent, available);
-      const summaryCurrency = get().summaryCurrency || active[0] || available[0] || "USD";
-      set((s) => ({ balance: res.items, currenciesRecent: recent, balanceActive: active, summaryCurrency, loading: { ...s.loading, balance: false } }));
+      const data = await GET<DashboardBalance>("/dashboard/balance")
+      set((s) => ({
+        balance: data,
+        lastCurrenciesOrdered: s.lastCurrenciesOrdered.length ? s.lastCurrenciesOrdered : (data.last_currencies ?? []),
+        loading: { ...s.loading, balance: false },
+        error: { ...s.error, balance: null },
+      }))
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, balance: false }, error: { ...s.error, balance: e?.message || "Error" } }));
-    }
-
-    // Activity
-    const ap = get().activityPeriod;
-    set((s) => ({ loading: { ...s.loading, activity: true }, error: { ...s.error, activity: null } }));
-    try {
-      const res = await getDashboardActivity(ap);
-      set((s) => ({ activity: res.points, loading: { ...s.loading, activity: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, activity: false }, error: { ...s.error, activity: e?.message || "Error" } }));
-    }
-
-    // Top categories
-    const tp = get().topCategoriesPeriod;
-    set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: null } }));
-    try {
-      const res = await getDashboardTopCategories(tp);
-      set((s) => ({ topCategories: res.items, loading: { ...s.loading, top: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, top: false }, error: { ...s.error, top: e?.message || "Error" } }));
-    }
-
-    // Summary
-    const sp = get().summaryPeriod;
-    const sc = get().summaryCurrency;
-    set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: null } }));
-    try {
-      const res = await getDashboardSummary(sp, sc);
-      set((s) => ({ summary: { spent: res.spent, avg_check: res.avg_check, my_share: res.my_share }, loading: { ...s.loading, summary: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, summary: false }, error: { ...s.error, summary: e?.message || "Error" } }));
-    }
-
-    // Groups
-    set((s) => ({ loading: { ...s.loading, groups: true }, error: { ...s.error, groups: null } }));
-    try {
-      const res = await getDashboardRecentGroups();
-      set((s) => ({ groups: res.items, loading: { ...s.loading, groups: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, groups: false }, error: { ...s.error, groups: e?.message || "Error" } }));
-    }
-
-    // Frequent users
-    const fp = get().frequentPeriod;
-    set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: null } }));
-    try {
-      const res = await getDashboardFrequentUsers(fp);
-      set((s) => ({ frequentUsers: res.items, loading: { ...s.loading, frequent: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, frequent: false }, error: { ...s.error, frequent: e?.message || "Error" } }));
-    }
-
-    // Events
-    const ef = get().eventsFilter;
-    set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: null } }));
-    try {
-      const res = await getDashboardEvents(ef, 20);
-      set((s) => ({ events: res.items, loading: { ...s.loading, events: false } }));
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, events: false }, error: { ...s.error, events: e?.message || "Error" } }));
+      set((s) => ({
+        loading: { ...s.loading, balance: false },
+        error: { ...s.error, balance: e?.message || "Error" },
+      }))
     }
   },
 
-  setActivityPeriod(p) {
-    set({ activityPeriod: p });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, activity: true }, error: { ...s.error, activity: null } }));
-      try {
-        const res = await getDashboardActivity(p);
-        set((s) => ({ activity: res.points, loading: { ...s.loading, activity: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, activity: false }, error: { ...s.error, activity: e?.message || "Error" } }));
-      }
-    })();
+  init: async () => {
+    set((s) => ({ loading: { ...s.loading, global: true } }))
+    try {
+      // последние валюты (2) для дефолтного выбора
+      const last = await GET<string[]>("/dashboard/last-currencies?limit=2").catch(() => [])
+      // прогружаем баланс (все валюты)
+      await get().reloadBalance()
+
+      // дефолтная валюта для summary — первая из последних, иначе RUB/USD
+      const defCurrency = (last?.[0] || get().summaryCurrency || "RUB").toUpperCase()
+
+      set((s) => ({
+        lastCurrenciesOrdered: last ?? [],
+        currenciesRecent: last ?? [],
+        summaryCurrency: defCurrency,
+        // если чипы ещё не выставлены — берём «две последние»
+        ui: {
+          ...s.ui,
+          balanceCurrencies: s.ui.balanceCurrencies.length ? s.ui.balanceCurrencies : (last ?? []).map((c) => (c || "").toUpperCase()),
+        },
+      }))
+
+      // мягкий прогрев остального (без блокировки UI)
+      void get().loadActivity(get().activityPeriod)
+      void get().loadEvents()
+      void get().loadSummary(get().summaryPeriod, defCurrency)
+      void get().loadRecentGroups()
+      void get().loadTopCategories(get().topCategoriesPeriod)
+      void get().loadTopPartners(get().frequentPeriod)
+
+      set((s) => ({ loading: { ...s.loading, global: false } }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, global: false },
+        error: { ...s.error, global: e?.message || "Error" },
+      }))
+    }
   },
 
-  setTopPeriod(p) {
-    set({ topCategoriesPeriod: p });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: null } }));
-      try {
-        const res = await getDashboardTopCategories(p);
-        set((s) => ({ topCategories: res.items, loading: { ...s.loading, top: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, top: false }, error: { ...s.error, top: e?.message || "Error" } }));
-      }
-    })();
+  startLive: () => {
+    const tick = () => {
+      // обновляем лёгкие секции часто; тяжёлые — по фокусу/онлайн
+      void get().reloadBalance()
+    }
+    const onFocus = () => {
+      void get().reloadBalance()
+      void get().loadEvents()
+      void get().loadRecentGroups()
+    }
+    const onOnline = onFocus
+
+    window.addEventListener("focus", onFocus)
+    window.addEventListener("online", onOnline)
+    const timer = window.setInterval(tick, 15000)
+
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      window.removeEventListener("online", onOnline)
+      window.clearInterval(timer)
+    }
   },
 
-  setSummaryPeriod(p) {
-    set({ summaryPeriod: p });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: null } }));
-      try {
-        const res = await getDashboardSummary(p, get().summaryCurrency);
-        set((s) => ({ summary: { spent: res.spent, avg_check: res.avg_check, my_share: res.my_share }, loading: { ...s.loading, summary: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, summary: false }, error: { ...s.error, summary: e?.message || "Error" } }));
-      }
-    })();
+  // ---------- ACTIVITY ----------
+  setActivityPeriod: (p) => set({ activityPeriod: p }),
+  loadActivity: async (p) => {
+    const period = p ?? get().activityPeriod
+    set((s) => ({ loading: { ...s.loading, activity: true }, error: { ...s.error, activity: null } }))
+    try {
+      const data = await GET<DashboardActivity>(`/dashboard/activity?period=${period}`)
+      set((s) => ({
+        activity: data,
+        activityPeriod: period,
+        loading: { ...s.loading, activity: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, activity: false },
+        error: { ...s.error, activity: e?.message || "Error" },
+      }))
+    }
   },
 
-  setSummaryCurrency(c) {
-    set({ summaryCurrency: c });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: null } }));
-      try {
-        const res = await getDashboardSummary(get().summaryPeriod, c);
-        set((s) => ({ summary: { spent: res.spent, avg_check: res.avg_check, my_share: res.my_share }, loading: { ...s.loading, summary: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, summary: false }, error: { ...s.error, summary: e?.message || "Error" } }));
-      }
-    })();
+  // ---------- EVENTS ----------
+  setEventsFilter: (f) => set({ eventsFilter: f }),
+  loadEvents: async () => {
+    set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: null } }))
+    try {
+      const data = await GET<{ items: EventFeedItem[] }>("/dashboard/events")
+      set((s) => ({
+        events: data.items ?? [],
+        loading: { ...s.loading, events: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, events: false },
+        error: { ...s.error, events: e?.message || "Error" },
+      }))
+    }
   },
 
-  setFrequentPeriod(p) {
-    set({ frequentPeriod: p });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: null } }));
-      try {
-        const res = await getDashboardFrequentUsers(p);
-        set((s) => ({ frequentUsers: res.items, loading: { ...s.loading, frequent: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, frequent: false }, error: { ...s.error, frequent: e?.message || "Error" } }));
-      }
-    })();
+  // ---------- SUMMARY ----------
+  setSummaryPeriod: (p) => set({ summaryPeriod: p }),
+  setSummaryCurrency: (c) => set({ summaryCurrency: (c || "RUB").toUpperCase() }),
+  loadSummary: async (p, c) => {
+    const period = p ?? get().summaryPeriod
+    const currency = (c ?? get().summaryCurrency ?? "RUB").toUpperCase()
+    set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: null } }))
+    try {
+      const data = await GET<DashboardSummary>(`/dashboard/summary?period=${period}&currency=${currency}`)
+      set((s) => ({
+        summary: data,
+        summaryPeriod: period,
+        summaryCurrency: currency,
+        loading: { ...s.loading, summary: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, summary: false },
+        error: { ...s.error, summary: e?.message || "Error" },
+      }))
+    }
   },
 
-  setEventsFilter(f) {
-    set({ eventsFilter: f });
-    (async () => {
-      set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: null } }));
-      try {
-        const res = await getDashboardEvents(f, 20);
-        set((s) => ({ events: res.items, loading: { ...s.loading, events: false } }));
-      } catch (e: any) {
-        set((s) => ({ loading: { ...s.loading, events: false }, error: { ...s.error, events: e?.message || "Error" } }));
-      }
-    })();
+  // ---------- GROUPS ----------
+  loadRecentGroups: async () => {
+    set((s) => ({ loading: { ...s.loading, groups: true }, error: { ...s.error, groups: null } }))
+    try {
+      const data = await GET<RecentGroupCard[]>("/dashboard/recent-groups?limit=10")
+      set((s) => ({
+        groups: data ?? [],
+        loading: { ...s.loading, groups: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, groups: false },
+        error: { ...s.error, groups: e?.message || "Error" },
+      }))
+    }
   },
 
-  setBalanceActive(c) {
-    const { balanceActive, currenciesRecent } = get();
-    let next = balanceActive.includes(c) ? balanceActive.filter((x) => x !== c) : [c, ...balanceActive].slice(0, 2);
-    next = currenciesRecent.filter((x) => next.includes(x)).slice(0, 2);
-    set({ balanceActive: next });
+  // ---------- TOP CATEGORIES ----------
+  setTopPeriod: (p) => set({ topCategoriesPeriod: p }),
+  loadTopCategories: async (p) => {
+    const period = p ?? get().topCategoriesPeriod
+    set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: null } }))
+    try {
+      const data = await GET<TopCategories>(`/dashboard/top-categories?period=${period}`)
+      set((s) => ({
+        topCategories: data?.items ?? [],
+        topCategoriesPeriod: period,
+        loading: { ...s.loading, top: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, top: false },
+        error: { ...s.error, top: e?.message || "Error" },
+      }))
+    }
   },
 
-  startLive() {
-    if (get()._intervalId) return;
-    const id = window.setInterval(() => get().refreshAll().catch(() => void 0), 60000);
-    set({ _intervalId: id });
-    const handler = () => { if (!document.hidden) get().refreshAll().catch(() => void 0); };
-    window.addEventListener("visibilitychange", handler, { passive: true });
-    (window as any).__splittoDashboardVisHandler = handler;
+  // ---------- TOP PARTNERS ----------
+  setFrequentPeriod: (p) => set({ frequentPeriod: p }),
+  loadTopPartners: async (p) => {
+    const period = p ?? get().frequentPeriod
+    set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: null } }))
+    try {
+      const data = await GET<TopPartnerItem[]>(`/dashboard/top-partners?period=${period}`)
+      set((s) => ({
+        frequentUsers: data ?? [],
+        frequentPeriod: period,
+        loading: { ...s.loading, frequent: false },
+      }))
+    } catch (e: any) {
+      set((s) => ({
+        loading: { ...s.loading, frequent: false },
+        error: { ...s.error, frequent: e?.message || "Error" },
+      }))
+    }
   },
 
-  stopLive() {
-    const id = get()._intervalId;
-    if (id) { clearInterval(id); set({ _intervalId: null }); }
-    const handler = (window as any).__splittoDashboardVisHandler as (() => void) | undefined;
-    if (handler) window.removeEventListener("visibilitychange", handler);
-    (window as any).__splittoDashboardVisHandler = undefined;
+  // ---------- Helpers ----------
+  refreshAll: async () => {
+    await Promise.allSettled([
+      get().reloadBalance(),
+      get().loadActivity(),
+      get().loadEvents(),
+      get().loadSummary(),
+      get().loadRecentGroups(),
+      get().loadTopCategories(),
+      get().loadTopPartners(),
+    ])
   },
-}));
+}))
