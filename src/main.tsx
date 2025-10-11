@@ -7,7 +7,7 @@ import App from "./App"
 import "./styles/index.css"
 import "./pdfjs-setup"
 import { useUserStore } from "./store/userStore"
-import { ErrorBoundary } from "./components/ErrorBoundary"
+import ErrorBoundary from "./components/ErrorBoundary"
 
 // Телеграм-тема → CSS-переменные
 function applyTgTheme(p: any = (window as any)?.Telegram?.WebApp?.themeParams || {}) {

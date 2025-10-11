@@ -1,6 +1,7 @@
 // src/pages/DashboardPage.tsx
 import { useEffect } from "react"
 import CardSection from "../components/CardSection"
+import ErrorBoundary from "../components/ErrorBoundary"
 import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
 import { useDashboardStore } from "../store/dashboardStore"
 
@@ -16,11 +17,11 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    const handler = () => refreshBalance()
-    window.addEventListener("focus", handler)
-    const id = window.setInterval(handler, 30000)
+    const onFocus = () => refreshBalance()
+    window.addEventListener("focus", onFocus)
+    const id = window.setInterval(onFocus, 30000)
     return () => {
-      window.removeEventListener("focus", handler)
+      window.removeEventListener("focus", onFocus)
       clearInterval(id)
     }
   }, [refreshBalance])
@@ -28,9 +29,11 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-3">
       <div className="w-full max-w-md flex flex-col space-y-2">
-        {/* без SafeSection и без боковых паддингов */}
-        <CardSection noPadding>
-          <DashboardBalanceCard />
+        {/* Важно: без боковых паддингов, как на ProfilePage */}
+        <CardSection noPadding className="py-2">
+          <ErrorBoundary>
+            <DashboardBalanceCard />
+          </ErrorBoundary>
         </CardSection>
       </div>
     </div>

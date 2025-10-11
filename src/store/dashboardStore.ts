@@ -34,14 +34,7 @@ interface UIState {
   balanceChipsTouched?: boolean
 }
 interface LoadingState {
-  global: boolean
-  balance: boolean
-  activity: boolean
-  categories: boolean
-  summary: boolean
-  recentGroups: boolean
-  partners: boolean
-  events: boolean
+  global: boolean; balance: boolean; activity: boolean; categories: boolean; summary: boolean; recentGroups: boolean; partners: boolean; events: boolean
 }
 interface DashboardState {
   balance?: DashboardBalance
@@ -69,43 +62,27 @@ interface DashboardState {
   setSummaryCurrency: (ccy: string) => void
 }
 
-const defaultLoading: LoadingState = {
-  global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false,
-}
-const defaultUI: UIState = {
-  balanceCurrencies: [],
-  categoriesPeriod: "month",
-  partnersPeriod: "month",
-  activityPeriod: "month",
-  summaryPeriod: "month",
-  summaryCurrency: "USD",
-  balanceChipsTouched: false,
-}
+const defaultLoading: LoadingState = { global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }
+const defaultUI: UIState = { balanceCurrencies: [], categoriesPeriod: "month", partnersPeriod: "month", activityPeriod: "month", summaryPeriod: "month", summaryCurrency: "USD", balanceChipsTouched: false }
 
-const parseAbs = (x?: string | null) => {
-  if (!x) return 0
-  const n = Number(String(x).replace(",", "."))
-  return Number.isFinite(n) ? Math.abs(n) : 0
-}
-function nonZeroCurrencies(b?: DashboardBalance): string[] {
+const parseAbs = (x?: string | null) => { if (!x) return 0; const n = Number(String(x).replace(",", ".")); return Number.isFinite(n) ? Math.abs(n) : 0 }
+const nonZeroCurrencies = (b?: DashboardBalance) => {
   const set = new Set<string>()
   if (!b) return []
   Object.entries(b.i_owe || {}).forEach(([c, v]) => { if (parseAbs(v) > 0) set.add(c.toUpperCase()) })
   Object.entries(b.they_owe_me || {}).forEach(([c, v]) => { if (parseAbs(v) > 0) set.add(c.toUpperCase()) })
   return Array.from(set)
 }
-function sortByLastOrdered(codes: string[], last?: string[]): string[] {
-  const order = new Map<string, number>()
-  ;(last || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
+const sortByLastOrdered = (codes: string[], last?: string[]) => {
+  const order = new Map<string, number>(); (last || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
   const inLast = codes.filter((c) => order.has(c.toUpperCase())).sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
   const others = codes.filter((c) => !order.has(c.toUpperCase())).sort()
   return [...inLast, ...others]
 }
-function pickDefault(nonZeroSorted: string[], last?: string[]): string[] {
+const pickDefault = (nonZeroSorted: string[], last?: string[]) => {
   if (nonZeroSorted.length === 0) return []
   const inOrder = (last || []).map((c) => (c || "").toUpperCase()).filter((c) => nonZeroSorted.includes(c))
   const primary = inOrder.slice(0, 2)
-  if (primary.length === 2) return primary
   for (const c of nonZeroSorted) if (!primary.includes(c) && primary.length < 2) primary.push(c)
   return primary
 }
@@ -120,9 +97,8 @@ export const useDashboardStore = create<DashboardState>()(
       async hydrateIfNeeded(currencyFallback?: string) {
         const st = get()
         if (st.loading.global) return
-        if (st.balance && st.activity && st.topCategories && st.summary && st.recentGroups && st.topPartners && st.events && st.lastCurrenciesOrdered) {
-          return
-        }
+        if (st.balance && st.activity && st.topCategories && st.summary && st.recentGroups && st.topPartners && st.events && st.lastCurrenciesOrdered) return
+
         const ccy = st.ui.summaryCurrency || currencyFallback || "USD"
         const period = st.ui.activityPeriod || "month"
         await get().fetchAll(ccy, period)
@@ -135,83 +111,52 @@ export const useDashboardStore = create<DashboardState>()(
           error: null,
           ui: { ...s.ui, summaryCurrency: currency, activityPeriod: period, categoriesPeriod: period, partnersPeriod: period },
         }))
-
         try {
-          const [
-            balanceRes, activityRes, topCategoriesRes, summaryRes, recentGroupsRes, topPartnersRes, eventsRes, lastRes,
-          ] = await Promise.allSettled([
+          const [balance, activity, topCategories, summary, recentGroups, topPartners, events, last] = await Promise.all([
             getDashboardBalance(),
-            getDashboardActivity(period),
-            getTopCategories(period, currency),
-            getDashboardSummary("month", currency),
-            getRecentGroups(10),
-            getTopPartners(period, 20),
-            getDashboardEvents(20),
-            getLastCurrencies(10), // ≤ 10 — соответствует backend
-          ])
-
-          if (balanceRes.status !== "fulfilled") throw new Error(balanceRes.reason?.message || "Failed to load balance")
-          const balance = balanceRes.value
-          const activity = activityRes.status === "fulfilled" ? activityRes.value : undefined
-          const topCategories = topCategoriesRes.status === "fulfilled" ? topCategoriesRes.value : undefined
-          const summary = summaryRes.status === "fulfilled" ? summaryRes.value : undefined
-          const recentGroups = recentGroupsRes.status === "fulfilled" ? recentGroupsRes.value : undefined
-          const topPartners = topPartnersRes.status === "fulfilled" ? topPartnersRes.value : undefined
-          const events = eventsRes.status === "fulfilled" ? eventsRes.value : undefined
-          const last = (lastRes.status === "fulfilled" ? (lastRes.value || []) : []).map((c) => (c || "").toUpperCase())
-
-          const nonZero = nonZeroCurrencies(balance)
-          const sorted = sortByLastOrdered(nonZero, last)
-
-          let selected = get().ui.balanceCurrencies
-          if (!get().ui.balanceChipsTouched || selected.length === 0) {
-            selected = pickDefault(sorted, last)
-          } else {
-            selected = selected.filter((c) => sorted.includes(c.toUpperCase()))
-            if (selected.length === 0) selected = pickDefault(sorted, last)
-          }
-
-          set((s) => ({
-            balance,
-            activity,
-            topCategories,
-            summary,
-            recentGroups,
-            topPartners,
-            events,
-            lastCurrenciesOrdered: last,
-            ui: { ...s.ui, balanceCurrencies: selected },
-            loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
-            error: null,
-          }))
-        } catch (e: any) {
-          set((s) => ({
-            loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
-            error: e?.message || "Failed to load dashboard",
-          }))
-        }
-      },
-
-      async refreshBalance() {
-        if (get()._isRefreshingBalance) return
-        set({ _isRefreshingBalance: true })
-        try {
-          const [balance, last] = await Promise.all([
-            getDashboardBalance(),
+            getDashboardActivity(period).catch(() => undefined),
+            getTopCategories(period, currency).catch(() => undefined),
+            getDashboardSummary("month", currency).catch(() => undefined),
+            getRecentGroups(10).catch(() => undefined),
+            getTopPartners(period, 20).catch(() => undefined),
+            getDashboardEvents(20).catch(() => undefined),
             getLastCurrencies(10).catch(() => [] as string[]),
           ])
           const lastUp = (last || []).map((c) => (c || "").toUpperCase())
           const nonZero = nonZeroCurrencies(balance)
           const sorted = sortByLastOrdered(nonZero, lastUp)
-
           let selected = get().ui.balanceCurrencies
-          if (!get().ui.balanceChipsTouched || selected.length === 0) {
-            selected = pickDefault(sorted, lastUp)
-          } else {
+          if (!get().ui.balanceChipsTouched || selected.length === 0) selected = pickDefault(sorted, lastUp)
+          else {
             selected = selected.filter((c) => sorted.includes(c.toUpperCase()))
             if (selected.length === 0) selected = pickDefault(sorted, lastUp)
           }
+          set((s) => ({
+            balance, activity, topCategories, summary, recentGroups, topPartners, events,
+            lastCurrenciesOrdered: lastUp,
+            ui: { ...s.ui, balanceCurrencies: selected },
+            loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
+            error: null,
+          }))
+        } catch (e: any) {
+          set((s) => ({ loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }, error: e?.message || "Failed to load dashboard" }))
+        }
+      },
 
+      async refreshBalance() {
+        if (get()._isRefreshingBalance) return
+        set({ _isRefreshingBalance: true, loading: { ...get().loading, balance: true } })
+        try {
+          const [balance, last] = await Promise.all([getDashboardBalance(), getLastCurrencies(10).catch(() => [] as string[])])
+          const lastUp = (last || []).map((c) => (c || "").toUpperCase())
+          const nonZero = nonZeroCurrencies(balance)
+          const sorted = sortByLastOrdered(nonZero, lastUp)
+          let selected = get().ui.balanceCurrencies
+          if (!get().ui.balanceChipsTouched || selected.length === 0) selected = pickDefault(sorted, lastUp)
+          else {
+            selected = selected.filter((c) => sorted.includes(c.toUpperCase()))
+            if (selected.length === 0) selected = pickDefault(sorted, lastUp)
+          }
           set((s) => ({
             balance,
             lastCurrenciesOrdered: lastUp,
@@ -237,7 +182,7 @@ export const useDashboardStore = create<DashboardState>()(
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (s) => ({ ui: s.ui }),
-      version: 5,
+      version: 6,
     }
   )
 )

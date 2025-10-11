@@ -6,14 +6,15 @@ import SectionTitle from "../SectionTitle"
 import { useDashboardStore } from "../../store/dashboardStore"
 
 const NBSP = "\u00A0"
-const toAbs = (x?: string | number | null) => {
+const toStr = (v: any) => String(v ?? "")
+const absNum = (x?: string | number | null) => {
   if (x === null || x === undefined) return 0
   const n = Number(String(x).replace(",", "."))
   return Number.isFinite(n) ? Math.abs(n) : 0
 }
 function fmt(value: number, currency: string, locale: string) {
   try {
-    const nf = new Intl.NumberFormat(locale, { minimumFractionDigits: value % 1 ? 2 : 0, maximumFractionDigits: 2, useGrouping: true })
+    const nf = new Intl.NumberFormat(locale, { minimumFractionDigits: value % 1 ? 2 : 0, maximumFractionDigits: 2 })
     return `${nf.format(value)}${NBSP}${currency}`
   } catch {
     const v = Math.round(value * 100) / 100
@@ -23,7 +24,6 @@ function fmt(value: number, currency: string, locale: string) {
 
 export default function DashboardBalanceCard() {
   const { t, i18n } = useTranslation()
-  const title = String(t("group_header_my_balance"))
   const locale = (i18n.language || "ru").split("-")[0]
 
   const { balance, lastCurrenciesOrdered, ui, setBalanceCurrencies, loading } = useDashboardStore((s) => ({
@@ -37,55 +37,49 @@ export default function DashboardBalanceCard() {
   const iOwe = balance?.i_owe ?? {}
   const theyOwe = balance?.they_owe_me ?? {}
 
-  // валюты только с ненулём
+  // Валюты только с ненулём, отсортированные по последнему использованию
   const available = useMemo(() => {
     const set = new Set<string>()
-    Object.entries(iOwe).forEach(([ccy, v]) => { if (toAbs(v) > 0) set.add(String(ccy).toUpperCase()) })
-    Object.entries(theyOwe).forEach(([ccy, v]) => { if (toAbs(v) > 0) set.add(String(ccy).toUpperCase()) })
-    const list = Array.from(set)
-    if (!list.length) return []
+    Object.entries(iOwe).forEach(([ccy, v]) => { if (absNum(v) > 0) set.add(toStr(ccy).toUpperCase()) })
+    Object.entries(theyOwe).forEach(([ccy, v]) => { if (absNum(v) > 0) set.add(toStr(ccy).toUpperCase()) })
+    const all = Array.from(set)
+    if (!all.length) return []
     const order = new Map<string, number>()
-    lastCurrenciesOrdered.forEach((c, i) => order.set(String(c || "").toUpperCase(), i))
-    const inLast = list.filter((c) => order.has(c)).sort((a, b) => (order.get(a)! - order.get(b)!))
-    const others = list.filter((c) => !order.has(c)).sort()
+    lastCurrenciesOrdered.forEach((c, i) => order.set(toStr(c).toUpperCase(), i))
+    const inLast = all.filter((c) => order.has(c)).sort((a, b) => (order.get(a)! - order.get(b)!))
+    const others = all.filter((c) => !order.has(c)).sort()
     return [...inLast, ...others]
   }, [iOwe, theyOwe, lastCurrenciesOrdered])
 
-  // активные чипы — две последние или сохранённые
+  // Активные чипы: сохранённые и валидные, иначе две последние
   const active = useMemo(() => {
-    const sel = (ui.balanceCurrencies || []).map((c) => String(c).toUpperCase()).filter((c) => available.includes(c))
+    const sel = (ui.balanceCurrencies || []).map((c) => toStr(c).toUpperCase()).filter((c) => available.includes(c))
     return sel.length ? sel : available.slice(0, 2)
   }, [available, ui.balanceCurrencies])
 
   const toggle = useCallback(
     (ccy: string) => {
-      const set = new Set(active)
-      if (set.has(ccy)) {
-        if (set.size === 1) return
-        set.delete(ccy)
-      } else set.add(ccy)
-      useDashboardStore.getState().ui.balanceChipsTouched = true
-      setBalanceCurrencies(Array.from(set))
+      const next = new Set(active)
+      if (next.has(ccy)) {
+        if (next.size === 1) return
+        next.delete(ccy)
+      } else next.add(ccy)
+      setBalanceCurrencies(Array.from(next))
     },
     [active, setBalanceCurrencies]
   )
 
-  const left = useMemo(
-    () => active.map((c) => ({ c, v: toAbs((iOwe as any)[c]) })).filter((x) => x.v > 0),
-    [active, iOwe]
-  )
-  const right = useMemo(
-    () => active.map((c) => ({ c, v: toAbs((theyOwe as any)[c]) })).filter((x) => x.v > 0),
-    [active, theyOwe]
-  )
+  const left = useMemo(() => active.map((c) => ({ c, v: absNum((iOwe as any)[c]) })).filter((x) => x.v > 0), [active, iOwe])
+  const right = useMemo(() => active.map((c) => ({ c, v: absNum((theyOwe as any)[c]) })).filter((x) => x.v > 0), [active, theyOwe])
 
   return (
-    <div className="w-full rounded-lg py-2 bg-[var(--tg-card-bg)] shadow-[0_8px_32px_0_rgba(50,60,90,0.08)]">
-      <div className="px-2">
-        <SectionTitle className="!mb-2">{title}</SectionTitle>
+    <div className="w-full">
+      {/* Заголовок через локаль */}
+      <div className="px-2 pt-1 pb-1">
+        <SectionTitle className="!mb-2">{toStr(t("group_header_my_balance"))}</SectionTitle>
       </div>
 
-      {/* Чипы */}
+      {/* Чипы: без боковых паддингов у секции (CardSection noPadding), но внутри — компактные */}
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto px-2">
         {available.map((ccy) => {
           const isActive = active.includes(ccy)
@@ -103,14 +97,14 @@ export default function DashboardBalanceCard() {
               ].join(" ")}
               aria-pressed={isActive}
             >
-              {String(ccy)}
+              {toStr(ccy)}
             </button>
           )
         })}
         {!available.length && !loading && (
-          <span className="text-sm text-[var(--tg-hint-color)]">{String(t("group_balance_no_debts_all"))}</span>
+          <span className="text-sm text-[var(--tg-hint-color)]">{toStr(t("group_balance_no_debts_all"))}</span>
         )}
-        {loading && <span className="text-sm text-[var(--tg-hint-color)]">{String(t("loading"))}</span>}
+        {loading && <span className="text-sm text-[var(--tg-hint-color)]">{toStr(t("loading"))}</span>}
       </div>
 
       {/* Две половины */}
@@ -119,10 +113,10 @@ export default function DashboardBalanceCard() {
         <div className="p-2 rounded-lg">
           <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
             <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
-            <span>{String(t("i_owe"))}</span>
+            <span>{toStr(t("i_owe"))}</span>
           </div>
           {loading ? (
-            <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            <div className="h-5 w-32 rounded bg-[var(--tg-secondary-bg-color)] opacity-50" />
           ) : left.length ? (
             <div className="space-y-1">
               {left.map(({ c, v }) => (
@@ -133,7 +127,7 @@ export default function DashboardBalanceCard() {
             </div>
           ) : (
             <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {String(t("group_balance_no_debts_left"))}
+              {toStr(t("group_balance_no_debts_left"))}
             </div>
           )}
         </div>
@@ -141,11 +135,11 @@ export default function DashboardBalanceCard() {
         {/* Мне должны */}
         <div className="p-2 rounded-lg text-right">
           <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-            <span>{String(t("they_owe_me"))}</span>
+            <span>{toStr(t("they_owe_me"))}</span>
             <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
           </div>
           {loading ? (
-            <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+            <div className="ml-auto h-5 w-32 rounded bg-[var(--tg-secondary-bg-color)] opacity-50" />
           ) : right.length ? (
             <div className="space-y-1">
               {right.map(({ c, v }) => (
@@ -156,7 +150,7 @@ export default function DashboardBalanceCard() {
             </div>
           ) : (
             <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {String(t("group_balance_no_debts_right"))}
+              {toStr(t("group_balance_no_debts_right"))}
             </div>
           )}
         </div>
