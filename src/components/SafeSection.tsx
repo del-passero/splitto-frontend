@@ -1,46 +1,18 @@
 // src/components/SafeSection.tsx
-// Простая «подушка безопасности» вокруг секции: локализованный fallback + лог стека.
-
-import React from "react"
-import { useTranslation } from "react-i18next"
-
-type Props = {
-  title?: string
-  children: React.ReactNode
-  className?: string
-}
-
-type State = { hasError: boolean; error?: any }
-
-export default class SafeSection extends React.Component<Props, State> {
-  state: State = { hasError: false }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error }
-  }
-
-  componentDidCatch(error: any, info: any) {
-    // eslint-disable-next-line no-console
-    console.error("[SafeSection] Error:", error, info)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      // use hook proxy to keep class component simple
-      return <BoundaryFallback title={this.props.title} />
-    }
-    return <section className={this.props.className}>{this.props.children}</section>
-  }
-}
-
-function BoundaryFallback({ title }: { title?: string }) {
-  const { t } = useTranslation()
+import React from "react";
+type Props = { title?: React.ReactNode; controls?: React.ReactNode; loading?: boolean; error?: string | null; onRetry?: () => void; children?: React.ReactNode; fullWidth?: boolean };
+export default function SafeSection({ title, controls, loading, error, onRetry, children, fullWidth }: Props) {
   return (
-    <div className="rounded-2xl p-3 border border-[color-mix(in_oklab,var(--tg-border-color)_80%,transparent)] bg-[var(--tg-secondary-bg-color)]">
-      {title && <div className="text-sm font-semibold mb-1">{title}</div>}
-      <div className="text-sm text-[var(--tg-hint-color)]">
-        {t("section_failed_to_render", { defaultValue: "Раздел временно недоступен" })}
-      </div>
-    </div>
-  )
+    <section className={`rounded-2xl p-3 bg-[var(--tg-card-bg,#1c1c1e)] ${fullWidth ? "w-full" : ""}`}>
+      {(title || controls) && (
+        <div className="flex items-center justify-between mb-2">
+          {title ? <h3 className="text-sm font-semibold opacity-80">{title}</h3> : <div />}
+          {controls ? <div className="flex gap-2">{controls}</div> : null}
+        </div>
+      )}
+      {loading ? <div className="animate-pulse h-20 bg-white/5 rounded-xl" /> : error ? (
+        <div className="text-sm opacity-70">{error}{onRetry && <button className="ml-2 underline" onClick={onRetry}>Повторить</button>}</div>
+      ) : children}
+    </section>
+  );
 }

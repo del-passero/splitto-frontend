@@ -1,101 +1,53 @@
 // src/components/dashboard/TopPartnersCarousel.tsx
-import { useMemo } from "react"
-import { useTranslation } from "react-i18next"
-import { useDashboardStore } from "../../store/dashboardStore"
-import { tSafe } from "../../utils/tSafe"
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { useDashboardStore } from "../../store/dashboardStore";
+import SafeSection from "../SafeSection";
 
-type Period = "week" | "month" | "year"
-
-function PeriodChip({
-  label,
-  active,
-  onClick,
-}: { label: string; active: boolean; onClick: () => void }) {
+type Period = "day" | "week" | "month" | "year";
+function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+  const items: Period[] = ["day", "week", "month", "year"];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition
-        ${active ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]"}`}
-    >
-      {label}
-    </button>
-  )
+    <div className="flex gap-1">
+      {items.map((p) => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={`px-2 py-1 rounded-full text-xs ${value === p ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`}
+        >
+          {p}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export default function TopPartnersCarousel() {
-  const { t } = useTranslation()
-  const { period, setPeriod, items, loading } = useDashboardStore((s) => ({
-    period: s.ui?.partnersPeriod || "month",
-    setPeriod: s.setPartnersPeriod,
-    items: s.topPartners || [],
-    loading: !!s.loading?.partners,
-  }))
-
-  const visible = useMemo(() => items, [items])
+  const period = useDashboardStore((s) => s.frequentPeriod);
+  const setPeriod = useDashboardStore((s) => s.setFrequentPeriod);
+  const items = useDashboardStore((s) => s.frequentUsers);
+  const loading = useDashboardStore((s) => s.loading.frequent);
+  const error = useDashboardStore((s) => s.error.frequent);
+  const nav = useNavigate();
 
   return (
-    <div className="w-full">
-      <div className="mb-2 flex gap-2">
-        <PeriodChip label={tSafe(t, "week", "Неделя")} active={period === "week"} onClick={() => setPeriod("week")} />
-        <PeriodChip label={tSafe(t, "month", "Месяц")} active={period === "month"} onClick={() => setPeriod("month")} />
-        <PeriodChip label={tSafe(t, "year", "Год")} active={period === "year"} onClick={() => setPeriod("year")} />
+    <SafeSection fullWidth title="Часто делю расходы" controls={<PeriodChips value={period as Period} onChange={setPeriod} />} loading={loading} error={error || null} onRetry={() => setPeriod(period)}>
+      <div className="overflow-x-auto no-scrollbar">
+        <div className="flex gap-3 snap-x snap-mandatory">
+          {items.map((p) => (
+            <div key={p.id} className="snap-center shrink-0 w-[45%] min-w-[260px] rounded-2xl p-3 bg-white/5 cursor-pointer" onClick={() => nav(`/users/${p.id}`)}>
+              <div className="flex items-center gap-3">
+                {p.photo_url ? <img src={p.photo_url} className="w-12 h-12 rounded-full object-cover" alt={p.first_name} /> : <div className="w-12 h-12 rounded-full grid place-items-center bg-white/10">{p.first_name?.[0]?.toUpperCase() || "?"}</div>}
+                <div>
+                  <div className="font-medium">{p.first_name}</div>
+                  <div className="text-xs opacity-70">{p.tx_count} совместных расход(а/ов)</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="text-xs opacity-60 mt-2">Горизонтальная карусель (видно две карточки). Карточки кликабельны.</div>
       </div>
-
-      <div className="rounded-xl border p-2"
-           style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
-        {loading ? (
-          <div className="text-[var(--tg-hint-color)] px-2 py-4">{tSafe(t, "loading", "Загрузка…")}</div>
-        ) : visible.length === 0 ? (
-          <div className="text-[var(--tg-hint-color)] px-2 py-4">{tSafe(t, "contacts_not_found", "Контакты не найдены")}</div>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-1" style={{ scrollSnapType: "x mandatory" }}>
-            {visible.map((p) => {
-              const u = p.user || { id: 0 as number, first_name: "", last_name: "" }
-              const name =
-                `${String(u.first_name || "").trim()} ${String(u.last_name || "").trim()}`.trim() ||
-                String((u as any).username || "") ||
-                `#${u.id}`
-              return (
-                <a
-                  key={u.id}
-                  href={`/contacts/${u.id}`}
-                  className="snap-start inline-flex flex-col items-center shrink-0 w-[48%] min-w-[48%]"
-                >
-                  <div
-                    className="w-full rounded-xl border p-3 hover:shadow transition"
-                    style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="relative inline-flex w-12 h-12 rounded-full overflow-hidden border"
-                            style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
-                        {(u as any).photo_url ? (
-                          <img
-                            src={(u as any).photo_url}
-                            alt={name}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span className="w-full h-full bg-[var(--tg-link-color)]" aria-hidden />
-                        )}
-                      </span>
-
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-semibold truncate">{name}</div>
-                        <div className="text-[12px] text-[var(--tg-hint-color)]">
-                          {tSafe(t, "joint_expense_count", `${p.joint_expense_count} транзакций`)
-                            .replace("{{count}}", String(p.joint_expense_count))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </a>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+    </SafeSection>
+  );
 }

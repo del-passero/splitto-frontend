@@ -1,68 +1,57 @@
 // src/components/dashboard/DashboardEventsFeed.tsx
-import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
-import { useDashboardStore } from "../../store/dashboardStore"
-import type { DashboardEventFeedItem } from "../../types/dashboard"
-import { tSafe } from "../../utils/tSafe"
+import React, { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { Users, ReceiptText, PenLine, FolderKanban } from "lucide-react";
+import { useDashboardStore } from "../../store/dashboardStore";
+import SafeSection from "../SafeSection";
 
-type Filter = "all" | "transactions" | "members" | "groups"
-
-function itemMatches(i: DashboardEventFeedItem, f: Filter) {
-  if (f === "all") return true
-  if (f === "transactions") return i.type.includes("transaction")
-  if (f === "members") return i.type.includes("member")
-  if (f === "groups") return i.type.includes("group")
-  return true
+function itemMatches(i: { type: "tx" | "edit" | "group" | "user" }, filter: "all" | "tx" | "edit" | "group" | "user") {
+  return filter === "all" || i.type === filter;
 }
 
 export default function DashboardEventsFeed() {
-  const { t } = useTranslation()
-  const { events, loading } = useDashboardStore((s) => ({
-    events: s.events?.items || [],
-    loading: !!s.loading?.events,
-  }))
-  const [filter, setFilter] = useState<Filter>("all")
+  const nav = useNavigate();
+  const filter = useDashboardStore((s) => s.eventsFilter);
+  const setFilter = useDashboardStore((s) => s.setEventsFilter);
+  const events = useDashboardStore((s) => s.events);
+  const loading = useDashboardStore((s) => s.loading.events);
+  const error = useDashboardStore((s) => s.error.events);
 
-  const items = useMemo(() => events.filter((i) => itemMatches(i, filter)), [events, filter])
+  const items = useMemo(() => events.filter((i) => itemMatches(i, filter)), [events, filter]);
 
   return (
-    <div className="w-full">
-      <div className="mb-2 flex gap-2">
-        {(["all", "transactions", "members", "groups"] as Filter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`h-8 px-3 rounded-xl text-[13px] font-semibold active:scale-95 transition
-            ${filter === f ? "bg-[var(--tg-accent-color,#40A7E3)] text-white" : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)]"}`}
-          >
-            {tSafe(t, `feed_filter_${f}`, {
-              all: "Все",
-              transactions: "Транзакции",
-              members: "Участники",
-              groups: "Группы",
-            }[f])}
-          </button>
-        ))}
+    <SafeSection
+      fullWidth
+      title="Лента событий"
+      controls={
+        <div className="flex items-center gap-1">
+          <button onClick={() => setFilter("all")} className={`px-2 py-1 rounded-full text-xs ${filter === "all" ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`}>Все</button>
+          <button onClick={() => setFilter("tx")} className={`p-1 rounded-full ${filter === "tx" ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`} title="Транзакции"><ReceiptText className="w-4 h-4" /></button>
+          <button onClick={() => setFilter("edit")} className={`p-1 rounded-full ${filter === "edit" ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`} title="Редактирования"><PenLine className="w-4 h-4" /></button>
+          <button onClick={() => setFilter("group")} className={`p-1 rounded-full ${filter === "group" ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`} title="Группы"><FolderKanban className="w-4 h-4" /></button>
+          <button onClick={() => setFilter("user")} className={`p-1 rounded-full ${filter === "user" ? "bg-[var(--tg-link-color,#2481cc)] text-white" : "bg-white/10"}`} title="Юзеры"><Users className="w-4 h-4" /></button>
+        </div>
+      }
+      loading={loading}
+      error={error || null}
+      onRetry={() => setFilter(filter)}
+    >
+      <div role="button" tabIndex={0} onClick={() => nav("/events")} onKeyDown={(e) => e.key === "Enter" && nav("/events")} className="cursor-pointer">
+        <ul className="flex flex-col gap-2">
+          {items.map((it) => (
+            <li key={it.id} className="flex items-center justify-between bg-white/5 rounded-xl px-2 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-6 h-6 rounded-full grid place-items-center bg-white/10 shrink-0">
+                  {it.type === "tx" ? <ReceiptText className="w-4 h-4" /> : it.type === "edit" ? <PenLine className="w-4 h-4" /> : it.type === "group" ? <FolderKanban className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                </span>
+                <div className="truncate">{it.text}</div>
+              </div>
+              <div className="text-xs opacity-60 shrink-0">{new Date(it.date).toLocaleString()}</div>
+            </li>
+          ))}
+        </ul>
       </div>
-
-      <div className="rounded-xl border"
-           style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}>
-        {loading ? (
-          <div className="text-[var(--tg-hint-color)] px-3 py-4">{tSafe(t, "loading", "Загрузка…")}</div>
-        ) : items.length === 0 ? (
-          <div className="text-[var(--tg-hint-color)] px-3 py-4">{tSafe(t, "events_not_found", "События не найдены")}</div>
-        ) : (
-          <ul className="divide-y" style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
-            {items.map((it) => (
-              <li key={it.id} className="px-3 py-2">
-                <div className="text-[12px] text-[var(--tg-hint-color)]">{new Date(it.created_at).toLocaleString()}</div>
-                <div className="text-[14px] font-medium">{String(it.title || "")}</div>
-                {it.subtitle && <div className="text-[12px]">{String(it.subtitle)}</div>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
-  )
+      <div className="text-xs opacity-60 mt-2">Кликабельно: ведёт на «Все события»</div>
+    </SafeSection>
+  );
 }

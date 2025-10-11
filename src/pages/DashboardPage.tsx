@@ -1,55 +1,52 @@
-import { useEffect } from "react"
-import { useTranslation } from "react-i18next"
-import { useDashboardStore } from "../store/dashboardStore"
-import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
-import SafeSection from "../components/SafeSection"
+// src/pages/DashboardPage.tsx
+import React, { useEffect } from "react";
+import ErrorBoundary from "../components/ErrorBoundary";
+import { useDashboardStore } from "../store/dashboardStore";
 
-// Главная: пока подключаем только «Мой баланс» — ЧЁТКО без боковых отступов, с автозапуском и лайв-обновлением
+import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard";
+import DashboardActivityChart from "../components/dashboard/DashboardActivityChart";
+import TopCategoriesCard from "../components/dashboard/TopCategoriesCard";
+import DashboardSummaryCard from "../components/dashboard/DashboardSummaryCard";
+import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel";
+import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel";
+import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed";
+
 export default function DashboardPage() {
-  const { t } = useTranslation()
+  const init = useDashboardStore((s) => s.init);
+  const startLive = useDashboardStore((s) => s.startLive);
+  const stopLive = useDashboardStore((s) => s.stopLive);
 
-  const {
-    init,
-    startLive,
-    stopLive,
-    loading,
-    error,
-  } = useDashboardStore((s) => ({
-    init: s.init,
-    startLive: s.startLive,
-    stopLive: s.stopLive,
-    loading: !!s.loading?.balance,
-    error: s.error,
-  }))
-
-  // моментальный старт: грузим баланс и включаем лайв-обновление
   useEffect(() => {
-    void init()
-    startLive()
-    return () => stopLive()
+    init().catch(() => void 0);
+    startLive();
+    return () => stopLive();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   return (
-    <div className="p-3 text-[var(--tg-text-color)] bg-[var(--tg-bg-color)]">
-      <h1 className="text-lg font-bold mb-3">{t("main")}</h1>
+    <ErrorBoundary>
+      <div className="w-full p-3 pb-20 space-y-3">
+        {/* 1. Мой баланс (full-width) */}
+        <DashboardBalanceCard />
 
-      {error && (
-        <div className="mb-3 text-red-500">
-          {t("error", { defaultValue: "Ошибка" })}: {String(error)}
+        {/* 2. Активность + Топ категорий */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <DashboardActivityChart />
+          <TopCategoriesCard />
         </div>
-      )}
 
-      {/* БЕЗ боковых отступов — как на Groups/Profile */}
-      <div className="mb-3">
-        <SafeSection>
-          <DashboardBalanceCard />
-        </SafeSection>
+        {/* 3. Сводка (3 столбца) */}
+        <DashboardSummaryCard />
+
+        {/* 4. Последние активные группы (full-width) */}
+        <RecentGroupsCarousel />
+
+        {/* 5. Часто делю расходы (full-width) */}
+        <TopPartnersCarousel />
+
+        {/* 6. Лента событий (full-width) */}
+        <DashboardEventsFeed />
       </div>
-
-      {loading && (
-        <div className="text-[var(--tg-hint-color)]">{t("loading")}</div>
-      )}
-    </div>
-  )
+    </ErrorBoundary>
+  );
 }
