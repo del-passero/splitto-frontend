@@ -1,5 +1,5 @@
 // src/api/dashboardApi.ts
-// API для главного дашборда (Главная страница)
+// API для главного дашборда + надёжная инициализация Telegram initData с ретраем
 
 import type {
   DashboardBalance,
@@ -13,17 +13,48 @@ import type {
 
 const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 
-function getTelegramInitData(): string {
+function tg() {
   // @ts-ignore
-  return window?.Telegram?.WebApp?.initData || ""
+  return window?.Telegram?.WebApp
+}
+
+function getTelegramInitData(): string {
+  try {
+    return tg()?.initData || ""
+  } catch {
+    return ""
+  }
+}
+
+/** Ждём появления initData (Telegram WebApp) до timeout, чтобы старт заработал с первого экрана */
+async function waitForInitData(maxWaitMs = 3500, stepMs = 150): Promise<string> {
+  const deadline = Date.now() + maxWaitMs
+  let init = getTelegramInitData()
+  while (!init && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, stepMs))
+    init = getTelegramInitData()
+  }
+  return init
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  // 1) гарантируем initData
+  const initData = await waitForInitData()
   const headers: HeadersInit = {
     ...(init?.headers || {}),
-    "x-telegram-initdata": getTelegramInitData(),
+    "x-telegram-initdata": initData,
   }
-  const res = await fetch(url, { ...init, headers })
+
+  // 2) мягкий ретрай 401/403 (на случай «успел протухнуть»)
+  async function doOnce(): Promise<Response> {
+    return fetch(url, { ...init, headers })
+  }
+  let res = await doOnce()
+  if ((res.status === 401 || res.status === 403) && !getTelegramInitData()) {
+    await new Promise((r) => setTimeout(r, 250))
+    res = await doOnce()
+  }
+
   if (!res.ok) {
     let msg = ""
     try {
@@ -41,9 +72,9 @@ export async function getDashboardBalance(): Promise<DashboardBalance> {
   return await fetchJson<DashboardBalance>(url)
 }
 
-// ---------------- LAST CURRENCIES (ordered by recency) ----------------
+// ---------------- LAST CURRENCIES (ordered by recency, limit ≤ 10) ----------------
 export async function getLastCurrencies(limit = 10): Promise<string[]> {
-  const safeLimit = Math.min(Math.max(limit, 1), 10) // <= 10 — соответствует бэку
+  const safeLimit = Math.min(Math.max(limit, 1), 10)
   const url = `${API_URL}/dashboard/last-currencies?limit=${safeLimit}`
   return await fetchJson<string[]>(url)
 }
