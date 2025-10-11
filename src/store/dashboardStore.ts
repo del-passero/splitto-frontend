@@ -1,5 +1,5 @@
 // src/store/dashboardStore.ts
-// Zustand store: добавлены гарды от повторных запусков и фикс автозапуска эффекта
+// Zustand store: фикс типов setActivityPeriod (+ предыдущие правки по last-currencies и fallback’ам)
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
@@ -68,7 +68,7 @@ interface DashboardState {
   setBalanceCurrencies: (codes: string[]) => void
   setCategoriesPeriod: (p: Period) => void
   setPartnersPeriod: (p: Period) => void
-  setActivityPeriod: (p: Period) => void
+  setActivityPeriod: (p: Period) => void     // ← фикс: Period, не SummaryPeriod
   setSummaryPeriod: (p: SummaryPeriod) => void
   setSummaryCurrency: (ccy: string) => void
 }
@@ -136,9 +136,7 @@ export const useDashboardStore = create<DashboardState>()(
 
       async hydrateIfNeeded(currencyFallback?: string) {
         const st = get()
-        // если уже что-то грузим — выходим
         if (st.loading.global) return
-        // если всё есть — не грузим
         if (
           st.balance &&
           st.activity &&
@@ -157,7 +155,6 @@ export const useDashboardStore = create<DashboardState>()(
       },
 
       async fetchAll(currency: string, period: Period = "month") {
-        // анти-дребезг: если уже идёт global-загрузка — не стартуем вторую
         if (get().loading.global) return
 
         set((s) => ({
@@ -183,6 +180,8 @@ export const useDashboardStore = create<DashboardState>()(
         }))
 
         try {
+          const lastPromise = getLastCurrencies(10).catch(() => [] as string[])
+
           const [
             balance,
             activity,
@@ -200,7 +199,7 @@ export const useDashboardStore = create<DashboardState>()(
             getRecentGroups(10),
             getTopPartners(period, 20),
             getDashboardEvents(20),
-            getLastCurrencies(50),
+            lastPromise,
           ])
 
           set((s) => ({
@@ -226,12 +225,15 @@ export const useDashboardStore = create<DashboardState>()(
             error: null,
           }))
 
-          // автосет чипов
           const last = (lastOrdered || []).map((c) => (c || "").toUpperCase())
           const currentSel = get().ui.balanceCurrencies
           const avail = pickAvailableCurrencies(balance, last)
           let nextSel =
-            currentSel && currentSel.length ? currentSel.map((c) => c.toUpperCase()) : (last.length ? last.slice(0, 2) : avail.slice(0, 2))
+            currentSel && currentSel.length
+              ? currentSel.map((c) => c.toUpperCase())
+              : last.length
+              ? last.slice(0, 2)
+              : avail.slice(0, 2)
 
           const zeroSelected =
             !nextSel.length ||
@@ -272,7 +274,9 @@ export const useDashboardStore = create<DashboardState>()(
       },
 
       setBalanceCurrencies(codes: string[]) {
-        set((s) => ({ ui: { ...s.ui, balanceCurrencies: Array.from(new Set(codes.map((c) => c.toUpperCase()))) } }))
+        set((s) => ({
+          ui: { ...s.ui, balanceCurrencies: Array.from(new Set(codes.map((c) => c.toUpperCase()))) },
+        }))
       },
       setCategoriesPeriod(p: Period) {
         set((s) => ({ ui: { ...s.ui, categoriesPeriod: p } }))

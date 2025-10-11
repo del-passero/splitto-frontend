@@ -4,17 +4,18 @@ import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../store/dashboardStore"
 import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
 import SafeSection from "../components/SafeSection"
+import CardSection from "../components/CardSection"
 
 export default function DashboardPage() {
   const { t } = useTranslation()
 
-  // Не тянем сюда loading/error — чтобы не пересоздавать объект и не дёргать useEffect
+  // читаем поля стора по отдельности, чтобы не триггерить лишние эффекты
   const hydrateIfNeeded = useDashboardStore((s) => s.hydrateIfNeeded)
   const loading = useDashboardStore((s) => !!s.loading?.global)
   const error = useDashboardStore((s) => s.error)
 
   useEffect(() => {
-    // вызываем ровно один раз на маунт — без зависимости на ссылку функции
+    // вызываем один раз при маунте
     // eslint-disable-next-line react-hooks/exhaustive-deps
     hydrateIfNeeded()
   }, [])
@@ -30,9 +31,12 @@ export default function DashboardPage() {
       )}
 
       <div className="mb-4">
-        {/* Заголовок секции по ключу */}
+        {/* Заголовок секции через i18n */}
         <SafeSection title={t("group_header_my_balance")}>
-          <DashboardBalanceCard />
+          {/* Карточка без горизонтальных паддингов, как просили */}
+          <CardSection className="px-0">
+            <DashboardBalanceCard />
+          </CardSection>
         </SafeSection>
       </div>
 
