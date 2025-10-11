@@ -42,8 +42,9 @@ export async function getDashboardBalance(): Promise<DashboardBalance> {
 }
 
 // ---------------- LAST CURRENCIES (ordered by recency) ----------------
-export async function getLastCurrencies(limit = 50): Promise<string[]> {
-  const url = `${API_URL}/dashboard/last-currencies?limit=${limit}`
+export async function getLastCurrencies(limit = 10): Promise<string[]> {
+  const safeLimit = Math.min(Math.max(limit, 1), 10) // <= 10 — соответствует бэку
+  const url = `${API_URL}/dashboard/last-currencies?limit=${safeLimit}`
   return await fetchJson<string[]>(url)
 }
 
