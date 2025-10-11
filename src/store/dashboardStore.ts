@@ -33,9 +33,18 @@ interface UIState {
   summaryCurrency: string
   balanceChipsTouched?: boolean
 }
+
 interface LoadingState {
-  global: boolean; balance: boolean; activity: boolean; categories: boolean; summary: boolean; recentGroups: boolean; partners: boolean; events: boolean
+  global: boolean
+  balance: boolean
+  activity: boolean
+  categories: boolean
+  summary: boolean
+  recentGroups: boolean
+  partners: boolean
+  events: boolean
 }
+
 interface DashboardState {
   balance?: DashboardBalance
   activity?: DashboardActivity
@@ -62,8 +71,12 @@ interface DashboardState {
   setSummaryCurrency: (ccy: string) => void
 }
 
-const defaultLoading: LoadingState = { global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }
-const defaultUI: UIState = { balanceCurrencies: [], categoriesPeriod: "month", partnersPeriod: "month", activityPeriod: "month", summaryPeriod: "month", summaryCurrency: "USD", balanceChipsTouched: false }
+const defaultLoading: LoadingState = {
+  global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false,
+}
+const defaultUI: UIState = {
+  balanceCurrencies: [], categoriesPeriod: "month", partnersPeriod: "month", activityPeriod: "month", summaryPeriod: "month", summaryCurrency: "USD", balanceChipsTouched: false,
+}
 
 const parseAbs = (x?: string | null) => { if (!x) return 0; const n = Number(String(x).replace(",", ".")); return Number.isFinite(n) ? Math.abs(n) : 0 }
 const nonZeroCurrencies = (b?: DashboardBalance) => {
@@ -139,7 +152,10 @@ export const useDashboardStore = create<DashboardState>()(
             error: null,
           }))
         } catch (e: any) {
-          set((s) => ({ loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }, error: e?.message || "Failed to load dashboard" }))
+          set((s) => ({
+            loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
+            error: e?.message || "Failed to load dashboard",
+          }))
         }
       },
 
@@ -182,7 +198,7 @@ export const useDashboardStore = create<DashboardState>()(
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (s) => ({ ui: s.ui }),
-      version: 6,
+      version: 7,
     }
   )
 )

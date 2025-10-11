@@ -2,7 +2,6 @@
 import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
-import SectionTitle from "../SectionTitle"
 import { useDashboardStore } from "../../store/dashboardStore"
 
 const NBSP = "\u00A0"
@@ -37,7 +36,7 @@ export default function DashboardBalanceCard() {
   const iOwe = balance?.i_owe ?? {}
   const theyOwe = balance?.they_owe_me ?? {}
 
-  // Валюты только с ненулём, отсортированные по последнему использованию
+  // Валюты только с ненулём, отсортированные по «последнему использованию»
   const available = useMemo(() => {
     const set = new Set<string>()
     Object.entries(iOwe).forEach(([ccy, v]) => { if (absNum(v) > 0) set.add(toStr(ccy).toUpperCase()) })
@@ -74,12 +73,14 @@ export default function DashboardBalanceCard() {
 
   return (
     <div className="w-full">
-      {/* Заголовок через локаль */}
+      {/* Заголовок по ключу group_header_my_balance */}
       <div className="px-2 pt-1 pb-1">
-        <SectionTitle className="!mb-2">{toStr(t("group_header_my_balance"))}</SectionTitle>
+        <h2 className="text-[15px] font-semibold text-[var(--tg-link-color)]">
+          {toStr(t("group_header_my_balance"))}
+        </h2>
       </div>
 
-      {/* Чипы: без боковых паддингов у секции (CardSection noPadding), но внутри — компактные */}
+      {/* Чипы — скролл по оси X, только валюты с ненулём */}
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto px-2">
         {available.map((ccy) => {
           const isActive = active.includes(ccy)
@@ -107,7 +108,7 @@ export default function DashboardBalanceCard() {
         {loading && <span className="text-sm text-[var(--tg-hint-color)]">{toStr(t("loading"))}</span>}
       </div>
 
-      {/* Две половины */}
+      {/* Две половины: слева — Я должен; справа — Мне должны */}
       <div className="grid grid-cols-2 gap-2 px-2 pb-2">
         {/* Я должен */}
         <div className="p-2 rounded-lg">
