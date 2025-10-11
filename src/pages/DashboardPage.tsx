@@ -7,9 +7,8 @@ import { useDashboardStore } from "../store/dashboardStore"
 export default function DashboardPage() {
   const hydrateIfNeeded = useDashboardStore((s) => s.hydrateIfNeeded)
   const refreshBalance = useDashboardStore((s) => s.refreshBalance)
-  const error = useDashboardStore((s) => s.error)
 
-  // грузим всё и сразу «подстраховываемся» лёгким рефетчем баланса
+  // грузим всё на старте + мягкий рефетч через 600мс, чтобы поймать initData телеги
   useEffect(() => {
     hydrateIfNeeded()
     const t = setTimeout(() => refreshBalance(), 600)
@@ -17,7 +16,7 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // live-обновление: при фокусе и раз в 30с
+  // онлайн-обновление: по фокусу и таймер
   useEffect(() => {
     const handler = () => refreshBalance()
     window.addEventListener("focus", handler)
@@ -29,20 +28,13 @@ export default function DashboardPage() {
   }, [refreshBalance])
 
   return (
-    // как в ProfilePage: без внешних боковых паддингов, центрируем и ограничиваем ширину
+    // как ProfilePage: центрируем, без внешних паддингов, ограничиваем max-width
     <div className="min-h-screen w-full bg-[var(--tg-bg-color)] flex flex-col items-center py-3">
       <div className="w-full max-w-md flex flex-col space-y-2">
-        {/* НЕ оборачиваем в SafeSection, чтобы не видеть «временно недоступен» при первом заходе */}
-        <CardSection>
+        {/* ВАЖНО: без SafeSection, рендерим сразу; и без боковых паддингов CardSection */}
+        <CardSection noPadding>
           <DashboardBalanceCard />
         </CardSection>
-
-        {/* при желании можно показать тонкую строку ошибки, но не блокировать карточку */}
-        {!!error && (
-          <div className="px-2 text-[13px] text-[var(--tg-hint-color)]">
-            {/* локализация общей ошибки у вас уже есть; тут оставляю нейтральный подсказчик */}
-          </div>
-        )}
       </div>
     </div>
   )

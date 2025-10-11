@@ -1,5 +1,4 @@
 // src/store/dashboardStore.ts
-// (небольшой штрих к «живости»: refreshBalance безопасен и лёгкий — его дергает страница)
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 import {
@@ -35,7 +34,14 @@ interface UIState {
   balanceChipsTouched?: boolean
 }
 interface LoadingState {
-  global: boolean; balance: boolean; activity: boolean; categories: boolean; summary: boolean; recentGroups: boolean; partners: boolean; events: boolean
+  global: boolean
+  balance: boolean
+  activity: boolean
+  categories: boolean
+  summary: boolean
+  recentGroups: boolean
+  partners: boolean
+  events: boolean
 }
 interface DashboardState {
   balance?: DashboardBalance
@@ -63,25 +69,41 @@ interface DashboardState {
   setSummaryCurrency: (ccy: string) => void
 }
 
-const defaultLoading: LoadingState = { global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }
-const defaultUI: UIState = { balanceCurrencies: [], categoriesPeriod: "month", partnersPeriod: "month", activityPeriod: "month", summaryPeriod: "month", summaryCurrency: "USD", balanceChipsTouched: false }
+const defaultLoading: LoadingState = {
+  global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false,
+}
+const defaultUI: UIState = {
+  balanceCurrencies: [],
+  categoriesPeriod: "month",
+  partnersPeriod: "month",
+  activityPeriod: "month",
+  summaryPeriod: "month",
+  summaryCurrency: "USD",
+  balanceChipsTouched: false,
+}
 
-function parseAbs(x?: string | null): number { if (!x) return 0; const n = Number(String(x).replace(",", ".")); return Number.isFinite(n) ? Math.abs(n) : 0 }
+const parseAbs = (x?: string | null) => {
+  if (!x) return 0
+  const n = Number(String(x).replace(",", "."))
+  return Number.isFinite(n) ? Math.abs(n) : 0
+}
 function nonZeroCurrencies(b?: DashboardBalance): string[] {
-  const set = new Set<string>(); if (!b) return []
-  for (const [ccy, v] of Object.entries(b.i_owe || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
-  for (const [ccy, v] of Object.entries(b.they_owe_me || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
+  const set = new Set<string>()
+  if (!b) return []
+  Object.entries(b.i_owe || {}).forEach(([c, v]) => { if (parseAbs(v) > 0) set.add(c.toUpperCase()) })
+  Object.entries(b.they_owe_me || {}).forEach(([c, v]) => { if (parseAbs(v) > 0) set.add(c.toUpperCase()) })
   return Array.from(set)
 }
-function sortByLastOrdered(codes: string[], lastOrdered?: string[]): string[] {
-  const order = new Map<string, number>(); (lastOrdered || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
+function sortByLastOrdered(codes: string[], last?: string[]): string[] {
+  const order = new Map<string, number>()
+  ;(last || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
   const inLast = codes.filter((c) => order.has(c.toUpperCase())).sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
   const others = codes.filter((c) => !order.has(c.toUpperCase())).sort()
   return [...inLast, ...others]
 }
-function pickDefaultSelection(nonZeroSorted: string[], lastOrdered?: string[]): string[] {
+function pickDefault(nonZeroSorted: string[], last?: string[]): string[] {
   if (nonZeroSorted.length === 0) return []
-  const inOrder = (lastOrdered || []).map((c) => (c || "").toUpperCase()).filter((c) => nonZeroSorted.includes(c))
+  const inOrder = (last || []).map((c) => (c || "").toUpperCase()).filter((c) => nonZeroSorted.includes(c))
   const primary = inOrder.slice(0, 2)
   if (primary.length === 2) return primary
   for (const c of nonZeroSorted) if (!primary.includes(c) && primary.length < 2) primary.push(c)
@@ -113,9 +135,10 @@ export const useDashboardStore = create<DashboardState>()(
           error: null,
           ui: { ...s.ui, summaryCurrency: currency, activityPeriod: period, categoriesPeriod: period, partnersPeriod: period },
         }))
+
         try {
           const [
-            balanceRes, activityRes, topCategoriesRes, summaryRes, recentGroupsRes, topPartnersRes, eventsRes, lastOrderedRes,
+            balanceRes, activityRes, topCategoriesRes, summaryRes, recentGroupsRes, topPartnersRes, eventsRes, lastRes,
           ] = await Promise.allSettled([
             getDashboardBalance(),
             getDashboardActivity(period),
@@ -124,7 +147,7 @@ export const useDashboardStore = create<DashboardState>()(
             getRecentGroups(10),
             getTopPartners(period, 20),
             getDashboardEvents(20),
-            getLastCurrencies(10),
+            getLastCurrencies(10), // ≤ 10 — соответствует backend
           ])
 
           if (balanceRes.status !== "fulfilled") throw new Error(balanceRes.reason?.message || "Failed to load balance")
@@ -135,22 +158,28 @@ export const useDashboardStore = create<DashboardState>()(
           const recentGroups = recentGroupsRes.status === "fulfilled" ? recentGroupsRes.value : undefined
           const topPartners = topPartnersRes.status === "fulfilled" ? topPartnersRes.value : undefined
           const events = eventsRes.status === "fulfilled" ? eventsRes.value : undefined
-          const lastOrdered = (lastOrderedRes.status === "fulfilled" ? (lastOrderedRes.value || []) : []).map((c) => (c || "").toUpperCase())
+          const last = (lastRes.status === "fulfilled" ? (lastRes.value || []) : []).map((c) => (c || "").toUpperCase())
 
           const nonZero = nonZeroCurrencies(balance)
-          const nonZeroSorted = sortByLastOrdered(nonZero, lastOrdered)
+          const sorted = sortByLastOrdered(nonZero, last)
 
           let selected = get().ui.balanceCurrencies
           if (!get().ui.balanceChipsTouched || selected.length === 0) {
-            selected = pickDefaultSelection(nonZeroSorted, lastOrdered)
+            selected = pickDefault(sorted, last)
           } else {
-            selected = selected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (selected.length === 0) selected = pickDefaultSelection(nonZeroSorted, lastOrdered)
+            selected = selected.filter((c) => sorted.includes(c.toUpperCase()))
+            if (selected.length === 0) selected = pickDefault(sorted, last)
           }
 
           set((s) => ({
-            balance, activity, topCategories, summary, recentGroups, topPartners, events,
-            lastCurrenciesOrdered: lastOrdered,
+            balance,
+            activity,
+            topCategories,
+            summary,
+            recentGroups,
+            topPartners,
+            events,
+            lastCurrenciesOrdered: last,
             ui: { ...s.ui, balanceCurrencies: selected },
             loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
             error: null,
@@ -167,17 +196,20 @@ export const useDashboardStore = create<DashboardState>()(
         if (get()._isRefreshingBalance) return
         set({ _isRefreshingBalance: true })
         try {
-          const [balance, lastOrdered] = await Promise.all([getDashboardBalance(), getLastCurrencies(10).catch(() => [] as string[])])
-          const lastUp = (lastOrdered || []).map((c) => (c || "").toUpperCase())
+          const [balance, last] = await Promise.all([
+            getDashboardBalance(),
+            getLastCurrencies(10).catch(() => [] as string[]),
+          ])
+          const lastUp = (last || []).map((c) => (c || "").toUpperCase())
           const nonZero = nonZeroCurrencies(balance)
-          const nonZeroSorted = sortByLastOrdered(nonZero, lastUp)
+          const sorted = sortByLastOrdered(nonZero, lastUp)
 
           let selected = get().ui.balanceCurrencies
           if (!get().ui.balanceChipsTouched || selected.length === 0) {
-            selected = pickDefaultSelection(nonZeroSorted, lastUp)
+            selected = pickDefault(sorted, lastUp)
           } else {
-            selected = selected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (selected.length === 0) selected = pickDefaultSelection(nonZeroSorted, lastUp)
+            selected = selected.filter((c) => sorted.includes(c.toUpperCase()))
+            if (selected.length === 0) selected = pickDefault(sorted, lastUp)
           }
 
           set((s) => ({
@@ -204,8 +236,8 @@ export const useDashboardStore = create<DashboardState>()(
     {
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
-      partialize: (state) => ({ ui: state.ui }),
-      version: 4,
+      partialize: (s) => ({ ui: s.ui }),
+      version: 5,
     }
   )
 )
