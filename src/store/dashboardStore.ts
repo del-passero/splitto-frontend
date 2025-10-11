@@ -1,6 +1,5 @@
 // src/store/dashboardStore.ts
-// Zustand store: чипы только по ненулевым валютам, сортировка по последнему использованию,
-// устойчивые загрузки (allSettled), авто-обновление (фокус + интервал), отдельный refreshBalance.
+// Авто-обновление подключаем сразу; рефетч баланса по фокусу/интервалу всегда активен.
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
@@ -34,7 +33,6 @@ interface UIState {
   activityPeriod: Period
   summaryPeriod: SummaryPeriod
   summaryCurrency: string
-  /** Пользователь уже вручную менял выбор чипов? (не пересбрасывать при рефетче) */
   balanceChipsTouched?: boolean
 }
 
@@ -58,14 +56,12 @@ interface DashboardState {
   topPartners?: TopPartner[]
   events?: DashboardEventFeed
 
-  /** Упорядоченный список валют по последнему использованию */
   lastCurrenciesOrdered?: string[]
 
   loading: LoadingState
   error?: string | null
   ui: UIState
 
-  /** Служебные флаги для автообновления */
   _autoRefreshAttached?: boolean
   _isRefreshingBalance?: boolean
 
@@ -82,14 +78,7 @@ interface DashboardState {
 }
 
 const defaultLoading: LoadingState = {
-  global: false,
-  balance: false,
-  activity: false,
-  categories: false,
-  summary: false,
-  recentGroups: false,
-  partners: false,
-  events: false,
+  global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false,
 }
 
 const defaultUI: UIState = {
@@ -107,49 +96,30 @@ function parseAbs(x?: string | null): number {
   const n = Number(String(x).replace(",", "."))
   return Number.isFinite(n) ? Math.abs(n) : 0
 }
-
-/** список ненулевых валют из i_owe/they_owe_me */
 function nonZeroCurrencies(b?: DashboardBalance): string[] {
   const set = new Set<string>()
   if (!b) return []
-  for (const [ccy, v] of Object.entries(b.i_owe || {})) {
-    if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
-  }
-  for (const [ccy, v] of Object.entries(b.they_owe_me || {})) {
-    if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
-  }
+  for (const [ccy, v] of Object.entries(b.i_owe || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
+  for (const [ccy, v] of Object.entries(b.they_owe_me || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
   return Array.from(set)
 }
-
-/** сортируем: сначала lastOrdered (как есть), затем остальные по алфавиту */
 function sortByLastOrdered(codes: string[], lastOrdered?: string[]): string[] {
   const order = new Map<string, number>()
   ;(lastOrdered || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
   const [inLast, others] = codes.reduce<[string[], string[]]>(
-    (acc, c) => {
-      if (order.has(c.toUpperCase())) acc[0].push(c)
-      else acc[1].push(c)
-      return acc
-    },
+    (acc, c) => (order.has(c.toUpperCase()) ? (acc[0].push(c), acc) : (acc[1].push(c), acc)),
     [[], []]
   )
   inLast.sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
   others.sort()
   return [...inLast, ...others]
 }
-
 function pickDefaultSelection(nonZeroSorted: string[], lastOrdered?: string[]): string[] {
   if (nonZeroSorted.length === 0) return []
-  // берём первые две из lastOrdered, присутствующие среди ненулевых
-  const inOrder = (lastOrdered || [])
-    .map((c) => (c || "").toUpperCase())
-    .filter((c) => nonZeroSorted.includes(c))
+  const inOrder = (lastOrdered || []).map((c) => (c || "").toUpperCase()).filter((c) => nonZeroSorted.includes(c))
   const primary = inOrder.slice(0, 2)
   if (primary.length === 2) return primary
-  // добираем из остальных ненулевых
-  for (const c of nonZeroSorted) {
-    if (!primary.includes(c) && primary.length < 2) primary.push(c)
-  }
+  for (const c of nonZeroSorted) if (!primary.includes(c) && primary.length < 2) primary.push(c)
   return primary
 }
 
@@ -161,22 +131,15 @@ export const useDashboardStore = create<DashboardState>()(
       ui: { ...defaultUI },
 
       async hydrateIfNeeded(currencyFallback?: string) {
+        // автоподписки — сразу, даже если дальше выйдем раньше
+        attachAutoRefresh()
+
         const st = get()
         if (st.loading.global) return
         if (
-          st.balance &&
-          st.activity &&
-          st.topCategories &&
-          st.summary &&
-          st.recentGroups &&
-          st.topPartners &&
-          st.events &&
-          st.lastCurrenciesOrdered
+          st.balance && st.activity && st.topCategories && st.summary &&
+          st.recentGroups && st.topPartners && st.events && st.lastCurrenciesOrdered
         ) {
-          // автоподписки на обновление — один раз
-          if (!get()._autoRefreshAttached) {
-            attachAutoRefresh()
-          }
           return
         }
         const ccy = st.ui.summaryCurrency || currencyFallback || "USD"
@@ -216,7 +179,6 @@ export const useDashboardStore = create<DashboardState>()(
             lastPromise,
           ])
 
-          // Критично: баланс
           if (balanceRes.status !== "fulfilled") {
             throw new Error(balanceRes.reason?.message || "Failed to load balance")
           }
@@ -233,20 +195,15 @@ export const useDashboardStore = create<DashboardState>()(
             (c || "").toUpperCase()
           )
 
-          // валидные валюты — только ненулевые
           const nonZero = nonZeroCurrencies(balance)
           const nonZeroSorted = sortByLastOrdered(nonZero, lastOrderedUp)
 
-          // дефолтная инициализация чипов только при первом заходе (если пользователь ещё не менял вручную)
           let nextSelected = get().ui.balanceCurrencies
           if (!get().ui.balanceChipsTouched || nextSelected.length === 0) {
             nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
           } else {
-            // очищаем от «пропавших» валют
             nextSelected = nextSelected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (nextSelected.length === 0) {
-              nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
-            }
+            if (nextSelected.length === 0) nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
           }
 
           set((s) => ({
@@ -262,11 +219,6 @@ export const useDashboardStore = create<DashboardState>()(
             loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
             error: null,
           }))
-
-          // автообновление — вешаем один раз
-          if (!get()._autoRefreshAttached) {
-            attachAutoRefresh()
-          }
         } catch (e: any) {
           set((s) => ({
             loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
@@ -275,7 +227,6 @@ export const useDashboardStore = create<DashboardState>()(
         }
       },
 
-      /** Лёгкий рефетч только баланса и last-currencies (для онлайн-обновлений) */
       async refreshBalance() {
         if (get()._isRefreshingBalance) return
         set({ _isRefreshingBalance: true })
@@ -289,16 +240,12 @@ export const useDashboardStore = create<DashboardState>()(
           const nonZero = nonZeroCurrencies(balance)
           const nonZeroSorted = sortByLastOrdered(nonZero, lastOrderedUp)
 
-          // если пользователь не трогал чипы — пересчитать разумный дефолт
           let nextSelected = get().ui.balanceCurrencies
           if (!get().ui.balanceChipsTouched || nextSelected.length === 0) {
             nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
           } else {
-            // сохранить выбор, но убрать отсутствующие валюты
             nextSelected = nextSelected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (nextSelected.length === 0) {
-              nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
-            }
+            if (nextSelected.length === 0) nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
           }
 
           set((s) => ({
@@ -308,8 +255,6 @@ export const useDashboardStore = create<DashboardState>()(
             loading: { ...s.loading, balance: false },
             error: null,
           }))
-        } catch (e: any) {
-          // не роняем страницу — просто оставим текущие данные
         } finally {
           set({ _isRefreshingBalance: false })
         }
@@ -319,41 +264,28 @@ export const useDashboardStore = create<DashboardState>()(
         const unique = Array.from(new Set(codes.map((c) => c.toUpperCase())))
         set((s) => ({ ui: { ...s.ui, balanceCurrencies: unique, balanceChipsTouched: true } }))
       },
-      setCategoriesPeriod(p: Period) {
-        set((s) => ({ ui: { ...s.ui, categoriesPeriod: p } }))
-      },
-      setPartnersPeriod(p: Period) {
-        set((s) => ({ ui: { ...s.ui, partnersPeriod: p } }))
-      },
-      setActivityPeriod(p: Period) {
-        set((s) => ({ ui: { ...s.ui, activityPeriod: p } }))
-      },
-      setSummaryPeriod(p: SummaryPeriod) {
-        set((s) => ({ ui: { ...s.ui, summaryPeriod: p } }))
-      },
-      setSummaryCurrency(ccy: string) {
-        set((s) => ({ ui: { ...s.ui, summaryCurrency: ccy.toUpperCase() } }))
-      },
+      setCategoriesPeriod(p: Period) { set((s) => ({ ui: { ...s.ui, categoriesPeriod: p } })) },
+      setPartnersPeriod(p: Period) { set((s) => ({ ui: { ...s.ui, partnersPeriod: p } })) },
+      setActivityPeriod(p: Period) { set((s) => ({ ui: { ...s.ui, activityPeriod: p } })) },
+      setSummaryPeriod(p: SummaryPeriod) { set((s) => ({ ui: { ...s.ui, summaryPeriod: p } })) },
+      setSummaryCurrency(ccy: string) { set((s) => ({ ui: { ...s.ui, summaryCurrency: ccy.toUpperCase() } })) },
     }),
     {
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({ ui: state.ui }),
-      version: 2,
+      version: 3,
     }
   )
 )
 
-/** Автообновление: фокус окна + интервал. Ставит флаг чтобы не дублировать подписки */
 function attachAutoRefresh() {
   const st = useDashboardStore.getState()
   if (st._autoRefreshAttached) return
 
   const refetch = () => useDashboardStore.getState().refreshBalance()
 
-  const onVisibility = () => {
-    if (!document.hidden) refetch()
-  }
+  const onVisibility = () => { if (!document.hidden) refetch() }
   const onFocus = () => refetch()
 
   window.addEventListener("visibilitychange", onVisibility)
@@ -363,8 +295,7 @@ function attachAutoRefresh() {
     if (!document.hidden) refetch()
   }, 30000)
 
-  // помечаем как подключённый; снять подписки можно при необходимости в onUnload
   useDashboardStore.setState({ _autoRefreshAttached: true })
-  // @ts-ignore сохранять id не обязательно, но можно
+  // @ts-ignore
   ;(window as any).__splittoDashboardInterval = intervalId
 }

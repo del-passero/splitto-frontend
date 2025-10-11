@@ -1,14 +1,11 @@
 // src/components/dashboard/DashboardBalanceCard.tsx
-// Карточка «Мой баланс»:
-// • Заголовок внутри карточки по ключу group_header_my_balance
-// • Без боковых паддингов CardSection (edge-to-edge делаем отрицательными маргинами у внутреннего контейнера)
-// • Чипы только по валютам с ненулём, сортировка по последнему использованию
-// • Левая/правая колонка; каждая валюта — с новой строки; модули сумм, цвета/иконки как в группах
+// Внутри карточки: заголовок через SectionTitle + чипы + две колонки.
 
 import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
+import SectionTitle from "../SectionTitle"
 
 const NBSP = "\u00A0"
 
@@ -71,7 +68,7 @@ export default function DashboardBalanceCard() {
     return [...inLast, ...others]
   }, [nonZero, lastOrdered])
 
-  // активные чипы = выбранные ∩ available; если пусто — показываем первые 2 из available
+  // активные чипы
   const active = useMemo(() => {
     const sel = (selected || []).map((c) => c.toUpperCase()).filter((c) => available.includes(c))
     if (sel.length) return sel
@@ -87,12 +84,11 @@ export default function DashboardBalanceCard() {
       } else {
         set.add(ccy)
       }
-      setSelected(Array.from(set))
+      useDashboardStore.getState().setBalanceCurrencies(Array.from(set))
     },
-    [active, setSelected]
+    [active]
   )
 
-  // строки в колонках
   const leftLines = useMemo(() => {
     return active
       .map((c) => {
@@ -114,103 +110,98 @@ export default function DashboardBalanceCard() {
   }, [active, theyOweMap, locale])
 
   return (
-    // edge-to-edge хак: CardSection может иметь внутренние px — компенсируем -mx-2 (под твою сетку можно подстроить)
-    <div className="-mx-2">
-      <div
-        className="
-          w-full rounded-lg p-2
-          border bg-[var(--tg-card-bg)] border-[var(--tg-hint-color)]
-          shadow-[0_4px_18px_-10px_rgba(83,147,231,0.14)]
-        "
-      >
-        {/* Заголовок внутри карточки по ключу */}
-        <div className="px-1 pb-2 text-[13px] font-semibold text-[var(--tg-hint-color)]">
-          {t("group_header_my_balance")}
-        </div>
+    <div
+      className="
+        w-full rounded-lg p-2
+        border bg-[var(--tg-card-bg)] border-[var(--tg-hint-color)]
+        shadow-[0_8px_32px_0_rgba(50,60,90,0.08)]
+      "
+    >
+      {/* Заголовок секции внутри карточки */}
+      <SectionTitle className="!mb-2">{t("group_header_my_balance")}</SectionTitle>
 
-        {/* Чипы валют (плоские, меньшее скругление) */}
-        <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pr-1">
-          {available.map((ccy) => {
-            const isActive = active.includes(ccy)
-            return (
-              <button
-                key={ccy}
-                type="button"
-                onClick={() => toggle(ccy)}
-                className={[
-                  "h-8 px-3 rounded-md text-[13px] font-semibold active:scale-95 transition",
-                  "border",
-                  isActive
-                    ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
-                    : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]",
-                ].join(" ")}
-                aria-pressed={isActive}
-              >
-                {ccy}
-              </button>
-            )
-          })}
-          {!available.length && !isLoading && (
-            <span className="text-sm text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</span>
+      {/* Чипы валют */}
+      <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pr-1">
+        {available.map((ccy) => {
+          const isActive = active.includes(ccy)
+          return (
+            <button
+              key={ccy}
+              type="button"
+              onClick={() => toggle(ccy)}
+              className={[
+                "h-8 px-3 rounded-md text-[13px] font-semibold active:scale-95 transition",
+                "border",
+                isActive
+                  ? "bg-[var(--tg-accent-color,#40A7E3)] text-white border-transparent"
+                  : "bg-[var(--tg-secondary-bg-color,#e7e7e7)] text-[var(--tg-text-color)] border-[color:var(--tg-secondary-bg-color,#e7e7e7)]",
+              ].join(" ")}
+              aria-pressed={isActive}
+            >
+              {ccy}
+            </button>
+          )
+        })}
+        {!available.length && !isLoading && (
+          <span className="text-sm text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</span>
+        )}
+        {isLoading && <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>}
+      </div>
+
+      {/* Две половины */}
+      <div className="grid grid-cols-2 gap-2">
+        {/* Левая: Я должен */}
+        <div className="p-2 rounded-lg">
+          <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
+            <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
+            <span>{t("i_owe")}</span>
+          </div>
+          {isLoading ? (
+            <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+          ) : leftLines.length ? (
+            <div className="space-y-1">
+              {leftLines.map((row) => (
+                <div
+                  key={`l-${row.c}`}
+                  className="text-[15px] font-semibold leading-tight"
+                  style={{ color: "var(--tg-destructive-text,#d7263d)" }}
+                >
+                  {row.text}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_left")}
+            </div>
           )}
-          {isLoading && <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>}
         </div>
 
-        {/* Две половины */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Левая: Я должен */}
-          <div className="p-2 rounded-lg">
-            <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-              <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
-              <span>{t("i_owe")}</span>
-            </div>
-            {isLoading ? (
-              <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
-            ) : leftLines.length ? (
-              <div className="space-y-1">
-                {leftLines.map((row) => (
-                  <div
-                    key={`l-${row.c}`}
-                    className="text-[15px] font-semibold leading-tight"
-                    style={{ color: "var(--tg-destructive-text,#d7263d)" }}
-                  >
-                    {row.text}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-                {t("group_balance_no_debts_left")}
-              </div>
-            )}
+        {/* Правая: Мне должны */}
+        <div className="p-2 rounded-lg text-right">
+          <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
+            <span>{t("they_owe_me")}</span>
+            <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
           </div>
-
-          {/* Правая: Мне должны */}
-          <div className="p-2 rounded-lg text-right">
-            <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-              <span>{t("they_owe_me")}</span>
-              <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
+          {isLoading ? (
+            <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
+          ) : rightLines.length ? (
+            <div className="space-y-1">
+              {rightLines.map((row) => (
+                <div
+                  key={`r-${row.c}`}
+                  className="text-[15px] font-semibold leading-tight"
+                  style={{ color: "var(--tg-success-text,#1aab55)" }}
+                >
+                  {row.text}
+                </div>
+              ))}
             </div>
-            {isLoading ? (
-              <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
-            ) : rightLines.length ? (
-              <div className="space-y-1">
-                {rightLines.map((row) => (
-                  <div
-                    key={`r-${row.c}`}
-                    className="text-[15px] font-semibold leading-tight"
-                    style={{ color: "var(--tg-success-text,#1aab55)" }}
-                  >
-                    {row.text}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-                {t("group_balance_no_debts_right")}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
+              {t("group_balance_no_debts_right")}
+            </div>
+          )}
         </div>
       </div>
     </div>

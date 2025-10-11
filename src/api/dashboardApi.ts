@@ -1,5 +1,5 @@
 // src/api/dashboardApi.ts
-// API для главного дашборда + надёжная инициализация Telegram initData с ретраем
+// Подкрутил ожидание initData и ретраи на 401/403 (чтобы «заработало сразу»)
 
 import type {
   DashboardBalance,
@@ -26,8 +26,7 @@ function getTelegramInitData(): string {
   }
 }
 
-/** Ждём появления initData (Telegram WebApp) до timeout, чтобы старт заработал с первого экрана */
-async function waitForInitData(maxWaitMs = 3500, stepMs = 150): Promise<string> {
+async function waitForInitData(maxWaitMs = 6000, stepMs = 150): Promise<string> {
   const deadline = Date.now() + maxWaitMs
   let init = getTelegramInitData()
   while (!init && Date.now() < deadline) {
@@ -38,54 +37,50 @@ async function waitForInitData(maxWaitMs = 3500, stepMs = 150): Promise<string> 
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  // 1) гарантируем initData
+  // 1) ждём initData
   const initData = await waitForInitData()
   const headers: HeadersInit = {
     ...(init?.headers || {}),
     "x-telegram-initdata": initData,
   }
 
-  // 2) мягкий ретрай 401/403 (на случай «успел протухнуть»)
-  async function doOnce(): Promise<Response> {
-    return fetch(url, { ...init, headers })
-  }
-  let res = await doOnce()
-  if ((res.status === 401 || res.status === 403) && !getTelegramInitData()) {
-    await new Promise((r) => setTimeout(r, 250))
-    res = await doOnce()
-  }
-
-  if (!res.ok) {
+  // 2) до трёх попыток при 401/403 (иногда initData появляется с лагом)
+  let last: Response | null = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, { ...init, headers })
+    last = res
+    if (res.ok) {
+      // @ts-ignore
+      return res.status === 204 ? undefined : await res.json()
+    }
+    if (res.status === 401 || res.status === 403) {
+      await new Promise((r) => setTimeout(r, 250 + attempt * 250))
+      continue
+    }
     let msg = ""
     try {
       msg = await res.text()
     } catch {}
     throw new Error(msg || `HTTP ${res.status}`)
   }
-  // @ts-ignore
-  return res.status === 204 ? undefined : await res.json()
+  let msg = ""
+  try {
+    msg = await last!.text()
+  } catch {}
+  throw new Error(msg || `HTTP ${last?.status}`)
 }
 
-// ---------------- BALANCE ----------------
+// endpoints
 export async function getDashboardBalance(): Promise<DashboardBalance> {
-  const url = `${API_URL}/dashboard/balance`
-  return await fetchJson<DashboardBalance>(url)
+  return await fetchJson<DashboardBalance>(`${API_URL}/dashboard/balance`)
 }
-
-// ---------------- LAST CURRENCIES (ordered by recency, limit ≤ 10) ----------------
 export async function getLastCurrencies(limit = 10): Promise<string[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 10)
-  const url = `${API_URL}/dashboard/last-currencies?limit=${safeLimit}`
-  return await fetchJson<string[]>(url)
+  return await fetchJson<string[]>(`${API_URL}/dashboard/last-currencies?limit=${safeLimit}`)
 }
-
-// ---------------- ACTIVITY ----------------
 export async function getDashboardActivity(period: "week" | "month" | "year" = "month"): Promise<DashboardActivity> {
-  const url = `${API_URL}/dashboard/activity?period=${period}`
-  return await fetchJson<DashboardActivity>(url)
+  return await fetchJson<DashboardActivity>(`${API_URL}/dashboard/activity?period=${period}`)
 }
-
-// ---------------- TOP CATEGORIES ----------------
 export async function getTopCategories(
   period: "week" | "month" | "year" = "month",
   currency?: string,
@@ -94,38 +89,22 @@ export async function getTopCategories(
 ): Promise<TopCategories> {
   const sp = new URLSearchParams({ period, limit: String(limit), offset: String(offset) })
   if (currency) sp.set("currency", currency)
-  const url = `${API_URL}/dashboard/top-categories?${sp.toString()}`
-  return await fetchJson<TopCategories>(url)
+  return await fetchJson<TopCategories>(`${API_URL}/dashboard/top-categories?${sp.toString()}`)
 }
-
-// ---------------- SUMMARY ----------------
 export async function getDashboardSummary(
   period: "day" | "week" | "month" | "year" = "month",
   currency: string
 ): Promise<DashboardSummary> {
   const sp = new URLSearchParams({ period, currency })
-  const url = `${API_URL}/dashboard/summary?${sp.toString()}`
-  return await fetchJson<DashboardSummary>(url)
+  return await fetchJson<DashboardSummary>(`${API_URL}/dashboard/summary?${sp.toString()}`)
 }
-
-// ---------------- RECENT GROUPS ----------------
 export async function getRecentGroups(limit = 10): Promise<RecentGroupCard[]> {
-  const url = `${API_URL}/dashboard/recent-groups?limit=${limit}`
-  return await fetchJson<RecentGroupCard[]>(url)
+  return await fetchJson<RecentGroupCard[]>(`${API_URL}/dashboard/recent-groups?limit=${limit}`)
 }
-
-// ---------------- TOP PARTNERS ----------------
-export async function getTopPartners(
-  period: "week" | "month" | "year" = "month",
-  limit = 20
-): Promise<TopPartner[]> {
+export async function getTopPartners(period: "week" | "month" | "year" = "month", limit = 20): Promise<TopPartner[]> {
   const sp = new URLSearchParams({ period, limit: String(limit) })
-  const url = `${API_URL}/dashboard/top-partners?${sp.toString()}`
-  return await fetchJson<TopPartner[]>(url)
+  return await fetchJson<TopPartner[]>(`${API_URL}/dashboard/top-partners?${sp.toString()}`)
 }
-
-// ---------------- EVENTS FEED ----------------
 export async function getDashboardEvents(limit = 20): Promise<DashboardEventFeed> {
-  const url = `${API_URL}/dashboard/events?limit=${limit}`
-  return await fetchJson<DashboardEventFeed>(url)
+  return await fetchJson<DashboardEventFeed>(`${API_URL}/dashboard/events?limit=${limit}`)
 }
