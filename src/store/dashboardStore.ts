@@ -1,6 +1,5 @@
 // src/store/dashboardStore.ts
-// Авто-обновление подключаем сразу; рефетч баланса по фокусу/интервалу всегда активен.
-
+// (небольшой штрих к «живости»: refreshBalance безопасен и лёгкий — его дергает страница)
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 import {
@@ -35,18 +34,9 @@ interface UIState {
   summaryCurrency: string
   balanceChipsTouched?: boolean
 }
-
 interface LoadingState {
-  global: boolean
-  balance: boolean
-  activity: boolean
-  categories: boolean
-  summary: boolean
-  recentGroups: boolean
-  partners: boolean
-  events: boolean
+  global: boolean; balance: boolean; activity: boolean; categories: boolean; summary: boolean; recentGroups: boolean; partners: boolean; events: boolean
 }
-
 interface DashboardState {
   balance?: DashboardBalance
   activity?: DashboardActivity
@@ -55,14 +45,10 @@ interface DashboardState {
   recentGroups?: RecentGroupCard[]
   topPartners?: TopPartner[]
   events?: DashboardEventFeed
-
   lastCurrenciesOrdered?: string[]
-
   loading: LoadingState
   error?: string | null
   ui: UIState
-
-  _autoRefreshAttached?: boolean
   _isRefreshingBalance?: boolean
 
   hydrateIfNeeded: (currencyFallback?: string) => Promise<void>
@@ -77,41 +63,20 @@ interface DashboardState {
   setSummaryCurrency: (ccy: string) => void
 }
 
-const defaultLoading: LoadingState = {
-  global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false,
-}
+const defaultLoading: LoadingState = { global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false }
+const defaultUI: UIState = { balanceCurrencies: [], categoriesPeriod: "month", partnersPeriod: "month", activityPeriod: "month", summaryPeriod: "month", summaryCurrency: "USD", balanceChipsTouched: false }
 
-const defaultUI: UIState = {
-  balanceCurrencies: [],
-  categoriesPeriod: "month",
-  partnersPeriod: "month",
-  activityPeriod: "month",
-  summaryPeriod: "month",
-  summaryCurrency: "USD",
-  balanceChipsTouched: false,
-}
-
-function parseAbs(x?: string | null): number {
-  if (!x) return 0
-  const n = Number(String(x).replace(",", "."))
-  return Number.isFinite(n) ? Math.abs(n) : 0
-}
+function parseAbs(x?: string | null): number { if (!x) return 0; const n = Number(String(x).replace(",", ".")); return Number.isFinite(n) ? Math.abs(n) : 0 }
 function nonZeroCurrencies(b?: DashboardBalance): string[] {
-  const set = new Set<string>()
-  if (!b) return []
+  const set = new Set<string>(); if (!b) return []
   for (const [ccy, v] of Object.entries(b.i_owe || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
   for (const [ccy, v] of Object.entries(b.they_owe_me || {})) if (parseAbs(v) > 0) set.add(ccy.toUpperCase())
   return Array.from(set)
 }
 function sortByLastOrdered(codes: string[], lastOrdered?: string[]): string[] {
-  const order = new Map<string, number>()
-  ;(lastOrdered || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
-  const [inLast, others] = codes.reduce<[string[], string[]]>(
-    (acc, c) => (order.has(c.toUpperCase()) ? (acc[0].push(c), acc) : (acc[1].push(c), acc)),
-    [[], []]
-  )
-  inLast.sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
-  others.sort()
+  const order = new Map<string, number>(); (lastOrdered || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
+  const inLast = codes.filter((c) => order.has(c.toUpperCase())).sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
+  const others = codes.filter((c) => !order.has(c.toUpperCase())).sort()
   return [...inLast, ...others]
 }
 function pickDefaultSelection(nonZeroSorted: string[], lastOrdered?: string[]): string[] {
@@ -131,15 +96,9 @@ export const useDashboardStore = create<DashboardState>()(
       ui: { ...defaultUI },
 
       async hydrateIfNeeded(currencyFallback?: string) {
-        // автоподписки — сразу, даже если дальше выйдем раньше
-        attachAutoRefresh()
-
         const st = get()
         if (st.loading.global) return
-        if (
-          st.balance && st.activity && st.topCategories && st.summary &&
-          st.recentGroups && st.topPartners && st.events && st.lastCurrenciesOrdered
-        ) {
+        if (st.balance && st.activity && st.topCategories && st.summary && st.recentGroups && st.topPartners && st.events && st.lastCurrenciesOrdered) {
           return
         }
         const ccy = st.ui.summaryCurrency || currencyFallback || "USD"
@@ -149,25 +108,14 @@ export const useDashboardStore = create<DashboardState>()(
 
       async fetchAll(currency: string, period: Period = "month") {
         if (get().loading.global) return
-
         set((s) => ({
           loading: { ...s.loading, global: true, balance: true, activity: true, categories: true, summary: true, recentGroups: true, partners: true, events: true },
           error: null,
           ui: { ...s.ui, summaryCurrency: currency, activityPeriod: period, categoriesPeriod: period, partnersPeriod: period },
         }))
-
         try {
-          const lastPromise = getLastCurrencies(10).catch(() => [] as string[])
-
           const [
-            balanceRes,
-            activityRes,
-            topCategoriesRes,
-            summaryRes,
-            recentGroupsRes,
-            topPartnersRes,
-            eventsRes,
-            lastOrdered,
+            balanceRes, activityRes, topCategoriesRes, summaryRes, recentGroupsRes, topPartnersRes, eventsRes, lastOrderedRes,
           ] = await Promise.allSettled([
             getDashboardBalance(),
             getDashboardActivity(period),
@@ -176,46 +124,34 @@ export const useDashboardStore = create<DashboardState>()(
             getRecentGroups(10),
             getTopPartners(period, 20),
             getDashboardEvents(20),
-            lastPromise,
+            getLastCurrencies(10),
           ])
 
-          if (balanceRes.status !== "fulfilled") {
-            throw new Error(balanceRes.reason?.message || "Failed to load balance")
-          }
+          if (balanceRes.status !== "fulfilled") throw new Error(balanceRes.reason?.message || "Failed to load balance")
           const balance = balanceRes.value
-
           const activity = activityRes.status === "fulfilled" ? activityRes.value : undefined
           const topCategories = topCategoriesRes.status === "fulfilled" ? topCategoriesRes.value : undefined
           const summary = summaryRes.status === "fulfilled" ? summaryRes.value : undefined
           const recentGroups = recentGroupsRes.status === "fulfilled" ? recentGroupsRes.value : undefined
           const topPartners = topPartnersRes.status === "fulfilled" ? topPartnersRes.value : undefined
           const events = eventsRes.status === "fulfilled" ? eventsRes.value : undefined
-
-          const lastOrderedUp = (lastOrdered.status === "fulfilled" ? (lastOrdered.value || []) : []).map((c) =>
-            (c || "").toUpperCase()
-          )
+          const lastOrdered = (lastOrderedRes.status === "fulfilled" ? (lastOrderedRes.value || []) : []).map((c) => (c || "").toUpperCase())
 
           const nonZero = nonZeroCurrencies(balance)
-          const nonZeroSorted = sortByLastOrdered(nonZero, lastOrderedUp)
+          const nonZeroSorted = sortByLastOrdered(nonZero, lastOrdered)
 
-          let nextSelected = get().ui.balanceCurrencies
-          if (!get().ui.balanceChipsTouched || nextSelected.length === 0) {
-            nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
+          let selected = get().ui.balanceCurrencies
+          if (!get().ui.balanceChipsTouched || selected.length === 0) {
+            selected = pickDefaultSelection(nonZeroSorted, lastOrdered)
           } else {
-            nextSelected = nextSelected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (nextSelected.length === 0) nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
+            selected = selected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
+            if (selected.length === 0) selected = pickDefaultSelection(nonZeroSorted, lastOrdered)
           }
 
           set((s) => ({
-            balance,
-            activity,
-            topCategories,
-            summary,
-            recentGroups,
-            topPartners,
-            events,
-            lastCurrenciesOrdered: lastOrderedUp,
-            ui: { ...s.ui, balanceCurrencies: nextSelected },
+            balance, activity, topCategories, summary, recentGroups, topPartners, events,
+            lastCurrenciesOrdered: lastOrdered,
+            ui: { ...s.ui, balanceCurrencies: selected },
             loading: { ...s.loading, global: false, balance: false, activity: false, categories: false, summary: false, recentGroups: false, partners: false, events: false },
             error: null,
           }))
@@ -231,29 +167,24 @@ export const useDashboardStore = create<DashboardState>()(
         if (get()._isRefreshingBalance) return
         set({ _isRefreshingBalance: true })
         try {
-          const [balance, lastOrdered] = await Promise.all([
-            getDashboardBalance(),
-            getLastCurrencies(10).catch(() => [] as string[]),
-          ])
-
-          const lastOrderedUp = (lastOrdered || []).map((c) => (c || "").toUpperCase())
+          const [balance, lastOrdered] = await Promise.all([getDashboardBalance(), getLastCurrencies(10).catch(() => [] as string[])])
+          const lastUp = (lastOrdered || []).map((c) => (c || "").toUpperCase())
           const nonZero = nonZeroCurrencies(balance)
-          const nonZeroSorted = sortByLastOrdered(nonZero, lastOrderedUp)
+          const nonZeroSorted = sortByLastOrdered(nonZero, lastUp)
 
-          let nextSelected = get().ui.balanceCurrencies
-          if (!get().ui.balanceChipsTouched || nextSelected.length === 0) {
-            nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
+          let selected = get().ui.balanceCurrencies
+          if (!get().ui.balanceChipsTouched || selected.length === 0) {
+            selected = pickDefaultSelection(nonZeroSorted, lastUp)
           } else {
-            nextSelected = nextSelected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
-            if (nextSelected.length === 0) nextSelected = pickDefaultSelection(nonZeroSorted, lastOrderedUp)
+            selected = selected.filter((c) => nonZeroSorted.includes(c.toUpperCase()))
+            if (selected.length === 0) selected = pickDefaultSelection(nonZeroSorted, lastUp)
           }
 
           set((s) => ({
             balance,
-            lastCurrenciesOrdered: lastOrderedUp,
-            ui: { ...s.ui, balanceCurrencies: nextSelected },
+            lastCurrenciesOrdered: lastUp,
+            ui: { ...s.ui, balanceCurrencies: selected },
             loading: { ...s.loading, balance: false },
-            error: null,
           }))
         } finally {
           set({ _isRefreshingBalance: false })
@@ -274,28 +205,7 @@ export const useDashboardStore = create<DashboardState>()(
       name: "dashboard-store",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({ ui: state.ui }),
-      version: 3,
+      version: 4,
     }
   )
 )
-
-function attachAutoRefresh() {
-  const st = useDashboardStore.getState()
-  if (st._autoRefreshAttached) return
-
-  const refetch = () => useDashboardStore.getState().refreshBalance()
-
-  const onVisibility = () => { if (!document.hidden) refetch() }
-  const onFocus = () => refetch()
-
-  window.addEventListener("visibilitychange", onVisibility)
-  window.addEventListener("focus", onFocus)
-
-  const intervalId = window.setInterval(() => {
-    if (!document.hidden) refetch()
-  }, 30000)
-
-  useDashboardStore.setState({ _autoRefreshAttached: true })
-  // @ts-ignore
-  ;(window as any).__splittoDashboardInterval = intervalId
-}
