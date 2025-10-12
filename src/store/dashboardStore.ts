@@ -1,4 +1,3 @@
-// src/store/dashboardStore.ts
 import { create } from "zustand"
 
 // ---------------- Types from backend (сжато под нужды UI) ----------------
@@ -88,15 +87,14 @@ type ErrorState = Partial<{
 }>
 
 export type DashboardState = {
-  // Loading / Errors
   loading: LoadingState
   error: ErrorState
 
   // BALANCE
   balance: DashboardBalance | null
-  lastCurrenciesOrdered: string[]        // порядок последних валют (для чипов)
+  lastCurrenciesOrdered: string[]
   ui: {
-    balanceCurrencies: string[]          // выбранные чипы
+    balanceCurrencies: string[]
   }
 
   // ACTIVITY
@@ -168,6 +166,30 @@ const GET = async <T,>(url: string): Promise<T> => {
   return res.json()
 }
 
+const toUpperCodes = (arr?: string[] | null) =>
+  (arr ?? []).map((c) => (c || "").toUpperCase())
+
+const abs = (x?: string | null) => {
+  if (!x) return 0
+  const n = Number(String(x).replace(",", "."))
+  return Number.isFinite(n) ? Math.abs(n) : 0
+}
+const nonZeroCodes = (b: DashboardBalance | null) => {
+  if (!b) return [] as string[]
+  const set = new Set<string>()
+  Object.entries(b.i_owe || {}).forEach(([ccy, v]) => { if (abs(v) > 0) set.add((ccy || "").toUpperCase()) })
+  Object.entries(b.they_owe_me || {}).forEach(([ccy, v]) => { if (abs(v) > 0) set.add((ccy || "").toUpperCase()) })
+  return Array.from(set)
+}
+const pickDefault = (nonZero: string[], lastOrdered: string[]) => {
+  if (!nonZero.length) return [] as string[]
+  const inOrder = lastOrdered.filter((c) => nonZero.includes((c || "").toUpperCase()))
+  const res: string[] = []
+  for (const c of inOrder) { if (res.length < 2) res.push(c.toUpperCase()) }
+  for (const c of nonZero) { if (res.length < 2 && !res.includes(c)) res.push(c) }
+  return res
+}
+
 // ---------------- Store ----------------
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   // base
@@ -215,16 +237,30 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   // ---------- BALANCE ----------
   setBalanceCurrencies: (codes) => {
-    set((s) => ({ ui: { ...s.ui, balanceCurrencies: codes.map((c) => (c || "").toUpperCase()) } }))
+    set((s) => ({ ui: { ...s.ui, balanceCurrencies: toUpperCodes(codes) } }))
   },
 
   reloadBalance: async () => {
     set((s) => ({ loading: { ...s.loading, balance: true }, error: { ...s.error, balance: null } }))
     try {
       const data = await GET<DashboardBalance>("/dashboard/balance")
+
+      // порядок последних использованных валют
+      const lastUp = toUpperCodes(data.last_currencies || get().lastCurrenciesOrdered)
+
+      // чипы — только ненулевые
+      const nonZero = nonZeroCodes(data)
+
+      // текущий выбор, очищенный от «нулевых»
+      let chips = toUpperCodes(get().ui.balanceCurrencies).filter((c) => nonZero.includes(c))
+
+      // если пусто — подбираем по lastUp, иначе первые попавшиеся
+      if (chips.length === 0) chips = pickDefault(nonZero, lastUp)
+
       set((s) => ({
         balance: data,
-        lastCurrenciesOrdered: s.lastCurrenciesOrdered.length ? s.lastCurrenciesOrdered : (data.last_currencies ?? []),
+        lastCurrenciesOrdered: lastUp,
+        ui: { ...s.ui, balanceCurrencies: chips },
         loading: { ...s.loading, balance: false },
         error: { ...s.error, balance: null },
       }))
@@ -239,34 +275,30 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   init: async () => {
     set((s) => ({ loading: { ...s.loading, global: true } }))
     try {
-      // последние валюты (2) для дефолтного выбора
+      // последние валюты (2) для дефолтов (без превышения лимита)
       const last = await GET<string[]>("/dashboard/last-currencies?limit=2").catch(() => [])
-      // прогружаем баланс (все валюты)
+      const lastUp = toUpperCodes(last)
+
+      // сначала баланс — он решит чипы по фактам долгов
       await get().reloadBalance()
 
-      // дефолтная валюта для summary — первая из последних, иначе RUB/USD
-      const defCurrency = (last?.[0] || get().summaryCurrency || "RUB").toUpperCase()
+      // валюта summary — первая из последних, иначе RUB/USD
+      const defCurrency = (lastUp?.[0] || get().summaryCurrency || "RUB").toUpperCase()
 
       set((s) => ({
-        lastCurrenciesOrdered: last ?? [],
-        currenciesRecent: last ?? [],
+        lastCurrenciesOrdered: lastUp,
+        currenciesRecent: lastUp,
         summaryCurrency: defCurrency,
-        // если чипы ещё не выставлены — берём «две последние»
-        ui: {
-          ...s.ui,
-          balanceCurrencies: s.ui.balanceCurrencies.length ? s.ui.balanceCurrencies : (last ?? []).map((c) => (c || "").toUpperCase()),
-        },
+        loading: { ...s.loading, global: false },
       }))
 
-      // мягкий прогрев остального (без блокировки UI)
+      // мягкий прогрев остального
       void get().loadActivity(get().activityPeriod)
       void get().loadEvents()
       void get().loadSummary(get().summaryPeriod, defCurrency)
       void get().loadRecentGroups()
       void get().loadTopCategories(get().topCategoriesPeriod)
       void get().loadTopPartners(get().frequentPeriod)
-
-      set((s) => ({ loading: { ...s.loading, global: false } }))
     } catch (e: any) {
       set((s) => ({
         loading: { ...s.loading, global: false },
@@ -276,10 +308,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   startLive: () => {
-    const tick = () => {
-      // обновляем лёгкие секции часто; тяжёлые — по фокусу/онлайн
-      void get().reloadBalance()
-    }
+    const tick = () => { void get().reloadBalance() }
     const onFocus = () => {
       void get().reloadBalance()
       void get().loadEvents()

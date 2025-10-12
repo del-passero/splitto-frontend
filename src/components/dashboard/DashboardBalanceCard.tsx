@@ -1,7 +1,5 @@
-// src/components/dashboard/DashboardBalanceCard.tsx
-// Карточка баланса: заголовок через SectionTitle + чипы + две колонки.
-
-import { useEffect, useMemo, useCallback } from "react"
+// Внутри карточки: заголовок через SectionTitle + чипы + две колонки.
+import { useMemo, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
@@ -25,14 +23,12 @@ function fmtMoney(value: number, currency: string, locale: string) {
     return `${nf.format(value)}${NBSP}${currency}`
   } catch {
     const rounded = Math.round(value * 100) / 100
-    const s =
-      Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded))
+    const s = (Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded)))
     return `${s}${NBSP}${currency}`
   }
 }
 
-// Нормализация словаря валют к верхнему регистру ключей
-function normalizeCurrencyMap<T extends Record<string, string> | undefined>(m: T) {
+const normalizeMap = (m?: Record<string, string> | null) => {
   const out: Record<string, string> = {}
   if (!m) return out
   for (const [k, v] of Object.entries(m)) out[(k || "").toUpperCase()] = v
@@ -43,92 +39,82 @@ export default function DashboardBalanceCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
+  const loading = useDashboardStore((s) => s.loading.balance || s.loading.global)
   const balance = useDashboardStore((s) => s.balance)
   const lastOrdered = useDashboardStore((s) => s.lastCurrenciesOrdered || [])
   const selected = useDashboardStore((s) => s.ui.balanceCurrencies)
-  const setSelected = useDashboardStore((s) => s.setBalanceCurrencies)
-  const isLoading = useDashboardStore((s) => s.loading.balance || s.loading.global)
+  const setBalanceCurrencies = useDashboardStore((s) => s.setBalanceCurrencies)
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
 
-  // 👉 страхуем первый запрос, если страница не дернула init()
+  // гарантия запроса даже если страницу открыли напрямую
   useEffect(() => {
-    if (!balance && !isLoading) {
-      void reloadBalance()
-    }
+    void reloadBalance()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Нормализованные карты (ключи в UPPERCASE, чтобы не терять значения)
-  const iOweMapU = useMemo(() => normalizeCurrencyMap(balance?.i_owe), [balance])
-  const theyOweMapU = useMemo(() => normalizeCurrencyMap(balance?.they_owe_me), [balance])
+  const iOweMap = useMemo(() => normalizeMap(balance?.i_owe), [balance])
+  const theyOweMap = useMemo(() => normalizeMap(balance?.they_owe_me), [balance])
 
-  // Валюты с ненулём по обеим сторонам
-  const nonZero = useMemo(() => {
+  // валюты с ненулём
+  const nonZeroCodes = useMemo(() => {
     const set = new Set<string>()
-    for (const [ccy, v] of Object.entries(iOweMapU)) if (absAmount(v) > 0) set.add(ccy)
-    for (const [ccy, v] of Object.entries(theyOweMapU)) if (absAmount(v) > 0) set.add(ccy)
+    for (const [ccy, v] of Object.entries(iOweMap)) if (absAmount(v) > 0) set.add(ccy)
+    for (const [ccy, v] of Object.entries(theyOweMap)) if (absAmount(v) > 0) set.add(ccy)
     return Array.from(set)
-  }, [iOweMapU, theyOweMapU])
+  }, [iOweMap, theyOweMap])
 
-  // Доступные чипы с сортировкой: сперва по последним использованным, затем по алфавиту
   const available = useMemo(() => {
-    if (!nonZero.length) return []
+    if (!nonZeroCodes.length) return []
     const order = new Map<string, number>()
     lastOrdered.forEach((c, i) => order.set((c || "").toUpperCase(), i))
-    const [inLast, others] = nonZero.reduce<[string[], string[]]>(
-      (acc, c) => {
-        if (order.has(c)) acc[0].push(c)
-        else acc[1].push(c)
-        return acc
-      },
-      [[], []]
-    )
+    const inLast: string[] = []
+    const others: string[] = []
+    for (const c of nonZeroCodes) (order.has(c) ? inLast : others).push(c)
     inLast.sort((a, b) => (order.get(a)! - order.get(b)!))
     others.sort()
     return [...inLast, ...others]
-  }, [nonZero, lastOrdered])
+  }, [nonZeroCodes, lastOrdered])
 
-  // Активные чипы: если пользователь ничего не выбирал — берём первые две доступные
+  // активные чипы
   const active = useMemo(() => {
     const sel = (selected || []).map((c) => c.toUpperCase()).filter((c) => available.includes(c))
-    return sel.length ? sel : available.slice(0, 2)
+    if (sel.length) return sel
+    return available.slice(0, 2)
   }, [selected, available])
 
   const toggle = useCallback(
     (ccy: string) => {
       const set = new Set(active)
       if (set.has(ccy)) {
-        if (set.size === 1) return // оставляем минимум одну валюту включённой
+        if (set.size === 1) return
         set.delete(ccy)
       } else {
         set.add(ccy)
       }
-      setSelected(Array.from(set))
+      setBalanceCurrencies(Array.from(set))
     },
-    [active, setSelected]
+    [active, setBalanceCurrencies]
   )
 
-  // Левая колонка — «Я должен»
   const leftLines = useMemo(() => {
     return active
-      .map((c) => {
-        const v = absAmount(iOweMapU[c])
+      .map((c: string) => {
+        const v = absAmount(iOweMap[c])
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
       .filter(Boolean) as { c: string; text: string }[]
-  }, [active, iOweMapU, locale])
+  }, [active, iOweMap, locale])
 
-  // Правая колонка — «Мне должны»
   const rightLines = useMemo(() => {
     return active
-      .map((c) => {
-        const v = absAmount(theyOweMapU[c])
+      .map((c: string) => {
+        const v = absAmount(theyOweMap[c])
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
       .filter(Boolean) as { c: string; text: string }[]
-  }, [active, theyOweMapU, locale])
+  }, [active, theyOweMap, locale])
 
   return (
     <div
@@ -143,7 +129,7 @@ export default function DashboardBalanceCard() {
 
       {/* Чипы валют */}
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pr-1">
-        {available.map((ccy) => {
+        {available.map((ccy: string) => {
           const isActive = active.includes(ccy)
           return (
             <button
@@ -163,10 +149,12 @@ export default function DashboardBalanceCard() {
             </button>
           )
         })}
-        {!available.length && !isLoading && (
-          <span className="text-sm text-[var(--tg-hint-color)]">{t("group_balance_no_debts_all")}</span>
+        {!available.length && !loading && (
+          <span className="text-sm text-[var(--tg-hint-color)]">
+            {t("dashboard_balance_no_debts_all", "Никто никому не должен")}
+          </span>
         )}
-        {isLoading && <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>}
+        {loading && <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>}
       </div>
 
       {/* Две половины */}
@@ -177,7 +165,7 @@ export default function DashboardBalanceCard() {
             <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
             <span>{t("i_owe")}</span>
           </div>
-          {isLoading ? (
+          {loading ? (
             <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
           ) : leftLines.length ? (
             <div className="space-y-1">
@@ -193,7 +181,7 @@ export default function DashboardBalanceCard() {
             </div>
           ) : (
             <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {t("group_balance_no_debts_left")}
+              {t("dashboard_balance_no_debts_left", "Я никому не должен")}
             </div>
           )}
         </div>
@@ -204,7 +192,7 @@ export default function DashboardBalanceCard() {
             <span>{t("they_owe_me")}</span>
             <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
           </div>
-          {isLoading ? (
+          {loading ? (
             <div className="ml-auto h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
           ) : rightLines.length ? (
             <div className="space-y-1">
@@ -220,7 +208,7 @@ export default function DashboardBalanceCard() {
             </div>
           ) : (
             <div className="text-[15px] font-semibold leading-tight text-[var(--tg-hint-color)]">
-              {t("group_balance_no_debts_right")}
+              {t("dashboard_balance_no_debts_right", "Мне никто не должен")}
             </div>
           )}
         </div>
