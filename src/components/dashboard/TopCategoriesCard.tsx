@@ -46,8 +46,8 @@ export default function TopCategoriesCard() {
     [itemsRaw]
   )
 
-  const PeriodButtons = (
-    <div className="flex gap-1 justify-end mb-2">
+  const right = (
+    <div className="flex gap-1">
       {PERIODS.map((p) => (
         <button
           key={p}
@@ -69,50 +69,52 @@ export default function TopCategoriesCard() {
   return (
     <SafeSection
       title="Топ категорий"
+      right={right}
       loading={loading}
       error={error}
       onRetry={() => load(period)}
     >
-      {PeriodButtons}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-        <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={Array.isArray(chartData) ? chartData : []}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={40}
-                outerRadius={70}
-                isAnimationActive={false}
-              >
-                {(chartData || []).map((_, idx) => (
-                  <Cell key={`c-${idx}`} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      {() => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={Array.isArray(chartData) ? chartData : []}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={40}
+                  outerRadius={70}
+                  isAnimationActive={false}
+                >
+                  {(chartData || []).map((_, idx) => (
+                    <Cell key={`c-${idx}`} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
 
-        <div className="flex flex-col gap-2">
-          {listItems.map((it) => (
-            <div key={it.id} className="rounded-xl bg-white/5 px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{it.title}</div>
-                  {it.subtitle ? (
-                    <div className="text-xs opacity-70 truncate">{it.subtitle}</div>
-                  ) : null}
+          <div className="flex flex-col gap-2">
+            {listItems.map((it) => (
+              <div key={it.id} className="rounded-xl bg-white/5 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{it.title}</div>
+                    {it.subtitle ? (
+                      <div className="text-xs opacity-70 truncate">{it.subtitle}</div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-          {!loading && listItems.length === 0 ? (
-            <div className="opacity-60 text-sm">Нет расходов за период</div>
-          ) : null}
+            ))}
+            {!loading && listItems.length === 0 ? (
+              <div className="opacity-60 text-sm">Нет расходов за период</div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
     </SafeSection>
   )
 }

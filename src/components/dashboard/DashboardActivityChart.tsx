@@ -33,8 +33,8 @@ export default function DashboardActivityChart() {
     [activity]
   )
 
-  const PeriodButtons = (
-    <div className="flex gap-1 justify-end mb-2">
+  const right = (
+    <div className="flex gap-1">
       {PERIODS.map((p) => (
         <button
           key={p}
@@ -56,25 +56,27 @@ export default function DashboardActivityChart() {
   return (
     <SafeSection
       title="Активность"
+      right={right}
       loading={loading}
       error={error}
       onRetry={() => load(period)}
     >
-      {PeriodButtons}
-      <div className="h-40">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={Array.isArray(data) ? data : []}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Line type="monotone" dataKey="count" stroke="currentColor" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      {!loading && (!data || data.length === 0) ? (
-        <div className="opacity-60 text-sm mt-2">Пока нет активности за выбранный период</div>
-      ) : null}
+      {() => (
+        <div className="h-40">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={Array.isArray(data) ? data : []}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Line type="monotone" dataKey="count" stroke="currentColor" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+          {!loading && (!data || data.length === 0) ? (
+            <div className="opacity-60 text-sm mt-2">Пока нет активности за выбранный период</div>
+          ) : null}
+        </div>
+      )}
     </SafeSection>
   )
 }

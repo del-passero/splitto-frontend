@@ -1,18 +1,68 @@
 // src/components/SafeSection.tsx
-import React from "react";
-type Props = { title?: React.ReactNode; controls?: React.ReactNode; loading?: boolean; error?: string | null; onRetry?: () => void; children?: React.ReactNode; fullWidth?: boolean };
-export default function SafeSection({ title, controls, loading, error, onRetry, children, fullWidth }: Props) {
+import React from "react"
+
+type Props = {
+  title?: string
+  loading?: boolean
+  error?: string | null
+  onRetry?: () => void | Promise<void>
+
+  /** Правый слот в заголовке (синонимы: controls | right) */
+  right?: React.ReactNode
+  controls?: React.ReactNode
+
+  /** Растянуть на всю ширину контейнера */
+  fullWidth?: boolean
+
+  /** Поддерживаем и render-prop, и обычные узлы */
+  children?: React.ReactNode | (() => React.ReactNode)
+}
+
+export default function SafeSection({
+  title,
+  loading,
+  error,
+  onRetry,
+  right,
+  controls,
+  fullWidth,
+  children,
+}: Props) {
+  const headerRight = right ?? controls ?? null
+  const content =
+    typeof children === "function" ? (children as () => React.ReactNode)() : (children as React.ReactNode)
+
   return (
-    <section className={`rounded-2xl p-3 bg-[var(--tg-card-bg,#1c1c1e)] ${fullWidth ? "w-full" : ""}`}>
-      {(title || controls) && (
+    <div
+      className={[
+        "rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)]",
+        fullWidth ? "w-full" : "",
+      ].join(" ")}
+    >
+      {(title || headerRight) && (
         <div className="flex items-center justify-between mb-2">
-          {title ? <h3 className="text-sm font-semibold opacity-80">{title}</h3> : <div />}
-          {controls ? <div className="flex gap-2">{controls}</div> : null}
+          <div className="text-sm opacity-70">{title}</div>
+          {headerRight ? <div className="ml-2">{headerRight}</div> : null}
         </div>
       )}
-      {loading ? <div className="animate-pulse h-20 bg-white/5 rounded-xl" /> : error ? (
-        <div className="text-sm opacity-70">{error}{onRetry && <button className="ml-2 underline" onClick={onRetry}>Повторить</button>}</div>
-      ) : children}
-    </section>
-  );
+
+      {error ? (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2">
+          <div className="text-red-400 text-sm truncate">{error}</div>
+          {onRetry ? (
+            <button
+              className="px-3 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm shrink-0"
+              onClick={() => onRetry()}
+            >
+              Повторить
+            </button>
+          ) : null}
+        </div>
+      ) : loading ? (
+        <div className="text-sm opacity-80">Загрузка…</div>
+      ) : (
+        <>{content}</>
+      )}
+    </div>
+  )
 }
