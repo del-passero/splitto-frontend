@@ -26,12 +26,15 @@ export default function TopCategoriesCard() {
   const setPeriod = useDashboardStore((s) => s.setTopPeriod)
   const itemsRaw = useDashboardStore((s) => s.topCategories)
   const loading = useDashboardStore((s) => s.loading.top)
-  const error = useDashboardStore((s) => (s as any).error?.top ?? null) as string | null
+  const rawError = useDashboardStore((s) => (s as any).error ?? null) as any
   const load = useDashboardStore((s) => s.loadTopCategories)
 
+  const topError: string | null =
+    typeof rawError === "string" ? rawError : rawError?.top ?? null
+
   useEffect(() => {
-    if (!itemsRaw) void load()
-  }, [itemsRaw, load])
+    if (!itemsRaw && !loading) void load()
+  }, [itemsRaw, loading, load])
 
   const items = itemsRaw ?? []
 
@@ -57,6 +60,8 @@ export default function TopCategoriesCard() {
     [chartData]
   )
 
+  const hasError = Boolean(topError) && (chartData.length === 0)
+
   return (
     <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -67,7 +72,10 @@ export default function TopCategoriesCard() {
             return (
               <button
                 key={p}
-                onClick={() => setPeriod(p)}
+                onClick={() => {
+                  setPeriod(p)
+                  void load()
+                }}
                 className={
                   "px-2 py-1 rounded text-sm border " +
                   (active
@@ -84,9 +92,11 @@ export default function TopCategoriesCard() {
 
       {loading ? (
         <div className="text-sm text-muted-foreground">Загрузка…</div>
-      ) : error ? (
+      ) : hasError ? (
         <div className="flex items-center gap-3">
-          <div className="text-sm text-red-500">Виджет «Топ категорий» временно недоступен.</div>
+          <div className="text-sm text-red-500">
+            Виджет «Топ категорий» временно недоступен. Попробуй обновить или нажми «Повторить».
+          </div>
           <button
             onClick={() => load()}
             className="px-2 py-1 text-sm rounded border bg-muted hover:bg-muted/70"
@@ -147,4 +157,3 @@ export default function TopCategoriesCard() {
     </div>
   )
 }
-
