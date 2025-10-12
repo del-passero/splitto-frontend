@@ -1,126 +1,150 @@
 // src/components/dashboard/TopCategoriesCard.tsx
-import { useEffect, useMemo } from "react"
+import React, { useEffect, useMemo } from "react"
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 import { useDashboardStore } from "../../store/dashboardStore"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts"
-import type { PeriodLTYear } from "../../types/dashboard"
 
-const PERIODS: PeriodLTYear[] = ["week", "month", "year"]
+const PERIODS: Array<"week" | "month" | "year"> = ["week", "month", "year"]
+
+const COLORS = [
+  "#8884d8", "#82ca9d", "#ffc658", "#ff7f50", "#8dd1e1",
+  "#a4de6c", "#d0ed57", "#d4a1ff", "#ffb3ba", "#bae1ff",
+]
+
+type AnyTopCat = {
+  id?: string | number
+  category_id?: string | number
+  name?: string
+  sum?: string | number
+  total?: number
+  amount?: number
+  value?: number
+  currency?: string
+}
 
 export default function TopCategoriesCard() {
   const period = useDashboardStore((s) => s.topCategoriesPeriod)
   const setPeriod = useDashboardStore((s) => s.setTopPeriod)
   const itemsRaw = useDashboardStore((s) => s.topCategories)
   const loading = useDashboardStore((s) => s.loading.top)
-  const error = useDashboardStore((s) => s.error.top || null)
+  const error = useDashboardStore((s) => (s as any).error?.top ?? null) as string | null
   const load = useDashboardStore((s) => s.loadTopCategories)
 
   useEffect(() => {
-    if (!itemsRaw || itemsRaw.length === 0) void load(period)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!itemsRaw) void load()
+  }, [itemsRaw, load])
 
-  const chartData = useMemo(() => {
-    const list = (itemsRaw ?? [])
-      .map((it) => ({
-        name: it.name,
-        value: Number.parseFloat(it.sum || "0"),
-        currency: it.currency,
-        category_id: it.category_id,
-      }))
-      .filter((x) => Number.isFinite(x.value) && x.value > 0)
+  const items = itemsRaw ?? []
 
-    const top = list.slice(0, 8)
-    const rest = list.slice(8)
-    const restSum = rest.reduce((acc, x) => acc + x.value, 0)
-    return restSum > 0 ? [...top, { name: "Прочее", value: restSum, currency: top[0]?.currency }] : top
-  }, [itemsRaw])
-
-  const listItems = useMemo(
+  const chartData = useMemo(
     () =>
-      (itemsRaw ?? []).map((it) => ({
-        id: it.category_id,
-        title: it.name,
-        subtitle: it.currency ? `${it.sum} ${it.currency}` : it.sum,
-      })),
-    [itemsRaw]
+      (items as unknown as AnyTopCat[]).map((it, idx) => {
+        const name = it.name ?? "Категория"
+        const key = String(it.id ?? it.category_id ?? `${name}-${idx}`)
+        let n =
+          typeof it.sum === "string"
+            ? Number(it.sum)
+            : typeof it.sum === "number"
+            ? it.sum
+            : it.total ?? it.amount ?? it.value ?? 0
+        if (!isFinite(Number(n))) n = 0
+        return { key, name, total: Number(n), currency: it.currency }
+      }),
+    [items]
+  )
+
+  const totalAmount = useMemo(
+    () => chartData.reduce((acc, x) => acc + (x.total || 0), 0),
+    [chartData]
   )
 
   return (
-    <div className="rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)] w-full">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm opacity-70">Топ категорий</div>
-        <div className="flex gap-1">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              onClick={() => {
-                setPeriod(p)
-                void load(p)
-              }}
-              className={[
-                "px-2 py-1 rounded text-xs",
-                p === period ? "bg-white/10" : "hover:bg-white/5",
-              ].join(" ")}
-            >
-              {p}
-            </button>
-          ))}
+    <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="font-semibold text-base">Топ категорий</h3>
+        <div className="ml-auto flex gap-1">
+          {PERIODS.map((p) => {
+            const active = p === period
+            return (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={
+                  "px-2 py-1 rounded text-sm border " +
+                  (active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted hover:bg-muted/70 border-transparent")
+                }
+              >
+                {p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {error ? (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2">
-          <div className="text-red-400 text-sm truncate">{error}</div>
+      {loading ? (
+        <div className="text-sm text-muted-foreground">Загрузка…</div>
+      ) : error ? (
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-red-500">Виджет «Топ категорий» временно недоступен.</div>
           <button
-            className="px-3 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm shrink-0"
-            onClick={() => void load(period)}
+            onClick={() => load()}
+            className="px-2 py-1 text-sm rounded border bg-muted hover:bg-muted/70"
           >
             Повторить
           </button>
         </div>
-      ) : loading ? (
-        <div className="text-sm opacity-80">Загрузка…</div>
+      ) : chartData.length === 0 ? (
+        <div className="text-sm text-muted-foreground">Нет данных за выбранный период</div>
       ) : (
-        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-          <div className="h-48">
+        <div className="flex items-center gap-4">
+          <div className="w-40 h-40">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={Array.isArray(chartData) ? chartData : []}
-                  dataKey="value"
+                  data={chartData}
+                  dataKey="total"
                   nameKey="name"
-                  innerRadius={40}
+                  innerRadius={50}
                   outerRadius={70}
-                  isAnimationActive={false}
+                  paddingAngle={1}
+                  isAnimationActive
                 >
-                  {(chartData || []).map((_, idx) => (
-                    <Cell key={`c-${idx}`} />
+                  {chartData.map((it, i) => (
+                    <Cell key={it.key} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(v: any) => (Array.isArray(v) ? v : [v, "Сумма"])} />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="flex flex-col gap-2">
-            {listItems.map((it) => (
-              <div key={it.id} className="rounded-xl bg-white/5 px-3 py-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{it.title}</div>
-                    {it.subtitle ? (
-                      <div className="text-xs opacity-70 truncate">{it.subtitle}</div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {listItems.length === 0 && (
-              <div className="opacity-60 text-sm">Нет расходов за период</div>
-            )}
+          <div className="flex-1 min-w-0">
+            <ul className="space-y-2">
+              {chartData.map((it, i) => {
+                const pct = totalAmount > 0 ? Math.round((it.total / totalAmount) * 100) : 0
+                return (
+                  <li key={it.key} className="flex items-center gap-2">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm"
+                      style={{ background: COLORS[i % COLORS.length] }}
+                      aria-hidden
+                    />
+                    <span className="truncate">{it.name}</span>
+                    <span className="ml-auto tabular-nums">{it.total.toFixed(2)}</span>
+                    {totalAmount > 0 && (
+                      <span className="w-10 text-right text-muted-foreground text-xs tabular-nums">
+                        {pct}%
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         </div>
       )}
     </div>
   )
 }
+

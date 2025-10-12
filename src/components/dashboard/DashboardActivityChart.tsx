@@ -1,88 +1,100 @@
 // src/components/dashboard/DashboardActivityChart.tsx
-import { useEffect, useMemo } from "react"
+import React, { useEffect, useMemo } from "react"
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
 import { useDashboardStore } from "../../store/dashboardStore"
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts"
-import type { PeriodAll } from "../../types/dashboard"
 
-const PERIODS: PeriodAll[] = ["day", "week", "month", "year"]
+const PERIODS: Array<"week" | "month" | "year"> = ["week", "month", "year"]
+
+type Bucket = { date: string; count: number }
 
 export default function DashboardActivityChart() {
   const period = useDashboardStore((s) => s.activityPeriod)
   const setPeriod = useDashboardStore((s) => s.setActivityPeriod)
   const activity = useDashboardStore((s) => s.activity)
   const loading = useDashboardStore((s) => s.loading.activity)
-  const error = useDashboardStore((s) => s.error.activity || null)
+  const error = useDashboardStore((s) => (s as any).error?.activity ?? null) as string | null
   const load = useDashboardStore((s) => s.loadActivity)
 
   useEffect(() => {
-    if (!activity) void load(period)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!activity) void load()
+  }, [activity, load])
 
   const data = useMemo(
-    () => (activity?.buckets ?? []).map((b) => ({ date: b.date, count: Number(b.count || 0) })),
+    () =>
+      ((activity?.buckets ?? []) as Bucket[]).map((b) => ({
+        date: b.date,
+        count: Number(b.count ?? 0),
+      })),
     [activity]
   )
 
   return (
-    <div className="rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)] w-full">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm opacity-70">Активность</div>
-        <div className="flex gap-1">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              onClick={() => {
-                setPeriod(p)
-                void load(p)
-              }}
-              className={[
-                "px-2 py-1 rounded text-xs",
-                p === period ? "bg-white/10" : "hover:bg-white/5",
-              ].join(" ")}
-            >
-              {p}
-            </button>
-          ))}
+    <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="font-semibold text-base">Активность</h3>
+        <div className="ml-auto flex gap-1">
+          {PERIODS.map((p) => {
+            const active = p === period
+            return (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={
+                  "px-2 py-1 rounded text-sm border " +
+                  (active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted hover:bg-muted/70 border-transparent")
+                }
+              >
+                {p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {error ? (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2">
-          <div className="text-red-400 text-sm truncate">{error}</div>
+      {loading ? (
+        <div className="text-sm text-muted-foreground">Загрузка…</div>
+      ) : error ? (
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-red-500">Виджет «Активность» временно недоступен.</div>
           <button
-            className="px-3 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm shrink-0"
-            onClick={() => void load(period)}
+            onClick={() => load()}
+            className="px-2 py-1 text-sm rounded border bg-muted hover:bg-muted/70"
           >
             Повторить
           </button>
         </div>
-      ) : loading ? (
-        <div className="text-sm opacity-80">Загрузка…</div>
+      ) : data.length === 0 ? (
+        <div className="text-sm text-muted-foreground">Нет данных за выбранный период</div>
       ) : (
-        <div className="w-full">
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={Array.isArray(data) ? data : []}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="currentColor" dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          {(!data || data.length === 0) && (
-            <div className="opacity-60 text-sm mt-2">Пока нет активности за выбранный период</div>
-          )}
+        <div className="w-full h-48">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(d) => (typeof d === "string" ? d.slice(5) : d)}
+                fontSize={12}
+              />
+              <YAxis allowDecimals={false} fontSize={12} />
+              <Tooltip />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="#8884d8"
+                fillOpacity={1}
+                fill="url(#activityFill)"
+                isAnimationActive
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>
