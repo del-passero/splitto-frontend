@@ -1,4 +1,5 @@
-import { useMemo, useCallback, useEffect } from "react"
+// src/components/dashboard/DashboardBalanceCard.tsx
+import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
@@ -22,61 +23,57 @@ function fmtMoney(value: number, currency: string, locale: string) {
     return `${nf.format(value)}${NBSP}${currency}`
   } catch {
     const rounded = Math.round(value * 100) / 100
-    const s = (Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded)))
+    const s =
+      Math.round((Math.abs(rounded) % 1) * 100) !== 0
+        ? rounded.toFixed(2)
+        : String(Math.trunc(rounded))
     return `${s}${NBSP}${currency}`
   }
-}
-
-const normalizeMap = (m?: Record<string, string> | null) => {
-  const out: Record<string, string> = {}
-  if (!m) return out
-  for (const [k, v] of Object.entries(m)) out[(k || "").toUpperCase()] = v
-  return out
 }
 
 export default function DashboardBalanceCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  const loading = useDashboardStore((s) => s.loading.balance || s.loading.global)
+  // состояние из стора
   const balance = useDashboardStore((s) => s.balance)
-  const lastOrdered = useDashboardStore((s) => s.lastCurrenciesOrdered || [])
+  const lastOrdered = useDashboardStore((s) => s.lastCurrenciesOrdered)
   const selected = useDashboardStore((s) => s.ui.balanceCurrencies)
-  const setBalanceCurrencies = useDashboardStore((s) => s.setBalanceCurrencies)
-  const reloadBalance = useDashboardStore((s) => s.reloadBalance)
+  const setSelected = useDashboardStore((s) => s.setBalanceCurrencies)
+  const loading = useDashboardStore((s) => s.loading.balance || s.loading.global)
 
-  // гарантия запроса даже если страницу открыли напрямую
-  useEffect(() => {
-    void reloadBalance()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const iOweMap = balance?.i_owe ?? {}
+  const theyOweMap = balance?.they_owe_me ?? {}
 
-  const iOweMap = useMemo(() => normalizeMap(balance?.i_owe), [balance])
-  const theyOweMap = useMemo(() => normalizeMap(balance?.they_owe_me), [balance])
-
-  // валюты с ненулём
-  const nonZeroCodes = useMemo(() => {
+  // все валюты с ненулевыми суммами
+  const nonZero = useMemo<string[]>(() => {
     const set = new Set<string>()
-    for (const [ccy, v] of Object.entries(iOweMap)) if (absAmount(v) > 0) set.add(ccy)
-    for (const [ccy, v] of Object.entries(theyOweMap)) if (absAmount(v) > 0) set.add(ccy)
+    for (const [ccy, v] of Object.entries(iOweMap)) if (absAmount(v) > 0) set.add((ccy || "").toUpperCase())
+    for (const [ccy, v] of Object.entries(theyOweMap)) if (absAmount(v) > 0) set.add((ccy || "").toUpperCase())
     return Array.from(set)
   }, [iOweMap, theyOweMap])
 
-  const available = useMemo(() => {
-    if (!nonZeroCodes.length) return []
+  // доступные валюты, упорядоченные по "последним"
+  const available = useMemo<string[]>(() => {
+    if (!nonZero.length) return []
     const order = new Map<string, number>()
-    lastOrdered.forEach((c, i) => order.set((c || "").toUpperCase(), i))
+    ;(lastOrdered || []).forEach((c, i) => order.set((c || "").toUpperCase(), i))
     const inLast: string[] = []
     const others: string[] = []
-    for (const c of nonZeroCodes) (order.has(c) ? inLast : others).push(c)
-    inLast.sort((a, b) => (order.get(a)! - order.get(b)!))
+    for (const c of nonZero) {
+      if (order.has(c.toUpperCase())) inLast.push(c)
+      else others.push(c)
+    }
+    inLast.sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
     others.sort()
     return [...inLast, ...others]
-  }, [nonZeroCodes, lastOrdered])
+  }, [nonZero, lastOrdered])
 
   // активные чипы
-  const active = useMemo(() => {
-    const sel = (selected || []).map((c) => c.toUpperCase()).filter((c) => available.includes(c))
+  const active = useMemo<string[]>(() => {
+    const sel = (selected || [])
+      .map((c) => (c || "").toUpperCase())
+      .filter((c) => available.includes(c))
     if (sel.length) return sel
     return available.slice(0, 2)
   }, [selected, available])
@@ -90,15 +87,15 @@ export default function DashboardBalanceCard() {
       } else {
         set.add(ccy)
       }
-      setBalanceCurrencies(Array.from(set))
+      setSelected(Array.from(set))
     },
-    [active, setBalanceCurrencies]
+    [active, setSelected]
   )
 
   const leftLines = useMemo(() => {
     return active
       .map((c: string) => {
-        const v = absAmount(iOweMap[c])
+        const v = absAmount((iOweMap as Record<string, string | number | null>)[c])
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
@@ -108,12 +105,14 @@ export default function DashboardBalanceCard() {
   const rightLines = useMemo(() => {
     return active
       .map((c: string) => {
-        const v = absAmount(theyOweMap[c])
+        const v = absAmount((theyOweMap as Record<string, string | number | null>)[c])
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
       .filter(Boolean) as { c: string; text: string }[]
   }, [active, theyOweMap, locale])
+
+  const allEmpty = !loading && available.length === 0
 
   return (
     <div
@@ -123,7 +122,9 @@ export default function DashboardBalanceCard() {
         shadow-[0_8px_32px_0_rgba(50,60,90,0.08)]
       "
     >
-      <SectionTitle className="!mb-2">{t("group_header_my_balance")}</SectionTitle>
+      <SectionTitle className="!mb-2">
+        {t("dashboard_header_my_balance", "Мой баланс")}
+      </SectionTitle>
 
       {/* Чипы валют */}
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pr-1">
@@ -147,12 +148,16 @@ export default function DashboardBalanceCard() {
             </button>
           )
         })}
-        {!available.length && !loading && (
+        {loading && (
           <span className="text-sm text-[var(--tg-hint-color)]">
-            {t("dashboard_balance_no_debts_all", "Никто никому не должен")}
+            {t("loading", "Загрузка…")}
           </span>
         )}
-        {loading && <span className="text-sm text-[var(--tg-hint-color)]">{t("loading")}</span>}
+        {allEmpty && (
+          <span className="text-sm text-[var(--tg-hint-color)]">
+            {t("dashboard_balance_no_debts_all", "Долгов нет")}
+          </span>
+        )}
       </div>
 
       {/* Две половины */}
@@ -161,7 +166,7 @@ export default function DashboardBalanceCard() {
         <div className="p-2 rounded-lg">
           <div className="flex items-center gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
             <ArrowRight className="w-4 h-4" style={{ color: "var(--tg-destructive-text,#d7263d)" }} />
-            <span>{t("i_owe")}</span>
+            <span>{t("i_owe", "Я должен")}</span>
           </div>
           {loading ? (
             <div className="h-5 w-32 rounded bg-[color-mix(in_oklab,var(--tg-border-color)_30%,transparent)]" />
@@ -187,7 +192,7 @@ export default function DashboardBalanceCard() {
         {/* Правая: Мне должны */}
         <div className="p-2 rounded-lg text-right">
           <div className="flex items-center justify-end gap-2 text-xs text-[var(--tg-hint-color)] mb-1">
-            <span>{t("they_owe_me")}</span>
+            <span>{t("they_owe_me", "Мне должны")}</span>
             <ArrowLeft className="w-4 h-4" style={{ color: "var(--tg-success-text,#1aab55)" }} />
           </div>
           {loading ? (
