@@ -94,9 +94,9 @@ export type DashboardState = {
 
   // BALANCE
   balance: DashboardBalance | null
-  lastCurrenciesOrdered: string[]        // порядок последних валют (для чипов)
+  lastCurrenciesOrdered: string[]
   ui: {
-    balanceCurrencies: string[]          // выбранные чипы
+    balanceCurrencies: string[]
   }
 
   // ACTIVITY
@@ -162,17 +162,53 @@ export type DashboardState = {
 const API_PREFIX = "/api"
 
 const toApiUrl = (url: string) => {
-  // если уже /api/... — не трогаем
   if (url.startsWith("/api/")) return url
-  // если полная ссылка (http/https) — не трогаем
   if (/^https?:\/\//i.test(url)) return url
-  // иначе префиксуем
   return `${API_PREFIX}${url.startsWith("/") ? "" : "/"}${url}`
 }
 
+const tgInitData = (): string => {
+  try {
+    // @ts-ignore
+    return window?.Telegram?.WebApp?.initData || ""
+  } catch {
+    return ""
+  }
+}
+
 const GET = async <T,>(url: string): Promise<T> => {
-  const full = toApiUrl(url)
-  const res = await fetch(full, { credentials: "include" })
+  const base = toApiUrl(url)
+  // жёстко убиваем кэш: no-store + бастер
+  const full = `${base}${base.includes("?") ? "&" : "?"}_ts=${Date.now()}`
+  const headers: HeadersInit = {
+    Accept: "application/json",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  }
+  const init = tgInitData()
+  if (init) (headers as any)["x-telegram-initdata"] = init
+
+  const res = await fetch(full, {
+    credentials: "include",
+    cache: "no-store",
+    headers,
+  })
+
+  // На всякий случай обработаем 304 (быть не должно из-за no-store, но пусть будет)
+  if (res.status === 304) {
+    const bust = `${base}${base.includes("?") ? "&" : "?"}_b=${Date.now()}_${Math.random()}`
+    const res2 = await fetch(bust, {
+      credentials: "include",
+      cache: "no-store",
+      headers,
+    })
+    if (!res2.ok) {
+      const txt = await res2.text().catch(() => "")
+      throw new Error(`GET ${bust} -> ${res2.status} ${res2.statusText}${txt ? `: ${txt}` : ""}`)
+    }
+    return res2.json()
+  }
+
   if (!res.ok) {
     const txt = await res.text().catch(() => "")
     throw new Error(`GET ${full} -> ${res.status} ${res.statusText}${txt ? `: ${txt}` : ""}`)
@@ -226,7 +262,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   frequentUsers: null,
 
   // ---------- BALANCE ----------
-  setBalanceCurrencies: (codes: string[]) => {
+  setBalanceCurrencies: (codes) => {
     set((s) => ({ ui: { ...s.ui, balanceCurrencies: codes.map((c) => (c || "").toUpperCase()) } }))
   },
 
@@ -251,26 +287,23 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   init: async () => {
     set((s) => ({ loading: { ...s.loading, global: true } }))
     try {
-      // последние валюты (2) для дефолтного выбора
       const last = await GET<string[]>("/dashboard/last-currencies?limit=2").catch(() => [])
-      // прогружаем баланс (все валюты)
       await get().reloadBalance()
 
-      // дефолтная валюта для summary — первая из последних, иначе RUB/USD
       const defCurrency = (last?.[0] || get().summaryCurrency || "RUB").toUpperCase()
 
       set((s) => ({
         lastCurrenciesOrdered: last ?? [],
         currenciesRecent: last ?? [],
         summaryCurrency: defCurrency,
-        // если чипы ещё не выставлены — берём «две последние»
         ui: {
           ...s.ui,
-          balanceCurrencies: s.ui.balanceCurrencies.length ? s.ui.balanceCurrencies : (last ?? []).map((c) => (c || "").toUpperCase()),
+          balanceCurrencies: s.ui.balanceCurrencies.length
+            ? s.ui.balanceCurrencies
+            : (last ?? []).map((c) => (c || "").toUpperCase()),
         },
       }))
 
-      // мягкий прогрев остального (без блокировки UI)
       void get().loadActivity(get().activityPeriod)
       void get().loadEvents()
       void get().loadSummary(get().summaryPeriod, defCurrency)
@@ -288,9 +321,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   startLive: () => {
-    const tick = () => {
-      void get().reloadBalance()
-    }
+    const tick = () => { void get().reloadBalance() }
     const onFocus = () => {
       void get().reloadBalance()
       void get().loadEvents()
