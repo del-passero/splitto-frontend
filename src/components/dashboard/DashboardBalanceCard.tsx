@@ -39,14 +39,23 @@ export default function DashboardBalanceCard() {
   const loading = useDashboardStore((s) => s.loading.balance || s.loading.global)
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
 
-  // подстрахуемся: если страницу смонтировали отдельно — дёрнем баланс
+  // ЖЁСТКО: всегда дергаем баланс при маунте + при возвращении вкладки
   useEffect(() => {
-    if (!balance && !loading) void reloadBalance()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    void reloadBalance()
+    const onVis = () => { if (!document.hidden) void reloadBalance() }
+    const onFocus = () => { void reloadBalance() }
+    document.addEventListener("visibilitychange", onVis)
+    window.addEventListener("focus", onFocus)
+    return () => {
+      document.removeEventListener("visibilitychange", onVis)
+      window.removeEventListener("focus", onFocus)
+    }
+  }, [reloadBalance])
 
   const iOweMap = balance?.i_owe ?? {}
   const theyOweMap = balance?.they_owe_me ?? {}
 
+  // валюты с ненулём
   const nonZero = useMemo<string[]>(() => {
     const set = new Set<string>()
     for (const [ccy, v] of Object.entries(iOweMap)) if (absAmount(v) > 0) set.add((ccy || "").toUpperCase())
