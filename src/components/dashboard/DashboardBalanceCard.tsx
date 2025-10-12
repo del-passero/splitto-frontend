@@ -1,4 +1,3 @@
-// Внутри карточки: заголовок через SectionTitle + чипы + две колонки.
 import { useMemo, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
@@ -124,7 +123,6 @@ export default function DashboardBalanceCard() {
         shadow-[0_8px_32px_0_rgba(50,60,90,0.08)]
       "
     >
-      {/* Заголовок секции внутри карточки */}
       <SectionTitle className="!mb-2">{t("group_header_my_balance")}</SectionTitle>
 
       {/* Чипы валют */}

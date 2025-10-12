@@ -157,11 +157,15 @@ export type DashboardState = {
 }
 
 // ---------------- Helpers ----------------
-const GET = async <T,>(url: string): Promise<T> => {
+const API_ROOT = "/api" // <— главный фикс: всегда бьём в /api
+
+const GET = async <T,>(path: string): Promise<T> => {
+  // path ожидается вида "/dashboard/..." или любой другой абсолютный путь БЭКЕНДА (без /api в начале)
+  const url = `${API_ROOT}${path}`
   const res = await fetch(url, { credentials: "include" })
   if (!res.ok) {
     const txt = await res.text().catch(() => "")
-    throw new Error(`GET ${url} -> ${res.status} ${res.statusText} ${txt ? `: ${txt}` : ""}`)
+    throw new Error(`GET ${url} -> ${res.status} ${res.statusText}${txt ? `: ${txt}` : ""}`)
   }
   return res.json()
 }
@@ -245,16 +249,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     try {
       const data = await GET<DashboardBalance>("/dashboard/balance")
 
-      // порядок последних использованных валют
       const lastUp = toUpperCodes(data.last_currencies || get().lastCurrenciesOrdered)
-
-      // чипы — только ненулевые
       const nonZero = nonZeroCodes(data)
 
-      // текущий выбор, очищенный от «нулевых»
       let chips = toUpperCodes(get().ui.balanceCurrencies).filter((c) => nonZero.includes(c))
-
-      // если пусто — подбираем по lastUp, иначе первые попавшиеся
       if (chips.length === 0) chips = pickDefault(nonZero, lastUp)
 
       set((s) => ({
@@ -275,14 +273,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   init: async () => {
     set((s) => ({ loading: { ...s.loading, global: true } }))
     try {
-      // последние валюты (2) для дефолтов (без превышения лимита)
       const last = await GET<string[]>("/dashboard/last-currencies?limit=2").catch(() => [])
       const lastUp = toUpperCodes(last)
 
-      // сначала баланс — он решит чипы по фактам долгов
       await get().reloadBalance()
 
-      // валюта summary — первая из последних, иначе RUB/USD
       const defCurrency = (lastUp?.[0] || get().summaryCurrency || "RUB").toUpperCase()
 
       set((s) => ({
@@ -292,7 +287,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         loading: { ...s.loading, global: false },
       }))
 
-      // мягкий прогрев остального
       void get().loadActivity(get().activityPeriod)
       void get().loadEvents()
       void get().loadSummary(get().summaryPeriod, defCurrency)
