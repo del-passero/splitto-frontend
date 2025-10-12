@@ -1,126 +1,157 @@
 // src/components/dashboard/DashboardActivityChart.tsx
-import React, { useEffect, useMemo } from "react"
+import React from "react"
 import { useDashboardStore } from "../../store/dashboardStore"
-import type { PeriodAll } from "../../types/dashboard"
 
-const PERIODS: PeriodAll[] = ["day", "week", "month", "year"]
+type Period = "day" | "week" | "month" | "year"
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "day", label: "День" },
+  { key: "week", label: "Неделя" },
+  { key: "month", label: "Месяц" },
+  { key: "year", label: "Год" },
+]
+
+// Безопасное форматирование даты -> "dd.mm"
+function trimDate(value: unknown): string {
+  if (value == null) return ""
+  let s: string
+  if (typeof value === "string") s = value
+  else if (value instanceof Date) s = value.toISOString()
+  else if (typeof value === "number") s = new Date(value).toISOString()
+  else s = String(value)
+
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
+  if (m) return `${m[3]}.${m[2]}`
+
+  const d = new Date(s)
+  if (!Number.isNaN(d.getTime())) {
+    const dd = String(d.getDate()).padStart(2, "0")
+    const mm = String(d.getMonth() + 1).padStart(2, "0")
+    return `${dd}.${mm}`
+  }
+  return s
+}
 
 export default function DashboardActivityChart() {
   const {
     activity,
+    activityPeriod,
+    loadActivity,
+    setActivityPeriod,
     loading,
     error,
-    activityPeriod,
-    setActivityPeriod,
-    loadActivity,
   } = useDashboardStore((s) => ({
     activity: s.activity,
-    loading: s.loading.activity,
-    error: s.error.activity || "",
     activityPeriod: s.activityPeriod,
-    setActivityPeriod: s.setActivityPeriod,
     loadActivity: s.loadActivity,
+    setActivityPeriod: s.setActivityPeriod,
+    loading: s.loading,
+    error: s.error,
   }))
 
-  useEffect(() => {
+  React.useEffect(() => {
+    // первый рендер — подгрузим (TTL в сторе защитит от лишнего)
     void loadActivity()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const buckets = activity?.buckets ?? []
-  const max = useMemo(() => {
-    if (!buckets.length) return 0
-    return buckets.reduce((m: number, b: any) => Math.max(m, Number(b?.count ?? 0)), 0)
+  const maxCount = React.useMemo(() => {
+    const arr = buckets.map((b: any) => Number(b?.count) || 0)
+    return Math.max(1, ...arr, 0)
   }, [buckets])
 
-  const handleRetry = () => {
-    void loadActivity(activityPeriod)
-  }
+  // подписи X не чаще чем ~6 штук
+  const labelStep = React.useMemo(() => {
+    const n = buckets.length
+    if (n <= 6) return 1
+    return Math.ceil(n / 6)
+  }, [buckets.length])
 
-  return (
-    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-white/90">Активность</h3>
-
-        <div className="flex items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-lg border border-white/10">
-            {PERIODS.map((p) => {
-              const active = p === activityPeriod
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setActivityPeriod(p)}
-                  className={[
-                    "px-2.5 py-1.5 text-xs capitalize",
-                    active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/[0.06]",
-                  ].join(" ")}
-                >
-                  {p === "day" ? "день" : p === "week" ? "неделя" : p === "month" ? "месяц" : "год"}
-                </button>
-              )
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/[0.06]"
-            title="Обновить"
-          >
-            Обновить
-          </button>
-        </div>
+  // ---------- UI helpers ----------
+  const renderHeader = () => (
+    <div className="mb-3 flex items-center justify-between">
+      <div className="text-white/90 font-medium">Активность</div>
+      <div className="flex gap-1">
+        {PERIODS.map((p) => {
+          const active = activityPeriod === p.key
+          return (
+            <button
+              key={p.key}
+              onClick={() => setActivityPeriod(p.key)}
+              className={[
+                "rounded-md px-2 py-1 text-xs transition",
+                active
+                  ? "bg-white/15 text-white"
+                  : "bg-white/5 text-white/70 hover:bg-white/10",
+              ].join(" ")}
+            >
+              {p.label}
+            </button>
+          )
+        })}
       </div>
-
-      {/* Body */}
-      <div className="min-h-[11rem]">
-        {loading ? (
-          <SkeletonBars />
-        ) : error ? (
-          <ErrorView message="Виджет «Активность» временно недоступен." onRetry={handleRetry} />
-        ) : buckets.length === 0 ? (
-          <EmptyView />
-        ) : (
-          <Chart buckets={buckets} max={max} />
-        )}
-      </div>
-    </section>
+    </div>
   )
-}
 
-function Chart({
-  buckets,
-  max,
-}: {
-  buckets: Array<{ date: string; count: number }>
-  max: number
-}) {
-  const step = useMemo(() => Math.max(1, Math.floor(buckets.length / 6)), [buckets.length])
+  const renderLoading = () => (
+    <div className="h-44 w-full pl-4 flex items-end gap-[6px]">
+      {Array.from({ length: 20 }).map((_, i) => (
+        <div key={i} className="flex-1 h-full flex items-end">
+          <div
+            className="w-full rounded-t-[6px] bg-white/15 animate-pulse"
+            style={{ height: `${Math.max(10, (i % 10) * 8)}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  )
 
-  return (
+  const renderError = (msg: string) => (
+    <div className="flex h-44 flex-col items-center justify-center gap-2 text-center">
+      <div className="text-white/80">
+        Виджет «Активность» временно недоступен.
+      </div>
+      <div className="text-white/50 text-sm">{msg}</div>
+      <button
+        onClick={() => loadActivity()}
+        className="mt-1 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15"
+      >
+        Повторить
+      </button>
+    </div>
+  )
+
+  const renderEmpty = () => (
+    <div className="flex h-44 items-center justify-center text-white/60">
+      Нет данных за выбранный период
+    </div>
+  )
+
+  const renderChart = () => (
     <div className="relative">
-      {/* ось Y / сетка */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10" />
-        <div className="absolute top-0 left-0 right-0 border-t border-white/10" />
-        <div className="absolute top-0 left-0 text-[10px] leading-none text-white/50">{max}</div>
-        <div className="absolute bottom-0 left-0 text-[10px] leading-none text-white/50">0</div>
+      {/* сетка по Y */}
+      <div className="absolute inset-0">
+        {[0, 25, 50, 75, 100].map((p) => (
+          <div
+            key={p}
+            className="absolute left-0 right-0 border-t border-white/10"
+            style={{ bottom: `${p}%` }}
+          />
+        ))}
       </div>
 
       {/* бары */}
       <div className="h-44 w-full pl-4">
         <div className="flex h-full items-end gap-[6px]">
           {buckets.map((b: any, i: number) => {
-            const v = Number(b?.count ?? 0)
-            const h = max > 0 ? (v / max) * 100 : 0
+            const v = Number(b?.count) || 0
+            const h = Math.max(4, Math.round((v / maxCount) * 100))
             return (
-              <div key={`${b?.date ?? i}`} className="flex h-full flex-1 items-end">
+              <div key={`${b?.date ?? i}`} className="flex-1 h-full flex items-end">
                 <div
-                  className="w-full rounded-t bg-indigo-400/80 ring-1 ring-indigo-300/40"
-                  style={{ height: `${Math.max(4, h)}%` }}
-                  title={`${b?.date ?? ""}: ${v}`}
+                  title={`${trimDate(b?.date)}: ${v}`}
+                  className="w-full rounded-t-[6px] bg-white/70"
+                  style={{ height: `${h}%` }}
                 />
               </div>
             )
@@ -132,60 +163,27 @@ function Chart({
       {buckets.length > 0 && (
         <div className="mt-2 flex justify-between pl-4 text-[10px] text-white/60">
           {buckets.map((b: any, i: number) => (
-            <span key={`lbl-${b?.date ?? i}`} className="flex-1 text-center">
-              {i % step === 0 ? trimDate(b?.date) : ""}
+            <span key={`lbl-${i}`} className="flex-1 text-center">
+              {i % labelStep === 0 ? trimDate(b?.date) : ""}
             </span>
           ))}
         </div>
       )}
     </div>
   )
-}
 
-function SkeletonBars() {
-  const n = 18
+  // ---------- render ----------
   return (
-    <div className="h-44 w-full pl-4">
-      <div className="flex h-full items-end gap-[6px]">
-        {Array.from({ length: n }).map((_, i) => (
-          <div key={i} className="flex h-full flex-1 items-end">
-            <div
-              className="w-full animate-pulse rounded-t bg-white/10"
-              style={{ height: `${10 + ((i * 7) % 70)}%` }}
-            />
-          </div>
-        ))}
-      </div>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+      {renderHeader()}
+
+      {loading.activity
+        ? renderLoading()
+        : error.activity
+        ? renderError(error.activity || "")
+        : buckets.length === 0
+        ? renderEmpty()
+        : renderChart()}
     </div>
   )
-}
-
-function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex h-44 items-center justify-center">
-      <div className="text-center">
-        <div className="mb-2 text-sm text-white/80">{message}</div>
-        <button
-          onClick={onRetry}
-          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06]"
-        >
-          Повторить
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function EmptyView() {
-  return (
-    <div className="flex h-44 items-center justify-center text-sm text-white/60">
-      Пока нет данных за выбранный период
-    </div>
-  )
-}
-
-function trimDate(s?: string) {
-  if (!s) return ""
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
-  return m ? `${m[3]}.${m[2]}` : s
 }
