@@ -1,8 +1,8 @@
 // src/pages/DashboardPage.tsx
-// Подключены все виджеты дашборда + стартовые загрузки и live-пуллинг баланса.
-
 import { useEffect } from "react"
 import { useDashboardStore } from "../store/dashboardStore"
+
+import WidgetBoundary from "../components/common/WidgetBoundary"
 
 import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
 import DashboardActivityChart from "../components/dashboard/DashboardActivityChart"
@@ -17,14 +17,12 @@ const DashboardPage = () => {
   const startLive = useDashboardStore((s) => s.startLive)
   const stopLive = useDashboardStore((s) => s.stopLive)
 
-  // Параметры по умолчанию из стора
   const activityPeriod = useDashboardStore((s) => s.activityPeriod)
   const summaryPeriod = useDashboardStore((s) => s.summaryPeriod)
   const summaryCurrency = useDashboardStore((s) => s.summaryCurrency)
   const topPeriod = useDashboardStore((s) => s.topCategoriesPeriod)
   const frequentPeriod = useDashboardStore((s) => s.frequentPeriod)
 
-  // Методы загрузки (компоненты тоже дергают их сами; TTL защитит от дублей)
   const loadActivity = useDashboardStore((s) => s.loadActivity)
   const loadSummary = useDashboardStore((s) => s.loadSummary)
   const loadTopCategories = useDashboardStore((s) => s.loadTopCategories)
@@ -34,7 +32,7 @@ const DashboardPage = () => {
 
   useEffect(() => {
     init()
-    // первичная загрузка всего (безопасно: в сторе TTL и флаги)
+    // первичная догрузка (TTL в сторе защитит от дублей)
     void loadActivity(activityPeriod)
     void loadSummary(summaryPeriod, summaryCurrency)
     void loadTopCategories(topPeriod)
@@ -49,26 +47,35 @@ const DashboardPage = () => {
 
   return (
     <div className="p-3 flex flex-col gap-3">
-      {/* Баланс по всем активным группам */}
-      <DashboardBalanceCard />
+      <WidgetBoundary name="Баланс">
+        <DashboardBalanceCard />
+      </WidgetBoundary>
 
-      {/* Верхние метрики: активность и сводка */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <DashboardActivityChart />
-        <DashboardSummaryCard />
+        <WidgetBoundary name="Активность">
+          <DashboardActivityChart />
+        </WidgetBoundary>
+        <WidgetBoundary name="Сводка">
+          <DashboardSummaryCard />
+        </WidgetBoundary>
       </div>
 
-      {/* Топ категорий за период */}
-      <TopCategoriesCard />
+      <WidgetBoundary name="Топ категорий">
+        <TopCategoriesCard />
+      </WidgetBoundary>
 
-      {/* Частые партнёры + Недавние группы */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <TopPartnersCarousel />
-        <RecentGroupsCarousel />
+        <WidgetBoundary name="Часто делю расходы">
+          <TopPartnersCarousel />
+        </WidgetBoundary>
+        <WidgetBoundary name="Недавние группы">
+          <RecentGroupsCarousel />
+        </WidgetBoundary>
       </div>
 
-      {/* Лента событий */}
-      <DashboardEventsFeed />
+      <WidgetBoundary name="Лента событий">
+        <DashboardEventsFeed />
+      </WidgetBoundary>
     </div>
   )
 }
