@@ -1,7 +1,11 @@
+// src/components/dashboard/TopCategoriesCard.tsx
 import { useEffect, useMemo } from "react"
 import { useDashboardStore } from "../../store/dashboardStore"
 import SafeSection from "../SafeSection"
-import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts"
+import type { PeriodLTYear } from "../../types/dashboard"
+
+const PERIODS: PeriodLTYear[] = ["week", "month", "year"]
 
 export default function TopCategoriesCard() {
   const period = useDashboardStore((s) => s.topCategoriesPeriod)
@@ -12,70 +16,101 @@ export default function TopCategoriesCard() {
   const load = useDashboardStore((s) => s.loadTopCategories)
 
   useEffect(() => {
-    if (!itemsRaw) void load(period)
-  }, []) // eslint-disable-line
+    if (!itemsRaw || itemsRaw.length === 0) void load(period)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const items = itemsRaw ?? []
-  const chartData = useMemo(
-    () =>
-      items.map((it) => ({
-        key: it.category_id,
-        name: it.name ?? "—",
-        total: Number(it.sum) || 0,
+  const chartData = useMemo(() => {
+    const list = (itemsRaw ?? [])
+      .map((it) => ({
+        name: it.name,
+        value: Number.parseFloat(it.sum || "0"),
         currency: it.currency,
+        category_id: it.category_id,
+      }))
+      .filter((x) => Number.isFinite(x.value) && x.value > 0)
+
+    const top = list.slice(0, 8)
+    const rest = list.slice(8)
+    const restSum = rest.reduce((acc, x) => acc + x.value, 0)
+    return restSum > 0 ? [...top, { name: "Прочее", value: restSum, currency: top[0]?.currency }] : top
+  }, [itemsRaw])
+
+  const listItems = useMemo(
+    () =>
+      (itemsRaw ?? []).map((it) => ({
+        id: it.category_id,
+        title: it.name,
+        subtitle: it.currency ? `${it.sum} ${it.currency}` : it.sum,
       })),
-    [items]
+    [itemsRaw]
+  )
+
+  const PeriodButtons = (
+    <div className="flex gap-1 justify-end mb-2">
+      {PERIODS.map((p) => (
+        <button
+          key={p}
+          onClick={() => {
+            setPeriod(p)
+            void load(p)
+          }}
+          className={[
+            "px-2 py-1 rounded text-xs",
+            p === period ? "bg-white/10" : "hover:bg-white/5",
+          ].join(" ")}
+        >
+          {p}
+        </button>
+      ))}
+    </div>
   )
 
   return (
     <SafeSection
-      title="Топ категории"
-      controls={
-        <div className="flex gap-1">
-          {(["week", "month", "year"] as const).map((p) => (
-            <button
-              key={p}
-              className={`px-2 py-1 rounded ${period === p ? "bg-white/10" : "bg-white/5"}`}
-              onClick={() => {
-                setPeriod(p)
-                void load(p)
-              }}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      }
+      title="Топ категорий"
       loading={loading}
       error={error}
       onRetry={() => load(period)}
     >
-      <div className="grid grid-cols-2 gap-3">
-        <ul className="flex flex-col gap-2">
-          {chartData.map((it) => (
-            <li
-              key={it.key}
-              className="flex items-center justify-between bg-white/5 rounded-xl px-2 py-2"
-            >
-              <div className="truncate">{it.name}</div>
-              <div className="text-sm font-medium">
-                {it.total.toLocaleString(undefined, { maximumFractionDigits: 2 })} {it.currency}
-              </div>
-            </li>
-          ))}
-          {!chartData.length && !loading && <div className="opacity-60 text-sm">Нет данных</div>}
-        </ul>
-
-        <div className="h-44">
+      {PeriodButtons}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+        <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={chartData} dataKey="total" nameKey="name" innerRadius={50} outerRadius={70} paddingAngle={1}>
-                {chartData.map((it) => (
-                  <Cell key={it.key} />
+              <Pie
+                data={Array.isArray(chartData) ? chartData : []}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={40}
+                outerRadius={70}
+                isAnimationActive={false}
+              >
+                {(chartData || []).map((_, idx) => (
+                  <Cell key={`c-${idx}`} />
                 ))}
               </Pie>
+              <Tooltip />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {listItems.map((it) => (
+            <div key={it.id} className="rounded-xl bg-white/5 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{it.title}</div>
+                  {it.subtitle ? (
+                    <div className="text-xs opacity-70 truncate">{it.subtitle}</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ))}
+          {!loading && listItems.length === 0 ? (
+            <div className="opacity-60 text-sm">Нет расходов за период</div>
+          ) : null}
         </div>
       </div>
     </SafeSection>
