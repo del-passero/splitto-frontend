@@ -10,19 +10,12 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "year", label: "Год" },
 ]
 
-// безопасно превращаем дату в "dd.mm"
-function toDdMm(input: unknown): string {
-  if (typeof input === "string") {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input)
-    if (m) return `${m[3]}.${m[2]}`
+// dd.mm из "YYYY-MM-DD" без Date()
+function ddmm(s: unknown): string {
+  if (typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return `${s.slice(8, 10)}.${s.slice(5, 7)}`
   }
-  const d = new Date(String(input))
-  if (!Number.isNaN(d.getTime())) {
-    const dd = String(d.getDate()).padStart(2, "0")
-    const mm = String(d.getMonth() + 1).padStart(2, "0")
-    return `${dd}.${mm}`
-  }
-  return String(input ?? "")
+  return String(s ?? "")
 }
 
 export default function DashboardActivityChart() {
@@ -47,50 +40,62 @@ export default function DashboardActivityChart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const bucketsRaw = activity?.buckets ?? []
-  const buckets = React.useMemo(
-    () =>
-      Array.isArray(bucketsRaw)
-        ? bucketsRaw.map((b: any) => ({
-            date: toDdMm(b?.date),
-            count: Number(b?.count) || 0,
-          }))
-        : [],
-    [bucketsRaw]
-  )
+  const raw = activity?.buckets
+  const buckets = Array.isArray(raw)
+    ? raw.map((b: any) => ({
+        date: ddmm(b?.date),
+        count: Number(b?.count) || 0,
+      }))
+    : []
 
-  const max = React.useMemo(
-    () => Math.max(1, ...buckets.map((b) => b.count)),
-    [buckets]
-  )
-  const labelStep = React.useMemo(() => {
-    const n = buckets.length
-    if (n <= 6) return 1
-    return Math.ceil(n / 6)
-  }, [buckets])
+  const max = buckets.reduce((m, b) => (b.count > m ? b.count : m), 1)
+  const n = buckets.length
+  const labelStep = n <= 6 ? 1 : Math.ceil(n / 6)
 
   const isLoading = !!loading.activity
   const errMsg = error.activity || ""
   const isError = !isLoading && !!errMsg
-  const isEmpty = !isLoading && !isError && buckets.length === 0
 
+  // Карточка-обёртка без сторонних компонентов
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+    <div
+      style={{
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "rgba(255,255,255,0.06)",
+        padding: 16,
+        color: "white",
+      }}
+    >
       {/* header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-white/90 font-medium">Активность</div>
-        <div className="flex gap-1">
+      <div
+        style={{
+          marginBottom: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div style={{ opacity: 0.9, fontWeight: 600 }}>Активность</div>
+        <div style={{ display: "flex", gap: 6 }}>
           {PERIODS.map((p) => {
             const active = activityPeriod === p.key
             return (
               <button
                 key={p.key}
                 onClick={() => setActivityPeriod(p.key)}
-                className={
-                  active
-                    ? "rounded-md px-2 py-1 text-xs bg-white/15 text-white"
-                    : "rounded-md px-2 py-1 text-xs bg-white/5 text-white/70 hover:bg-white/10"
-                }
+                style={{
+                  border: "none",
+                  cursor: "pointer",
+                  borderRadius: 8,
+                  padding: "6px 8px",
+                  fontSize: 12,
+                  background: active
+                    ? "rgba(255,255,255,0.15)"
+                    : "rgba(255,255,255,0.08)",
+                  color: "white",
+                }}
               >
                 {p.label}
               </button>
@@ -101,12 +106,27 @@ export default function DashboardActivityChart() {
 
       {/* loading */}
       {isLoading && (
-        <div className="h-44 w-full pl-4 flex items-end gap-[6px]">
+        <div
+          style={{
+            height: 176,
+            width: "100%",
+            paddingLeft: 12,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 6,
+          }}
+        >
           {Array.from({ length: 20 }).map((_, i) => (
-            <div key={i} className="flex-1 h-full flex items-end">
+            <div key={i} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end" }}>
               <div
-                className="w-full rounded-t-[6px] bg-white/15 animate-pulse"
-                style={{ height: `${Math.max(10, (i % 10) * 8)}%` }}
+                style={{
+                  width: "100%",
+                  height: `${Math.max(10, (i % 10) * 8)}%`,
+                  background: "rgba(255,255,255,0.2)",
+                  borderTopLeftRadius: 6,
+                  borderTopRightRadius: 6,
+                  animation: "pulse 1.2s ease-in-out infinite",
+                }}
               />
             </div>
           ))}
@@ -114,15 +134,31 @@ export default function DashboardActivityChart() {
       )}
 
       {/* error */}
-      {isError && (
-        <div className="flex h-44 flex-col items-center justify-center gap-2 text-center">
-          <div className="text-white/80">
-            Виджет «Активность» временно недоступен.
-          </div>
-          <div className="text-white/50 text-sm">{errMsg}</div>
+      {!isLoading && isError && (
+        <div
+          style={{
+            height: 176,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ opacity: 0.85 }}>Виджет «Активность» временно недоступен.</div>
+          <div style={{ opacity: 0.6, fontSize: 13 }}>{errMsg}</div>
           <button
             onClick={() => loadActivity()}
-            className="mt-1 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15"
+            style={{
+              marginTop: 4,
+              border: "none",
+              borderRadius: 10,
+              padding: "8px 12px",
+              background: "rgba(255,255,255,0.12)",
+              color: "white",
+              cursor: "pointer",
+            }}
           >
             Повторить
           </button>
@@ -130,51 +166,95 @@ export default function DashboardActivityChart() {
       )}
 
       {/* empty */}
-      {isEmpty && (
-        <div className="flex h-44 items-center justify-center text-white/60">
+      {!isLoading && !isError && buckets.length === 0 && (
+        <div
+          style={{
+            height: 176,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: 0.7,
+          }}
+        >
           Нет данных за выбранный период
         </div>
       )}
 
       {/* chart */}
       {!isLoading && !isError && buckets.length > 0 && (
-        <div className="relative">
-          {/* grid */}
-          <div className="absolute inset-0">
+        <div style={{ position: "relative" }}>
+          {/* горизонтальная сетка */}
+          <div style={{ position: "absolute", inset: 0 }}>
             {[0, 25, 50, 75, 100].map((p) => (
               <div
                 key={p}
-                className="absolute left-0 right-0 border-t border-white/10"
-                style={{ bottom: `${p}%` }}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: `${p}%`,
+                  borderTop: "1px solid rgba(255,255,255,0.1)",
+                }}
               />
             ))}
           </div>
 
-          {/* bars */}
-          <div className="h-44 w-full pl-4">
-            <ul className="m-0 flex h-full list-none items-end gap-[6px] p-0">
+          {/* столбики */}
+          <div style={{ height: 176, width: "100%", paddingLeft: 12 }}>
+            <div
+              role="list"
+              style={{
+                margin: 0,
+                padding: 0,
+                display: "flex",
+                height: "100%",
+                alignItems: "flex-end",
+                gap: 6,
+              }}
+            >
               {buckets.map((b, i) => {
                 const h = Math.max(4, Math.round((b.count / max) * 100))
                 return (
-                  <li key={i} className="flex-1 h-full flex items-end">
+                  <div
+                    role="listitem"
+                    key={`bar-${i}`}
+                    title={`${b.date}: ${b.count}`}
+                    aria-label={`${b.date}: ${b.count}`}
+                    style={{
+                      flex: 1,
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "flex-end",
+                    }}
+                  >
                     <div
-                      aria-label={`${b.date}: ${b.count}`}
-                      className="w-full rounded-t-[6px] bg-white/70"
-                      style={{ height: `${h}%` }}
+                      style={{
+                        width: "100%",
+                        height: `${h}%`,
+                        background: "rgba(255,255,255,0.75)",
+                        borderTopLeftRadius: 6,
+                        borderTopRightRadius: 6,
+                      }}
                     />
-                  </li>
+                  </div>
                 )
               })}
-            </ul>
+            </div>
           </div>
 
-          {/* labels */}
+          {/* подписи */}
           <div
-            className="mt-2 grid text-[10px] text-white/60"
-            style={{ gridTemplateColumns: `repeat(${buckets.length}, minmax(0,1fr))` }}
+            style={{
+              marginTop: 8,
+              display: "grid",
+              gridTemplateColumns: `repeat(${buckets.length}, minmax(0, 1fr))`,
+              fontSize: 10,
+              color: "rgba(255,255,255,0.7)",
+              gap: 0,
+            }}
           >
             {buckets.map((b, i) => (
-              <div key={`lbl-${i}`} className="text-center">
+              <div key={`lbl-${i}`} style={{ textAlign: "center" }}>
                 {i % labelStep === 0 ? b.date : ""}
               </div>
             ))}
@@ -184,4 +264,3 @@ export default function DashboardActivityChart() {
     </div>
   )
 }
-
