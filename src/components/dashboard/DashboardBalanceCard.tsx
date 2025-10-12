@@ -25,9 +25,18 @@ function fmtMoney(value: number, currency: string, locale: string) {
     return `${nf.format(value)}${NBSP}${currency}`
   } catch {
     const rounded = Math.round(value * 100) / 100
-    const s = (Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded)))
+    const s =
+      Math.round((Math.abs(rounded) % 1) * 100) !== 0 ? rounded.toFixed(2) : String(Math.trunc(rounded))
     return `${s}${NBSP}${currency}`
   }
+}
+
+// нормализуем мапу валют к UPPERCASE-ключам
+function upperMoneyMap(map?: Record<string, string | number | null>) {
+  const res: Record<string, string | number | null> = {}
+  if (!map) return res
+  for (const [k, v] of Object.entries(map)) res[(k || "").toUpperCase()] = v
+  return res
 }
 
 export default function DashboardBalanceCard() {
@@ -37,19 +46,19 @@ export default function DashboardBalanceCard() {
   const balance = useDashboardStore((s) => s.balance)
   const lastOrdered = useDashboardStore((s) => s.lastCurrenciesOrdered || [])
   const selected = useDashboardStore((s) => s.ui.balanceCurrencies)
-  const setSelected = useDashboardStore((s) => s.setBalanceCurrencies)
   const isLoading = useDashboardStore((s) => s.loading.balance || s.loading.global)
 
-  const iOweMap = balance?.i_owe ?? {}
-  const theyOweMap = balance?.they_owe_me ?? {}
+  // НОРМАЛИЗОВАННЫЕ мапы (ключи всегда UPPERCASE)
+  const iOwe = useMemo(() => upperMoneyMap(balance?.i_owe as any), [balance?.i_owe])
+  const theyOwe = useMemo(() => upperMoneyMap(balance?.they_owe_me as any), [balance?.they_owe_me])
 
   // валюты с ненулём
   const nonZero = useMemo(() => {
     const set = new Set<string>()
-    for (const [ccy, v] of Object.entries(iOweMap)) if (absAmount(v) > 0) set.add(ccy.toUpperCase())
-    for (const [ccy, v] of Object.entries(theyOweMap)) if (absAmount(v) > 0) set.add(ccy.toUpperCase())
+    for (const [ccy, v] of Object.entries(iOwe)) if (absAmount(v as any) > 0) set.add(ccy)
+    for (const [ccy, v] of Object.entries(theyOwe)) if (absAmount(v as any) > 0) set.add(ccy)
     return Array.from(set)
-  }, [iOweMap, theyOweMap])
+  }, [iOwe, theyOwe])
 
   const available = useMemo(() => {
     if (!nonZero.length) return []
@@ -57,13 +66,13 @@ export default function DashboardBalanceCard() {
     lastOrdered.forEach((c, i) => order.set((c || "").toUpperCase(), i))
     const [inLast, others] = nonZero.reduce<[string[], string[]]>(
       (acc, c) => {
-        if (order.has(c.toUpperCase())) acc[0].push(c)
+        if (order.has(c)) acc[0].push(c)
         else acc[1].push(c)
         return acc
       },
       [[], []]
     )
-    inLast.sort((a, b) => (order.get(a.toUpperCase())! - order.get(b.toUpperCase())!))
+    inLast.sort((a, b) => (order.get(a)! - order.get(b)!))
     others.sort()
     return [...inLast, ...others]
   }, [nonZero, lastOrdered])
@@ -92,22 +101,22 @@ export default function DashboardBalanceCard() {
   const leftLines = useMemo(() => {
     return active
       .map((c) => {
-        const v = absAmount((iOweMap as any)[c])
+        const v = absAmount(iOwe[c]) // ключи уже в UPPERCASE
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
       .filter(Boolean) as { c: string; text: string }[]
-  }, [active, iOweMap, locale])
+  }, [active, iOwe, locale])
 
   const rightLines = useMemo(() => {
     return active
       .map((c) => {
-        const v = absAmount((theyOweMap as any)[c])
+        const v = absAmount(theyOwe[c])
         if (v <= 0) return null
         return { c, text: fmtMoney(v, c, locale) }
       })
       .filter(Boolean) as { c: string; text: string }[]
-  }, [active, theyOweMap, locale])
+  }, [active, theyOwe, locale])
 
   return (
     <div
