@@ -1,385 +1,362 @@
 // src/store/dashboardStore.ts
+// STORE СОВМЕСТИМ С ТВОИМИ КОМПОНЕНТАМИ:
+// - error: объект (не null), есть поля .balance/.activity/.summary/.top/.frequent/.groups/.events
+// - loadActivity(period?), loadSummary(period?, currency?), loadTopCategories(period?), loadTopPartners(period?)
+// - остальные имена/поля как ожидалось компонентами
+
 import { create } from "zustand"
+import {
+  getDashboardBalance,
+  getDashboardLastCurrencies,
+  getDashboardRecentGroups,
+  getDashboardEvents,
+  getDashboardActivity,
+  getDashboardSummary,
+  getDashboardTopCategories,
+  getDashboardTopPartners,
+} from "../api/dashboardApi"
+import type {
+  DashboardBalance,
+  DashboardActivity,
+  DashboardSummaryOut,
+  TopCategoryItem,
+  TopPartnerItem,
+  RecentGroupCard,
+  EventFeedItem,
+  PeriodAll,
+  PeriodLTYear,
+} from "../types/dashboard"
 
-// --------- Типы (сжато под UI) ---------
-type BalanceMap = Record<string, string>
-
-export type DashboardBalance = {
-  i_owe: BalanceMap
-  they_owe_me: BalanceMap
-  last_currencies?: string[]
-}
-
-type ActivityBucket = { date: string; count: number }
-type DashboardActivity = { period: "week" | "month" | "year"; buckets: ActivityBucket[] }
-
-type DashboardSummary = {
-  period: "day" | "week" | "month" | "year"
-  currency: string
-  spent: string
-  avg_check: string
-  my_share: string
-}
-
-type RecentGroupCard = {
-  id: number
-  name: string
-  avatar_url?: string | null
-  my_balance_by_currency: Record<string, string>
-  last_event_at?: string | null
-}
-
-type TopCategoryItem = {
-  category_id: number
-  name?: string | null
-  sum: string
-  currency: string
-}
-
-type TopCategories = {
-  period: "week" | "month" | "year"
-  items: TopCategoryItem[]
-  total: number
-}
-
-type TopPartnerItem = {
-  user: {
-    id: number
-    first_name?: string | null
-    last_name?: string | null
-    username?: string | null
-    photo_url?: string | null
-  }
-  joint_expense_count: number
-  period: "week" | "month" | "year"
-}
-
-type EventFeedItem = {
-  id: number
-  type: string
-  created_at: string
-  title: string
-  subtitle?: string | null
-  icon: string
-  entity: Record<string, unknown>
-}
-
-// --------- Стор типы ---------
-type LoadingState = {
-  global: boolean
+type LoadingFlags = {
   balance: boolean
   activity: boolean
-  events: boolean
   summary: boolean
-  groups: boolean
   top: boolean
   frequent: boolean
+  groups: boolean
+  events: boolean
 }
 
-type ErrorState = Partial<{
-  global: string | null
-  balance: string | null
-  activity: string | null
-  events: string | null
-  summary: string | null
-  groups: string | null
-  top: string | null
-  frequent: string | null
-}>
+type ErrorMap = {
+  balance?: string
+  activity?: string
+  summary?: string
+  top?: string
+  frequent?: string
+  groups?: string
+  events?: string
+}
 
-export type DashboardState = {
-  loading: LoadingState
-  error: ErrorState
+type DashboardState = {
+  loading: LoadingFlags
+  error: ErrorMap // НЕ null
 
+  // данные
   balance: DashboardBalance | null
-  lastCurrenciesOrdered: string[]
-  ui: { balanceCurrencies: string[] }
-
-  activityPeriod: "week" | "month" | "year"
   activity: DashboardActivity | null
-
-  eventsFilter: string
-  events: EventFeedItem[] | null
-
-  summaryPeriod: "day" | "week" | "month" | "year"
-  summaryCurrency: string
+  summary: DashboardSummaryOut | null
+  topCategories: TopCategoryItem[]
+  frequentUsers: TopPartnerItem[]
+  groups: RecentGroupCard[]
+  events: EventFeedItem[]
   currenciesRecent: string[]
-  summary: DashboardSummary | null
 
-  groups: RecentGroupCard[] | null
+  // фильтры/периоды
+  activityPeriod: PeriodAll
+  summaryPeriod: PeriodAll
+  topCategoriesPeriod: PeriodLTYear
+  frequentPeriod: PeriodLTYear
+  summaryCurrency: string
+  eventsFilter: string
 
-  topCategoriesPeriod: "week" | "month" | "year"
-  topCategories: TopCategoryItem[] | null
+  // live
+  liveTimer: number | null
 
-  frequentPeriod: "week" | "month" | "year"
-  frequentUsers: TopPartnerItem[] | null
+  // методы
+  init: () => void
+  startLive: (ms?: number) => void
+  stopLive: () => void
 
-  init: () => Promise<void>
-  reloadBalance: () => Promise<void>
-  setBalanceCurrencies: (codes: string[]) => void
-  startLive: () => () => void
+  // balance
+  reloadBalance: (force?: boolean) => Promise<void>
 
-  setActivityPeriod: (p: "week" | "month" | "year") => void
-  loadActivity: (p?: "week" | "month" | "year") => Promise<void>
+  // activity
+  loadActivity: (period?: PeriodAll) => Promise<void>
+  setActivityPeriod: (p: PeriodAll) => void
 
+  // summary
+  loadSummary: (period?: PeriodAll, currency?: string) => Promise<void>
+  setSummaryPeriod: (p: PeriodAll) => void
+  setSummaryCurrency: (ccy: string) => void
+
+  // top categories
+  loadTopCategories: (period?: PeriodLTYear) => Promise<void>
+  setTopPeriod: (p: PeriodLTYear) => void
+
+  // top partners
+  loadTopPartners: (period?: PeriodLTYear) => Promise<void>
+  setFrequentPeriod: (p: PeriodLTYear) => void
+
+  // recent groups
+  loadRecentGroups: (limit?: number) => Promise<void>
+
+  // events
+  loadEvents: (limit?: number) => Promise<void>
   setEventsFilter: (f: string) => void
-  loadEvents: () => Promise<void>
-
-  setSummaryPeriod: (p: "day" | "week" | "month" | "year") => void
-  setSummaryCurrency: (c: string) => void
-  loadSummary: (p?: "day" | "week" | "month" | "year", c?: string) => Promise<void>
-
-  loadRecentGroups: () => Promise<void>
-
-  setTopPeriod: (p: "week" | "month" | "year") => void
-  loadTopCategories: (p?: "week" | "month" | "year") => Promise<void>
-
-  setFrequentPeriod: (p: "week" | "month" | "year") => void
-  loadTopPartners: (p?: "week" | "month" | "year") => Promise<void>
-
-  refreshAll: () => Promise<void>
 }
 
-// --------- Хелперы запроса (как в других разделах) ---------
-const BASE = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")
+const now = () => Date.now()
+const TTL_BALANCE = 15_000
+const TTL_DEFAULT = 60_000
 
-const tgInitData = (): string => {
-  try {
-    // @ts-ignore
-    return window?.Telegram?.WebApp?.initData || ""
-  } catch {
-    return ""
-  }
-}
+let lastAt: Partial<Record<keyof LoadingFlags, number>> = {}
 
-const GET = async <T,>(path: string): Promise<T> => {
-  const url = path.startsWith("http")
-    ? path
-    : `${BASE}${path.startsWith("/") ? "" : "/"}${path}`
-
-  // Антикашь + no-store
-  const withBust = `${url}${url.includes("?") ? "&" : "?"}_ts=${Date.now()}`
-  const headers: HeadersInit = {
-    Accept: "application/json",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-  }
-  const init = tgInitData()
-  if (init) (headers as any)["x-telegram-initdata"] = init
-
-  const res = await fetch(withBust, {
-    credentials: "include",
-    cache: "no-store",
-    headers,
-  })
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "")
-    throw new Error(`GET ${withBust} -> ${res.status} ${res.statusText}${txt ? `: ${txt}` : ""}`)
-  }
-  if (res.status === 204) return undefined as any
-  return res.json()
-}
-
-// --------- Стор ---------
 export const useDashboardStore = create<DashboardState>((set, get) => ({
-  loading: { global: false, balance: false, activity: false, events: false, summary: false, groups: false, top: false, frequent: false },
-  error: {},
+  loading: {
+    balance: false,
+    activity: false,
+    summary: false,
+    top: false,
+    frequent: false,
+    groups: false,
+    events: false,
+  },
+  error: {}, // не null
 
   balance: null,
-  lastCurrenciesOrdered: [],
-  ui: { balanceCurrencies: [] },
+  activity: null,
+  summary: null,
+  topCategories: [],
+  frequentUsers: [],
+  groups: [],
+  events: [],
+  currenciesRecent: [],
 
   activityPeriod: "month",
-  activity: null,
-
-  eventsFilter: "all",
-  events: null,
-
   summaryPeriod: "month",
-  summaryCurrency: "USD",
-  currenciesRecent: [],
-  summary: null,
-
-  groups: null,
-
   topCategoriesPeriod: "month",
-  topCategories: null,
-
   frequentPeriod: "month",
-  frequentUsers: null,
+  summaryCurrency: "",
+  eventsFilter: "all",
 
-  // BALANCE
-  setBalanceCurrencies: (codes) => {
-    set((s) => ({ ui: { ...s.ui, balanceCurrencies: codes.map((c) => (c || "").toUpperCase()) } }))
+  liveTimer: null,
+
+  init() {
+    // гарантируем первый заход
+    void get().reloadBalance(true)
+    void get().loadRecentGroups(10)
+    void get().loadEvents(20)
+
+    // подгружаем последние валюты и дефолт для summary
+    getDashboardLastCurrencies(2)
+      .then((ccys) => {
+        set({ currenciesRecent: ccys })
+        set((s) => ({ summaryCurrency: s.summaryCurrency || ccys[0] || "USD" }))
+      })
+      .catch(() => void 0)
   },
 
-  reloadBalance: async () => {
-    set((s) => ({ loading: { ...s.loading, balance: true }, error: { ...s.error, balance: null } }))
+  startLive(ms = 30_000) {
+    const prev = get().liveTimer
+    if (prev) window.clearInterval(prev)
+    const id = window.setInterval(() => {
+      void get().reloadBalance()
+    }, Math.max(5_000, ms))
+    set({ liveTimer: id })
+  },
+
+  stopLive() {
+    const id = get().liveTimer
+    if (id) window.clearInterval(id)
+    set({ liveTimer: null })
+  },
+
+  async reloadBalance(force = false) {
+    if (get().loading.balance) return
+    const ts = lastAt.balance ?? 0
+    if (!force && now() - ts < TTL_BALANCE) return
+    set((s) => ({ loading: { ...s.loading, balance: true }, error: { ...s.error, balance: "" } }))
     try {
-      const data = await GET<DashboardBalance>("/dashboard/balance")
-      set((s) => ({
-        balance: data,
-        lastCurrenciesOrdered: s.lastCurrenciesOrdered.length ? s.lastCurrenciesOrdered : (data.last_currencies ?? []),
-        loading: { ...s.loading, balance: false },
-        error: { ...s.error, balance: null },
-      }))
+      const data = await getDashboardBalance()
+      if (!data.last_currencies?.length) {
+        const cc = await getDashboardLastCurrencies(2).catch(() => [])
+        data.last_currencies = cc
+      }
+      set((s) => ({ balance: data, loading: { ...s.loading, balance: false } }))
+      lastAt.balance = now()
     } catch (e: any) {
       set((s) => ({
         loading: { ...s.loading, balance: false },
-        error: { ...s.error, balance: e?.message || "Error" },
+        error: { ...s.error, balance: e?.message || "Failed to load balance" },
       }))
     }
   },
 
-  init: async () => {
-    set((s) => ({ loading: { ...s.loading, global: true } }))
+  async loadActivity(periodArg?: PeriodAll) {
+    if (periodArg) {
+      set({ activityPeriod: periodArg })
+      lastAt.activity = 0
+    }
+    if (get().loading.activity) return
+    const ts = lastAt.activity ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+    const period = get().activityPeriod
+    set((s) => ({ loading: { ...s.loading, activity: true }, error: { ...s.error, activity: "" } }))
     try {
-      const last = await GET<string[]>("/dashboard/last-currencies?limit=2").catch(() => [])
-      await get().reloadBalance()
-
-      const defCurrency = (last?.[0] || get().summaryCurrency || "RUB").toUpperCase()
-
-      set((s) => ({
-        lastCurrenciesOrdered: last ?? [],
-        currenciesRecent: last ?? [],
-        summaryCurrency: defCurrency,
-        ui: {
-          ...s.ui,
-          balanceCurrencies: s.ui.balanceCurrencies.length
-            ? s.ui.balanceCurrencies
-            : (last ?? []).map((c) => (c || "").toUpperCase()),
-        },
-      }))
-
-      void get().loadActivity(get().activityPeriod)
-      void get().loadEvents()
-      void get().loadSummary(get().summaryPeriod, defCurrency)
-      void get().loadRecentGroups()
-      void get().loadTopCategories(get().topCategoriesPeriod)
-      void get().loadTopPartners(get().frequentPeriod)
-
-      set((s) => ({ loading: { ...s.loading, global: false } }))
+      const data = await getDashboardActivity({ period })
+      set((s) => ({ activity: data, loading: { ...s.loading, activity: false } }))
+      lastAt.activity = now()
     } catch (e: any) {
       set((s) => ({
-        loading: { ...s.loading, global: false },
-        error: { ...s.error, global: e?.message || "Error" },
+        loading: { ...s.loading, activity: false },
+        error: { ...s.error, activity: e?.message || "Failed to load activity" },
       }))
     }
   },
 
-  startLive: () => {
-    const refetch = () => { void get().reloadBalance() }
-
-    const onFocus = () => {
-      refetch()
-      void get().loadEvents()
-      void get().loadRecentGroups()
-    }
-    const onOnline = onFocus
-    const onVisibility = () => { if (!document.hidden) refetch() }
-
-    window.addEventListener("focus", onFocus)
-    window.addEventListener("online", onOnline)
-    document.addEventListener("visibilitychange", onVisibility)
-
-    const timer = window.setInterval(refetch, 15000)
-
-    return () => {
-      window.removeEventListener("focus", onFocus)
-      window.removeEventListener("online", onOnline)
-      document.removeEventListener("visibilitychange", onVisibility)
-      window.clearInterval(timer)
-    }
+  setActivityPeriod(p) {
+    set({ activityPeriod: p })
+    lastAt.activity = 0
+    void get().loadActivity()
   },
 
-  // ACTIVITY
-  setActivityPeriod: (p) => set({ activityPeriod: p }),
-  loadActivity: async (p) => {
-    const period = p ?? get().activityPeriod
-    set((s) => ({ loading: { ...s.loading, activity: true }, error: { ...s.error, activity: null } }))
+  async loadSummary(periodArg?: PeriodAll, currencyArg?: string) {
+    if (periodArg) set({ summaryPeriod: periodArg })
+    if (currencyArg) set({ summaryCurrency: currencyArg.toUpperCase?.() || currencyArg })
+
+    if (get().loading.summary) return
+    const ts = lastAt.summary ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+
+    const period = get().summaryPeriod
+    const currency = get().summaryCurrency || "USD"
+
+    set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: "" } }))
     try {
-      const data = await GET<DashboardActivity>(`/dashboard/activity?period=${period}`)
-      set((s) => ({ activity: data, activityPeriod: period, loading: { ...s.loading, activity: false } }))
+      const data = await getDashboardSummary({ period, currency })
+      set((s) => ({ summary: data, loading: { ...s.loading, summary: false } }))
+      lastAt.summary = now()
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, activity: false }, error: { ...s.error, activity: e?.message || "Error" } }))
+      set((s) => ({
+        loading: { ...s.loading, summary: false },
+        error: { ...s.error, summary: e?.message || "Failed to load summary" },
+      }))
     }
   },
 
-  // EVENTS
-  setEventsFilter: (f) => set({ eventsFilter: f }),
-  loadEvents: async () => {
-    set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: null } }))
+  setSummaryPeriod(p) {
+    set({ summaryPeriod: p })
+    lastAt.summary = 0
+    void get().loadSummary()
+  },
+
+  setSummaryCurrency(ccy) {
+    set({ summaryCurrency: ccy?.toUpperCase?.() || ccy })
+    lastAt.summary = 0
+    void get().loadSummary()
+  },
+
+  async loadTopCategories(periodArg?: PeriodLTYear) {
+    if (periodArg) {
+      set({ topCategoriesPeriod: periodArg })
+      lastAt.top = 0
+    }
+    if (get().loading.top) return
+    const ts = lastAt.top ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+    const period = get().topCategoriesPeriod
+
+    set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: "" } }))
     try {
-      const data = await GET<{ items: EventFeedItem[] }>("/dashboard/events")
-      set((s) => ({ events: data.items ?? [], loading: { ...s.loading, events: false } }))
+      const data = await getDashboardTopCategories({ period, limit: 50, offset: 0 })
+      set((s) => ({
+        topCategories: data.items || [],
+        loading: { ...s.loading, top: false },
+      }))
+      lastAt.top = now()
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, events: false }, error: { ...s.error, events: e?.message || "Error" } }))
+      set((s) => ({
+        loading: { ...s.loading, top: false },
+        error: { ...s.error, top: e?.message || "Failed to load top categories" },
+      }))
     }
   },
 
-  // SUMMARY
-  setSummaryPeriod: (p) => set({ summaryPeriod: p }),
-  setSummaryCurrency: (c) => set({ summaryCurrency: (c || "RUB").toUpperCase() }),
-  loadSummary: async (p, c) => {
-    const period = p ?? get().summaryPeriod
-    const currency = (c ?? get().summaryCurrency ?? "RUB").toUpperCase()
-    set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: null } }))
+  setTopPeriod(p) {
+    set({ topCategoriesPeriod: p })
+    lastAt.top = 0
+    void get().loadTopCategories()
+  },
+
+  async loadTopPartners(periodArg?: PeriodLTYear) {
+    if (periodArg) {
+      set({ frequentPeriod: periodArg })
+      lastAt.frequent = 0
+    }
+    if (get().loading.frequent) return
+    const ts = lastAt.frequent ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+    const period = get().frequentPeriod
+
+    set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: "" } }))
     try {
-      const data = await GET<DashboardSummary>(`/dashboard/summary?period=${period}&currency=${currency}`)
-      set((s) => ({ summary: data, summaryPeriod: period, summaryCurrency: currency, loading: { ...s.loading, summary: false } }))
+      const data = await getDashboardTopPartners({ period, limit: 20 })
+      set((s) => ({ frequentUsers: data || [], loading: { ...s.loading, frequent: false } }))
+      lastAt.frequent = now()
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, summary: false }, error: { ...s.error, summary: e?.message || "Error" } }))
+      set((s) => ({
+        loading: { ...s.loading, frequent: false },
+        error: { ...s.error, frequent: e?.message || "Failed to load top partners" },
+      }))
     }
   },
 
-  // GROUPS
-  loadRecentGroups: async () => {
-    set((s) => ({ loading: { ...s.loading, groups: true }, error: { ...s.error, groups: null } }))
+  setFrequentPeriod(p) {
+    set({ frequentPeriod: p })
+    lastAt.frequent = 0
+    void get().loadTopPartners()
+  },
+
+  async loadRecentGroups(limit = 10) {
+    if (get().loading.groups) return
+    const ts = lastAt.groups ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+
+    set((s) => ({ loading: { ...s.loading, groups: true }, error: { ...s.error, groups: "" } }))
     try {
-      const data = await GET<RecentGroupCard[]>("/dashboard/recent-groups?limit=10")
-      set((s) => ({ groups: data ?? [], loading: { ...s.loading, groups: false } }))
+      const data = await getDashboardRecentGroups(limit)
+      set((s) => ({ groups: data || [], loading: { ...s.loading, groups: false } }))
+      lastAt.groups = now()
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, groups: false }, error: { ...s.error, groups: e?.message || "Error" } }))
+      set((s) => ({
+        loading: { ...s.loading, groups: false },
+        error: { ...s.error, groups: e?.message || "Failed to load recent groups" },
+      }))
     }
   },
 
-  // TOP CATEGORIES
-  setTopPeriod: (p) => set({ topCategoriesPeriod: p }),
-  loadTopCategories: async (p) => {
-    const period = p ?? get().topCategoriesPeriod
-    set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: null } }))
+  async loadEvents(limit = 20) {
+    if (get().loading.events) return
+    const ts = lastAt.events ?? 0
+    if (now() - ts < TTL_DEFAULT) return
+
+    set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
-      const data = await GET<TopCategories>(`/dashboard/top-categories?period=${period}`)
-      set((s) => ({ topCategories: data?.items ?? [], topCategoriesPeriod: period, loading: { ...s.loading, top: false } }))
+      const feed = await getDashboardEvents(limit)
+      set((s) => ({
+        events: feed?.items || [],
+        loading: { ...s.loading, events: false },
+      }))
+      lastAt.events = now()
     } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, top: false }, error: { ...s.error, top: e?.message || "Error" } }))
+      set((s) => ({
+        loading: { ...s.loading, events: false },
+        error: { ...s.error, events: e?.message || "Failed to load events" },
+      }))
     }
   },
 
-  // TOP PARTNERS
-  setFrequentPeriod: (p) => set({ frequentPeriod: p }),
-  loadTopPartners: async (p) => {
-    const period = p ?? get().frequentPeriod
-    set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: null } }))
-    try {
-      const data = await GET<TopPartnerItem[]>(`/dashboard/top-partners?period=${period}`)
-      set((s) => ({ frequentUsers: data ?? [], frequentPeriod: period, loading: { ...s.loading, frequent: false } }))
-    } catch (e: any) {
-      set((s) => ({ loading: { ...s.loading, frequent: false }, error: { ...s.error, frequent: e?.message || "Error" } }))
-    }
-  },
-
-  // Helpers
-  refreshAll: async () => {
-    await Promise.allSettled([
-      get().reloadBalance(),
-      get().loadActivity(),
-      get().loadEvents(),
-      get().loadSummary(),
-      get().loadRecentGroups(),
-      get().loadTopCategories(),
-      get().loadTopPartners(),
-    ])
+  setEventsFilter(f) {
+    set({ eventsFilter: f })
   },
 }))
