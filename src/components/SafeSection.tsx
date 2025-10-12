@@ -6,15 +6,9 @@ type Props = {
   loading?: boolean
   error?: string | null
   onRetry?: () => void | Promise<void>
-
-  /** Правый слот в заголовке (синонимы: controls | right) */
   right?: React.ReactNode
   controls?: React.ReactNode
-
-  /** Растянуть на всю ширину контейнера */
   fullWidth?: boolean
-
-  /** Поддерживаем и render-prop, и обычные узлы */
   children?: React.ReactNode | (() => React.ReactNode)
 }
 
@@ -61,7 +55,8 @@ export default function SafeSection({
       ) : loading ? (
         <div className="text-sm opacity-80">Загрузка…</div>
       ) : (
-        <>{content}</>
+        // КРИТИЧНО: всегда ровно один корневой узел
+        <div>{content}</div>
       )}
     </div>
   )

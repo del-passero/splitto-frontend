@@ -62,16 +62,20 @@ export default function DashboardActivityChart() {
       onRetry={() => load(period)}
     >
       {() => (
-        <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={Array.isArray(data) ? data : []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="currentColor" dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        // ЕДИНЫЙ контейнер для всего содержимого
+        <div className="w-full">
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={Array.isArray(data) ? data : []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="currentColor" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
           {!loading && (!data || data.length === 0) ? (
             <div className="opacity-60 text-sm mt-2">Пока нет активности за выбранный период</div>
           ) : null}
