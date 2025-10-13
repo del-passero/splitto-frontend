@@ -2,6 +2,8 @@
 // Совместимо с текущей структурой проекта (папка /components/dashboard)
 
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
 
 function mapKV(rec: Record<string, string>): Array<{ ccy: string; amt: string }> {
@@ -15,6 +17,31 @@ function parseAmtToNumber(input: string | number | null | undefined): number {
   const s = String(input).trim().replace(/\s+/g, "").replace(",", ".")
   const n = Number(s)
   return isFinite(n) ? n : 0
+}
+
+const nbsp = "\u00A0"
+/** Форматирование как в GroupBalanceTabSmart: 22 → "22 CCY", 22.30 → "22.30 CCY" */
+function fmtAmountSmart(value: number, currency: string, locale?: string) {
+  try {
+    const nfCurrency = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+    })
+    const parts = nfCurrency.formatToParts(Math.abs(value))
+    const fractionPart = parts.find((p) => p.type === "fraction")
+    const hasCents = !!fractionPart && Number(fractionPart.value) !== 0
+    const nfNumber = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: hasCents ? 2 : 0,
+      useGrouping: true,
+    })
+    return `${nfNumber.format(value)}${nbsp}${currency}`
+  } catch {
+    const rounded = Math.round(value * 100) / 100
+    const hasCents = Math.round((Math.abs(rounded) % 1) * 100) !== 0
+    return `${hasCents ? rounded.toFixed(2) : Math.trunc(rounded)}${nbsp}${currency}`
+  }
 }
 
 /** Сортируем валюты: сначала те, что встречаются в last_currencies (от самой новой к старой), затем остальные по алфавиту */
@@ -37,6 +64,9 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
 }
 
 const DashboardBalanceCard = () => {
+  const { i18n } = useTranslation()
+  const locale = (i18n.language || "ru").split("-")[0]
+
   const loading = useDashboardStore((s) => s.loading.balance)
   const balance = useDashboardStore((s) => s.balance)
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
@@ -80,18 +110,12 @@ const DashboardBalanceCard = () => {
 
   // Состояние выбранных валют (обеспечиваем минимум 1)
   const [activeCcys, setActiveCcys] = useState<Set<string>>(new Set(defaultSelected))
-  // Сбрасываем выбор, если набор доступных валют поменялся (сохраняем UX: не трогаем при обычном обновлении сумм)
+  // Сбрасываем выбор, если набор доступных валют поменялся
   useEffect(() => {
-    const keyNow = sortedDebtCcys.join("|")
-    // Если активные валюты отсутствуют среди доступных — пересоздаём выбор по умолчанию
     const allContain = [...activeCcys].every((c) => sortedDebtCcys.includes(c))
     if (!allContain || activeCcys.size === 0) {
       setActiveCcys(new Set(defaultSelected))
-      return
     }
-    // Если, например, стало доступно меньше валют: гарантируем минимум 1 в пределах доступного
-    if (activeCcys.size > 0) return
-    setActiveCcys(new Set(defaultSelected))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedDebtCcys.join("|")])
 
@@ -99,10 +123,7 @@ const DashboardBalanceCard = () => {
     setActiveCcys((prev) => {
       const next = new Set(prev)
       if (next.has(ccy)) {
-        if (next.size === 1) {
-          // минимум 1 чип всегда включён — игнорируем попытку выключить последний
-          return prev
-        }
+        if (next.size === 1) return prev // минимум 1 чип всегда включён
         next.delete(ccy)
       } else {
         next.add(ccy)
@@ -111,9 +132,9 @@ const DashboardBalanceCard = () => {
     })
   }
 
-  // Фильтруем вывод по активным валютам (если чипов нет, не фильтруем — но чипов нет только когда долгов нет)
+  // Фильтрация по активным валютам (когда долгов нет — без чипов и без фильтра)
   const theyOweFiltered = useMemo(() => {
-    if (!sortedDebtCcys.length) return theyOwe // долгов нет — поведение как раньше
+    if (!sortedDebtCcys.length) return theyOwe
     return theyOwe.filter((x) => activeCcys.has(x.ccy))
   }, [theyOwe, activeCcys, sortedDebtCcys])
 
@@ -124,11 +145,17 @@ const DashboardBalanceCard = () => {
 
   return (
     <div className="rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)]">
-      <div className="text-sm opacity-70 mb-2">Баланс по всем активным группам</div>
+      {/* Заголовок: стиль как у лейбла groups_count (мелкий, hint-color) */}
+      <div className="mb-2 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">
+        Баланс по всем активным группам
+      </div>
 
-      {/* Чипы-фильтры: показываем только если есть валюта с долгами и не идёт загрузка */}
+      {/* Чипы-фильтры: одна строка, горизонтальный скролл */}
       {!loading && sortedDebtCcys.length > 0 ? (
-        <div className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div
+          className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {sortedDebtCcys.map((ccy) => {
             const active = activeCcys.has(ccy)
             return (
@@ -154,50 +181,70 @@ const DashboardBalanceCard = () => {
       {loading ? (
         <div className="text-sm opacity-80">Загрузка…</div>
       ) : (
+        // Меняем местами: СЛЕВА — "Я должен" (красные), СПРАВА — "Мне должны" (зелёные)
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs opacity-60 mb-1">Мне должны</div>
-            {theyOweFiltered.length === 0 ? (
-              <div className="text-sm opacity-70">—</div>
-            ) : (
-              <div className="flex flex-wrap gap-1">
-                {theyOweFiltered.map((x) => (
-                  <span
-                    key={`to-me-${x.ccy}`}
-                    className="px-2 py-1 text-sm rounded-full border border-white/10"
-                  >
-                    {x.amt} {x.ccy}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
+          {/* Я должен */}
           <div>
             <div className="text-xs opacity-60 mb-1">Я должен</div>
             {iOweFiltered.length === 0 ? (
               <div className="text-sm opacity-70">—</div>
             ) : (
-              <div className="flex flex-wrap gap-1">
-                {iOweFiltered.map((x) => (
-                  <span
-                    key={`i-owe-${x.ccy}`}
-                    className="px-2 py-1 text-sm rounded-full border border-white/10"
-                  >
-                    {x.amt} {x.ccy}
-                  </span>
-                ))}
+              <div className="flex flex-col gap-1">
+                {iOweFiltered.map((x) => {
+                  const num = parseAmtToNumber(x.amt)
+                  if (!isFinite(num) || num === 0) return null
+                  return (
+                    <div key={`i-owe-${x.ccy}`} className="flex items-center gap-1">
+                      <ArrowRight
+                        size={14}
+                        style={{ color: "var(--tg-destructive-text,#d7263d)" }}
+                        aria-hidden
+                      />
+                      <span
+                        className="text-[14px] font-semibold"
+                        style={{ color: "var(--tg-destructive-text,#d7263d)" }}
+                      >
+                        {fmtAmountSmart(num, x.ccy, locale)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Мне должны */}
+          <div>
+            <div className="text-xs opacity-60 mb-1">Мне должны</div>
+            {theyOweFiltered.length === 0 ? (
+              <div className="text-sm opacity-70">—</div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {theyOweFiltered.map((x) => {
+                  const num = parseAmtToNumber(x.amt)
+                  if (!isFinite(num) || num === 0) return null
+                  return (
+                    <div key={`to-me-${x.ccy}`} className="flex items-center gap-1">
+                      <ArrowLeft
+                        size={14}
+                        style={{ color: "var(--tg-success-text,#1aab55)" }}
+                        aria-hidden
+                      />
+                      <span
+                        className="text-[14px] font-semibold"
+                        style={{ color: "var(--tg-success-text,#1aab55)" }}
+                      >
+                        {fmtAmountSmart(num, x.ccy, locale)}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
         </div>
       )}
-
-      {balance?.last_currencies?.length ? (
-        <div className="mt-3 text-xs opacity-60">
-          Последние валюты: {balance.last_currencies.join(", ")}
-        </div>
-      ) : null}
+      {/* Нижнюю строку "Последние валюты: ..." убрали по ТЗ */}
     </div>
   )
 }
