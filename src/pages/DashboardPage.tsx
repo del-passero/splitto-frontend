@@ -1,6 +1,5 @@
 // src/pages/DashboardPage.tsx
 import { useEffect } from "react"
-import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../store/dashboardStore"
 
 import MainLayout from "../layouts/MainLayout"
@@ -17,8 +16,6 @@ import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
 
 const DashboardPage = () => {
-  const { t } = useTranslation()
-
   const init = useDashboardStore((s) => s.init)
   const startLive = useDashboardStore((s) => s.startLive)
   const stopLive = useDashboardStore((s) => s.stopLive)
@@ -58,38 +55,34 @@ const DashboardPage = () => {
         <DashboardBalanceCard />
       </CardSection>
 
-      {/* 2) Недавние группы */}
-      <WidgetBoundary name={t("dashboard.recent_groups") || "Последние активные группы"}>
-        <RecentGroupsCarousel />
-      </WidgetBoundary>
+      {/* 2) Недавние группы — свой CardSection и заголовок уже внутри компонента */}
+      <RecentGroupsCarousel />
 
       {/* 3) Активность + Сводка */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name={t("dashboard.activity") || "Активность"}>
+        <WidgetBoundary name="Активность">
           <DashboardActivityChart />
         </WidgetBoundary>
-        <WidgetBoundary name={t("dashboard.spent") || "Сводка"}>
+        <WidgetBoundary name="Сводка">
           <DashboardSummaryCard />
         </WidgetBoundary>
       </div>
 
       {/* 4) Топ категорий */}
-      <WidgetBoundary name={t("dashboard.top_categories") || "Топ категорий"}>
+      <WidgetBoundary name="Топ категорий">
         <TopCategoriesCard />
       </WidgetBoundary>
 
-      {/* 5) Часто делю расходы + Недавние группы (карусель партнёров и др.) */}
+      {/* 5) Часто делю расходы + Недавние группы (вторую карусель убрали, чтобы не дублировать) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name={t("dashboard.top_partners") || "Часто делю расходы"}>
+        <WidgetBoundary name="Часто делю расходы">
           <TopPartnersCarousel />
         </WidgetBoundary>
-        <WidgetBoundary name={t("dashboard.recent_groups") || "Последние активные группы"}>
-          <RecentGroupsCarousel />
-        </WidgetBoundary>
+        {/* место под другой виджет при желании */}
       </div>
 
       {/* 6) Лента событий */}
-      <WidgetBoundary name={t("dashboard.events_feed") || "Лента событий"}>
+      <WidgetBoundary name="Лента событий">
         <DashboardEventsFeed />
       </WidgetBoundary>
     </MainLayout>

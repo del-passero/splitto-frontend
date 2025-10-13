@@ -438,4 +438,8 @@ export default {
   recent_groups_empty_title: "No recent groups",
   recent_groups_empty_desc: "Create a new group or open the groups list",
 
+  // --- Square tile button ---
+  all_groups: "ALL GROUPS",
+
+
 }
