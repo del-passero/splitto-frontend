@@ -1,5 +1,5 @@
 // src/pages/DashboardPage.tsx
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useDashboardStore } from "../store/dashboardStore"
 
 import MainLayout from "../layouts/MainLayout"
@@ -14,6 +14,9 @@ import TopCategoriesCard from "../components/dashboard/TopCategoriesCard"
 import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
 import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
+
+import { useGroupsStore } from "../store/groupsStore"
+import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
 
 const DashboardPage = () => {
   const init = useDashboardStore((s) => s.init)
@@ -33,6 +36,10 @@ const DashboardPage = () => {
   const loadRecentGroups = useDashboardStore((s) => s.loadRecentGroups)
   const loadEvents = useDashboardStore((s) => s.loadEvents)
 
+  const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? [])
+
+  const [createTxOpen, setCreateTxOpen] = useState(false)
+
   useEffect(() => {
     init()
     // первичная догрузка (TTL в сторе защитит от дублей)
@@ -51,7 +58,7 @@ const DashboardPage = () => {
   return (
     <MainLayout>
       <CardSection noPadding>
-        <DashboardBalanceCard />
+        <DashboardBalanceCard onAddTransaction={() => setCreateTxOpen(true)} />
       </CardSection>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -79,6 +86,18 @@ const DashboardPage = () => {
       <WidgetBoundary name="Лента событий">
         <DashboardEventsFeed />
       </WidgetBoundary>
+
+      {/* Модалка «Добавить транзакцию» */}
+      <CreateTransactionModal
+        open={createTxOpen}
+        onOpenChange={setCreateTxOpen}
+        groups={(groups ?? []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          color: g.color,
+        }))}
+      />
     </MainLayout>
   )
 }

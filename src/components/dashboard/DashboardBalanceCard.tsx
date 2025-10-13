@@ -3,9 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, ArrowRight } from "lucide-react"
+import { ArrowLeft, ArrowRight, PartyPopper, HandCoins } from "lucide-react"
 import CardSection from "../CardSection"
 import { useDashboardStore } from "../../store/dashboardStore"
+
+type Props = {
+  onAddTransaction?: () => void
+}
 
 function mapKV(rec: Record<string, string>): Array<{ ccy: string; amt: string }> {
   return Object.entries(rec || {}).map(([ccy, amt]) => ({ ccy, amt }))
@@ -67,7 +71,7 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
 /** Единый компаратор для отображения списков долгов в обеих колонках */
 const compareDebts = (a: { ccy: string }, b: { ccy: string }) => a.ccy.localeCompare(b.ccy)
 
-const DashboardBalanceCard = () => {
+const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
@@ -183,6 +187,8 @@ const DashboardBalanceCard = () => {
   const theyOweSorted = useMemo(() => [...theyOweFiltered].sort(compareDebts), [theyOweFiltered])
   const iOweSorted = useMemo(() => [...iOweFiltered].sort(compareDebts), [iOweFiltered])
 
+  const noDebts = !loading && theyOweSorted.length === 0 && iOweSorted.length === 0
+
   return (
     <CardSection noPadding>
       {/* Внутренний box с рамкой и скруглением (как у GroupCard) */}
@@ -231,7 +237,39 @@ const DashboardBalanceCard = () => {
           <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
             {t("loading")}
           </div>
+        ) : noDebts ? (
+          // ===== ПУСТОЕ СОСТОЯНИЕ (вариант B) =====
+          <div
+            className="flex flex-col items-center justify-center text-center py-6"
+            role="status"
+            aria-live="polite"
+          >
+            <PartyPopper size={40} style={{ color: "var(--tg-accent-color,#40A7E3)" }} aria-hidden />
+            <div className="mt-2 text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
+              {t("dashboard_balance_zero_title")}
+            </div>
+            <div className="mt-1 text-[13px]" style={{ color: "var(--tg-hint-color)" }}>
+              {t("dashboard_balance_zero_desc")}
+            </div>
+
+            {onAddTransaction ? (
+              <button
+                type="button"
+                onClick={onAddTransaction}
+                className="mt-3 h-10 px-4 rounded-xl font-semibold active:scale-95 transition inline-flex items-center gap-2"
+                style={{
+                  background: "var(--tg-accent-color,#40A7E3)",
+                  color: "white",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                }}
+              >
+                <HandCoins size={18} />
+                {t("add_transaction")}
+              </button>
+            ) : null}
+          </div>
         ) : (
+          // ===== ОСНОВНОЕ СОСТОЯНИЕ =====
           // СЛЕВА — "Я должен" (красные, БЕЗ минуса), СПРАВА — "Мне должны" (зелёные)
           <div className="grid grid-cols-2 gap-3">
             {/* Я должен */}
