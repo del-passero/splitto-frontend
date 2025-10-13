@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight } from "lucide-react"
+import CardSection from "../CardSection"
 import { useDashboardStore } from "../../store/dashboardStore"
 
 function mapKV(rec: Record<string, string>): Array<{ ccy: string; amt: string }> {
@@ -44,7 +45,7 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Сортируем валюты: сначала те, что встречаются в last_currencies (от самой новой к старой), затем остальные по алфавиту */
+/** Сортировка валют по recency: сначала последние использованные (от самой новой к старой), затем остальные по алфавиту */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
   if (!ccys.length) return []
   const order = new Map<string, number>()
@@ -63,21 +64,45 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
   })
 }
 
+/** Единый компаратор для отображения списков долгов в обеих колонках */
+const compareDebts = (a: { ccy: string }, b: { ccy: string }) => a.ccy.localeCompare(b.ccy)
+
 const DashboardBalanceCard = () => {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  const loading = useDashboardStore((s) => s.loading.balance)
-  const balance = useDashboardStore((s) => s.balance)
-  const reloadBalance = useDashboardStore((s) => s.reloadBalance)
+  // --- СНАПШОТ СТОРА, чтобы карточка не «дёргалась» от live-обновлений ---
+  const [snap, setSnap] = useState(() => {
+    const st = (useDashboardStore as any).getState?.() || {}
+    return { loading: !!st.loading?.balance, balance: st.balance }
+  })
 
   useEffect(() => {
-    const onVis = () => {
-      if (!document.hidden) void reloadBalance()
+    let frozen = false
+    // Одноаргументный subscribe (типизирован как (listener) => Unsubscribe)
+    const unsub: (() => void) =
+      (useDashboardStore as any).subscribe?.((s: any) => {
+        if (frozen) return
+        const next = { loading: !!s.loading?.balance, balance: s.balance }
+        setSnap(next)
+        // После первой успешной загрузки отписываемся — карточка больше не обновляется «в фоне»
+        if (!next.loading) {
+          frozen = true
+          try {
+            unsub && unsub()
+          } catch {}
+        }
+      }) || (() => {})
+
+    return () => {
+      try {
+        unsub && unsub()
+      } catch {}
     }
-    document.addEventListener("visibilitychange", onVis)
-    return () => document.removeEventListener("visibilitychange", onVis)
-  }, [reloadBalance])
+  }, [])
+
+  const loading = snap.loading
+  const balance = snap.balance
 
   const theyOwe = useMemo(() => mapKV(balance?.they_owe_me || {}), [balance])
   const iOwe = useMemo(() => mapKV(balance?.i_owe || {}), [balance])
@@ -110,7 +135,7 @@ const DashboardBalanceCard = () => {
 
   // Состояние выбранных валют (обеспечиваем минимум 1)
   const [activeCcys, setActiveCcys] = useState<Set<string>>(new Set(defaultSelected))
-  // Сбрасываем выбор, если набор доступных валют поменялся
+  // Если набор валют изменился — пересоберём выбор
   useEffect(() => {
     const allContain = [...activeCcys].every((c) => sortedDebtCcys.includes(c))
     if (!allContain || activeCcys.size === 0) {
@@ -143,116 +168,129 @@ const DashboardBalanceCard = () => {
     return iOwe.filter((x) => activeCcys.has(x.ccy))
   }, [iOwe, activeCcys, sortedDebtCcys])
 
+  // ЕДИНАЯ сортировка содержимого колонок
+  const theyOweSorted = useMemo(() => [...theyOweFiltered].sort(compareDebts), [theyOweFiltered])
+  const iOweSorted = useMemo(() => [...iOweFiltered].sort(compareDebts), [iOweFiltered])
+
   return (
-    <div className="rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)]">
-      {/* Заголовок: ИДЕНТИЧНО по размеру/цвету лейблу groups_count (жёстко стилем, чтобы не перебивалось) */}
-      <div
-        className="mb-2"
-        style={{
-          fontSize: "12px",
-          lineHeight: "14px",
-          color: "var(--tg-hint-color)",
-        }}
-      >
-        Баланс по всем активным группам
-      </div>
-
-      {/* Чипы-фильтры: одна строка, горизонтальный скролл */}
-      {!loading && sortedDebtCcys.length > 0 ? (
+    <CardSection noPadding>
+      {/* Внутренний контейнер с тем же вертикальным отступом, без горизонтальных */}
+      <div className="py-2">
+        {/* Заголовок: маленький label как у groups_count */}
         <div
-          className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
-          style={{ WebkitOverflowScrolling: "touch" }}
+          className="mb-2"
+          style={{ fontSize: "12px", lineHeight: "14px", color: "var(--tg-hint-color)" }}
         >
-          {sortedDebtCcys.map((ccy) => {
-            const active = activeCcys.has(ccy)
-            return (
-              <button
-                key={`ccy-chip-${ccy}`}
-                type="button"
-                onClick={() => toggleCcy(ccy)}
-                className={[
-                  "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
-                  active
-                    ? "bg-[var(--tg-link-color,#2481CC)] text-white"
-                    : "bg-transparent border border-white/10 text-[var(--tg-theme-text-color,#fff)]/80",
-                ].join(" ")}
-                aria-pressed={active}
-              >
-                {ccy}
-              </button>
-            )
-          })}
+          {t("dashboard_balance_title")}
         </div>
-      ) : null}
 
-      {loading ? (
-        <div className="text-sm opacity-80">Загрузка…</div>
-      ) : (
-        // СЛЕВА — "Я должен" (красные, БЕЗ минуса), СПРАВА — "Мне должны" (зелёные)
-        <div className="grid grid-cols-2 gap-3">
-          {/* Я должен */}
-          <div>
-            <div className="text-xs opacity-60 mb-1">Я должен</div>
-            {iOweFiltered.length === 0 ? (
-              <div className="text-sm opacity-70">—</div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {iOweFiltered.map((x) => {
-                  const num = parseAmtToNumber(x.amt)
-                  if (!isFinite(num) || num === 0) return null
-                  return (
-                    <div key={`i-owe-${x.ccy}`} className="flex items-center gap-1">
-                      <ArrowRight
-                        size={14}
-                        style={{ color: "var(--tg-destructive-text,#d7263d)" }}
-                        aria-hidden
-                      />
-                      <span
-                        className="text-[14px] font-semibold"
-                        style={{ color: "var(--tg-destructive-text,#d7263d)" }}
-                      >
-                        {fmtAmountSmart(Math.abs(num), x.ccy, locale)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+        {/* Чипы-фильтры: одна строка, горизонтальный скролл; цвета Telegram */}
+        {!loading && sortedDebtCcys.length > 0 ? (
+          <div
+            className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            {sortedDebtCcys.map((ccy) => {
+              const active = activeCcys.has(ccy)
+              return (
+                <button
+                  key={`ccy-chip-${ccy}`}
+                  type="button"
+                  onClick={() => toggleCcy(ccy)}
+                  className={[
+                    "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
+                    active
+                      ? "bg-[var(--tg-link-color,#2481CC)] text-white"
+                      : "bg-transparent text-[var(--tg-text-color)]/80 border",
+                  ].join(" ")}
+                  style={!active ? { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" } : undefined}
+                  aria-pressed={active}
+                >
+                  {ccy}
+                </button>
+              )
+            })}
           </div>
+        ) : null}
 
-          {/* Мне должны */}
-          <div>
-            <div className="text-xs opacity-60 mb-1">Мне должны</div>
-            {theyOweFiltered.length === 0 ? (
-              <div className="text-sm opacity-70">—</div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {theyOweFiltered.map((x) => {
-                  const num = parseAmtToNumber(x.amt)
-                  if (!isFinite(num) || num === 0) return null
-                  return (
-                    <div key={`to-me-${x.ccy}`} className="flex items-center gap-1">
-                      <ArrowLeft
-                        size={14}
-                        style={{ color: "var(--tg-success-text,#1aab55)" }}
-                        aria-hidden
-                      />
-                      <span
-                        className="text-[14px] font-semibold"
-                        style={{ color: "var(--tg-success-text,#1aab55)" }}
-                      >
-                        {fmtAmountSmart(num, x.ccy, locale)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+        {loading ? (
+          <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
+            {t("loading")}
           </div>
-        </div>
-      )}
-      {/* Нижнюю строку "Последние валюты: ..." ранее убрали по ТЗ */}
-    </div>
+        ) : (
+          // СЛЕВА — "Я должен" (красные, БЕЗ минуса), СПРАВА — "Мне должны" (зелёные)
+          <div className="grid grid-cols-2 gap-3">
+            {/* Я должен */}
+            <div>
+              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">
+                {t("i_owe")}
+              </div>
+              {iOweSorted.length === 0 ? (
+                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">
+                  —
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {iOweSorted.map((x) => {
+                    const num = parseAmtToNumber(x.amt)
+                    if (!isFinite(num) || num === 0) return null
+                    return (
+                      <div key={`i-owe-${x.ccy}`} className="flex items-center gap-1">
+                        <ArrowRight
+                          size={14}
+                          style={{ color: "var(--tg-destructive-text,#d7263d)" }}
+                          aria-hidden
+                        />
+                        <span
+                          className="text-[14px] font-semibold"
+                          style={{ color: "var(--tg-destructive-text,#d7263d)" }}
+                        >
+                          {fmtAmountSmart(Math.abs(num), x.ccy, locale)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Мне должны */}
+            <div>
+              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">
+                {t("they_owe_me")}
+              </div>
+              {theyOweSorted.length === 0 ? (
+                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">
+                  —
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {theyOweSorted.map((x) => {
+                    const num = parseAmtToNumber(x.amt)
+                    if (!isFinite(num) || num === 0) return null
+                    return (
+                      <div key={`to-me-${x.ccy}`} className="flex items-center gap-1">
+                        <ArrowLeft
+                          size={14}
+                          style={{ color: "var(--tg-success-text,#1aab55)" }}
+                          aria-hidden
+                        />
+                        <span
+                          className="text-[14px] font-semibold"
+                          style={{ color: "var(--tg-success-text,#1aab55)" }}
+                        >
+                          {fmtAmountSmart(num, x.ccy, locale)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </CardSection>
   )
 }
 
