@@ -145,8 +145,15 @@ const DashboardBalanceCard = () => {
 
   return (
     <div className="rounded-2xl shadow p-3 bg-[var(--tg-card-bg,#1f1f1f)]">
-      {/* Заголовок: цвет/размер как у groups_count */}
-      <div className="mb-2 text-[13px] leading-[16px] text-[var(--tg-hint-color)]">
+      {/* Заголовок: ИДЕНТИЧНО по размеру/цвету лейблу groups_count (жёстко стилем, чтобы не перебивалось) */}
+      <div
+        className="mb-2"
+        style={{
+          fontSize: "12px",
+          lineHeight: "14px",
+          color: "var(--tg-hint-color)",
+        }}
+      >
         Баланс по всем активным группам
       </div>
 
@@ -181,7 +188,7 @@ const DashboardBalanceCard = () => {
       {loading ? (
         <div className="text-sm opacity-80">Загрузка…</div>
       ) : (
-        // СЛЕВА — "Я должен" (красные, без минуса), СПРАВА — "Мне должны" (зелёные)
+        // СЛЕВА — "Я должен" (красные, БЕЗ минуса), СПРАВА — "Мне должны" (зелёные)
         <div className="grid grid-cols-2 gap-3">
           {/* Я должен */}
           <div>
@@ -244,7 +251,7 @@ const DashboardBalanceCard = () => {
           </div>
         </div>
       )}
-      {/* Нижнюю строку "Последние валюты: ..." убрали по ТЗ */}
+      {/* Нижнюю строку "Последние валюты: ..." ранее убрали по ТЗ */}
     </div>
   )
 }
