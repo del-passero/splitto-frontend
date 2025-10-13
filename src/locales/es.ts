@@ -434,5 +434,9 @@ export default {
   dashboard_balance_title: "Balance de todos los grupos activos",
   dashboard_balance_zero_title: "Sin deudas",
   dashboard_balance_zero_desc: "Agrega gastos para ver tu balance",
+  
+    // --- Grupos recientes (estado vacío) ---
+  recent_groups_empty_title: "No hay grupos recientes",
+  recent_groups_empty_desc: "Crea un grupo nuevo o abre la lista de grupos",
 
 }

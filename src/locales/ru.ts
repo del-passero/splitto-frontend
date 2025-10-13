@@ -433,5 +433,9 @@ export default {
   dashboard_balance_title: "Баланс по всем активным группам",
   dashboard_balance_zero_title: "Долгов нет",
   dashboard_balance_zero_desc: "Добавьте траты, чтобы увидеть баланс",
+  
+    // --- Недавние группы (пустое состояние) ---
+  recent_groups_empty_title: "Недавних групп нет",
+  recent_groups_empty_desc: "Создайте новую группу или откройте список групп",
 
 }

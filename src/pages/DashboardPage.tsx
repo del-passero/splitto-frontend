@@ -1,5 +1,6 @@
 // src/pages/DashboardPage.tsx
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { useDashboardStore } from "../store/dashboardStore"
 
 import MainLayout from "../layouts/MainLayout"
@@ -15,10 +16,9 @@ import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
 import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
 
-import { useGroupsStore } from "../store/groupsStore"
-import CreateTransactionModal from "../components/transactions/CreateTransactionModal"
-
 const DashboardPage = () => {
+  const { t } = useTranslation()
+
   const init = useDashboardStore((s) => s.init)
   const startLive = useDashboardStore((s) => s.startLive)
   const stopLive = useDashboardStore((s) => s.stopLive)
@@ -35,10 +35,6 @@ const DashboardPage = () => {
   const loadTopPartners = useDashboardStore((s) => s.loadTopPartners)
   const loadRecentGroups = useDashboardStore((s) => s.loadRecentGroups)
   const loadEvents = useDashboardStore((s) => s.loadEvents)
-
-  const groups = useGroupsStore((s: { groups: any[] }) => s.groups ?? [])
-
-  const [createTxOpen, setCreateTxOpen] = useState(false)
 
   useEffect(() => {
     init()
@@ -57,47 +53,45 @@ const DashboardPage = () => {
 
   return (
     <MainLayout>
+      {/* 1) Баланс */}
       <CardSection noPadding>
-        <DashboardBalanceCard onAddTransaction={() => setCreateTxOpen(true)} />
+        <DashboardBalanceCard />
       </CardSection>
 
+      {/* 2) Недавние группы */}
+      <WidgetBoundary name={t("dashboard.recent_groups") || "Последние активные группы"}>
+        <RecentGroupsCarousel />
+      </WidgetBoundary>
+
+      {/* 3) Активность + Сводка */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name="Активность">
+        <WidgetBoundary name={t("dashboard.activity") || "Активность"}>
           <DashboardActivityChart />
         </WidgetBoundary>
-        <WidgetBoundary name="Сводка">
+        <WidgetBoundary name={t("dashboard.spent") || "Сводка"}>
           <DashboardSummaryCard />
         </WidgetBoundary>
       </div>
 
-      <WidgetBoundary name="Топ категорий">
+      {/* 4) Топ категорий */}
+      <WidgetBoundary name={t("dashboard.top_categories") || "Топ категорий"}>
         <TopCategoriesCard />
       </WidgetBoundary>
 
+      {/* 5) Часто делю расходы + Недавние группы (карусель партнёров и др.) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name="Часто делю расходы">
+        <WidgetBoundary name={t("dashboard.top_partners") || "Часто делю расходы"}>
           <TopPartnersCarousel />
         </WidgetBoundary>
-        <WidgetBoundary name="Недавние группы">
+        <WidgetBoundary name={t("dashboard.recent_groups") || "Последние активные группы"}>
           <RecentGroupsCarousel />
         </WidgetBoundary>
       </div>
 
-      <WidgetBoundary name="Лента событий">
+      {/* 6) Лента событий */}
+      <WidgetBoundary name={t("dashboard.events_feed") || "Лента событий"}>
         <DashboardEventsFeed />
       </WidgetBoundary>
-
-      {/* Модалка «Добавить транзакцию» */}
-      <CreateTransactionModal
-        open={createTxOpen}
-        onOpenChange={setCreateTxOpen}
-        groups={(groups ?? []).map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          icon: g.icon,
-          color: g.color,
-        }))}
-      />
     </MainLayout>
   )
 }

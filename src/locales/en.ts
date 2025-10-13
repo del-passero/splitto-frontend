@@ -434,4 +434,8 @@ export default {
   dashboard_balance_zero_title: "No debts",
   dashboard_balance_zero_desc: "Add expenses to see your balance",
 
+  // --- Recent groups (empty state) ---
+  recent_groups_empty_title: "No recent groups",
+  recent_groups_empty_desc: "Create a new group or open the groups list",
+
 }
