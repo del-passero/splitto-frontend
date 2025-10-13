@@ -26,7 +26,7 @@ export default function DashboardActivityChart() {
   const hasError = !!errorMessage && buckets.length === 0
 
   return (
-    <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
+    <div className="rounded-xl border bg-white text-black shadow p-4">
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-semibold text-base">Активность</h3>
         <div className="ml-auto flex gap-1">
@@ -37,8 +37,8 @@ export default function DashboardActivityChart() {
               className={
                 "px-2 py-1 rounded text-sm border " +
                 (p === period
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted hover:bg-muted/70 border-transparent")
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-gray-100 hover:bg-gray-200 border-transparent")
               }
             >
               {p === "day" ? "День" : p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
@@ -48,24 +48,20 @@ export default function DashboardActivityChart() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground">Загрузка…</div>
+        <div className="text-sm text-gray-500">Загрузка…</div>
       ) : hasError ? (
         <div className="flex items-center gap-3">
           <div className="text-sm text-red-500">
             Виджет «Активность» временно недоступен. Попробуй обновить или нажми «Повторить».
           </div>
-          <button
-            onClick={() => load()}
-            className="px-2 py-1 text-sm rounded border bg-muted hover:bg-muted/70"
-          >
+          <button onClick={() => load()} className="px-2 py-1 text-sm rounded border bg-gray-100 hover:bg-gray-200">
             Повторить
           </button>
         </div>
       ) : buckets.length === 0 ? (
-        <div className="text-sm text-muted-foreground">Нет данных за выбранный период</div>
+        <div className="text-sm text-gray-500">Нет данных за выбранный период</div>
       ) : (
         <div className="w-full">
-          {/* столбики */}
           <div className="h-40 w-full flex items-end gap-[6px]">
             {buckets.map((b: any, i: number) => {
               const v = Number(b?.count ?? 0)
@@ -73,7 +69,7 @@ export default function DashboardActivityChart() {
               return (
                 <div key={`${b?.date ?? i}`} className="flex-1 h-full flex items-end">
                   <div
-                    className="w-full rounded-t bg-primary/70"
+                    className="w-full rounded-t bg-blue-500"
                     style={{ height: `${Math.max(4, h)}%` }}
                     title={`${b?.date ?? ""}: ${v}`}
                   />
@@ -82,8 +78,7 @@ export default function DashboardActivityChart() {
             })}
           </div>
 
-          {/* подписи оси X */}
-          <div className="mt-2 flex text-[10px] text-muted-foreground">
+          <div className="mt-2 flex text-[10px] text-gray-500">
             {buckets.map((b: any, i: number) => {
               const label =
                 i === 0 || i === Math.floor(buckets.length / 2) || i === buckets.length - 1
