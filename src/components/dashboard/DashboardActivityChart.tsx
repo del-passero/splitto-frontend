@@ -2,13 +2,11 @@
 import React, { useEffect, useMemo } from "react"
 import { useDashboardStore } from "../../store/dashboardStore"
 
-type PeriodAll = "day" | "week" | "month" | "year"
-
-// оставляем только Week / Month / Year в UI
+type PeriodAll = "week" | "month" | "year"
 const PERIODS: PeriodAll[] = ["week", "month", "year"]
 
 export default function DashboardActivityChart() {
-  const period = useDashboardStore((s) => s.activityPeriod)
+  const period = useDashboardStore((s) => s.activityPeriod as PeriodAll)
   const setPeriod = useDashboardStore((s) => s.setActivityPeriod)
   const activity = useDashboardStore((s) => s.activity)
   const loading = useDashboardStore((s) => s.loading.activity)
@@ -21,22 +19,21 @@ export default function DashboardActivityChart() {
 
   const buckets = activity?.buckets ?? []
 
-  // максимум по оси Y
+  // максимум по оси Y (>=1, чтобы не делить на 0)
   const maxY = useMemo(
     () => Math.max(1, buckets.reduce((m: number, b: any) => Math.max(m, Number(b?.count ?? 0)), 0)),
     [buckets]
   )
 
-  // подготовим точки для SVG (адаптивная ширина через viewBox)
-  const { points, labels } = useMemo(() => {
+  // координаты для SVG
+  const { points, labels, values } = useMemo(() => {
     const W = 600
-    const H = 180
-    const P = 24 // padding
+    const H = 150  // меньше высота, компактнее
+    const P = 22   // внутренние отступы SVG
     const n = buckets.length
-    if (n === 0) return { points: [] as Array<[number, number]>, labels: [] as string[] }
+    if (n === 0) return { points: [] as Array<[number, number]>, labels: [] as string[], values: [] as number[] }
 
-    const xs = (i: number) =>
-      n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2)
+    const xs = (i: number) => (n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2))
     const ys = (v: number) => P + (1 - v / maxY) * (H - P * 2)
 
     const pts: Array<[number, number]> = buckets.map((b: any, i: number) => [
@@ -50,73 +47,99 @@ export default function DashboardActivityChart() {
       return show ? d.slice(5) : ""
     })
 
-    return { points: pts, labels: lbls }
+    const vals = buckets.map((b: any) => Number(b?.count ?? 0))
+
+    return { points: pts, labels: lbls, values: vals }
   }, [buckets, maxY])
 
   const hasError = !!errorMessage && buckets.length === 0
 
-  // path для линии
   const pathD = useMemo(() => {
     if (points.length === 0) return ""
     return "M " + points.map(([x, y]) => `${x},${y}`).join(" L ")
   }, [points])
 
+  // Цвета из темы Telegram
+  const cardBg = "var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color, #ffffff))"
+  const textColor = "var(--tg-theme-text-color, #0f0f0f)"
+  const hintColor = "var(--tg-theme-hint-color, #6b7280)"
+  const accentColor = "var(--tg-theme-accent-text-color, var(--tg-theme-button-color, #3b82f6))"
+  const buttonText = "var(--tg-theme-button-text-color, #ffffff)"
+
   return (
-    <div className="rounded-xl border bg-white text-black shadow p-4">
-      <div className="flex items-center gap-2 mb-3">
+    <div
+      className="rounded-xl border shadow p-3" // компактнее: p-3, меньше отступы
+      style={{
+        backgroundColor: cardBg,
+        color: textColor,
+        borderColor: "var(--tg-theme-hint-color, rgba(0,0,0,0.12))",
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">{/* уменьшил mb */}
         <h3 className="font-semibold text-base">Активность</h3>
         <div className="ml-auto flex gap-1">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={
-                "px-2 py-1 rounded text-sm border " +
-                (p === period
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-gray-100 hover:bg-gray-200 border-transparent")
-              }
-            >
-              {p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
-            </button>
-          ))}
+          {PERIODS.map((p) => {
+            const active = p === period
+            return (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className="px-2 py-1 rounded text-sm border"
+                style={{
+                  backgroundColor: active
+                    ? "var(--tg-theme-button-color, #3b82f6)"
+                    : "var(--tg-theme-secondary-bg-color, #f3f4f6)",
+                  color: active ? buttonText : textColor,
+                  borderColor: active
+                    ? "var(--tg-theme-button-color, #3b82f6)"
+                    : "transparent",
+                }}
+              >
+                {p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       {loading ? (
-        <div className="text-sm text-gray-500">Загрузка…</div>
+        <div style={{ color: hintColor }} className="text-sm">Загрузка…</div>
       ) : hasError ? (
         <div className="flex items-center gap-3">
-          <div className="text-sm text-red-500">
+          <div className="text-sm" style={{ color: "var(--tg-theme-destructive-text-color, #ef4444)" }}>
             Виджет «Активность» временно недоступен. Попробуй обновить или нажми «Повторить».
           </div>
           <button
             onClick={() => load()}
-            className="px-2 py-1 text-sm rounded border bg-gray-100 hover:bg-gray-200"
+            className="px-2 py-1 text-sm rounded border"
+            style={{
+              backgroundColor: "var(--tg-theme-secondary-bg-color, #f3f4f6)",
+              color: textColor,
+              borderColor: "transparent",
+            }}
           >
             Повторить
           </button>
         </div>
       ) : buckets.length === 0 ? (
-        <div className="text-sm text-gray-500">Нет данных за выбранный период</div>
+        <div className="text-sm" style={{ color: hintColor }}>Нет данных за выбранный период</div>
       ) : (
         <div className="w-full">
-          {/* Линейная диаграмма */}
-          <div className="h-48 w-full">
-            <svg viewBox="0 0 600 200" className="h-full w-full overflow-visible">
-              {/* сетка (3 горизонтальные линии) */}
-              <g stroke="currentColor" className="text-gray-200">
-                <line x1="24" x2="576" y1="48" y2="48" strokeWidth="1" />
-                <line x1="24" x2="576" y1="100" y2="100" strokeWidth="1" />
-                <line x1="24" x2="576" y1="152" y2="152" strokeWidth="1" />
+          {/* Линейная диаграмма — компактная высота */}
+          <div className="h-32 w-full">{/* было h-48 */}
+            <svg viewBox="0 0 600 160" className="h-full w-full overflow-visible">
+              {/* сетка (2 линии) */}
+              <g stroke="currentColor" style={{ color: hintColor, opacity: 0.35 }}>
+                <line x1="22" x2="578" y1="52" y2="52" strokeWidth="1" />
+                <line x1="22" x2="578" y1="110" y2="110" strokeWidth="1" />
               </g>
 
               {/* область под кривой */}
               {pathD && (
                 <path
-                  d={`${pathD} L 576,176 L 24,176 Z`}
-                  className="fill-blue-500/10"
-                  stroke="none"
+                  d={`${pathD} L 578,138 L 22,138 Z`}
+                  fill="currentColor"
+                  style={{ color: accentColor, opacity: 0.12 }}
                 />
               )}
 
@@ -124,33 +147,42 @@ export default function DashboardActivityChart() {
               {pathD && (
                 <path
                   d={pathD}
-                  className="stroke-blue-600"
-                  strokeWidth="2"
                   fill="none"
+                  stroke="currentColor"
+                  style={{ color: accentColor }}
+                  strokeWidth="2"
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
               )}
 
-              {/* точки */}
+              {/* точки и подписи значений */}
               <g>
                 {points.map(([x, y], i) => (
-                  <circle key={i} cx={x} cy={y} r="3" className="fill-blue-600" />
+                  <g key={i}>
+                    <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: accentColor }} />
+                    {/* значение над точкой */}
+                    <text
+                      x={x}
+                      y={Math.max(12, y - 8)} // чтобы не уехало за верх
+                      fontSize="10"
+                      textAnchor="middle"
+                      fill={textColor}
+                    >
+                      {values[i]}
+                    </text>
+                  </g>
                 ))}
               </g>
 
-              {/* подпись максимума слева */}
-              <text x="0" y="44" className="fill-gray-400 text-[10px] select-none">
-                {maxY}
-              </text>
-              <text x="8" y="178" className="fill-gray-400 text-[10px] select-none">
-                0
-              </text>
+              {/* подпись 0 и max слева (маленькие, ненавязчивые) */}
+              <text x="4" y="56" fontSize="10" fill={hintColor}>{maxY}</text>
+              <text x="8" y="142" fontSize="10" fill={hintColor}>0</text>
             </svg>
           </div>
 
-          {/* Ось X — три подписи: первая/середина/последняя */}
-          <div className="mt-2 flex text-[10px] text-gray-500">
+          {/* Ось X — три подписи (меньше отступ) */}
+          <div className="mt-1 flex text-[10px]" style={{ color: hintColor }}>
             {labels.map((lbl, i) => (
               <div key={`lbl-${i}`} className="flex-1 text-center">
                 {lbl}
