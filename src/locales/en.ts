@@ -430,5 +430,8 @@ export default {
   },
 
   // --- Dashboard balance card title ---
-  dashboard_balance_title: "Balance across active groups",
+  dashboard_balance_title: "Balance across all active groups",
+  dashboard_balance_zero_title: "No debts",
+  dashboard_balance_zero_desc: "Add expenses to see your balance",
+
 }

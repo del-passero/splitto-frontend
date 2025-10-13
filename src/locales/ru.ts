@@ -431,4 +431,7 @@ export default {
 
   // --- Заголовок карточки баланса на дашборде (для DashboardBalanceCard) ---
   dashboard_balance_title: "Баланс по всем активным группам",
+  dashboard_balance_zero_title: "Долгов нет",
+  dashboard_balance_zero_desc: "Добавьте траты, чтобы увидеть баланс",
+
 }
