@@ -1,6 +1,7 @@
 // src/pages/DashboardPage.tsx
 import { useEffect } from "react"
 import { useDashboardStore } from "../store/dashboardStore"
+import CardSection from "../components/CardSection"
 
 import WidgetBoundary from "../components/common/WidgetBoundary"
 
@@ -47,9 +48,9 @@ const DashboardPage = () => {
 
   return (
     <div className="p-3 flex flex-col gap-3">
-      <WidgetBoundary name="Баланс">
+      <CardSection noPadding>
         <DashboardBalanceCard />
-      </WidgetBoundary>
+      </CardSection>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <WidgetBoundary name="Активность">

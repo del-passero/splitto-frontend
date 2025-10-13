@@ -71,35 +71,46 @@ const DashboardBalanceCard = () => {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  // --- СНАПШОТ СТОРА, чтобы карточка не «дёргалась» от live-обновлений ---
+  // берём reloadBalance из стора, чтобы гарантированно стриггерить первичную загрузку
+  const reloadBalance = useDashboardStore((s) => s.reloadBalance)
+
+  // Снимок стора — чтобы виджет не «дёргался» от live-обновлений
   const [snap, setSnap] = useState(() => {
     const st = (useDashboardStore as any).getState?.() || {}
     return { loading: !!st.loading?.balance, balance: st.balance }
   })
 
   useEffect(() => {
-    let frozen = false
-    // Одноаргументный subscribe (типизирован как (listener) => Unsubscribe)
-    const unsub: (() => void) =
+    let startedExplicitLoad = false
+    // Если сейчас не идёт загрузка — инициируем (исправляет пустоту после refresh/первого захода)
+    const st = (useDashboardStore as any).getState?.()
+    if (!st?.loading?.balance) {
+      startedExplicitLoad = true
+      try {
+        void reloadBalance()
+      } catch {}
+    }
+
+    let unsubscribe: () => void = () => {}
+    unsubscribe =
       (useDashboardStore as any).subscribe?.((s: any) => {
-        if (frozen) return
         const next = { loading: !!s.loading?.balance, balance: s.balance }
         setSnap(next)
-        // После первой успешной загрузки отписываемся — карточка больше не обновляется «в фоне»
-        if (!next.loading) {
-          frozen = true
+        // Отписываемся ПОСЛЕ первой завершённой загрузки, которую мы инициировали
+        if (startedExplicitLoad && !next.loading) {
           try {
-            unsub && unsub()
+            unsubscribe()
           } catch {}
         }
       }) || (() => {})
 
     return () => {
       try {
-        unsub && unsub()
+        unsubscribe()
       } catch {}
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // один раз на маунт
 
   const loading = snap.loading
   const balance = snap.balance
@@ -107,7 +118,7 @@ const DashboardBalanceCard = () => {
   const theyOwe = useMemo(() => mapKV(balance?.they_owe_me || {}), [balance])
   const iOwe = useMemo(() => mapKV(balance?.i_owe || {}), [balance])
 
-  // --- Валюты, по которым есть реальные долги (строго != 0 в одной из сторон) ---
+  // Валюты, по которым есть реальные долги (строго != 0 в одной из сторон)
   const debtCcys = useMemo(() => {
     const set = new Set<string>()
     const they = balance?.they_owe_me || {}
@@ -174,12 +185,15 @@ const DashboardBalanceCard = () => {
 
   return (
     <CardSection noPadding>
-      {/* Внутренний контейнер с тем же вертикальным отступом, без горизонтальных */}
-      <div className="py-2">
-        {/* Заголовок: маленький label как у groups_count */}
+      {/* Внутренний box с рамкой и скруглением (как у GroupCard) */}
+      <div
+        className="rounded-2xl border p-3 bg-[var(--tg-card-bg)]"
+        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+      >
+        {/* Заголовок — жирный, акцентный (голубой Telegram) */}
         <div
-          className="mb-2"
-          style={{ fontSize: "12px", lineHeight: "14px", color: "var(--tg-hint-color)" }}
+          className="mb-2 font-semibold"
+          style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
         >
           {t("dashboard_balance_title")}
         </div>
