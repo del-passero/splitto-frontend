@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
 import { useDashboardStore } from "../../store/dashboardStore"
 
-/* ===== форматтеры как в карточке баланса ===== */
 const nbsp = "\u00A0"
 
 function parseAmtToNumber(input: string | number | null | undefined): number {
@@ -38,7 +37,6 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/* ===== тип периода ===== */
 type Period = "week" | "month" | "year"
 const PERIODS: Period[] = ["week", "month", "year"]
 
@@ -46,7 +44,6 @@ export default function DashboardSummaryCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  // store
   const period = useDashboardStore((s) => s.summaryPeriod as Period)
   const setPeriod = useDashboardStore((s) => s.setSummaryPeriod)
   const currency = useDashboardStore((s) => s.summaryCurrency) as string
@@ -57,46 +54,88 @@ export default function DashboardSummaryCard() {
   const error = useDashboardStore((s) => s.error.summary || null)
   const load = useDashboardStore((s) => s.loadSummary)
 
-  // ==== ОДНОКРАТНАЯ инициализация (избавляемся от циклов) ====
+  const [periodCcys, setPeriodCcys] = useState<string[]>([])
+  const fetchingCcys = useRef(false)
+
   const didInit = useRef(false)
   useEffect(() => {
     if (didInit.current) return
     didInit.current = true
-    // валюта по умолчанию: текущая из стора, иначе первая из последних
-    const defCcy = (currency && String(currency)) || currenciesRecent?.[0]
-    if (defCcy && defCcy !== currency) {
-      // один раз проставим в стор, без зависимостей
-      try { setCurrency(defCcy) } catch {}
-      try { void load(period, defCcy) } catch {}
+    const startCcy: string =
+      (currency && String(currency)) || (currenciesRecent?.[0] ?? "USD")
+    if (startCcy && startCcy !== currency) {
+      try { setCurrency(startCcy) } catch {}
+      try { void load(period, startCcy) } catch {}
     } else {
-      try { void load(period, currency) } catch {}
+      try { void load(period, currency || "USD") } catch {}
     }
-    // намеренно пустые deps — чтобы не зациклиться
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ===== хендлеры (в них делаем загрузку) =====
+  useEffect(() => {
+    let aborted = false
+    const run = async () => {
+      if (fetchingCcys.current) return
+      fetchingCcys.current = true
+      try {
+        const res = await fetch(`/dashboard/top-categories?period=${encodeURIComponent(period)}&limit=500`)
+        if (!res.ok) throw new Error(String(res.status))
+        const data: any = await res.json()
+        const items: any[] = Array.isArray(data?.items) ? (data.items as any[]) : []
+        const list: string[] = Array.from(
+          new Set(
+            items
+              .map((it: any) => String(it?.currency || "").toUpperCase())
+              .filter((x: string) => !!x && x !== "XXX")
+          )
+        )
+
+        if (aborted) return
+        setPeriodCcys(list)
+
+        // выберем актуальную валюту и перезагрузим summary
+        let keep: string = String(currency || "").toUpperCase()
+        if (!keep || !list.includes(keep)) {
+          keep = (list[0] || currenciesRecent?.[0] || currency || "USD") as string
+          keep = String(keep).toUpperCase()
+        }
+        if (keep !== currency) {
+          try { setCurrency(keep) } catch {}
+          try { void load(period, keep) } catch {}
+        } else {
+          try { void load(period, keep || "USD") } catch {}
+        }
+      } catch {
+        if (!aborted) {
+          setPeriodCcys([])
+          try { void load(period, currency || currenciesRecent?.[0] || "USD") } catch {}
+        }
+      } finally {
+        fetchingCcys.current = false
+      }
+    }
+    run()
+    return () => { aborted = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period])
+
+  const chipsCcys: string[] = useMemo(() => {
+    const base = periodCcys.length ? periodCcys : (Array.isArray(currenciesRecent) ? currenciesRecent : [])
+    if (currency && !base.includes(currency)) return [currency, ...base]
+    return base
+  }, [periodCcys, currenciesRecent, currency])
+
   const onChangePeriod = (p: Period) => {
     if (p === period) return
     setPeriod(p)
-    void load(p, currency)
   }
   const onChangeCurrency = (ccy: string) => {
-    if (!ccy || ccy === currency) return
-    setCurrency(ccy)
-    void load(period, ccy)
+    const next = (ccy || "").toUpperCase()
+    if (!next || next === currency) return
+    setCurrency(next)
+    void load(period, next)
   }
 
-  // ===== список чипов валют =====
-  // Требование: активен ровно один. Источник — последние использованные (как и сейчас в сторе).
-  const chipsCcys: string[] = useMemo(() => {
-    const arr = Array.isArray(currenciesRecent) ? currenciesRecent : []
-    // если текущая валюта не попала — добавим её в голову, чтобы чип существовал
-    if (currency && !arr.includes(currency)) return [currency, ...arr]
-    return arr
-  }, [currenciesRecent, currency])
-
-  // ===== числа из summary =====
   const spent = parseAmtToNumber(summary?.spent)
   const avg = parseAmtToNumber(summary?.avg_check)
   const my = parseAmtToNumber(summary?.my_share)
@@ -104,13 +143,12 @@ export default function DashboardSummaryCard() {
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы периода (как в ActivityChart) */}
         <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
           <div
             className="font-semibold"
             style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
           >
-            {t("dashboard.activity") /* Заголовок блока «Сводка» можно завести отдельным ключом при желании */}
+            {t("dashboard.summary_title")}
           </div>
 
           <div className="ml-auto flex gap-1">
@@ -135,8 +173,7 @@ export default function DashboardSummaryCard() {
           </div>
         </div>
 
-        {/* Чипы валют — под заголовком, как в DashboardBalanceCard */}
-        {!loading && chipsCcys.length > 0 ? (
+        {chipsCcys.length > 0 ? (
           <div
             className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
             style={{ WebkitOverflowScrolling: "touch" }}
@@ -163,7 +200,6 @@ export default function DashboardSummaryCard() {
           </div>
         ) : null}
 
-        {/* Состояния */}
         {loading ? (
           <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
             {t("loading")}
@@ -174,7 +210,7 @@ export default function DashboardSummaryCard() {
               {t("error")}
             </div>
             <button
-              onClick={() => void load(period, currency)}
+              onClick={() => void load(period, currency || "USD")}
               className="px-2 py-1 text-sm rounded border transition bg-transparent border-[var(--tg-hint-color)]"
               style={{ color: "var(--tg-text-color)" }}
             >
@@ -182,24 +218,23 @@ export default function DashboardSummaryCard() {
             </button>
           </div>
         ) : (
-          // ===== три мини-карточки в рамке, как просил =====
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
               <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(spent, currency, locale)}
+                {fmtAmountSmart(spent, currency || "USD", locale)}
               </div>
             </div>
             <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.avg_check")}</div>
               <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(avg, currency, locale)}
+                {fmtAmountSmart(avg, currency || "USD", locale)}
               </div>
             </div>
             <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.my_share")}</div>
               <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(my, currency, locale)}
+                {fmtAmountSmart(my, currency || "USD", locale)}
               </div>
             </div>
           </div>
