@@ -422,9 +422,9 @@ export default {
     unknown_category: "Categoría",
 	summary_title: "Resumen",
 
-    summary_spent: "Gastado",
-    summary_avg_check: "Ticket medio",
-    summary_my_share: "Mi parte",
+    spent: "Gastado",
+    avg_check: "Ticket medio",
+    my_share: "Mi parte",
     recent_groups: "Grupos activos recientes",
     top_partners: "Con quienes más comparto",
     no_partners: "Sin datos para el período seleccionado",

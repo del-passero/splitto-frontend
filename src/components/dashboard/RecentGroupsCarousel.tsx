@@ -25,7 +25,7 @@ const AVATAR_SIZE = 62
 const PARTICIPANT_SIZE = 24
 const MAX_ICONS_INLINE = 5
 
-// ---------- auth helpers (чтобы не зависать до перезагрузки) ----------
+// ---------- mini-app auth helpers ----------
 function tg() {
   // @ts-ignore
   return window?.Telegram?.WebApp
@@ -37,7 +37,7 @@ function getTelegramInitData(): string {
     return ""
   }
 }
-async function waitForInitData(maxWaitMs = 6000, stepMs = 150): Promise<string> {
+async function waitForInitData(maxWaitMs = 6000, stepMs = 120): Promise<string> {
   const deadline = Date.now() + maxWaitMs
   let init = getTelegramInitData()
   while (!init && Date.now() < deadline) {
@@ -48,7 +48,6 @@ async function waitForInitData(maxWaitMs = 6000, stepMs = 150): Promise<string> 
 }
 async function ensureTelegramAuth(): Promise<void> {
   const initData = await waitForInitData()
-  // уже авторизованы? сервер сам решит по куке/заголовку; нам достаточно дернуть endpoint
   try {
     await fetch("/api/auth/telegram", {
       method: "POST",
@@ -56,7 +55,7 @@ async function ensureTelegramAuth(): Promise<void> {
       credentials: "include",
     })
   } catch {
-    // тихо игнорируем — ниже всё равно попробуем запрос и покажем ошибку, если не ок
+    // тихо
   }
 }
 
@@ -88,9 +87,9 @@ export default function RecentGroupsCarousel() {
     if (!user?.id) return
     setLoading(true)
     setError(null)
-    try {
-      await ensureTelegramAuth()
 
+    // локальный помощник с авторизацией и авто-повторами
+    const attemptLoad = async (): Promise<RecentGroupCard[]> => {
       const { items } = await getUserGroups(user.id, {
         limit: 5,
         offset: 0,
@@ -100,55 +99,56 @@ export default function RecentGroupsCarousel() {
         sortBy: "last_activity",
         sortDir: "desc",
       })
-
       const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
         const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
         const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
         if (tb !== ta) return tb - ta
         return (b?.id || 0) - (a?.id || 0)
       })
-      setGroups(sorted.slice(0, 5))
-    } catch (e: any) {
-      // один тихий ретрай после явной авторизации (на случай гонки куки)
-      try {
-        await ensureTelegramAuth()
-        const { items } = await getUserGroups(user.id, {
-          limit: 5,
-          offset: 0,
-          includeHidden: false,
-          includeArchived: false,
-          includeDeleted: false,
-          sortBy: "last_activity",
-          sortDir: "desc",
-        })
-        const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
-          const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
-          const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
-          if (tb !== ta) return tb - ta
-          return (b?.id || 0) - (a?.id || 0)
-        })
-        setGroups(sorted.slice(0, 5))
-        setError(null)
-      } catch (ee: any) {
-        setError(ee?.message || e?.message || "Failed to load recent groups")
-        setGroups([])
+      return sorted.slice(0, 5)
+    }
+
+    try {
+      // 1) гарантия авторизации перед первой попыткой
+      await ensureTelegramAuth()
+
+      // 2) до трёх попыток; чинит гонку постановки куки (403 / detail: forbidden)
+      const MAX_TRIES = 3
+      let lastErr: any = null
+      for (let i = 0; i < MAX_TRIES; i++) {
+        try {
+          const data = await attemptLoad()
+          setGroups(data)
+          setError(null)
+          setLoading(false)
+          return
+        } catch (e: any) {
+          lastErr = e
+          const msg = String(e?.message || "").toLowerCase()
+          // если это 401/403/forbidden — даём куке примениться и пробуем снова
+          if (msg.includes("403") || msg.includes("forbidden") || msg.includes("401") || msg.includes("unauth")) {
+            await ensureTelegramAuth()
+            await new Promise((r) => setTimeout(r, 250 + i * 250))
+            continue
+          }
+          break
+        }
       }
-    } finally {
+      throw lastErr || new Error("Failed to load recent groups")
+    } catch (e: any) {
+      setError(e?.message || "Failed to load recent groups")
+      setGroups([])
       setLoading(false)
     }
   }, [user?.id])
 
-  // первичная загрузка + повтор при смене user.id
-  useEffect(() => {
-    void load()
-  }, [load])
+  // первичная загрузка + при смене пользователя
+  useEffect(() => { void load() }, [load])
 
-  // автоповтор после получения фокуса/онлайна, если раньше ошибка или пусто
+  // автоповтор после получения фокуса/онлайна, если первый заход неуспешен
   useEffect(() => {
     const onFocusOrOnline = () => {
-      if (!loading && (!groups.length || error)) {
-        void load()
-      }
+      if (!loading && (error || groups.length === 0)) void load()
     }
     window.addEventListener("focus", onFocusOrOnline)
     window.addEventListener("online", onFocusOrOnline)
@@ -156,7 +156,7 @@ export default function RecentGroupsCarousel() {
       window.removeEventListener("focus", onFocusOrOnline)
       window.removeEventListener("online", onFocusOrOnline)
     }
-  }, [loading, groups.length, error, load])
+  }, [loading, error, groups.length, load])
 
   const content = useMemo(() => {
     if (loading) {
@@ -339,6 +339,7 @@ export default function RecentGroupsCarousel() {
     )
   }, [loading, error, groups, navigate, t, load])
 
+  // ВНЕШНЯЯ ОБЁРТКА — как у баланса: rounded-lg + p-1.5 + border (выровнены заголовки)
   return (
     <div className="rounded-lg border border-[var(--tg-hint-color)] p-1.5 bg-[var(--tg-card-bg)]">
       <div

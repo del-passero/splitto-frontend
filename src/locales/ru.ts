@@ -421,9 +421,9 @@ export default {
     unknown_category: "Категория",
 	summary_title: "Сводка",
 	
-    summary_spent: "Потрачено",
-    summary_avg_check: "Средний чек",
-    summary_my_share: "Моя доля",
+    spent: "Потрачено",
+    avg_check: "Средний чек",
+    my_share: "Моя доля",
     recent_groups: "Последние активные группы",
     top_partners: "Часто делю расходы",
     no_partners: "Нет данных за выбранный период",

@@ -1,19 +1,27 @@
 // src/components/dashboard/DashboardSummaryCard.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
 import { useDashboardStore } from "../../store/dashboardStore"
+import { getDashboardTopCategories } from "../../api/dashboardApi"
+
+type Period = "week" | "month" | "year"
+const PERIODS: Period[] = ["week", "month", "year"]
 
 const nbsp = "\u00A0"
 
-function parseAmtToNumber(input: string | number | null | undefined): number {
-  if (typeof input === "number") return isFinite(input) ? input : 0
-  if (!input) return 0
-  const s = String(input).trim().replace(/\s+/g, "").replace(",", ".")
+const fmt = (s?: string) => {
+  if (!s && s !== "0") return "—"
   const n = Number(s)
-  return isFinite(n) ? n : 0
+  if (!Number.isFinite(n)) return s as string
+  try {
+    return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  } catch {
+    return String(n)
+  }
 }
 
+/** Форматирование как в компоненте баланса (число + код валюты, с умной дробной частью) */
 function fmtAmountSmart(value: number, currency: string, locale?: string) {
   try {
     const nfCurrency = new Intl.NumberFormat(locale, {
@@ -37,118 +45,96 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-type Period = "week" | "month" | "year"
-const PERIODS: Period[] = ["week", "month", "year"]
-
 export default function DashboardSummaryCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
+  // store
   const period = useDashboardStore((s) => s.summaryPeriod as Period)
   const setPeriod = useDashboardStore((s) => s.setSummaryPeriod)
-  const currency = useDashboardStore((s) => s.summaryCurrency) as string
+  const currency = useDashboardStore((s) => s.summaryCurrency)
   const setCurrency = useDashboardStore((s) => s.setSummaryCurrency)
-  const currenciesRecent = useDashboardStore((s) => s.currenciesRecent) as string[]
+  const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
   const summary = useDashboardStore((s) => s.summary)
   const loading = useDashboardStore((s) => s.loading.summary)
   const error = useDashboardStore((s) => s.error.summary || null)
   const load = useDashboardStore((s) => s.loadSummary)
 
+  // Валюты, в которых реально были траты в выбранном периоде
   const [periodCcys, setPeriodCcys] = useState<string[]>([])
-  const fetchingCcys = useRef(false)
+  const [hasDataInPeriod, setHasDataInPeriod] = useState<boolean>(true)
 
-  const didInit = useRef(false)
+  // Первичная загрузка summary
   useEffect(() => {
-    if (didInit.current) return
-    didInit.current = true
-    const startCcy: string =
-      (currency && String(currency)) || (currenciesRecent?.[0] ?? "USD")
-    if (startCcy && startCcy !== currency) {
-      try { setCurrency(startCcy) } catch {}
-      try { void load(period, startCcy) } catch {}
-    } else {
-      try { void load(period, currency || "USD") } catch {}
-    }
+    if (!summary) void load(period, currency)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // один раз
 
-  useEffect(() => {
-    let aborted = false
-    const run = async () => {
-      if (fetchingCcys.current) return
-      fetchingCcys.current = true
-      try {
-        const res = await fetch(`/dashboard/top-categories?period=${encodeURIComponent(period)}&limit=500`)
-        if (!res.ok) throw new Error(String(res.status))
-        const data: any = await res.json()
-        const items: any[] = Array.isArray(data?.items) ? (data.items as any[]) : []
-        const list: string[] = Array.from(
-          new Set(
-            items
-              .map((it: any) => String(it?.currency || "").toUpperCase())
-              .filter((x: string) => !!x && x !== "XXX")
-          )
+  // Подтягиваем список валют для текущего периода (и корректируем активную валюту при необходимости)
+  const refreshPeriodCurrencies = async (p: Period) => {
+    try {
+      const res = await getDashboardTopCategories({ period: p, limit: 200 })
+      const list: string[] = Array.from(
+        new Set(
+          (res?.items || [])
+            .map((it: any) => String(it?.currency || "").toUpperCase())
+            .filter((ccy: string) => !!ccy && ccy !== "XXX")
         )
+      )
+      setPeriodCcys(list)
 
-        if (aborted) return
-        setPeriodCcys(list)
-
-        // выберем актуальную валюту и перезагрузим summary
-        let keep: string = String(currency || "").toUpperCase()
-        if (!keep || !list.includes(keep)) {
-          keep = (list[0] || currenciesRecent?.[0] || currency || "USD") as string
-          keep = String(keep).toUpperCase()
-        }
-        if (keep !== currency) {
-          try { setCurrency(keep) } catch {}
-          try { void load(period, keep) } catch {}
-        } else {
-          try { void load(period, keep || "USD") } catch {}
-        }
-      } catch {
-        if (!aborted) {
-          setPeriodCcys([])
-          try { void load(period, currency || currenciesRecent?.[0] || "USD") } catch {}
-        }
-      } finally {
-        fetchingCcys.current = false
+      if (list.length === 0) {
+        setHasDataInPeriod(false)
+        return
       }
+      setHasDataInPeriod(true)
+
+      const current = (currency || "").toUpperCase()
+      if (list.includes(current)) {
+        // текущая валюта присутствует — ничего не меняем
+        return
+      }
+      // Пытаемся предпочесть последнюю использованную
+      const recentPick = (currenciesRecent || []).find(
+        (ccy) => list.includes(String(ccy).toUpperCase())
+      )
+      const next: string = (recentPick ? String(recentPick).toUpperCase() : list[0]) || ""
+      if (next && next !== current) {
+        // setSummaryCurrency сам вызовет loadSummary
+        try {
+          setCurrency(next)
+        } catch {}
+      }
+    } catch {
+      // В случае ошибки просто считаем, что данных нет (чтобы не рушить UI)
+      setPeriodCcys([])
+      setHasDataInPeriod(false)
     }
-    run()
-    return () => { aborted = true }
+  }
+
+  // При смене периода — обновляем валюты периода и перезагружаем summary (store сам дернёт)
+  useEffect(() => {
+    void refreshPeriodCurrencies(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
-  const chipsCcys: string[] = useMemo(() => {
-    const base = periodCcys.length ? periodCcys : (Array.isArray(currenciesRecent) ? currenciesRecent : [])
-    if (currency && !base.includes(currency)) return [currency, ...base]
-    return base
-  }, [periodCcys, currenciesRecent, currency])
+  const title = t("dashboard.summary_title", "Сводка")
 
-  const onChangePeriod = (p: Period) => {
-    if (p === period) return
-    setPeriod(p)
-  }
-  const onChangeCurrency = (ccy: string) => {
-    const next = (ccy || "").toUpperCase()
-    if (!next || next === currency) return
-    setCurrency(next)
-    void load(period, next)
-  }
-
-  const spent = parseAmtToNumber(summary?.spent)
-  const avg = parseAmtToNumber(summary?.avg_check)
-  const my = parseAmtToNumber(summary?.my_share)
+  // Значения для мини-карточек
+  const spentNum = useMemo(() => Number(summary?.spent || 0), [summary])
+  const avgNum = useMemo(() => Number(summary?.avg_check || 0), [summary])
+  const myShareNum = useMemo(() => Number(summary?.my_share || 0), [summary])
 
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
+        {/* Заголовок + чипы периода (как в ActivityChart) */}
         <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
           <div
             className="font-semibold"
             style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
           >
-            {t("dashboard.summary_title")}
+            {title}
           </div>
 
           <div className="ml-auto flex gap-1">
@@ -157,7 +143,9 @@ export default function DashboardSummaryCard() {
               return (
                 <button
                   key={p}
-                  onClick={() => onChangePeriod(p)}
+                  onClick={() => {
+                    setPeriod(p) // стор сам сбросит TTL и перезагрузит summary
+                  }}
                   aria-pressed={active}
                   className={[
                     "px-2 py-1 rounded text-sm border transition",
@@ -173,25 +161,32 @@ export default function DashboardSummaryCard() {
           </div>
         </div>
 
-        {chipsCcys.length > 0 ? (
+        {/* Чипы валют — одна строка, ровно один активный. Показываем только если в периоде есть данные */}
+        {!loading && hasDataInPeriod && periodCcys.length > 0 ? (
           <div
             className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
-            {chipsCcys.map((ccy) => {
-              const active = ccy === currency
+            {periodCcys.map((ccy) => {
+              const isActive = (currency || "").toUpperCase() === ccy
               return (
                 <button
-                  key={`ccy-chip-${ccy}`}
+                  key={`sum-ccy-${ccy}`}
                   type="button"
-                  onClick={() => onChangeCurrency(ccy)}
+                  onClick={() => {
+                    if (!isActive) {
+                      try {
+                        setCurrency(ccy) // стор сам вызовет loadSummary
+                      } catch {}
+                    }
+                  }}
                   className={[
                     "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
-                    active
+                    isActive
                       ? "bg-[var(--tg-link-color,#2481CC)] text-white"
                       : "bg-transparent text-[var(--tg-text-color)]/80 border border-[var(--tg-hint-color)]",
                   ].join(" ")}
-                  aria-pressed={active}
+                  aria-pressed={isActive}
                 >
                   {ccy}
                 </button>
@@ -200,41 +195,40 @@ export default function DashboardSummaryCard() {
           </div>
         ) : null}
 
+        {/* Состояния загрузки/ошибки/пусто */}
         {loading ? (
           <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
             {t("loading")}
           </div>
         ) : error ? (
-          <div className="flex items-center gap-3">
-            <div className="text-sm" style={{ color: "var(--tg-destructive-text,#ef4444)" }}>
-              {t("error")}
-            </div>
-            <button
-              onClick={() => void load(period, currency || "USD")}
-              className="px-2 py-1 text-sm rounded border transition bg-transparent border-[var(--tg-hint-color)]"
-              style={{ color: "var(--tg-text-color)" }}
-            >
-              {t("retry")}
-            </button>
+          <div className="text-[14px] leading-[18px]" style={{ color: "var(--tg-destructive-text,#ef4444)" }}>
+            {error}
+          </div>
+        ) : !hasDataInPeriod ? (
+          <div className="text-[14px] leading-[18px] text-[var(--tg-hint-color)]">
+            {t("dashboard.activity_empty_title")}
           </div>
         ) : (
+          // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
-              <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(spent, currency || "USD", locale)}
+              <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
+                {fmtAmountSmart(spentNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
-            <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
+
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.avg_check")}</div>
-              <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(avg, currency || "USD", locale)}
+              <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
+                {fmtAmountSmart(avgNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
-            <div className="rounded-xl bg-white/5 p-3 border border-[var(--tg-hint-color)]">
+
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.my_share")}</div>
-              <div className="text-[14px] font-semibold text-[var(--tg-text-color)]">
-                {fmtAmountSmart(my, currency || "USD", locale)}
+              <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
+                {fmtAmountSmart(myShareNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
           </div>

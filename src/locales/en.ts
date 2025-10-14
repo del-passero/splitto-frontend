@@ -421,9 +421,9 @@ export default {
     unknown_category: "Category",
 	summary_title: "Summary",
 
-    summary_spent: "Spent",
-    summary_avg_check: "Average check",
-    summary_my_share: "My share",
+    spent: "Spent",
+    avg_check: "Average check",
+    my_share: "My share",
     recent_groups: "Recent active groups",
     top_partners: "Split with most often",
     no_partners: "No data for the selected period",
