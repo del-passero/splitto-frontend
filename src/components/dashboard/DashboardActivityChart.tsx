@@ -16,7 +16,7 @@ function toYMD(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
-/** Формат даты как на TransactionCard (использует date_card.months и date_card.pattern) */
+/** Формат даты как в TransactionCard (использует date_card.months и date_card.pattern) */
 function formatCardDateLike(d: Date, t: (k: string, o?: any) => any): string {
   try {
     const monthsRaw = t("date_card.months", { returnObjects: true }) as unknown
@@ -42,7 +42,18 @@ function formatCardDateLike(d: Date, t: (k: string, o?: any) => any): string {
   }
 }
 
-/** 4 метки для month/year (пока месяц/год не трогаем по данным) */
+function ceilToEven(n: number) {
+  const m = Math.ceil(n)
+  return m % 2 === 0 ? m : m + 1
+}
+function ceilToMultiple(n: number, k: number) {
+  if (k <= 0) return Math.ceil(n)
+  const m = Math.ceil(n)
+  const r = m % k
+  return r === 0 ? m : m + (k - r)
+}
+
+/** 4 метки для month/year (coarse; данные для этих режимов пока не пересчитываем) */
 function getXAxisLabelsCoarse(period: PeriodAll, t: (k: string, o?: any) => any): string[] {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -63,7 +74,7 @@ function getXAxisLabelsCoarse(period: PeriodAll, t: (k: string, o?: any) => any)
 }
 
 export default function DashboardActivityChart() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const period = useDashboardStore((s) => s.activityPeriod as PeriodAll)
   const setPeriod = useDashboardStore((s) => s.setActivityPeriod)
   const activity = useDashboardStore((s) => s.activity)
@@ -78,8 +89,8 @@ export default function DashboardActivityChart() {
   const buckets = activity?.buckets ?? []
 
   /* ===== series =====
-     Неделя: всегда 7 точек — сегодня, вчера, …, 6 дней назад (слева-направо).
-     Месяц/год пока как пришло с бэка. */
+     Неделя: 7 точек — сегодня, вчера, …, 6 дней назад (слева → направо).
+     Месяц/год: как пришло с бэка. */
   const series = useMemo(() => {
     if (period === "week") {
       const map = new Map<string, number>()
@@ -107,27 +118,49 @@ export default function DashboardActivityChart() {
     }))
   }, [period, buckets])
 
-  /* подписи по оси X:
-     - неделя: 7 подписей (каждая точка)
-     - месяц/год: 4 «крупные» */
-  const xLabels = useMemo(() => {
-    if (period === "week") {
-      return series.map((pt) => {
-        const [y, m, d] = pt.date.split("-").map((x: string) => Number(x))
-        const date = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)
-          ? new Date(y, m - 1, d)
-          : new Date(pt.date)
-        return formatCardDateLike(date, t as any)
-      })
+  /* X-подписи:
+     - неделя: 7 подписей (каждая точка) → 2 строки (день+месяц; год ниже)
+     - месяц/год: 4 «крупные» метки */
+  const xLabelsWeek = useMemo(() => {
+    if (period !== "week") return { dm: [] as string[], yr: [] as string[] }
+    const dm: string[] = []
+    const yr: string[] = []
+    for (const pt of series) {
+      const [y, m, d] = pt.date.split("-").map((x: string) => Number(x))
+      const date = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)
+        ? new Date(y, m - 1, d)
+        : new Date(pt.date)
+      dm.push(formatCardDateLike(date, t as any))
+      yr.push(String(date.getFullYear()))
     }
-    return getXAxisLabelsCoarse(period, t as any)
+    return { dm, yr }
   }, [period, series, t])
+  const xLabelsCoarse = useMemo(() => getXAxisLabelsCoarse(period, t as any), [period, t])
 
-  /* Y-max */
-  const maxY = useMemo(
-    () => Math.max(1, series.reduce((m: number, b: any) => Math.max(m, Number(b?.count ?? 0)), 0)),
-    [series]
-  )
+  /* Y-шкала:
+     1) находим «сырой» max
+     2) округляем вверх до чётного
+     3) если >=8 — дополнительно округляем вверх до кратного 4 (чтобы деления были целые)
+     4) линии:
+        - при 2 → 1 линия (=2)
+        - при 4 или 6 → 2 линии (max/2, max)
+        - при >=8 → 4 линии (max/4, max/2, 3max/4, max) */
+  const { yMax, yGridValues } = useMemo(() => {
+    const rawMax = Math.max(0, series.reduce((m, b) => Math.max(m, Number(b.count || 0)), 0))
+    let maxEven = Math.max(2, ceilToEven(rawMax)) // минимум 2, чтобы была «ступень»
+    if (maxEven >= 8) maxEven = ceilToMultiple(maxEven, 4)
+
+    let grid: number[] = []
+    if (maxEven === 2) {
+      grid = [2]
+    } else if (maxEven === 4 || maxEven === 6) {
+      grid = [maxEven / 2, maxEven]
+    } else {
+      const step = maxEven / 4
+      grid = [step, step * 2, step * 3, maxEven]
+    }
+    return { yMax: maxEven, yGridValues: grid }
+  }, [series])
 
   /* координаты */
   const { points, values } = useMemo(() => {
@@ -138,12 +171,12 @@ export default function DashboardActivityChart() {
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
     const xs = (i: number) => (n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2))
-    const ys = (v: number) => P + (1 - v / maxY) * (H - P * 2)
+    const ys = (v: number) => P + (1 - v / yMax) * (H - P * 2)
 
     const pts: Array<[number, number]> = series.map((b: any, i: number) => [xs(i), ys(Number(b?.count ?? 0))])
     const vals = series.map((b: any) => Number(b?.count ?? 0))
     return { points: pts, values: vals }
-  }, [series, maxY])
+  }, [series, yMax])
 
   const hasError = !!errorMessage && series.length === 0
 
@@ -153,12 +186,17 @@ export default function DashboardActivityChart() {
     return "M " + points.map(([x, y]) => `${x},${y}`).join(" L ")
   }, [points])
 
-  /* константы осей */
+  /* константы осей/цветов */
   const X_LEFT = 22
   const X_RIGHT = 578
-  const X_BASE = 138 // линия оси X
+  const X_BASE = 138 // ось X
   const HINT = "var(--tg-hint-color)"
+  const TEXT = "var(--tg-text-color)"
   const ACCENT = "var(--tg-accent-color,#40A7E3)"
+
+  // позиционирование подписей под осью X
+  const LABEL_DM_Y = X_BASE + 10 // ~2px зазор до оси, плюс высота шрифта
+  const LABEL_YR_Y = X_BASE + 20 // минимальный нижний зазор (~2px до края viewBox)
 
   return (
     <CardSection noPadding>
@@ -223,21 +261,32 @@ export default function DashboardActivityChart() {
           <div className="w-full">
             <div className="h-32 w-full">
               <svg viewBox="0 0 600 160" className="h-full w-full overflow-visible">
-                {/* горизонтальная сетка (2 линии) */}
+                {/* горизонтальная сетка (динамика по правилам) */}
                 <g stroke="currentColor" style={{ color: HINT, opacity: 0.35 }}>
-                  <line x1={X_LEFT} x2={X_RIGHT} y1="52" y2="52" strokeWidth="1" />
-                  <line x1={X_LEFT} x2={X_RIGHT} y1="110" y2="110" strokeWidth="1" />
+                  {yGridValues.map((v, i) => {
+                    // перевод значения сетки в Y
+                    const y = 22 + (1 - v / yMax) * (160 - 22 * 2)
+                    return <line key={`gh-${i}`} x1={X_LEFT} x2={X_RIGHT} y1={y} y2={y} strokeWidth="1" />
+                  })}
                 </g>
 
-                {/* вертикальные направляющие — строго по X точек (чтобы "совпадали с точками") */}
+                {/* вертикальные направляющие — строго по X точек */}
                 <g stroke="currentColor" style={{ color: HINT, opacity: 0.18 }}>
                   {points.map(([x], i) => (
-                    <line key={`v-${i}`} x1={x} x2={x} y1="22" y2={X_BASE} strokeWidth="1" />
+                    <line key={`gv-${i}`} x1={x} x2={x} y1="22" y2={X_BASE} strokeWidth="1" />
                   ))}
                 </g>
 
                 {/* ось X */}
-                <line x1={X_LEFT} x2={X_RIGHT} y1={X_BASE} y2={X_BASE} stroke="currentColor" style={{ color: HINT, opacity: 0.5 }} strokeWidth="1" />
+                <line
+                  x1={X_LEFT}
+                  x2={X_RIGHT}
+                  y1={X_BASE}
+                  y2={X_BASE}
+                  stroke="currentColor"
+                  style={{ color: HINT, opacity: 0.5 }}
+                  strokeWidth="1"
+                />
 
                 {/* область под кривой */}
                 {pathD && (
@@ -271,7 +320,7 @@ export default function DashboardActivityChart() {
                         y={Math.max(12, y - 8)}
                         fontSize="10"
                         textAnchor="middle"
-                        fill="var(--tg-text-color)"
+                        fill={TEXT}
                       >
                         {values[i]}
                       </text>
@@ -279,31 +328,46 @@ export default function DashboardActivityChart() {
                   ))}
                 </g>
 
-                {/* подписи Y: 0 и max (слева) */}
-                <text x="4" y="56" fontSize="10" fill={HINT}>{maxY}</text>
+                {/* подписи Y: 0 и максимум слева (ориентиры) */}
                 <text x="8" y={X_BASE + 4} fontSize="10" fill={HINT}>0</text>
+                <text
+                  x="4"
+                  y={22 + (1 - yMax / yMax) * (160 - 44)} /* чуть ниже верхней границы */
+                  fontSize="10"
+                  fill={HINT}
+                >
+                  {yMax}
+                </text>
 
-                {/* подписи X:
-                    - неделя: 7 подписей — по каждой точке
-                    - иначе: 4 равномерные метки (coarse) */}
+                {/* подписи X */}
                 {period === "week" ? (
+                  // 7 подпесей, две строки: день+месяц и ниже год
                   <g>
                     {points.map(([x], i) => (
-                      <text
-                        key={`xl-${i}`}
-                        x={x}
-                        y={X_BASE - 2} /* на 2px ВЫШЕ оси */
-                        fontSize="9"
-                        textAnchor="middle"
-                        fill={HINT}
-                        dominantBaseline="ideographic"
-                      >
-                        {xLabels[i] || ""}
-                      </text>
+                      <g key={`xl-${i}`}>
+                        <text
+                          x={x}
+                          y={LABEL_DM_Y}
+                          fontSize="10"
+                          textAnchor="middle"
+                          fill={HINT}
+                        >
+                          {xLabelsWeek.dm[i] || ""}
+                        </text>
+                        <text
+                          x={x}
+                          y={LABEL_YR_Y}
+                          fontSize="9"
+                          textAnchor="middle"
+                          fill={HINT}
+                        >
+                          {xLabelsWeek.yr[i] || ""}
+                        </text>
+                      </g>
                     ))}
                   </g>
                 ) : (
-                  // coarse labels: равномерно по 4 точкам
+                  // coarse: 4 равномерные подписи (одной строкой — день+месяц)
                   <g>
                     {[0, 1, 2, 3].map((k) => {
                       const n = points.length
@@ -314,13 +378,12 @@ export default function DashboardActivityChart() {
                         <text
                           key={`xlc-${k}`}
                           x={x}
-                          y={X_BASE - 2}
-                          fontSize="9"
+                          y={LABEL_DM_Y}
+                          fontSize="10"
                           textAnchor="middle"
                           fill={HINT}
-                          dominantBaseline="ideographic"
                         >
-                          {xLabels[k] || ""}
+                          {xLabelsCoarse[k] || ""}
                         </text>
                       )
                     })}
