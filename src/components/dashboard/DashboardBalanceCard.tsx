@@ -192,10 +192,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   return (
     <CardSection noPadding>
       {/* Внутренний box с рамкой и скруглением (как у GroupCard) */}
-      <div
-        className="rounded-2xl border p-3 bg-[var(--tg-card-bg)]"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-      >
+      <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
         {/* Заголовок — жирный, акцентный (голубой Telegram) */}
         <div
           className="mb-2 font-semibold"
@@ -221,9 +218,8 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
                     "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
                     active
                       ? "bg-[var(--tg-link-color,#2481CC)] text-white"
-                      : "bg-transparent text-[var(--tg-text-color)]/80 border",
+                      : "bg-transparent text-[var(--tg-text-color)]/80 border border-[var(--tg-hint-color)]",
                   ].join(" ")}
-                  style={!active ? { borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" } : undefined}
                   aria-pressed={active}
                 >
                   {ccy}
