@@ -27,7 +27,8 @@ function getXAxisLabels(period: PeriodAll, locale?: string): string[] {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
   if (period === "week") {
-    const offs = [-6, -4, -2, 0]
+    // сегодня, -2, -4, -6 (всего 4 метки; порядок слева-направо как и точки)
+    const offs = [0, -2, -4, -6]
     return offs.map((o) => {
       const d = new Date(today)
       d.setDate(d.getDate() + o)
@@ -35,7 +36,7 @@ function getXAxisLabels(period: PeriodAll, locale?: string): string[] {
     })
   }
   if (period === "month") {
-    const offs = [-28, -19, -9, 0]
+    const offs = [-28, -19, -9, 0] // пока без изменений
     return offs.map((o) => {
       const d = new Date(today)
       d.setDate(d.getDate() + o)
@@ -45,6 +46,13 @@ function getXAxisLabels(period: PeriodAll, locale?: string): string[] {
   const y = today.getFullYear()
   const qs = [new Date(y, 0, 1), new Date(y, 3, 1), new Date(y, 6, 1), new Date(y, 9, 1)]
   return qs.map((d) => formatQuarterLabel(d, locale))
+}
+
+function toYMD(d: Date): string {
+  const y = d.getFullYear()
+  const m = pad2(d.getMonth() + 1)
+  const dd = pad2(d.getDate())
+  return `${y}-${m}-${dd}`
 }
 
 export default function DashboardActivityChart() {
@@ -60,33 +68,68 @@ export default function DashboardActivityChart() {
     if (!activity && !loading) void load()
   }, [activity, loading, load])
 
+  // исходные "бакеты" с бэка
   const buckets = activity?.buckets ?? []
 
+  // нормализация для НЕДЕЛИ: фиксированно 7 точек: сегодня, вчера, ..., 6 дней назад
+  const weekSeries = useMemo(() => {
+    if (period !== "week") return null
+    // строим map по дате
+    const byDate = new Map<string, number>()
+    for (const b of buckets) {
+      const raw = String((b as any)?.date ?? "")
+      const key = raw.length >= 10 ? raw.slice(0, 10) : raw // "YYYY-MM-DD"
+      const count = Number((b as any)?.count ?? 0)
+      if (!Number.isFinite(count)) continue
+      byDate.set(key, (byDate.get(key) || 0) + count)
+    }
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    // порядок слева-направо: сегодня → вчера → ... → -6 дней
+    const days: { date: string; count: number }[] = []
+    for (let offset = 0; offset <= 6; offset++) {
+      const d = new Date(today)
+      d.setDate(today.getDate() - offset)
+      const key = toYMD(d)
+      days.push({ date: key, count: byDate.get(key) || 0 })
+    }
+    return days
+  }, [period, buckets])
+
+  // что рисуем: если неделя — всегда 7 точек из weekSeries, иначе — как есть
+  const series = useMemo(() => {
+    if (period === "week") return weekSeries ?? []
+    // для month/year пока оставляем оригинальные данные
+    return (buckets as any[]).map((b) => ({
+      date: String(b?.date ?? ""),
+      count: Number(b?.count ?? 0),
+    }))
+  }, [period, weekSeries, buckets])
+
+  // максимум по оси Y (>=1, чтобы не делить на 0)
   const maxY = useMemo(
-    () => Math.max(1, buckets.reduce((m: number, b: any) => Math.max(m, Number(b?.count ?? 0)), 0)),
-    [buckets]
+    () => Math.max(1, series.reduce((m: number, b: any) => Math.max(m, Number(b?.count ?? 0)), 0)),
+    [series]
   )
 
+  // координаты для SVG — по нашей "series"
   const { points, values } = useMemo(() => {
     const W = 600
     const H = 150
     const P = 22
-    const n = buckets.length
+    const n = series.length
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
     const xs = (i: number) => (n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2))
     const ys = (v: number) => P + (1 - v / maxY) * (H - P * 2)
 
-    const pts: Array<[number, number]> = buckets.map((b: any, i: number) => [
-      xs(i),
-      ys(Number(b?.count ?? 0)),
-    ])
-    const vals = buckets.map((b: any) => Number(b?.count ?? 0))
+    const pts: Array<[number, number]> = series.map((b: any, i: number) => [xs(i), ys(Number(b?.count ?? 0))])
+    const vals = series.map((b: any) => Number(b?.count ?? 0))
     return { points: pts, values: vals }
-  }, [buckets, maxY])
+  }, [series, maxY])
 
   const xLabels = useMemo(() => getXAxisLabels(period, i18n.language), [period, i18n.language])
-  const hasError = !!errorMessage && buckets.length === 0
+  const hasError = !!errorMessage && series.length === 0
 
   const pathD = useMemo(() => {
     if (points.length === 0) return ""
@@ -145,7 +188,7 @@ export default function DashboardActivityChart() {
               {t("retry")}
             </button>
           </div>
-        ) : buckets.length === 0 ? (
+        ) : series.length === 0 ? (
           // Пустое состояние — как EmptyTransactions
           <div className="flex flex-col items-center justify-center py-12" role="status" aria-live="polite">
             <div className="mb-4 opacity-60">
