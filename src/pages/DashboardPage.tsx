@@ -50,10 +50,8 @@ const DashboardPage = () => {
 
   return (
     <MainLayout>
-      {/* Баланс */}
-      <CardSection noPadding>
-        <DashboardBalanceCard />
-      </CardSection>
+      {/* Баланс (без внешнего CardSection — он уже внутри компонента) */}
+      <DashboardBalanceCard />
 
       {/* Недавние группы — сразу под балансом */}
       <CardSection noPadding>
@@ -86,4 +84,3 @@ const DashboardPage = () => {
 }
 
 export default DashboardPage
-

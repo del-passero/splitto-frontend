@@ -172,6 +172,8 @@ export default {
   groups_filter_all: "ВСЕ",
   apply: "Применить",
   reset_filters: "Сбросить",
+  retry: "Повторить",
+
 
   // --- Сортировка групп ---
   groups_sort_title: "Сортировка",
@@ -428,6 +430,9 @@ export default {
     filter_groups: "Группы",
     filter_users: "Юзеры",
 	all_groups: "ВСЕ ГРУППЫ",
+	activity_empty_title: "Нет данных за выбранный период",
+    activity_error: "Виджет «Активность» временно недоступен. Попробуйте обновить или нажмите «Повторить».",
+
   },
 
   // --- Заголовок карточки баланса на дашборде (для DashboardBalanceCard) ---

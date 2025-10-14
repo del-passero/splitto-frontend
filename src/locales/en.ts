@@ -172,6 +172,8 @@ export default {
   groups_filter_all: "ALL",
   apply: "Apply",
   reset_filters: "Reset",
+  retry: "Retry",
+
 
   // --- Groups sort ---
   groups_sort_title: "Sorting",
@@ -428,6 +430,9 @@ export default {
     filter_groups: "Groups",
     filter_users: "Users",
 	all_groups: "ALL GROUPS",
+	activity_empty_title: "No data for the selected period",
+    activity_error: "The “Activity” widget is temporarily unavailable. Try refreshing or press “Retry”.",
+
   },
 
   // --- Dashboard balance card title ---

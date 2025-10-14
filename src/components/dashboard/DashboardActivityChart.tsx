@@ -1,11 +1,56 @@
-// src/components/dashboard/DashboardActivityChart.tsx
 import React, { useEffect, useMemo } from "react"
+import { useTranslation } from "react-i18next"
+import { Coins } from "lucide-react"
 import { useDashboardStore } from "../../store/dashboardStore"
 
 type PeriodAll = "week" | "month" | "year"
 const PERIODS: PeriodAll[] = ["week", "month", "year"]
 
+// ---- helpers for X axis labels (always 4) ----
+function pad2(n: number) {
+  return n < 10 ? `0${n}` : String(n)
+}
+function isRu(locale?: string) {
+  return (locale || "ru").toLowerCase().startsWith("ru")
+}
+function formatDayMonth(d: Date, locale?: string) {
+  if (isRu(locale)) {
+    return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`
+  }
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d)
+}
+function formatQuarterLabel(d: Date, locale?: string) {
+  // "1 янв" / "1 Jan" и т.п.
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d)
+}
+function getXAxisLabels(period: PeriodAll, locale?: string): string[] {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  if (period === "week") {
+    const offs = [-6, -4, -2, 0]
+    return offs.map((o) => {
+      const d = new Date(today)
+      d.setDate(d.getDate() + o)
+      return formatDayMonth(d, locale)
+    })
+  }
+  if (period === "month") {
+    const offs = [-28, -19, -9, 0]
+    return offs.map((o) => {
+      const d = new Date(today)
+      d.setDate(d.getDate() + o)
+      return formatDayMonth(d, locale)
+    })
+  }
+  // year: current calendar year, quarter starts
+  const y = today.getFullYear()
+  const qs = [new Date(y, 0, 1), new Date(y, 3, 1), new Date(y, 6, 1), new Date(y, 9, 1)]
+  return qs.map((d) => formatQuarterLabel(d, locale))
+}
+
 export default function DashboardActivityChart() {
+  const { t, i18n } = useTranslation()
   const period = useDashboardStore((s) => s.activityPeriod as PeriodAll)
   const setPeriod = useDashboardStore((s) => s.setActivityPeriod)
   const activity = useDashboardStore((s) => s.activity)
@@ -26,12 +71,12 @@ export default function DashboardActivityChart() {
   )
 
   // координаты для SVG
-  const { points, labels, values } = useMemo(() => {
+  const { points, values } = useMemo(() => {
     const W = 600
-    const H = 150  // меньше высота, компактнее
-    const P = 22   // внутренние отступы SVG
+    const H = 150
+    const P = 22
     const n = buckets.length
-    if (n === 0) return { points: [] as Array<[number, number]>, labels: [] as string[], values: [] as number[] }
+    if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
     const xs = (i: number) => (n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2))
     const ys = (v: number) => P + (1 - v / maxY) * (H - P * 2)
@@ -40,20 +85,14 @@ export default function DashboardActivityChart() {
       xs(i),
       ys(Number(b?.count ?? 0)),
     ])
-
-    const lbls = buckets.map((b: any, i: number) => {
-      const d = String(b?.date ?? "")
-      const show = i === 0 || i === Math.floor(n / 2) || i === n - 1
-      return show ? d.slice(5) : ""
-    })
-
     const vals = buckets.map((b: any) => Number(b?.count ?? 0))
 
-    return { points: pts, labels: lbls, values: vals }
+    return { points: pts, values: vals }
   }, [buckets, maxY])
 
-  const hasError = !!errorMessage && buckets.length === 0
+  const xLabels = useMemo(() => getXAxisLabels(period, i18n.language), [period, i18n.language])
 
+  const hasError = !!errorMessage && buckets.length === 0
   const pathD = useMemo(() => {
     if (points.length === 0) return ""
     return "M " + points.map(([x, y]) => `${x},${y}`).join(" L ")
@@ -68,34 +107,42 @@ export default function DashboardActivityChart() {
 
   return (
     <div
-      className="rounded-xl border shadow p-3" // компактнее: p-3, меньше отступы
+      className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]"
       style={{
         backgroundColor: cardBg,
         color: textColor,
-        borderColor: "var(--tg-theme-hint-color, rgba(0,0,0,0.12))",
       }}
     >
-      <div className="flex items-center gap-2 mb-2">{/* уменьшил mb */}
-        <h3 className="font-semibold text-base">Активность</h3>
+      {/* Заголовок + чипы периода */}
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="font-semibold"
+          style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
+        >
+          {t("dashboard.activity")}
+        </div>
+
         <div className="ml-auto flex gap-1">
           {PERIODS.map((p) => {
             const active = p === period
             return (
               <button
                 key={p}
-                onClick={() => setPeriod(p)}
-                className="px-2 py-1 rounded text-sm border"
+                onClick={() => {
+                  setPeriod(p)
+                  void load() // безопасно, стор может иметь TTL
+                }}
+                aria-pressed={active}
+                className="px-2 py-1 rounded text-sm border transition"
                 style={{
                   backgroundColor: active
                     ? "var(--tg-theme-button-color, #3b82f6)"
                     : "var(--tg-theme-secondary-bg-color, #f3f4f6)",
                   color: active ? buttonText : textColor,
-                  borderColor: active
-                    ? "var(--tg-theme-button-color, #3b82f6)"
-                    : "transparent",
+                  borderColor: active ? "var(--tg-theme-button-color, #3b82f6)" : "transparent",
                 }}
               >
-                {p === "week" ? "Неделя" : p === "month" ? "Месяц" : "Год"}
+                {p === "week" ? t("period.week") : p === "month" ? t("period.month") : t("period.year")}
               </button>
             )
           })}
@@ -103,30 +150,38 @@ export default function DashboardActivityChart() {
       </div>
 
       {loading ? (
-        <div style={{ color: hintColor }} className="text-sm">Загрузка…</div>
+        <div style={{ color: hintColor }} className="text-sm">{t("loading")}</div>
       ) : hasError ? (
         <div className="flex items-center gap-3">
           <div className="text-sm" style={{ color: "var(--tg-theme-destructive-text-color, #ef4444)" }}>
-            Виджет «Активность» временно недоступен. Попробуй обновить или нажми «Повторить».
+            {t("dashboard.activity_error")}
           </div>
           <button
             onClick={() => load()}
-            className="px-2 py-1 text-sm rounded border"
+            className="px-2 py-1 text-sm rounded border transition"
             style={{
               backgroundColor: "var(--tg-theme-secondary-bg-color, #f3f4f6)",
               color: textColor,
               borderColor: "transparent",
             }}
           >
-            Повторить
+            {t("retry")}
           </button>
         </div>
       ) : buckets.length === 0 ? (
-        <div className="text-sm" style={{ color: hintColor }}>Нет данных за выбранный период</div>
+        // Пустое состояние как в EmptyTransactions
+        <div className="flex flex-col items-center justify-center py-12" role="status" aria-live="polite">
+          <div className="mb-4 opacity-60">
+            <Coins size={56} className="text-[var(--tg-link-color)]" />
+          </div>
+          <div className="text-lg font-semibold mb-2 text-[var(--tg-text-color)]">
+            {t("dashboard.activity_empty_title")}
+          </div>
+        </div>
       ) : (
         <div className="w-full">
           {/* Линейная диаграмма — компактная высота */}
-          <div className="h-32 w-full">{/* было h-48 */}
+          <div className="h-32 w-full">
             <svg viewBox="0 0 600 160" className="h-full w-full overflow-visible">
               {/* сетка (2 линии) */}
               <g stroke="currentColor" style={{ color: hintColor, opacity: 0.35 }}>
@@ -161,10 +216,9 @@ export default function DashboardActivityChart() {
                 {points.map(([x, y], i) => (
                   <g key={i}>
                     <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: accentColor }} />
-                    {/* значение над точкой */}
                     <text
                       x={x}
-                      y={Math.max(12, y - 8)} // чтобы не уехало за верх
+                      y={Math.max(12, y - 8)}
                       fontSize="10"
                       textAnchor="middle"
                       fill={textColor}
@@ -175,15 +229,15 @@ export default function DashboardActivityChart() {
                 ))}
               </g>
 
-              {/* подпись 0 и max слева (маленькие, ненавязчивые) */}
+              {/* подпись 0 и max слева */}
               <text x="4" y="56" fontSize="10" fill={hintColor}>{maxY}</text>
               <text x="8" y="142" fontSize="10" fill={hintColor}>0</text>
             </svg>
           </div>
 
-          {/* Ось X — три подписи (меньше отступ) */}
+          {/* Ось X — ровно 4 подписи */}
           <div className="mt-1 flex text-[10px]" style={{ color: hintColor }}>
-            {labels.map((lbl, i) => (
+            {xLabels.map((lbl, i) => (
               <div key={`lbl-${i}`} className="flex-1 text-center">
                 {lbl}
               </div>

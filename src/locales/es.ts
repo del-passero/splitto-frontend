@@ -172,6 +172,8 @@ export default {
   groups_filter_all: "TODO",
   apply: "Aplicar",
   reset_filters: "Restablecer",
+  retry: "Reintentar",
+
 
   // --- Ordenación de grupos ---
   groups_sort_title: "Ordenación",
@@ -429,6 +431,9 @@ export default {
     filter_groups: "Grupos",
     filter_users: "Usuarios",
 	all_groups: "TODOS LOS GRUPOS",
+	activity_empty_title: "No hay datos para el período seleccionado",
+    activity_error: "El widget de «Actividad» no está disponible temporalmente. Intenta actualizar o pulsa «Reintentar».",
+
   },
 
   // --- Título de la tarjeta de balance en el tablero ---
