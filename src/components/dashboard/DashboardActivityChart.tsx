@@ -268,6 +268,10 @@ export default function DashboardActivityChart() {
   const LABEL_DM_Y = X_BASE + GAP_X_TO_DM
   const LABEL_YR_Y = LABEL_DM_Y + GAP_DM_TO_YR
 
+  // helper: нужно ли подписывать точку (не 0 и не на линии сетки)
+  const shouldLabelValue = (v: number) =>
+    v > 0 && !yGridValues.some(g => Math.abs(g - v) < 1e-9)
+
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
@@ -295,7 +299,7 @@ export default function DashboardActivityChart() {
                       : "bg-transparent text-[var(--tg-text-color)]/90 border-[var(--tg-hint-color)]",
                   ].join(" ")}
                 >
-                  {p === "week" ? t("period.week") : p === "month" ? t("period.month") : t("period.year")}
+                  {p === "week" ? t("period.week") : p === "month" ? t("period.month") : p === "year" ? t("period.year") : p}
                 </button>
               )
             })}
@@ -384,24 +388,42 @@ export default function DashboardActivityChart() {
                   />
                 )}
 
-                {/* точки и значения (подпись слева; 0 не показываем) */}
+                {/* точки и значения (логика подписей по правилам) */}
                 <g>
-                  {points.map(([x, y], i) => (
-                    <g key={`p-${i}`}>
-                      <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: ACCENT }} />
-                      {values[i] > 0 && (
-                        <text
-                          x={x - 6}
-                          y={y + 3}
-                          fontSize="10"
-                          textAnchor="end"
-                          fill={TEXT}
-                        >
-                          {values[i]}
-                        </text>
-                      )}
-                    </g>
-                  ))}
+                  {points.map(([x, y], i) => {
+                    const v = values[i]
+                    const show = shouldLabelValue(v)
+                    return (
+                      <g key={`p-${i}`}>
+                        <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: ACCENT }} />
+                        {show && (
+                          i === 0 ? (
+                            // первая точка — подпись СПРАВА
+                            <text
+                              x={x + 6}
+                              y={y + 3}
+                              fontSize="10"
+                              textAnchor="start"
+                              fill={TEXT}
+                            >
+                              {v}
+                            </text>
+                          ) : (
+                            // остальные — подпись СВЕРХУ
+                            <text
+                              x={x}
+                              y={Math.max(12, y - 8)}
+                              fontSize="10"
+                              textAnchor="middle"
+                              fill={TEXT}
+                            >
+                              {v}
+                            </text>
+                          )
+                        )}
+                      </g>
+                    )
+                  })}
                 </g>
 
                 {/* подписи X */}
