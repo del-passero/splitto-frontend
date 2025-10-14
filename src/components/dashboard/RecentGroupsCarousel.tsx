@@ -24,11 +24,11 @@ type RecentGroupCard = {
   owner_id?: number
 }
 
-// ===== helpers =====
+// ===== layout consts =====
 const AVATAR_SIZE = 56
 const PARTICIPANT_SIZE = 24
 const MAX_ICONS_INLINE = 5 // показываем до 5, если больше — 4 + “+N”
-const SLIDE_HEIGHT = 112 // единая высота карточек в слайдере
+const SLIDE_SIZE = 112 // высота карточек; квадрат "все группы" также 112x112
 
 function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | null): string {
   if (!iso) return t("last_activity_inactive") || "Неактивна"
@@ -67,7 +67,6 @@ export default function RecentGroupsCarousel() {
         sortBy: "last_activity",
         sortDir: "desc",
       })
-      // API уже сортирует, но на всякий случай — по last_activity, затем по id
       const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
         const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
         const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
@@ -87,7 +86,6 @@ export default function RecentGroupsCarousel() {
     void load()
   }, [load])
 
-  // === view helpers ===
   const content = useMemo(() => {
     if (loading) {
       return <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">{t("loading")}</div>
@@ -108,7 +106,7 @@ export default function RecentGroupsCarousel() {
     }
 
     if (!groups.length) {
-      // Пустое состояние — как EmptyGroups, но в компактной карточке фиксированной высоты
+      // Пустое состояние — как EmptyGroups, в компактной карточке фиксированной высоты
       return (
         <div
           className="h-[112px] rounded-2xl border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]"
@@ -156,70 +154,102 @@ export default function RecentGroupsCarousel() {
               key={g.id}
               type="button"
               onClick={() => navigate(`/groups/${g.id}`)}
-              className="snap-center shrink-0 min-w-[260px] w-[70%] h-[112px] rounded-2xl p-1.5 border border-[var(--tg-hint-color)] text-left active:scale-[0.99] transition bg-[var(--tg-card-bg)]"
+              className="snap-center shrink-0 min-w-[260px] w-[70%] h-[112px] rounded-2xl p-2 border border-[var(--tg-hint-color)] text-left active:scale-[0.99] transition bg-[var(--tg-card-bg)]"
               aria-label={g.name}
             >
-              <div className="w-full h-full grid grid-cols-12 gap-1 items-stretch">
-                {/* Левая — квадратный аватар группы */}
+              {/* ВЫРАВНИВАНИЕ ПО АВАТАРУ:
+                  - контейнер сетки растягивается на всю высоту слайда,
+                  - внутри оба столбца центрируются по вертикали,
+                  - справа создаём коробку высотой AVATAR_SIZE и раскладываем 3 строки:
+                    top (название) — к верху,
+                    middle (участники) — по центру,
+                    bottom (активность) — к низу.
+              */}
+              <div className="w-full h-full grid grid-cols-12 gap-2 items-center">
+                {/* Левая колонка — аватар внутри коробки AVATAR_SIZE, центр по вертикали */}
                 <div className="col-span-4 flex items-center justify-center">
-                  <GroupAvatar name={g.name} src={g.avatar_url || undefined} size={AVATAR_SIZE} className="relative" />
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}
+                  >
+                    <GroupAvatar
+                      name={g.name}
+                      src={g.avatar_url || undefined}
+                      size={AVATAR_SIZE}
+                      className="relative"
+                    />
+                  </div>
                 </div>
 
-                {/* Правая — три строки: название; участники; активность */}
-                <div className="col-span-8 min-w-0 flex flex-col justify-between py-0.5">
-                  {/* 1) Название */}
-                  <div className="text-[17px] leading-[18px] font-semibold text-[var(--tg-text-color)] truncate">{g.name}</div>
+                {/* Правая колонка — коробка ровно AVATAR_SIZE по высоте */}
+                <div className="col-span-8 min-w-0 flex items-center">
+                  <div
+                    className="w-full"
+                    style={{
+                      height: AVATAR_SIZE,
+                      display: "grid",
+                      gridTemplateRows: "auto 1fr auto",
+                    }}
+                  >
+                    {/* 1) Название — по верху коробки */}
+                    <div className="text-[17px] leading-[18px] font-semibold text-[var(--tg-text-color)] truncate self-start">
+                      {g.name}
+                    </div>
 
-                  {/* 2) Участники: 4 аватарки + “+N” */}
-                  <div className="relative flex items-center justify-start min-h-[24px]">
-                    {displayedMembers.map((m, idx) => (
-                      <div
-                        key={m.id}
-                        className="rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)]"
-                        style={{
-                          borderColor: "var(--tg-card-bg)",
-                          width: PARTICIPANT_SIZE,
-                          height: PARTICIPANT_SIZE,
-                          marginLeft: idx > 0 ? -8 : 0,
-                          zIndex: 1 + idx,
-                        }}
-                        title={
-                          m.user.first_name
-                            ? `${m.user.first_name} ${m.user.last_name || ""}`.trim()
-                            : m.user.username || ""
-                        }
-                      >
-                        <Avatar
-                          name={
+                    {/* 2) Участники — по центру коробки */}
+                    <div className="relative flex items-center justify-start min-h-[24px] place-self-center">
+                      {displayedMembers.map((m, idx) => (
+                        <div
+                          key={m.id}
+                          className="rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)]"
+                          style={{
+                            borderColor: "var(--tg-card-bg)",
+                            width: PARTICIPANT_SIZE,
+                            height: PARTICIPANT_SIZE,
+                            marginLeft: idx > 0 ? -8 : 0,
+                            zIndex: 1 + idx,
+                          }}
+                          title={
                             m.user.first_name
                               ? `${m.user.first_name} ${m.user.last_name || ""}`.trim()
                               : m.user.username || ""
                           }
-                          src={m.user.photo_url}
-                          size={PARTICIPANT_SIZE}
-                        />
-                      </div>
-                    ))}
+                        >
+                          <Avatar
+                            name={
+                              m.user.first_name
+                                ? `${m.user.first_name} ${m.user.last_name || ""}`.trim()
+                                : m.user.username || ""
+                            }
+                            src={m.user.photo_url}
+                            size={PARTICIPANT_SIZE}
+                          />
+                        </div>
+                      ))}
 
-                    {showPlus && hiddenCount > 0 && (
-                      <div
-                        className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
-                        style={{
-                          borderColor: "var(--tg-card-bg)",
-                          width: PARTICIPANT_SIZE,
-                          height: PARTICIPANT_SIZE,
-                          zIndex: 1 + maxVisible,
-                        }}
-                        title={`+${hiddenCount}`}
-                      >
-                        +{hiddenCount}
-                      </div>
-                    )}
-                  </div>
+                      {showPlus && hiddenCount > 0 && (
+                        <div
+                          className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
+                          style={{
+                            borderColor: "var(--tg-card-bg)",
+                            width: PARTICIPANT_SIZE,
+                            height: PARTICIPANT_SIZE,
+                            zIndex: 1 + maxVisible,
+                          }}
+                          title={`+${hiddenCount}`}
+                        >
+                          +{hiddenCount}
+                        </div>
+                      )}
+                    </div>
 
-                  {/* 3) Активность */}
-                  <div className="text-[11px] leading-[13px] text-[var(--tg-hint-color)] truncate" title={activityText}>
-                    {activityText}
+                    {/* 3) Активность — по низу коробки */}
+                    <div
+                      className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate self-end"
+                      title={activityText}
+                    >
+                      {activityText}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -227,11 +257,12 @@ export default function RecentGroupsCarousel() {
           )
         })}
 
-        {/* Последняя — квадратная «Все группы» (строго такой же высоты) */}
+        {/* Последняя — квадратная «Все группы» (строго SLIDE_SIZE x SLIDE_SIZE) */}
         <button
           type="button"
           onClick={() => navigate("/groups")}
-          className="snap-center shrink-0 h-[112px] w-[112px] rounded-2xl border border-[var(--tg-hint-color)] flex items-center justify-center active:scale-[0.98] transition bg-[var(--tg-card-bg)]"
+          className="snap-center shrink-0 rounded-2xl border border-[var(--tg-hint-color)] flex items-center justify-center active:scale-[0.98] transition bg-[var(--tg-card-bg)]"
+          style={{ width: SLIDE_SIZE, height: SLIDE_SIZE }}
           aria-label={t("dashboard.all_groups")}
         >
           <div className="flex flex-col items-center justify-center">
@@ -251,9 +282,7 @@ export default function RecentGroupsCarousel() {
   }, [loading, error, groups, navigate, t, load])
 
   return (
-    <div
-      className="rounded-2xl border border-[var(--tg-hint-color)] p-3 bg-[var(--tg-card-bg)]"
-    >
+    <div className="rounded-2xl border border-[var(--tg-hint-color)] p-3 bg-[var(--tg-card-bg)]">
       <div
         className="mb-2 font-semibold"
         style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
