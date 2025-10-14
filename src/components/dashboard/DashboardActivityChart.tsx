@@ -16,7 +16,7 @@ function toYMD(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
-/** Формат даты как в TransactionCard (использует date_card.months и date_card.pattern) */
+/** Формат даты как в TransactionCard (использует date_card.months и date_card.pattern, но мы берём только "день+месяц") */
 function formatCardDateLike(d: Date, t: (k: string, o?: any) => any): string {
   try {
     const monthsRaw = t("date_card.months", { returnObjects: true }) as unknown
@@ -42,6 +42,20 @@ function formatCardDateLike(d: Date, t: (k: string, o?: any) => any): string {
   }
 }
 
+/** Только название месяца (для режима "Год") */
+function formatMonthOnly(d: Date, t: (k: string, o?: any) => any): string {
+  try {
+    const monthsRaw = t("date_card.months", { returnObjects: true }) as unknown
+    const months = Array.isArray(monthsRaw) ? (monthsRaw as string[]) : null
+    if (months && months.length === 12) return months[d.getMonth()]
+  } catch { /* ignore */ }
+  try {
+    return new Intl.DateTimeFormat(undefined, { month: "long" }).format(d)
+  } catch {
+    return `${d.getMonth() + 1}`
+  }
+}
+
 function ceilToEven(n: number) {
   const m = Math.ceil(n)
   return m % 2 === 0 ? m : m + 1
@@ -53,33 +67,23 @@ function ceilToMultiple(n: number, k: number) {
   return r === 0 ? m : m + (k - r)
 }
 
-/** 4 метки для month/year (coarse; данные для этих режимов пока не пересчитываем) */
-function getXAxisLabelsCoarse(period: PeriodAll, t: (k: string, o?: any) => any): string[] {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-  if (period === "month") {
-    const offs = [-28, -19, -9, 0]
-    return offs.map((o) => {
-      const d = new Date(today); d.setDate(d.getDate() + o)
-      return formatCardDateLike(d, t)
-    })
-  }
-  if (period === "year") {
-    const y = today.getFullYear()
-    const qs = [new Date(y, 0, 1), new Date(y, 3, 1), new Date(y, 6, 1), new Date(y, 9, 1)]
-    return qs.map((d) => formatCardDateLike(d, t))
-  }
-  return []
-}
-
 /* ===== layout/visual constants (НЕ МЕНЯЕМ РАЗМЕРЫ, только выносим) ===== */
-const FONT_SIZE_DM = 16           // размер шрифта для дня+месяца
-const FONT_SIZE_YR = 16            // размер шрифта для года
+const FONT_SIZE_DM = 10           // размер шрифта для дня+месяца (и для подписей в "Месяц")
+const FONT_SIZE_YR = 9            // размер шрифта для года
 const GAP_HEADER_TO_TOP = 2       // отступ от чипов (хедера) до верхней границы области графика (px)
-const GAP_X_TO_DM = 20            // от оси X до подписи день+месяц (px вниз)
-const GAP_DM_TO_YR = 20           // от подписи день+месяц до года (px вниз)
+const GAP_X_TO_DM = 10            // от оси X до подписи день+месяц (px вниз)
+const GAP_DM_TO_YR = 10           // от подписи день+месяц до года (px вниз)
 const GAP_YR_TO_BOTTOM = 2        // от года до нижней границы компонента (px)
+
+/* Подписи для 4 недель в режиме "Месяц" (текущая, прошлая, 2/3 недели назад) */
+function monthBucketLabels(t: (k: string) => string) {
+  return [
+    t("period.week_this"),
+    t("period.week_prev"),
+    t("period.weeks_ago_2"),
+    t("period.weeks_ago_3"),
+  ]
+}
 
 export default function DashboardActivityChart() {
   const { t } = useTranslation()
@@ -96,39 +100,82 @@ export default function DashboardActivityChart() {
 
   const buckets = activity?.buckets ?? []
 
+  /* Подготовим map "YYYY-MM-DD" -> count, чтобы быстро агрегировать */
+  const byDay = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const b of buckets as any[]) {
+      const key = String(b?.date ?? "")
+      const count = Number(b?.count ?? 0)
+      if (!key) continue
+      m.set(key.length >= 10 ? key.slice(0, 10) : key, (m.get(key) || 0) + (Number.isFinite(count) ? count : 0))
+    }
+    return m
+  }, [buckets])
+
   /* ===== series =====
      Неделя: 7 точек — сегодня, вчера, …, 6 дней назад (слева → направо).
-     Месяц/год: как пришло с бэка. */
+     Месяц: 4 точки — 4 недельных окна по 7 дней от сегодняшней даты назад.
+     Год: 12 точек — по месяцу, начиная с текущего, назад 11 (сумма за месяц). */
   const series = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
     if (period === "week") {
-      const map = new Map<string, number>()
-      for (const b of buckets) {
-        const raw = String((b as any)?.date ?? "")
-        const key = raw.length >= 10 ? raw.slice(0, 10) : raw
-        const count = Number((b as any)?.count ?? 0)
-        if (!Number.isFinite(count)) continue
-        map.set(key, (map.get(key) || 0) + count)
-      }
-      const now = new Date()
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
       const out: { date: string; count: number }[] = []
       for (let offset = 0; offset <= 6; offset++) {
         const d = new Date(today); d.setDate(today.getDate() - offset)
         const key = toYMD(d)
-        out.push({ date: key, count: map.get(key) || 0 })
+        out.push({ date: key, count: byDay.get(key) || 0 })
       }
       return out
     }
-    // month/year — как есть
+
+    if (period === "month") {
+      const out: { date: string; count: number }[] = []
+      // 4 окна по 7 дней: [0..6], [7..13], [14..20], [21..27]
+      for (let w = 0; w < 4; w++) {
+        let sum = 0
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today)
+          d.setDate(today.getDate() - (w * 7 + i))
+          sum += byDay.get(toYMD(d)) || 0
+        }
+        // "якорная" дата бакета — первый день окна (сегодня - w*7)
+        const anchor = new Date(today); anchor.setDate(today.getDate() - w * 7)
+        out.push({ date: toYMD(anchor), count: sum })
+      }
+      return out
+    }
+
+    if (period === "year") {
+      const out: { date: string; count: number }[] = []
+      // 12 месяцев: 0 — текущий месяц, 1 — предыдущий, ...
+      for (let mIdx = 0; mIdx < 12; mIdx++) {
+        const start = new Date(today.getFullYear(), today.getMonth(), 1)
+        start.setMonth(start.getMonth() - mIdx)
+        const end = new Date(start.getFullYear(), start.getMonth() + 1, 1)
+
+        // суммируем по дням месяца
+        let d = new Date(start)
+        let sum = 0
+        while (d < end) {
+          sum += byDay.get(toYMD(d)) || 0
+          d.setDate(d.getDate() + 1)
+        }
+        // якорь — 1-е число месяца
+        out.push({ date: toYMD(start), count: sum })
+      }
+      return out
+    }
+
+    // fallback
     return (buckets as any[]).map((b) => ({
       date: String(b?.date ?? ""),
       count: Number(b?.count ?? 0),
     }))
-  }, [period, buckets])
+  }, [period, buckets, byDay])
 
-  /* X-подписи:
-     - неделя: 7 подписей (каждая точка) → 2 строки (день+месяц; год ниже)
-     - месяц/год: 4 «крупные» метки */
+  /* X-подписи */
   const xLabelsWeek = useMemo(() => {
     if (period !== "week") return { dm: [] as string[], yr: [] as string[] }
     const dm: string[] = []
@@ -143,13 +190,28 @@ export default function DashboardActivityChart() {
     }
     return { dm, yr }
   }, [period, series, t])
-  const xLabelsCoarse = useMemo(() => getXAxisLabelsCoarse(period, t as any), [period, t])
 
-  /* Y-шкала:
-     1) raw max
-     2) округляем вверх до чётного
-     3) если >=8 — дополнительно до кратного 4
-     4) линии: 2→1; 4/6→2; >=8→4 (равномерно) */
+  const xLabelsMonth = useMemo(() => {
+    if (period !== "month") return [] as string[]
+    return monthBucketLabels(t as any)
+  }, [period, t])
+
+  const xLabelsYear = useMemo(() => {
+    if (period !== "year") return { m: [] as string[], y: [] as string[] }
+    const mNames: string[] = []
+    const years: string[] = []
+    for (const pt of series) {
+      const [y, m/*, d*/] = pt.date.split("-").map((x: string) => Number(x))
+      const date = Number.isFinite(y) && Number.isFinite(m)
+        ? new Date(y, m - 1, 1)
+        : new Date(pt.date)
+      mNames.push(formatMonthOnly(date, t as any))
+      years.push(String(date.getFullYear()))
+    }
+    return { m: mNames, y: years }
+  }, [period, series, t])
+
+  /* Y-шкала (оставляем как есть): 2→1 линия; 4/6→2; ≥8→4 (равномерно), округление вверх до чётного/кратно 4 */
   const { yMax, yGridValues } = useMemo(() => {
     const rawMax = Math.max(0, series.reduce((m, b) => Math.max(m, Number(b.count || 0)), 0))
     let maxEven = Math.max(2, ceilToEven(rawMax))
@@ -171,7 +233,7 @@ export default function DashboardActivityChart() {
   const { points, values } = useMemo(() => {
     const W = 600
     const H = 160
-    const P = 22
+    const P = 12
     const n = series.length
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
@@ -202,11 +264,9 @@ export default function DashboardActivityChart() {
   const TEXT = "var(--tg-text-color)"
   const ACCENT = "var(--tg-accent-color,#40A7E3)"
 
-  // позиционирование подписей под осью X (соблюдаем исходные размеры)
+  // позиционирование подписей под осью X
   const LABEL_DM_Y = X_BASE + GAP_X_TO_DM
   const LABEL_YR_Y = LABEL_DM_Y + GAP_DM_TO_YR
-  // контрольный нижний зазор (должен получиться GAP_YR_TO_BOTTOM)
-  // const bottomGap = H - LABEL_YR_Y  // ( = 160 - (138+10+10) = 2 )
 
   return (
     <CardSection noPadding>
@@ -291,7 +351,7 @@ export default function DashboardActivityChart() {
                   ))}
                 </g>
 
-                {/* ось X (0) + подпись 0 слева */}
+                {/* ось X (без подписи "0") */}
                 <line
                   x1={X_LEFT}
                   x2={X_RIGHT}
@@ -301,7 +361,6 @@ export default function DashboardActivityChart() {
                   style={{ color: HINT, opacity: 0.5 }}
                   strokeWidth="1"
                 />
-                <text x={8} y={X_BASE + 4} fontSize="10" fill={HINT}>0</text>
 
                 {/* область под кривой */}
                 {pathD && (
@@ -370,27 +429,51 @@ export default function DashboardActivityChart() {
                       </g>
                     ))}
                   </g>
-                ) : (
-                  // coarse: 4 равномерные подписи (одной строкой — день+месяц)
+                ) : period === "month" ? (
+                  // 4 подписи бакетов: эта/прошлая/2/3 недели назад (одной строкой)
                   <g>
-                    {[0, 1, 2, 3].map((k) => {
-                      const n = points.length
-                      if (n === 0) return null
-                      const idx = Math.round((k / 3) * (n - 1))
-                      const x = points[idx][0]
-                      return (
-                        <text
-                          key={`xlc-${k}`}
-                          x={x}
-                          y={LABEL_DM_Y}
-                          fontSize={FONT_SIZE_DM}
-                          textAnchor="middle"
-                          fill={HINT}
-                        >
-                          {xLabelsCoarse[k] || ""}
-                        </text>
+                    {points.map(([x], i) => (
+                      <text
+                        key={`xlm-${i}`}
+                        x={x}
+                        y={LABEL_DM_Y}
+                        fontSize={FONT_SIZE_DM}
+                        textAnchor="middle"
+                        fill={HINT}
+                      >
+                        {xLabelsMonth[i] || ""}
+                      </text>
+                    ))}
+                  </g>
+                ) : (
+                  // "Год": 12 меток, подписи через одну (месяц + год в 2 строки на чётных индексах: 0,2,4,…)
+                  <g>
+                    {points.map(([x], i) => (
+                      (i % 2 === 0) ? (
+                        <g key={`xly-${i}`}>
+                          <text
+                            x={x}
+                            y={LABEL_DM_Y}
+                            fontSize={FONT_SIZE_DM}
+                            textAnchor="middle"
+                            fill={HINT}
+                          >
+                            {xLabelsYear.m[i] || ""}
+                          </text>
+                          <text
+                            x={x}
+                            y={LABEL_YR_Y}
+                            fontSize={FONT_SIZE_YR}
+                            textAnchor="middle"
+                            fill={HINT}
+                          >
+                            {xLabelsYear.y[i] || ""}
+                          </text>
+                        </g>
+                      ) : (
+                        <g key={`xly-${i}`} />
                       )
-                    })}
+                    ))}
                   </g>
                 )}
               </svg>

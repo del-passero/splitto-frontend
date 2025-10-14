@@ -409,6 +409,10 @@ export default {
     week: "Неделя",
     month: "Mесяц",
     year: "Год",
+	week_this: "эта неделя",
+    week_prev: "прошлая неделя",
+    weeks_ago_2: "2 недели назад",
+    weeks_ago_3: "3 недели назад",
   },
   dashboard: {
     activity: "Активность трат",

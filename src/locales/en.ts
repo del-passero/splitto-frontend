@@ -409,6 +409,10 @@ export default {
     week: "Week",
     month: "Month",
     year: "Year",
+	week_this: "this week",
+    week_prev: "last week",
+    weeks_ago_2: "2 weeks ago",
+    weeks_ago_3: "3 weeks ago",
   },
   dashboard: {
     activity: "Spending activity",
