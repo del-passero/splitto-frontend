@@ -67,12 +67,12 @@ function ceilToMultiple(n: number, k: number) {
   return r === 0 ? m : m + (k - r)
 }
 
-/* ===== layout/visual constants (НЕ МЕНЯЕМ РАЗМЕРЫ, только выносим) ===== */
-const FONT_SIZE_DM = 10           // размер шрифта для дня+месяца (и для подписей в "Месяц")
-const FONT_SIZE_YR = 9            // размер шрифта для года
+/* ===== layout/visual constants (КАК РАНЬШЕ) ===== */
+const FONT_SIZE_DM = 16           // размер шрифта для дня+месяца
+const FONT_SIZE_YR = 16           // размер шрифта для года
 const GAP_HEADER_TO_TOP = 2       // отступ от чипов (хедера) до верхней границы области графика (px)
-const GAP_X_TO_DM = 10            // от оси X до подписи день+месяц (px вниз)
-const GAP_DM_TO_YR = 10           // от подписи день+месяц до года (px вниз)
+const GAP_X_TO_DM = 20            // от оси X до подписи день+месяц (px вниз)
+const GAP_DM_TO_YR = 20           // от подписи день+месяц до года (px вниз)
 const GAP_YR_TO_BOTTOM = 2        // от года до нижней границы компонента (px)
 
 /* Подписи для 4 недель в режиме "Месяц" (текущая, прошлая, 2/3 недели назад) */
@@ -211,7 +211,7 @@ export default function DashboardActivityChart() {
     return { m: mNames, y: years }
   }, [period, series, t])
 
-  /* Y-шкала (оставляем как есть): 2→1 линия; 4/6→2; ≥8→4 (равномерно), округление вверх до чётного/кратно 4 */
+  /* Y-шкала (как было): 2→1 линия; 4/6→2; ≥8→4 (равномерно), округление вверх до чётного/кратно 4 */
   const { yMax, yGridValues } = useMemo(() => {
     const rawMax = Math.max(0, series.reduce((m, b) => Math.max(m, Number(b.count || 0)), 0))
     let maxEven = Math.max(2, ceilToEven(rawMax))
@@ -233,7 +233,7 @@ export default function DashboardActivityChart() {
   const { points, values } = useMemo(() => {
     const W = 600
     const H = 160
-    const P = 12
+    const P = 22
     const n = series.length
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
@@ -384,20 +384,22 @@ export default function DashboardActivityChart() {
                   />
                 )}
 
-                {/* точки и значения над ними */}
+                {/* точки и значения (подпись слева; 0 не показываем) */}
                 <g>
                   {points.map(([x, y], i) => (
                     <g key={`p-${i}`}>
                       <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: ACCENT }} />
-                      <text
-                        x={x}
-                        y={Math.max(12, y - 8)}
-                        fontSize="10"
-                        textAnchor="middle"
-                        fill={TEXT}
-                      >
-                        {values[i]}
-                      </text>
+                      {values[i] > 0 && (
+                        <text
+                          x={x - 6}
+                          y={y + 3}
+                          fontSize="10"
+                          textAnchor="end"
+                          fill={TEXT}
+                        >
+                          {values[i]}
+                        </text>
+                      )}
                     </g>
                   ))}
                 </g>
@@ -430,20 +432,30 @@ export default function DashboardActivityChart() {
                     ))}
                   </g>
                 ) : period === "month" ? (
-                  // 4 подписи бакетов: эта/прошлая/2/3 недели назад (одной строкой)
+                  // 4 подписи бакетов: эта/прошлая/2/3 недели назад
                   <g>
-                    {points.map(([x], i) => (
-                      <text
-                        key={`xlm-${i}`}
-                        x={x}
-                        y={LABEL_DM_Y}
-                        fontSize={FONT_SIZE_DM}
-                        textAnchor="middle"
-                        fill={HINT}
-                      >
-                        {xLabelsMonth[i] || ""}
-                      </text>
-                    ))}
+                    {points.map(([x], i) => {
+                      const anchor =
+                        i === 0 ? "start" :
+                        i === points.length - 1 ? "end" :
+                        "middle"
+                      const dx =
+                        i === 0 ? 2 :
+                        i === points.length - 1 ? -2 :
+                        0
+                      return (
+                        <text
+                          key={`xlm-${i}`}
+                          x={x + dx}
+                          y={LABEL_DM_Y}
+                          fontSize={FONT_SIZE_DM}
+                          textAnchor={anchor as "start" | "middle" | "end"}
+                          fill={HINT}
+                        >
+                          {xLabelsMonth[i] || ""}
+                        </text>
+                      )
+                    })}
                   </g>
                 ) : (
                   // "Год": 12 меток, подписи через одну (месяц + год в 2 строки на чётных индексах: 0,2,4,…)
