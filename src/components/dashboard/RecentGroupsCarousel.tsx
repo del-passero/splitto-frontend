@@ -14,21 +14,53 @@ type RecentGroupCard = {
   id: number
   name: string
   avatar_url?: string | null
-
-  // активность
   last_activity_at?: string | null
-
-  // участники (превью)
   preview_members?: GroupMember[]
   members_count?: number
   owner_id?: number
 }
 
 // ===== layout consts =====
-const AVATAR_SIZE = 62            // ↑ было 56, увеличили ~на 10%
+const AVATAR_SIZE = 62
 const PARTICIPANT_SIZE = 24
-const MAX_ICONS_INLINE = 5        // показываем до 5, если больше — 4 + “+N”
+const MAX_ICONS_INLINE = 5
 
+// ---------- auth helpers (чтобы не зависать до перезагрузки) ----------
+function tg() {
+  // @ts-ignore
+  return window?.Telegram?.WebApp
+}
+function getTelegramInitData(): string {
+  try {
+    return tg()?.initData || ""
+  } catch {
+    return ""
+  }
+}
+async function waitForInitData(maxWaitMs = 6000, stepMs = 150): Promise<string> {
+  const deadline = Date.now() + maxWaitMs
+  let init = getTelegramInitData()
+  while (!init && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, stepMs))
+    init = getTelegramInitData()
+  }
+  return init
+}
+async function ensureTelegramAuth(): Promise<void> {
+  const initData = await waitForInitData()
+  // уже авторизованы? сервер сам решит по куке/заголовку; нам достаточно дернуть endpoint
+  try {
+    await fetch("/api/auth/telegram", {
+      method: "POST",
+      headers: { "x-telegram-initdata": initData },
+      credentials: "include",
+    })
+  } catch {
+    // тихо игнорируем — ниже всё равно попробуем запрос и покажем ошибку, если не ок
+  }
+}
+
+// ---------- misc ----------
 function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | null): string {
   if (!iso) return t("last_activity_inactive") || "Неактивна"
   try {
@@ -57,6 +89,8 @@ export default function RecentGroupsCarousel() {
     setLoading(true)
     setError(null)
     try {
+      await ensureTelegramAuth()
+
       const { items } = await getUserGroups(user.id, {
         limit: 5,
         offset: 0,
@@ -66,7 +100,7 @@ export default function RecentGroupsCarousel() {
         sortBy: "last_activity",
         sortDir: "desc",
       })
-      // На всякий случай — пересортируем по last_activity_at, затем по id
+
       const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
         const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
         const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
@@ -75,16 +109,54 @@ export default function RecentGroupsCarousel() {
       })
       setGroups(sorted.slice(0, 5))
     } catch (e: any) {
-      setError(e?.message || "Failed to load recent groups")
-      setGroups([])
+      // один тихий ретрай после явной авторизации (на случай гонки куки)
+      try {
+        await ensureTelegramAuth()
+        const { items } = await getUserGroups(user.id, {
+          limit: 5,
+          offset: 0,
+          includeHidden: false,
+          includeArchived: false,
+          includeDeleted: false,
+          sortBy: "last_activity",
+          sortDir: "desc",
+        })
+        const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
+          const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
+          const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
+          if (tb !== ta) return tb - ta
+          return (b?.id || 0) - (a?.id || 0)
+        })
+        setGroups(sorted.slice(0, 5))
+        setError(null)
+      } catch (ee: any) {
+        setError(ee?.message || e?.message || "Failed to load recent groups")
+        setGroups([])
+      }
     } finally {
       setLoading(false)
     }
   }, [user?.id])
 
+  // первичная загрузка + повтор при смене user.id
   useEffect(() => {
     void load()
   }, [load])
+
+  // автоповтор после получения фокуса/онлайна, если раньше ошибка или пусто
+  useEffect(() => {
+    const onFocusOrOnline = () => {
+      if (!loading && (!groups.length || error)) {
+        void load()
+      }
+    }
+    window.addEventListener("focus", onFocusOrOnline)
+    window.addEventListener("online", onFocusOrOnline)
+    return () => {
+      window.removeEventListener("focus", onFocusOrOnline)
+      window.removeEventListener("online", onFocusOrOnline)
+    }
+  }, [loading, groups.length, error, load])
 
   const content = useMemo(() => {
     if (loading) {
@@ -106,11 +178,8 @@ export default function RecentGroupsCarousel() {
     }
 
     if (!groups.length) {
-      // Пустое состояние — как EmptyGroups, в компактной карточке
       return (
-        <div
-          className="rounded-lg border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]"
-        >
+        <div className="rounded-lg border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]">
           <div className="flex flex-col items-center justify-center">
             <div className="mb-2 opacity-60">
               <Users size={56} className="text-[var(--tg-link-color)]" />
@@ -128,12 +197,10 @@ export default function RecentGroupsCarousel() {
 
     return (
       <div className="-mx-1 px-1 flex gap-3 overflow-x-auto snap-x" style={{ WebkitOverflowScrolling: "touch" }}>
-        {/* Карточки групп */}
         {groups.map((g) => {
           const members: GroupMember[] = Array.isArray(g.preview_members) ? g.preview_members : []
           const ownerId = typeof g.owner_id === "number" ? g.owner_id : undefined
 
-          // owner — первым
           const membersSorted = members.length
             ? [
                 ...members.filter((m) => (ownerId ? m.user?.id === ownerId : false)),
@@ -161,9 +228,7 @@ export default function RecentGroupsCarousel() {
               "
               aria-label={g.name}
             >
-              {/* Компоновка как у GroupCard: отступы p-1.5 и бордеры такие же */}
               <div className="w-full grid grid-cols-12 gap-2 items-center">
-                {/* Левая колонка — аватар в коробке AVATAR_SIZE */}
                 <div className="col-span-4 flex items-center justify-center">
                   <div className="flex items-center justify-center" style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}>
                     <GroupAvatar
@@ -175,7 +240,6 @@ export default function RecentGroupsCarousel() {
                   </div>
                 </div>
 
-                {/* Правая колонка — коробка ровно AVATAR_SIZE по высоте */}
                 <div className="col-span-8 min-w-0 flex items-center">
                   <div
                     className="w-full"
@@ -185,12 +249,10 @@ export default function RecentGroupsCarousel() {
                       gridTemplateRows: "auto 1fr auto",
                     }}
                   >
-                    {/* 1) Название — верх по коробке */}
                     <div className="text-[17px] leading-[18px] font-semibold text-[var(--tg-text-color)] truncate self-start">
                       {g.name}
                     </div>
 
-                    {/* 2) Участники — центр по коробке */}
                     <div className="relative flex items-center justify-start min-h-[24px] self-center">
                       {displayedMembers.map((m, idx) => (
                         <div
@@ -237,7 +299,6 @@ export default function RecentGroupsCarousel() {
                       )}
                     </div>
 
-                    {/* 3) Активность — низ по коробке */}
                     <div
                       className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate self-end"
                       title={activityText}
@@ -251,7 +312,6 @@ export default function RecentGroupsCarousel() {
           )
         })}
 
-        {/* Последняя — “Все группы”: динамическая ширина под текст, без фиксированной высоты */}
         <button
           type="button"
           onClick={() => navigate("/groups")}
