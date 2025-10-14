@@ -412,7 +412,7 @@ export default {
     year: "Año",
   },
   dashboard: {
-    activity: "Actividad",
+    activity: "Actividad de gasto",
     top_categories: "Categorías principales",
     no_categories: "No hay gastos en el período seleccionado",
     unknown_category: "Categoría",

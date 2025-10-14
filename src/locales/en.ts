@@ -411,7 +411,7 @@ export default {
     year: "Year",
   },
   dashboard: {
-    activity: "Activity",
+    activity: "Spending activity",
     top_categories: "Top categories",
     no_categories: "No expenses for the selected period",
     unknown_category: "Category",

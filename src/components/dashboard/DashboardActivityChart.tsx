@@ -8,67 +8,59 @@ import { useDashboardStore } from "../../store/dashboardStore"
 type PeriodAll = "week" | "month" | "year"
 const PERIODS: PeriodAll[] = ["week", "month", "year"]
 
+/* ===== SVG/верстка константы (править тут) ===== */
+const SVG_W = 600
+const SVG_H = 160
+const PAD = 22                   // внутренний отступ сверху/снизу
+const X_LEFT = PAD
+const X_RIGHT = SVG_W - PAD
+const X_BASE = SVG_H - PAD       // ось X
+
+const LABEL_DM_FONT = 10         // размер шрифта для "день+месяц"
+const LABEL_YR_FONT = 9          // размер шрифта для "год"
+const LABEL_DM_OFFSET = 2        // отступ ОТ оси X до первой строки дат (px)
+const LABEL_YR_OFFSET = 12       // отступ ОТ оси X до второй строки (год)
+
 /* ===== helpers ===== */
-function pad2(n: number) {
-  return n < 10 ? `0${n}` : String(n)
-}
-function toYMD(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-}
+function pad2(n: number) { return n < 10 ? `0${n}` : String(n) }
+function toYMD(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
 
 /** Формат даты как в TransactionCard (использует date_card.months и date_card.pattern) */
 function formatCardDateLike(d: Date, t: (k: string, o?: any) => any): string {
   try {
     const monthsRaw = t("date_card.months", { returnObjects: true }) as unknown
     const months = Array.isArray(monthsRaw) ? (monthsRaw as string[]) : null
-
     let patternStr = "{{day}} {{month}}"
     const maybe = t("date_card.pattern")
-    if (typeof maybe === "string" && maybe.trim() && maybe !== "date_card.pattern") {
-      patternStr = maybe
-    }
-
+    if (typeof maybe === "string" && maybe.trim() && maybe !== "date_card.pattern") patternStr = maybe
     if (months && months.length === 12) {
       const day = String(d.getDate())
       const month = months[d.getMonth()]
       return patternStr.replace("{{day}}", day).replace("{{month}}", month)
     }
-  } catch { /* ignore */ }
-
-  try {
-    return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d)
-  } catch {
-    return d.toLocaleDateString()
-  }
+  } catch {}
+  try { return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d) }
+  catch { return d.toLocaleDateString() }
 }
 
-function ceilToEven(n: number) {
-  const m = Math.ceil(n)
-  return m % 2 === 0 ? m : m + 1
-}
+function ceilToEven(n: number) { const m = Math.ceil(n); return m % 2 === 0 ? m : m + 1 }
 function ceilToMultiple(n: number, k: number) {
   if (k <= 0) return Math.ceil(n)
-  const m = Math.ceil(n)
-  const r = m % k
+  const m = Math.ceil(n), r = m % k
   return r === 0 ? m : m + (k - r)
 }
 
-/** 4 метки для month/year (coarse; данные для этих режимов пока не пересчитываем) */
+/** 4 метки для month/year (coarse; данные пока не пересчитываем) */
 function getXAxisLabelsCoarse(period: PeriodAll, t: (k: string, o?: any) => any): string[] {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
   if (period === "month") {
     const offs = [-28, -19, -9, 0]
-    return offs.map((o) => {
-      const d = new Date(today); d.setDate(d.getDate() + o)
-      return formatCardDateLike(d, t)
-    })
+    return offs.map((o) => { const d = new Date(today); d.setDate(d.getDate() + o); return formatCardDateLike(d, t) })
   }
   if (period === "year") {
     const y = today.getFullYear()
-    const qs = [new Date(y, 0, 1), new Date(y, 3, 1), new Date(y, 6, 1), new Date(y, 9, 1)]
-    return qs.map((d) => formatCardDateLike(d, t))
+    return [new Date(y,0,1), new Date(y,3,1), new Date(y,6,1), new Date(y,9,1)].map((d) => formatCardDateLike(d, t))
   }
   return []
 }
@@ -82,9 +74,7 @@ export default function DashboardActivityChart() {
   const errorMessage = useDashboardStore((s) => s.error.activity || "")
   const load = useDashboardStore((s) => s.loadActivity)
 
-  useEffect(() => {
-    if (!activity && !loading) void load()
-  }, [activity, loading, load])
+  useEffect(() => { if (!activity && !loading) void load() }, [activity, loading, load])
 
   const buckets = activity?.buckets ?? []
 
@@ -111,25 +101,16 @@ export default function DashboardActivityChart() {
       }
       return out
     }
-    // month/year — как есть
-    return (buckets as any[]).map((b) => ({
-      date: String(b?.date ?? ""),
-      count: Number(b?.count ?? 0),
-    }))
+    return (buckets as any[]).map((b) => ({ date: String(b?.date ?? ""), count: Number(b?.count ?? 0) }))
   }, [period, buckets])
 
-  /* X-подписи:
-     - неделя: 7 подписей (каждая точка) → 2 строки (день+месяц; год ниже)
-     - месяц/год: 4 «крупные» метки */
+  /* X-подписи: неделя — 7 шт, в две строки; иначе — 4 грубые */
   const xLabelsWeek = useMemo(() => {
     if (period !== "week") return { dm: [] as string[], yr: [] as string[] }
-    const dm: string[] = []
-    const yr: string[] = []
+    const dm: string[] = [], yr: string[] = []
     for (const pt of series) {
       const [y, m, d] = pt.date.split("-").map((x: string) => Number(x))
-      const date = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)
-        ? new Date(y, m - 1, d)
-        : new Date(pt.date)
+      const date = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) ? new Date(y, m - 1, d) : new Date(pt.date)
       dm.push(formatCardDateLike(date, t as any))
       yr.push(String(date.getFullYear()))
     }
@@ -137,42 +118,24 @@ export default function DashboardActivityChart() {
   }, [period, series, t])
   const xLabelsCoarse = useMemo(() => getXAxisLabelsCoarse(period, t as any), [period, t])
 
-  /* Y-шкала:
-     1) находим «сырой» max
-     2) округляем вверх до чётного
-     3) если >=8 — дополнительно округляем вверх до кратного 4 (чтобы деления были целые)
-     4) линии:
-        - при 2 → 1 линия (=2)
-        - при 4 или 6 → 2 линии (max/2, max)
-        - при >=8 → 4 линии (max/4, max/2, 3max/4, max) */
+  /* Y-шкала и сетка */
   const { yMax, yGridValues } = useMemo(() => {
     const rawMax = Math.max(0, series.reduce((m, b) => Math.max(m, Number(b.count || 0)), 0))
-    let maxEven = Math.max(2, ceilToEven(rawMax)) // минимум 2, чтобы была «ступень»
+    let maxEven = Math.max(2, ceilToEven(rawMax))
     if (maxEven >= 8) maxEven = ceilToMultiple(maxEven, 4)
-
     let grid: number[] = []
-    if (maxEven === 2) {
-      grid = [2]
-    } else if (maxEven === 4 || maxEven === 6) {
-      grid = [maxEven / 2, maxEven]
-    } else {
-      const step = maxEven / 4
-      grid = [step, step * 2, step * 3, maxEven]
-    }
+    if (maxEven === 2) grid = [2]
+    else if (maxEven === 4 || maxEven === 6) grid = [maxEven / 2, maxEven]
+    else { const step = maxEven / 4; grid = [step, step * 2, step * 3, maxEven] }
     return { yMax: maxEven, yGridValues: grid }
   }, [series])
 
   /* координаты */
   const { points, values } = useMemo(() => {
-    const W = 600
-    const H = 160
-    const P = 22
     const n = series.length
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
-
-    const xs = (i: number) => (n === 1 ? W / 2 : P + (i / (n - 1)) * (W - P * 2))
-    const ys = (v: number) => P + (1 - v / yMax) * (H - P * 2)
-
+    const xs = (i: number) => (n === 1 ? SVG_W / 2 : X_LEFT + (i / (n - 1)) * (X_RIGHT - X_LEFT))
+    const ys = (v: number) => PAD + (1 - v / yMax) * (SVG_H - PAD * 2)
     const pts: Array<[number, number]> = series.map((b: any, i: number) => [xs(i), ys(Number(b?.count ?? 0))])
     const vals = series.map((b: any) => Number(b?.count ?? 0))
     return { points: pts, values: vals }
@@ -186,17 +149,17 @@ export default function DashboardActivityChart() {
     return "M " + points.map(([x, y]) => `${x},${y}`).join(" L ")
   }, [points])
 
-  /* константы осей/цветов */
-  const X_LEFT = 22
-  const X_RIGHT = 578
-  const X_BASE = 138 // ось X
+  /* цвета */
   const HINT = "var(--tg-hint-color)"
   const TEXT = "var(--tg-text-color)"
   const ACCENT = "var(--tg-accent-color,#40A7E3)"
 
   // позиционирование подписей под осью X
-  const LABEL_DM_Y = X_BASE + 10 // ~2px зазор до оси, плюс высота шрифта
-  const LABEL_YR_Y = X_BASE + 20 // минимальный нижний зазор (~2px до края viewBox)
+  const LABEL_DM_Y = X_BASE + LABEL_DM_OFFSET
+  const LABEL_YR_Y = X_BASE + LABEL_YR_OFFSET
+
+  // функция перевода значения сетки в координату Y
+  const gridY = (v: number) => PAD + (1 - v / yMax) * (SVG_H - PAD * 2)
 
   return (
     <CardSection noPadding>
@@ -233,7 +196,7 @@ export default function DashboardActivityChart() {
         </div>
 
         {loading ? (
-          <div className="text-sm" style={{ color: "var(--tg-hint-color)" }}>{t("loading")}</div>
+          <div className="text-sm" style={{ color: HINT }}>{t("loading")}</div>
         ) : hasError ? (
           <div className="flex items-center gap-3">
             <div className="text-sm" style={{ color: "var(--tg-destructive-text,#ef4444)" }}>
@@ -242,7 +205,7 @@ export default function DashboardActivityChart() {
             <button
               onClick={() => load()}
               className="px-2 py-1 text-sm rounded border transition bg-transparent border-[var(--tg-hint-color)]"
-              style={{ color: "var(--tg-text-color)" }}
+              style={{ color: TEXT }}
             >
               {t("retry")}
             </button>
@@ -260,24 +223,28 @@ export default function DashboardActivityChart() {
         ) : (
           <div className="w-full">
             <div className="h-32 w-full">
-              <svg viewBox="0 0 600 160" className="h-full w-full overflow-visible">
-                {/* горизонтальная сетка (динамика по правилам) */}
+              <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="h-full w-full overflow-visible">
+                {/* горизонтальная сетка + подписи ко всем линиям, КРОМЕ 0 */}
                 <g stroke="currentColor" style={{ color: HINT, opacity: 0.35 }}>
                   {yGridValues.map((v, i) => {
-                    // перевод значения сетки в Y
-                    const y = 22 + (1 - v / yMax) * (160 - 22 * 2)
-                    return <line key={`gh-${i}`} x1={X_LEFT} x2={X_RIGHT} y1={y} y2={y} strokeWidth="1" />
+                    const y = gridY(v)
+                    return (
+                      <g key={`gh-${i}`}>
+                        <line x1={X_LEFT} x2={X_RIGHT} y1={y} y2={y} strokeWidth="1" />
+                        <text x={8} y={y + 3} fontSize="10" fill={HINT}>{v}</text>
+                      </g>
+                    )
                   })}
                 </g>
 
                 {/* вертикальные направляющие — строго по X точек */}
                 <g stroke="currentColor" style={{ color: HINT, opacity: 0.18 }}>
                   {points.map(([x], i) => (
-                    <line key={`gv-${i}`} x1={x} x2={x} y1="22" y2={X_BASE} strokeWidth="1" />
+                    <line key={`gv-${i}`} x1={x} x2={x} y1={PAD} y2={X_BASE} strokeWidth="1" />
                   ))}
                 </g>
 
-                {/* ось X */}
+                {/* ось X + подпись 0 слева */}
                 <line
                   x1={X_LEFT}
                   x2={X_RIGHT}
@@ -287,6 +254,7 @@ export default function DashboardActivityChart() {
                   style={{ color: HINT, opacity: 0.5 }}
                   strokeWidth="1"
                 />
+                <text x={8} y={X_BASE + 4} fontSize="10" fill={HINT}>0</text>
 
                 {/* область под кривой */}
                 {pathD && (
@@ -297,7 +265,7 @@ export default function DashboardActivityChart() {
                   />
                 )}
 
-                {/* линия */}
+                {/* линия графика */}
                 {pathD && (
                   <path
                     d={pathD}
@@ -315,29 +283,12 @@ export default function DashboardActivityChart() {
                   {points.map(([x, y], i) => (
                     <g key={`p-${i}`}>
                       <circle cx={x} cy={y} r="3" fill="currentColor" style={{ color: ACCENT }} />
-                      <text
-                        x={x}
-                        y={Math.max(12, y - 8)}
-                        fontSize="10"
-                        textAnchor="middle"
-                        fill={TEXT}
-                      >
+                      <text x={x} y={Math.max(12, y - 8)} fontSize="10" textAnchor="middle" fill={TEXT}>
                         {values[i]}
                       </text>
                     </g>
                   ))}
                 </g>
-
-                {/* подписи Y: 0 и максимум слева (ориентиры) */}
-                <text x="8" y={X_BASE + 4} fontSize="10" fill={HINT}>0</text>
-                <text
-                  x="4"
-                  y={22 + (1 - yMax / yMax) * (160 - 44)} /* чуть ниже верхней границы */
-                  fontSize="10"
-                  fill={HINT}
-                >
-                  {yMax}
-                </text>
 
                 {/* подписи X */}
                 {period === "week" ? (
@@ -348,7 +299,7 @@ export default function DashboardActivityChart() {
                         <text
                           x={x}
                           y={LABEL_DM_Y}
-                          fontSize="10"
+                          fontSize={LABEL_DM_FONT}
                           textAnchor="middle"
                           fill={HINT}
                         >
@@ -357,7 +308,7 @@ export default function DashboardActivityChart() {
                         <text
                           x={x}
                           y={LABEL_YR_Y}
-                          fontSize="9"
+                          fontSize={LABEL_YR_FONT}
                           textAnchor="middle"
                           fill={HINT}
                         >
@@ -367,7 +318,7 @@ export default function DashboardActivityChart() {
                     ))}
                   </g>
                 ) : (
-                  // coarse: 4 равномерные подписи (одной строкой — день+месяц)
+                  // coarse: 4 равномерные подписи
                   <g>
                     {[0, 1, 2, 3].map((k) => {
                       const n = points.length
@@ -379,7 +330,7 @@ export default function DashboardActivityChart() {
                           key={`xlc-${k}`}
                           x={x}
                           y={LABEL_DM_Y}
-                          fontSize="10"
+                          fontSize={LABEL_DM_FONT}
                           textAnchor="middle"
                           fill={HINT}
                         >

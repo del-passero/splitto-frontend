@@ -411,7 +411,7 @@ export default {
     year: "Год",
   },
   dashboard: {
-    activity: "Активность",
+    activity: "Активность трат",
     top_categories: "Топ категорий",
     no_categories: "Нет трат за выбранный период",
     unknown_category: "Категория",
