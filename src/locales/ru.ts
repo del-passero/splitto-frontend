@@ -407,7 +407,7 @@ export default {
   period: {
     day: "День",
     week: "Неделя",
-    month: "Mесяц",
+    month: "Месяц",
     year: "Год",
 	week_this: "эта неделя",
     week_prev: "прошлая неделя",
@@ -419,9 +419,11 @@ export default {
     top_categories: "Топ категорий",
     no_categories: "Нет трат за выбранный период",
     unknown_category: "Категория",
-    spent: "Потрачено",
-    avg_check: "Средний чек",
-    my_share: "Моя доля",
+	summary_title: "Сводка",
+	
+    summary_spent: "Потрачено",
+    summary_avg_check: "Средний чек",
+    summary_my_share: "Моя доля",
     recent_groups: "Последние активные группы",
     top_partners: "Часто делю расходы",
     no_partners: "Нет данных за выбранный период",
