@@ -5,14 +5,14 @@ import { useDashboardStore } from "../store/dashboardStore"
 import MainLayout from "../layouts/MainLayout"
 import CardSection from "../components/CardSection"
 
-import WidgetBoundary from "../components/common/WidgetBoundary"
-
 import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
+import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
+
+import WidgetBoundary from "../components/common/WidgetBoundary"
 import DashboardActivityChart from "../components/dashboard/DashboardActivityChart"
 import DashboardSummaryCard from "../components/dashboard/DashboardSummaryCard"
 import TopCategoriesCard from "../components/dashboard/TopCategoriesCard"
 import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
-import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
 
 const DashboardPage = () => {
@@ -35,7 +35,6 @@ const DashboardPage = () => {
 
   useEffect(() => {
     init()
-    // первичная догрузка (TTL в сторе защитит от дублей)
     void loadActivity(activityPeriod)
     void loadSummary(summaryPeriod, summaryCurrency)
     void loadTopCategories(topPeriod)
@@ -50,15 +49,16 @@ const DashboardPage = () => {
 
   return (
     <MainLayout>
-      {/* 1) Баланс */}
+      {/* Баланс */}
       <CardSection noPadding>
         <DashboardBalanceCard />
       </CardSection>
 
-      {/* 2) Недавние группы — свой CardSection и заголовок уже внутри компонента */}
-      <RecentGroupsCarousel />
+      {/* Недавние группы — сразу под балансом */}
+      <CardSection noPadding>
+        <RecentGroupsCarousel />
+      </CardSection>
 
-      {/* 3) Активность + Сводка */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <WidgetBoundary name="Активность">
           <DashboardActivityChart />
@@ -68,25 +68,21 @@ const DashboardPage = () => {
         </WidgetBoundary>
       </div>
 
-      {/* 4) Топ категорий */}
       <WidgetBoundary name="Топ категорий">
         <TopCategoriesCard />
       </WidgetBoundary>
 
-      {/* 5) Часто делю расходы + Недавние группы (вторую карусель убрали, чтобы не дублировать) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <WidgetBoundary name="Часто делю расходы">
           <TopPartnersCarousel />
         </WidgetBoundary>
-        {/* место под другой виджет при желании */}
+        <WidgetBoundary name="Лента событий">
+          <DashboardEventsFeed />
+        </WidgetBoundary>
       </div>
-
-      {/* 6) Лента событий */}
-      <WidgetBoundary name="Лента событий">
-        <DashboardEventsFeed />
-      </WidgetBoundary>
     </MainLayout>
   )
 }
 
 export default DashboardPage
+

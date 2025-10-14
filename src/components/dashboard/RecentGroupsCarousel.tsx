@@ -1,14 +1,34 @@
 // src/components/dashboard/RecentGroupsCarousel.tsx
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { Users } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { Users } from "lucide-react"
 
-import CardSection from "../CardSection"
+import GroupAvatar from "../GroupAvatar"
 import Avatar from "../Avatar"
-import { useDashboardStore } from "../../store/dashboardStore"
+import type { GroupMember } from "../../types/group_member"
+import { getUserGroups } from "../../api/groupsApi"
+import { useUserStore } from "../../store/userStore"
 
-/* ===== helpers ===== */
+type RecentGroupCard = {
+  id: number
+  name: string
+  avatar_url?: string | null
+
+  // активность
+  last_activity_at?: string | null
+
+  // участники (превью)
+  preview_members?: GroupMember[]
+  members_count?: number
+  owner_id?: number
+}
+
+// ===== helpers =====
+const AVATAR_SIZE = 56
+const PARTICIPANT_SIZE = 24
+const MAX_ICONS_INLINE = 5 // показываем до 5, если больше — 4 + “+N”
+const SLIDE_HEIGHT = 112 // единая высота карточек в слайдере
 
 function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | null): string {
   if (!iso) return t("last_activity_inactive") || "Неактивна"
@@ -24,228 +44,235 @@ function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | nu
   }
 }
 
-const PARTICIPANT_SIZE = 24
-const MAX_INLINE = 5 // показываем 4 + "+N" при >5
-const TILE_HEIGHT = 120 // визуально совпадает с мини-карточкой группы
-
-// Достаём превью участников в едином формате (массив user-объектов)
-function getPreviewUsers(g: any): Array<any> {
-  const raw = Array.isArray(g?.members) ? g.members : Array.isArray(g?.preview_members) ? g.preview_members : []
-  // элементы могут быть либо GroupMember { user: {...} }, либо уже user
-  const users = raw
-    .map((m: any) => (m && typeof m === "object" && "user" in m ? (m as any).user : m))
-    .filter(Boolean)
-  return users
-}
-
-// Владелец первым (если owner_id/owner.id известны)
-function sortOwnerFirst(users: any[], ownerId?: number) {
-  if (!ownerId || !users.length) return users
-  const own = Number(ownerId)
-  return [
-    ...users.filter((u) => Number((u as any)?.id) === own),
-    ...users.filter((u) => Number((u as any)?.id) !== own),
-  ]
-}
-
-// Вычисление даты активности с фоллбэками
-function getActivityIso(g: any): string | undefined {
-  return g?.last_activity_at || g?.last_activity || g?.updated_at || g?.created_at
-}
-
 export default function RecentGroupsCarousel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const user = useUserStore((s) => s.user)
 
-  const groupsRaw = useDashboardStore((s) => s.groups)
-  const loading = useDashboardStore((s) => s.loading.groups)
-  const error = useDashboardStore((s) => s.error.groups || null)
-  const refresh = useDashboardStore((s) => s.loadRecentGroups)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [groups, setGroups] = useState<RecentGroupCard[]>([])
 
-  // первичная загрузка: просим 5 последних
+  const load = useCallback(async () => {
+    if (!user?.id) return
+    setLoading(true)
+    setError(null)
+    try {
+      const { items } = await getUserGroups(user.id, {
+        limit: 5,
+        offset: 0,
+        includeHidden: false,
+        includeArchived: false,
+        includeDeleted: false,
+        sortBy: "last_activity",
+        sortDir: "desc",
+      })
+      // API уже сортирует, но на всякий случай — по last_activity, затем по id
+      const sorted: RecentGroupCard[] = [...(items || [])].sort((a: any, b: any) => {
+        const ta = a?.last_activity_at ? new Date(a.last_activity_at).getTime() : 0
+        const tb = b?.last_activity_at ? new Date(b.last_activity_at).getTime() : 0
+        if (tb !== ta) return tb - ta
+        return (b?.id || 0) - (a?.id || 0)
+      })
+      setGroups(sorted.slice(0, 5))
+    } catch (e: any) {
+      setError(e?.message || "Failed to load recent groups")
+      setGroups([])
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
+
   useEffect(() => {
-    if (!Array.isArray(groupsRaw) || groupsRaw.length === 0) void refresh(5)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void load()
+  }, [load])
 
-  // Страхуемся сортировкой по "самой свежей" дате активности
-  const groups = useMemo(() => {
-    const arr = Array.isArray(groupsRaw) ? [...groupsRaw] : []
-    arr.sort((a: any, b: any) => {
-      const ta = getActivityIso(a) ? new Date(getActivityIso(a)!).getTime() : 0
-      const tb = getActivityIso(b) ? new Date(getActivityIso(b)!).getTime() : 0
-      return tb - ta
-    })
-    return arr.slice(0, 5)
-  }, [groupsRaw])
+  // === view helpers ===
+  const content = useMemo(() => {
+    if (loading) {
+      return <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">{t("loading")}</div>
+    }
+    if (error) {
+      return (
+        <div className="text-[14px] leading-[18px] text-red-500">
+          {error}
+          <button
+            type="button"
+            className="ml-3 underline text-[var(--tg-link-color,#2481CC)]"
+            onClick={() => load()}
+          >
+            {t("apply") || "Применить"}
+          </button>
+        </div>
+      )
+    }
+
+    if (!groups.length) {
+      // Пустое состояние — маленькая карточка, центр
+      return (
+        <div
+          className="h-[112px] rounded-2xl border flex items-center justify-center text-center p-3"
+          style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", background: "var(--tg-card-bg)" }}
+        >
+          <div>
+            <div className="text-2xl mb-1">🎉</div>
+            <div className="text-[15px] font-semibold text-[var(--tg-text-color)]">
+              {t("dashboard.recent_groups_empty_title")}
+            </div>
+            <div className="text-[12px] leading-[14px] text-[var(--tg-hint-color)] mt-1">
+              {t("dashboard.recent_groups_empty_desc")}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="-mx-1 px-1 flex gap-3 overflow-x-auto snap-x" style={{ WebkitOverflowScrolling: "touch" }}>
+        {/* Карточки групп */}
+        {groups.map((g) => {
+          const members: GroupMember[] = Array.isArray(g.preview_members) ? g.preview_members : []
+          const ownerId = typeof g.owner_id === "number" ? g.owner_id : undefined
+
+          // owner — первым
+          const membersSorted = members.length
+            ? [
+                ...members.filter((m) => (ownerId ? m.user?.id === ownerId : false)),
+                ...members.filter((m) => (ownerId ? m.user?.id !== ownerId : true)),
+              ]
+            : []
+
+          const totalCount = typeof g.members_count === "number" ? g.members_count : membersSorted.length
+          const showPlus = totalCount > MAX_ICONS_INLINE
+          const maxVisible = showPlus ? 4 : Math.min(MAX_ICONS_INLINE, membersSorted.length)
+          const displayedMembers = membersSorted.slice(0, maxVisible)
+          const hiddenCount = Math.max(0, totalCount - 4)
+
+          const activityText = formatLastActivity(t, g.last_activity_at)
+
+          return (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => navigate(`/groups/${g.id}`)}
+              className="snap-center shrink-0 min-w-[260px] w-[70%] h-[112px] rounded-2xl p-2 border text-left active:scale-[0.99] transition"
+              style={{
+                borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+                background: "var(--tg-card-bg)",
+              }}
+              aria-label={g.name}
+            >
+              <div className="w-full h-full grid grid-cols-12 gap-2 items-stretch">
+                {/* Левая — квадратный аватар группы */}
+                <div className="col-span-4 flex items-center justify-center">
+                  <GroupAvatar name={g.name} src={g.avatar_url || undefined} size={AVATAR_SIZE} className="relative" />
+                </div>
+
+                {/* Правая — три строки: название; участники; активность */}
+                <div className="col-span-8 min-w-0 flex flex-col justify-between py-1">
+                  {/* 1) Название */}
+                  <div className="text-[17px] font-semibold text-[var(--tg-text-color)] truncate">{g.name}</div>
+
+                  {/* 2) Участники: 4 аватарки + “+N” */}
+                  <div className="relative flex items-center justify-start min-h-[24px]">
+                    {displayedMembers.map((m, idx) => (
+                      <div
+                        key={m.id}
+                        className="rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)]"
+                        style={{
+                          borderColor: "var(--tg-card-bg)",
+                          width: PARTICIPANT_SIZE,
+                          height: PARTICIPANT_SIZE,
+                          marginLeft: idx > 0 ? -8 : 0,
+                          zIndex: 1 + idx,
+                        }}
+                        title={
+                          m.user.first_name
+                            ? `${m.user.first_name} ${m.user.last_name || ""}`.trim()
+                            : m.user.username || ""
+                        }
+                      >
+                        <Avatar
+                          name={
+                            m.user.first_name
+                              ? `${m.user.first_name} ${m.user.last_name || ""}`.trim()
+                              : m.user.username || ""
+                          }
+                          src={m.user.photo_url}
+                          size={PARTICIPANT_SIZE}
+                        />
+                      </div>
+                    ))}
+
+                    {showPlus && hiddenCount > 0 && (
+                      <div
+                        className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
+                        style={{
+                          borderColor: "var(--tg-card-bg)",
+                          width: PARTICIPANT_SIZE,
+                          height: PARTICIPANT_SIZE,
+                          zIndex: 1 + maxVisible,
+                        }}
+                        title={`+${hiddenCount}`}
+                      >
+                        +{hiddenCount}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3) Активность */}
+                  <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate" title={activityText}>
+                    {activityText}
+                  </div>
+                </div>
+              </div>
+            </button>
+          )
+        })}
+
+        {/* Последняя — квадратная «Все группы» (строго такой же высоты) */}
+        <button
+          type="button"
+          onClick={() => navigate("/groups")}
+          className="snap-center shrink-0 h-[112px] w-[112px] rounded-2xl border flex items-center justify-center active:scale-[0.98] transition"
+          style={{
+            borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
+            background: "var(--tg-card-bg)",
+          }}
+          aria-label={t("dashboard.all_groups")}
+        >
+          <div className="flex flex-col items-center justify-center">
+            <div
+              className="rounded-full w-[48px] h-[48px] flex items-center justify-center mb-2"
+              style={{ background: "var(--tg-accent-color,#40A7E3)" }}
+            >
+              <Users size={24} color="#fff" />
+            </div>
+            <div className="text-[11px] font-semibold text-[var(--tg-text-color)] uppercase tracking-wide">
+              {t("dashboard.all_groups")}
+            </div>
+          </div>
+        </button>
+      </div>
+    )
+  }, [loading, error, groups, navigate, t, load])
 
   return (
-    <CardSection noPadding>
+    <div
+      className="rounded-2xl border p-3 bg-[var(--tg-card-bg)]"
+      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+    >
       <div
-        className="rounded-2xl border p-3 bg-[var(--tg-card-bg)]"
-        style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
+        className="mb-2 font-semibold"
+        style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
       >
-        {/* заголовок — как у DashboardBalanceCard */}
-        <div
-          className="mb-2 font-semibold"
-          style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
-        >
-          {t("dashboard.recent_groups")}
-        </div>
-
-        {/* Состояния */}
-        {loading && (
-          <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
-            {t("loading")}
-          </div>
-        )}
-        {!loading && error && (
-          <div className="text-[14px] leading-[18px] text-red-500">
-            {String(error)}
-          </div>
-        )}
-
-        {!loading && !error && (
-          <>
-            {groups.length === 0 ? (
-              // Пустое состояние — без кнопки перехода
-              <div
-                className="rounded-2xl border p-6 text-center"
-                style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-              >
-                <div className="text-3xl mb-2">🎉</div>
-                <div className="text-[15px] font-semibold mb-1" style={{ color: "var(--tg-text-color)" }}>
-                  {t("recent_groups_empty_title")}
-                </div>
-                <div className="text-[13px] opacity-80" style={{ color: "var(--tg-hint-color)" }}>
-                  {t("recent_groups_empty_desc")}
-                </div>
-              </div>
-            ) : (
-              <div
-                className="flex gap-3 overflow-x-auto snap-x -mx-1 px-1"
-                style={{ WebkitOverflowScrolling: "touch" }}
-              >
-                {/* Карточки групп */}
-                {groups.map((g: any) => {
-                  const ownerId: number | undefined =
-                    typeof g?.owner_id === "number"
-                      ? g.owner_id
-                      : typeof g?.owner?.id === "number"
-                      ? g.owner.id
-                      : undefined
-
-                  const usersRaw = getPreviewUsers(g)
-                  const users = sortOwnerFirst(usersRaw, ownerId)
-
-                  const totalCount =
-                    typeof g?.members_count === "number" ? g.members_count : users.length
-                  const showPlus = totalCount > MAX_INLINE
-                  const maxVisible = showPlus ? 4 : Math.min(MAX_INLINE, users.length)
-                  const displayed = users.slice(0, maxVisible)
-                  const hiddenCount = Math.max(0, totalCount - 4)
-
-                  const activityText = formatLastActivity(t, getActivityIso(g))
-
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => navigate(`/groups/${g.id}`)}
-                      className="snap-center shrink-0 w-[68%] min-w-[240px] rounded-2xl p-3 border bg-[var(--tg-card-bg)] text-left active:scale-[0.99] transition"
-                      style={{ borderColor: "var(--tg-secondary-bg-color,#e7e7e7)", height: TILE_HEIGHT }}
-                      aria-label={g?.name}
-                    >
-                      {/* Название */}
-                      <div className="text-[15px] font-semibold text-[var(--tg-text-color)] truncate mb-2">
-                        {g.name}
-                      </div>
-
-                      {/* Участники 4 + N */}
-                      <div className="relative flex items-center mb-2">
-                        {displayed.map((u: any, idx: number) => (
-                          <div
-                            key={u?.id ?? idx}
-                            className="rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)]"
-                            style={{
-                              borderColor: "var(--tg-card-bg)",
-                              width: PARTICIPANT_SIZE,
-                              height: PARTICIPANT_SIZE,
-                              marginLeft: idx > 0 ? -8 : 0,
-                              zIndex: 1 + idx,
-                            }}
-                            title={
-                              u?.first_name
-                                ? `${u.first_name} ${u.last_name || ""}`.trim()
-                                : u?.username || ""
-                            }
-                          >
-                            <Avatar
-                              name={
-                                u?.first_name
-                                  ? `${u.first_name} ${u.last_name || ""}`.trim()
-                                  : u?.username || ""
-                              }
-                              src={u?.photo_url}
-                              size={PARTICIPANT_SIZE}
-                            />
-                          </div>
-                        ))}
-
-                        {showPlus && hiddenCount > 0 && (
-                          <div
-                            className="ml-[-8px] rounded-full border flex items-center justify-center bg-[var(--tg-bg-color)] text-[11px] text-[var(--tg-hint-color)]"
-                            style={{
-                              borderColor: "var(--tg-card-bg)",
-                              width: PARTICIPANT_SIZE,
-                              height: PARTICIPANT_SIZE,
-                              zIndex: 1 + maxVisible,
-                            }}
-                            title={`+${hiddenCount}`}
-                          >
-                            +{hiddenCount}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Активность */}
-                      <div
-                        className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate"
-                        title={activityText}
-                      >
-                        {activityText}
-                      </div>
-                    </button>
-                  )
-                })}
-
-                {/* Квадрат «Все группы» — высота = как у карточек */}
-                <button
-                  type="button"
-                  onClick={() => navigate("/groups")}
-                  className="snap-center shrink-0 rounded-2xl p-3 border flex items-center justify-center active:scale-95 transition"
-                  style={{
-                    borderColor: "var(--tg-secondary-bg-color,#e7e7e7)",
-                    background: "var(--tg-card-bg)",
-                    height: TILE_HEIGHT,
-                    aspectRatio: "1 / 1",
-                  }}
-                  aria-label={t("all_groups") as string}
-                >
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Users size={22} className="opacity-90" />
-                    <div className="text-[12px] font-semibold text-[var(--tg-text-color)] opacity-90">
-                      {t("all_groups")}
-                    </div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        {t("dashboard.recent_groups")}
       </div>
-    </CardSection>
+
+      {content}
+    </div>
   )
 }
+
 
 
