@@ -74,10 +74,10 @@ function getXAxisLabelsCoarse(period: PeriodAll, t: (k: string, o?: any) => any)
 }
 
 /* ===== layout/visual constants (НЕ МЕНЯЕМ РАЗМЕРЫ, только выносим) ===== */
-const FONT_SIZE_DM = 14           // размер шрифта для дня+месяца
-const FONT_SIZE_YR = 9            // размер шрифта для года
-const GAP_HEADER_TO_TOP = 8       // отступ от чипов (хедера) до верхней границы области графика (px)
-const GAP_X_TO_DM = 10            // от оси X до подписи день+месяц (px вниз)
+const FONT_SIZE_DM = 16           // размер шрифта для дня+месяца
+const FONT_SIZE_YR = 16            // размер шрифта для года
+const GAP_HEADER_TO_TOP = 2       // отступ от чипов (хедера) до верхней границы области графика (px)
+const GAP_X_TO_DM = 20            // от оси X до подписи день+месяц (px вниз)
 const GAP_DM_TO_YR = 10           // от подписи день+месяц до года (px вниз)
 const GAP_YR_TO_BOTTOM = 2        // от года до нижней границы компонента (px)
 
