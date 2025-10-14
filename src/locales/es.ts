@@ -428,6 +428,7 @@ export default {
     filter_edits: "Ediciones",
     filter_groups: "Grupos",
     filter_users: "Usuarios",
+	all_groups: "TODOS LOS GRUPOS",
   },
 
   // --- Título de la tarjeta de balance en el tablero ---
@@ -439,8 +440,6 @@ export default {
   recent_groups_empty_title: "No hay grupos recientes",
   recent_groups_empty_desc: "Crea un grupo nuevo o abre la lista de grupos",
 
-  // --- Botón del mosaico cuadrado ---
-  all_groups: "TODOS LOS GRUPOS",
 
 
 }

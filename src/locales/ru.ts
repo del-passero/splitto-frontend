@@ -427,6 +427,7 @@ export default {
     filter_edits: "Редактирования",
     filter_groups: "Группы",
     filter_users: "Юзеры",
+	all_groups: "ВСЕ ГРУППЫ",
   },
 
   // --- Заголовок карточки баланса на дашборде (для DashboardBalanceCard) ---
@@ -438,8 +439,8 @@ export default {
   recent_groups_empty_title: "Недавних групп нет",
   recent_groups_empty_desc: "Создайте новую группу или откройте список групп",
 
-  // --- Кнопка квадратной плитки карусели ---
-  all_groups: "ВСЕ ГРУППЫ",
+
+  
 
 
 }
