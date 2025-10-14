@@ -280,7 +280,7 @@ export default function RecentGroupsCarousel() {
   }, [loading, error, groups, navigate, t, load])
 
   return (
-    <div className="rounded-2xl border border-[var(--tg-hint-color)] p-3 bg-[var(--tg-card-bg)]">
+    <div className="rounded-lg border border-[var(--tg-hint-color)] p-3 bg-[var(--tg-card-bg)]">
       <div
         className="mb-2 font-semibold"
         style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}

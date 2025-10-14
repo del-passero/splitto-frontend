@@ -233,7 +233,7 @@ export default function DashboardActivityChart() {
   const { points, values } = useMemo(() => {
     const W = 600
     const H = 160
-    const P = 22
+    const P = 12
     const n = series.length
     if (n === 0) return { points: [] as Array<[number, number]>, values: [] as number[] }
 
