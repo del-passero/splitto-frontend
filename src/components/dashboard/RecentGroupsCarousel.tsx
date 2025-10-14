@@ -28,7 +28,6 @@ type RecentGroupCard = {
 const AVATAR_SIZE = 62            // ↑ было 56, увеличили ~на 10%
 const PARTICIPANT_SIZE = 24
 const MAX_ICONS_INLINE = 5        // показываем до 5, если больше — 4 + “+N”
-const SLIDE_HEIGHT = 112          // единая высота карточек
 
 function formatLastActivity(t: (k: string, o?: any) => string, iso?: string | null): string {
   if (!iso) return t("last_activity_inactive") || "Неактивна"
@@ -107,10 +106,10 @@ export default function RecentGroupsCarousel() {
     }
 
     if (!groups.length) {
-      // Пустое состояние — как EmptyGroups, но в компактной карточке фиксированной высоты
+      // Пустое состояние — как EmptyGroups, в компактной карточке
       return (
         <div
-          className="h-[112px] rounded-lg border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]"
+          className="rounded-lg border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]"
         >
           <div className="flex flex-col items-center justify-center">
             <div className="mb-2 opacity-60">
@@ -156,21 +155,14 @@ export default function RecentGroupsCarousel() {
               type="button"
               onClick={() => navigate(`/groups/${g.id}`)}
               className="
-                snap-center shrink-0 min-w-[260px] w-[70%] h-[112px]
+                snap-center shrink-0 min-w-[260px] w-[70%]
                 rounded-lg p-1.5 border border-[var(--tg-hint-color)]
                 text-left active:scale-[0.99] transition bg-[var(--tg-card-bg)]
               "
               aria-label={g.name}
             >
-              {/* ВЫРАВНИВАНИЕ ПО АВАТАРУ:
-                  - карта фиксированной высоты SLIDE_HEIGHT,
-                  - слева — контейнер AVATAR_SIZE x AVATAR_SIZE по центру,
-                  - справа — коробка ровно AVATAR_SIZE по высоте с трёхрядной сеткой:
-                    top (название) — к верху,
-                    middle (участники) — по центру (self-center),
-                    bottom (активность) — к низу.
-              */}
-              <div className="w-full h-full grid grid-cols-12 gap-2 items-center">
+              {/* Компоновка как у GroupCard: отступы p-1.5 и бордеры такие же */}
+              <div className="w-full grid grid-cols-12 gap-2 items-center">
                 {/* Левая колонка — аватар в коробке AVATAR_SIZE */}
                 <div className="col-span-4 flex items-center justify-center">
                   <div className="flex items-center justify-center" style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}>
@@ -198,7 +190,7 @@ export default function RecentGroupsCarousel() {
                       {g.name}
                     </div>
 
-                    {/* 2) Участники — ровно по центру коробки, выравнивание по левому краю */}
+                    {/* 2) Участники — центр по коробке */}
                     <div className="relative flex items-center justify-start min-h-[24px] self-center">
                       {displayedMembers.map((m, idx) => (
                         <div
@@ -259,13 +251,13 @@ export default function RecentGroupsCarousel() {
           )
         })}
 
-        {/* Последняя — “Все группы”: динамическая ширина под текст, фиксированная высота */}
+        {/* Последняя — “Все группы”: динамическая ширина под текст, без фиксированной высоты */}
         <button
           type="button"
           onClick={() => navigate("/groups")}
           className="
-            snap-center shrink-0 h-[112px] px-4
-            rounded-lg border border-[var(--tg-hint-color)]
+            snap-center shrink-0 px-4
+            rounded-lg p-1.5 border border-[var(--tg-hint-color)]
             flex items-center justify-center
             active:scale-[0.98] transition bg-[var(--tg-card-bg)]
           "
