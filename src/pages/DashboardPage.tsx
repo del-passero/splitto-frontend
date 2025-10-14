@@ -50,34 +50,40 @@ const DashboardPage = () => {
 
   return (
     <MainLayout>
-      {/* Баланс (без внешнего CardSection — он уже внутри компонента) */}
-      <DashboardBalanceCard />
+      {/* ЕДИНЫЙ вертикальный интервал между всеми блоками */}
+      <div className="space-y-3">
+        {/* Баланс (без внешнего CardSection — он уже внутри компонента) */}
+        <DashboardBalanceCard />
 
-      {/* Недавние группы — сразу под балансом */}
-      <CardSection noPadding>
-        <RecentGroupsCarousel />
-      </CardSection>
+        {/* Недавние группы */}
+        <CardSection noPadding>
+          <RecentGroupsCarousel />
+        </CardSection>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name="Активность">
-          <DashboardActivityChart />
-        </WidgetBoundary>
-        <WidgetBoundary name="Сводка">
-          <DashboardSummaryCard />
-        </WidgetBoundary>
-      </div>
+        {/* Активность + Сводка */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <WidgetBoundary name="Активность">
+            <DashboardActivityChart />
+          </WidgetBoundary>
+          <WidgetBoundary name="Сводка">
+            <DashboardSummaryCard />
+          </WidgetBoundary>
+        </div>
 
-      <WidgetBoundary name="Топ категорий">
-        <TopCategoriesCard />
-      </WidgetBoundary>
+        {/* Топ категорий */}
+        <WidgetBoundary name="Топ категорий">
+          <TopCategoriesCard />
+        </WidgetBoundary>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <WidgetBoundary name="Часто делю расходы">
-          <TopPartnersCarousel />
-        </WidgetBoundary>
-        <WidgetBoundary name="Лента событий">
-          <DashboardEventsFeed />
-        </WidgetBoundary>
+        {/* Часто делю расходы + Лента событий */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <WidgetBoundary name="Часто делю расходы">
+            <TopPartnersCarousel />
+          </WidgetBoundary>
+          <WidgetBoundary name="Лента событий">
+            <DashboardEventsFeed />
+          </WidgetBoundary>
+        </div>
       </div>
     </MainLayout>
   )

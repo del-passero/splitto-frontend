@@ -129,7 +129,7 @@ export default function DashboardSummaryCard() {
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
         {/* Заголовок + чипы периода (как в ActivityChart) */}
-        <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
+        <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
           <div
             className="font-semibold"
             style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
