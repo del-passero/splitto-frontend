@@ -45,25 +45,21 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Единая сортировка валют — как в DashboardBalanceCard */
+/** Унифицированная сортировка: последние валюты (индекс 0 — самая новая) раньше, потом — по алфавиту */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
-  if (!ccys.length) return []
+  const src = Array.from(new Set((ccys || []).map((c) => String(c).toUpperCase())))
+  const lastUp = Array.isArray(last) ? last.map((c) => String(c).toUpperCase()) : []
   const order = new Map<string, number>()
-  if (Array.isArray(last) && last.length) {
-    for (let i = last.length - 1, rank = 0; i >= 0; i--, rank++) {
-      const c = String(last[i] || "").toUpperCase()
-      if (!c) continue
-      if (!order.has(c)) order.set(c, rank)
-    }
+  for (let i = 0; i < lastUp.length; i++) {
+    const c = lastUp[i]
+    if (!order.has(c)) order.set(c, i) // индекс 0 — самый новый
   }
-  return [...ccys]
-    .map((c) => String(c || "").toUpperCase())
-    .sort((a, b) => {
-      const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
-      const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
-      if (ia !== ib) return ia - ib
-      return a.localeCompare(b)
-    })
+  return [...src].sort((a, b) => {
+    const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
+    const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
+    if (ia !== ib) return ia - ib
+    return a.localeCompare(b)
+  })
 }
 
 export default function DashboardSummaryCard() {
@@ -81,7 +77,7 @@ export default function DashboardSummaryCard() {
   const error = useDashboardStore((s) => s.error.summary || null)
   const load = useDashboardStore((s) => s.loadSummary)
 
-  // Валюты, в которых реально были траты в выбранном периоде
+  // Валюты, в которых реально были траты в выбранном периоде (сортированные)
   const [periodCcys, setPeriodCcys] = useState<string[]>([])
   const [hasDataInPeriod, setHasDataInPeriod] = useState<boolean>(true)
 
@@ -95,30 +91,34 @@ export default function DashboardSummaryCard() {
   const refreshPeriodCurrencies = async (p: Period) => {
     try {
       const res = await getDashboardTopCategories({ period: p, limit: 200 })
-      const base: string[] = Array.from(
+      const raw: string[] = Array.from(
         new Set(
           (res?.items || [])
             .map((it: any) => String(it?.currency || "").toUpperCase())
             .filter((ccy: string) => !!ccy && ccy !== "XXX")
         )
       )
-      const list = sortCcysByLast(base, currenciesRecent)
-      setPeriodCcys(list)
 
-      if (list.length === 0) {
+      if (raw.length === 0) {
+        setPeriodCcys([])
         setHasDataInPeriod(false)
         return
       }
+
+      const sorted = sortCcysByLast(raw, currenciesRecent)
+      setPeriodCcys(sorted)
       setHasDataInPeriod(true)
 
       const current = (currency || "").toUpperCase()
-      if (list.includes(current)) {
+      if (sorted.includes(current)) {
         // текущая валюта присутствует — ничего не меняем
         return
       }
       // Пытаемся предпочесть последнюю использованную
-      const recentPick = (currenciesRecent || []).find((ccy) => list.includes(String(ccy).toUpperCase()))
-      const next: string = (recentPick ? String(recentPick).toUpperCase() : list[0]) || ""
+      const recentPick = (currenciesRecent || []).find((ccy) =>
+        sorted.includes(String(ccy).toUpperCase())
+      )
+      const next: string = (recentPick ? String(recentPick).toUpperCase() : sorted[0]) || ""
       if (next && next !== current) {
         try {
           setCurrency(next) // стор сам вызовет loadSummary
@@ -136,6 +136,13 @@ export default function DashboardSummaryCard() {
     void refreshPeriodCurrencies(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
+
+  // Если currenciesRecent подгрузились позже — пересортируем текущий список чипов без запроса
+  useEffect(() => {
+    if (!periodCcys.length) return
+    setPeriodCcys((prev) => sortCcysByLast(prev, currenciesRecent))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(currenciesRecent || []).join("|")])
 
   const title = t("dashboard.summary_title", "Сводка")
 
@@ -230,21 +237,21 @@ export default function DashboardSummaryCard() {
         ) : (
           // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(spentNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
 
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.avg_check")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(avgNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
 
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.my_share")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(myShareNum, (currency || "").toUpperCase(), locale)}

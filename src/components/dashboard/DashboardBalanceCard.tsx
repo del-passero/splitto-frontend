@@ -49,26 +49,21 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** ЕДИНАЯ сортировка валют: последние использованные (самая новая — раньше), затем алфавит */
+/** Унифицированная сортировка: самые последние валюты (индекс 0 — самая новая) раньше, потом — по алфавиту */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
-  if (!ccys.length) return []
+  const src = Array.from(new Set((ccys || []).map((c) => String(c).toUpperCase())))
+  const lastUp = Array.isArray(last) ? last.map((c) => String(c).toUpperCase()) : []
   const order = new Map<string, number>()
-  if (Array.isArray(last) && last.length) {
-    // предполагаем, что last отсортирован от старых к новым → идём с конца, чтобы «новые раньше»
-    for (let i = last.length - 1, rank = 0; i >= 0; i--, rank++) {
-      const c = String(last[i] || "").toUpperCase()
-      if (!c) continue
-      if (!order.has(c)) order.set(c, rank)
-    }
+  for (let i = 0; i < lastUp.length; i++) {
+    const c = lastUp[i]
+    if (!order.has(c)) order.set(c, i) // индекс 0 — самый новый, самый приоритетный
   }
-  return [...ccys]
-    .map((c) => String(c || "").toUpperCase())
-    .sort((a, b) => {
-      const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
-      const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
-      if (ia !== ib) return ia - ib
-      return a.localeCompare(b)
-    })
+  return [...src].sort((a, b) => {
+    const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
+    const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
+    if (ia !== ib) return ia - ib
+    return a.localeCompare(b)
+  })
 }
 
 /** Единый компаратор для отображения списков долгов в обеих колонках */
@@ -80,6 +75,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
 
   // берём reloadBalance из стора, чтобы гарантированно стриггерить первичную загрузку
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
+  const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
   // Снимок стора — чтобы виджет не «дёргался» от live-обновлений
   const [snap, setSnap] = useState(() => {
@@ -134,15 +130,21 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     for (const c of all) {
       const v1 = parseAmtToNumber((they as any)[c])
       const v2 = parseAmtToNumber((i as any)[c])
-      if (v1 !== 0 || v2 !== 0) set.add(c)
+      if (v1 !== 0 || v2 !== 0) set.add(String(c).toUpperCase())
     }
     return Array.from(set)
   }, [balance])
 
-  // Отсортированный список валют для чипов (единая логика)
+  // Источник «последних валют»: сначала из баланса (если есть), иначе — из стора (currenciesRecent)
+  const lastList = (balance?.last_currencies && balance.last_currencies.length > 0)
+    ? balance.last_currencies
+    : currenciesRecent
+
+  // Отсортированный список валют для чипов
   const sortedDebtCcys = useMemo(
-    () => sortCcysByLast(debtCcys, balance?.last_currencies),
-    [debtCcys, balance?.last_currencies]
+    () => sortCcysByLast(debtCcys, lastList),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [debtCcys.join("|"), (lastList || []).join("|")]
   )
 
   // Выбор по умолчанию: первые 2 из отсортированного (если одна валюта — один чип)
@@ -178,12 +180,12 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   // Фильтрация по активным валютам (когда долгов нет — без чипов и без фильтра)
   const theyOweFiltered = useMemo(() => {
     if (!sortedDebtCcys.length) return theyOwe
-    return theyOwe.filter((x) => activeCcys.has(x.ccy))
+    return theyOwe.filter((x) => activeCcys.has(String(x.ccy).toUpperCase()))
   }, [theyOwe, activeCcys, sortedDebtCcys])
 
   const iOweFiltered = useMemo(() => {
     if (!sortedDebtCcys.length) return iOwe
-    return iOwe.filter((x) => activeCcys.has(x.ccy))
+    return iOwe.filter((x) => activeCcys.has(String(x.ccy).toUpperCase()))
   }, [iOwe, activeCcys, sortedDebtCcys])
 
   // ЕДИНАЯ сортировка содержимого колонок
