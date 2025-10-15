@@ -120,14 +120,15 @@ export default function TopCategoriesCard() {
 
   // Первичная загрузка
   useEffect(() => {
-    if (!items || items.length === 0) void load()
-  }, [items, load])
+    if (!items || items.length === 0) void load({ locale, force: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ВАЖНО: при смене языка — перезагружаем данные и чистим локальный кеш меты
   useEffect(() => {
     // сброс кеша локализованных имён — чтобы тут же показать новый язык
     setCatMeta({})
-    void load()
+    void load({ locale, force: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [i18n.language])
 

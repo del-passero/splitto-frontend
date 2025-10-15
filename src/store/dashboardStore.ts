@@ -70,6 +70,9 @@ type DashboardState = {
   // внутреннее: отложенная перезагрузка summary
   summaryNeedsReload: boolean
 
+  /** НОВОЕ: локаль последней загрузки топ-категорий (для инвалидации кэша по языку) */
+  topLocale: string | null
+
   // методы
   init: () => void
   startLive: (ms?: number) => void
@@ -88,7 +91,10 @@ type DashboardState = {
   setSummaryCurrency: (ccy: string) => void
 
   // top categories
-  loadTopCategories: (period?: PeriodLTYear) => Promise<void>
+  /** Принимает либо период (как раньше), либо объект опций { period, locale, force } */
+  loadTopCategories: (
+    arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
+  ) => Promise<void>
   setTopPeriod: (p: PeriodLTYear) => void
 
   // top partners
@@ -139,8 +145,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   liveTimer: null,
 
-  // флаг отложенной перезагрузки summary
   summaryNeedsReload: false,
+
+  // НОВОЕ: локаль, на которой загружены topCategories
+  topLocale: null,
 
   init() {
     void get().reloadBalance(true)
@@ -278,19 +286,64 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     void get().loadSummary()
   },
 
-  async loadTopCategories(periodArg?: PeriodLTYear) {
-    if (periodArg) {
-      set({ topCategoriesPeriod: periodArg })
-      lastAt.top = 0
-    }
-    if (get().loading.top) return
-    const ts = lastAt.top ?? 0
-    if (now() - ts < TTL_DEFAULT) return
-    const period = get().topCategoriesPeriod
+  /** ВАЖНО: совместимость.
+   *  - старый вызов: loadTopCategories("month")
+   *  - новый вызов:  loadTopCategories({ period: "month", locale: "ru", force: true })
+   */
+  async loadTopCategories(
+    arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
+  ) {
+    // распарсим аргументы
+    let requestedPeriod = get().topCategoriesPeriod
+    let localeFromArg: string | undefined
+    let force = false
 
-    set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: "" } }))
+    if (typeof arg === "string") {
+      requestedPeriod = arg
+      set({ topCategoriesPeriod: arg })
+      lastAt.top = 0
+    } else if (arg && typeof arg === "object") {
+      if (arg.period) {
+        requestedPeriod = arg.period
+        set({ topCategoriesPeriod: arg.period })
+        lastAt.top = 0
+      }
+      localeFromArg = arg.locale
+      force = !!arg.force
+    }
+
+    // вычислим локаль (ui → короткий код)
+    const prevLocale = get().topLocale || null
+    const nextLocale = (localeFromArg || prevLocale || (navigator?.language || "ru"))
+      .split("-")[0]
+
+    const localeChanged = prevLocale !== nextLocale
+
+    // защита от гонок
+    if (get().loading.top) return
+
+    // TTL: пропускаем, если не force и не менялась локаль
+    const ts = lastAt.top ?? 0
+    if (!force && !localeChanged && now() - ts < TTL_DEFAULT) return
+
+    // если локаль сменилась — можно очистить список (мгновенная визуальная смена),
+    // но это безопасно: чип валют не трогаем, он хранится в компоненте.
+    set((s) => ({
+      loading: { ...s.loading, top: true },
+      error: { ...s.error, top: "" },
+      topLocale: nextLocale,
+      ...(localeChanged ? { topCategories: [] } : {}),
+    }))
+
     try {
-      const data = await getDashboardTopCategories({ period, limit: 50, offset: 0 })
+      const data = await getDashboardTopCategories({
+        period: requestedPeriod,
+        limit: 50,
+        offset: 0,
+        // НОВОЕ: прокидываем локаль на бэкенд
+        // (убедись, что getDashboardTopCategories поддерживает { locale } в api)
+        locale: nextLocale,
+      } as any)
       set((s) => ({ topCategories: data.items || [] }))
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, top: e?.message || "Failed to load top categories" } }))
@@ -303,6 +356,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setTopPeriod(p) {
     set({ topCategoriesPeriod: p })
     lastAt.top = 0
+    // локаль берём из состояния topLocale, чтобы не сбрасывать её при простом переключении периода
     void get().loadTopCategories()
   },
 

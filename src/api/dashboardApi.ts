@@ -90,14 +90,10 @@ export function getDashboardTopCategories(params?: {
   currency?: string
   limit?: number
   offset?: number
+  /** ← НОВОЕ: локаль UI (ru/en/es) */
   locale?: string
 }): Promise<TopCategoriesOut> {
-  // ВАЖНО: по умолчанию используем язык приложения, а не браузера
-  const uiLocale = (params?.locale || pickUiLocale())
-    .split("-")[0]
-    .toLowerCase()
-
-  return httpGet("/dashboard/top-categories", { ...params, locale: uiLocale })
+  return httpGet("/dashboard/top-categories", params)
 }
 
 export function getDashboardSummary(params: {
