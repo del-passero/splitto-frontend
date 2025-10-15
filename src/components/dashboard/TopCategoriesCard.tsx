@@ -71,7 +71,7 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
   })
 }
 
-// ===== минимальный клиент для /expense-categories/{id} =====
+// ===== минимальный клиент для /expense-categories/{id} (fallback для редких случаев) =====
 const API_URL = (import.meta.env as any).VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 function getTelegramInitData(): string {
   // @ts-ignore
@@ -86,22 +86,14 @@ async function fetchCategoryById(id: number, locale: string, signal?: AbortSigna
     })
     if (!res.ok) return null
     const json = await res.json()
-    // Пытаемся локализовать имя на клиенте
-    const nameI18n = (json?.name_i18n ?? {}) as Record<string, string>
-    const localizedName =
-      nameI18n?.[locale] ||
-      nameI18n?.en ||
-      nameI18n?.ru ||
-      json?.name || // если сервер уже вернул name
-      json?.key ||
-      null
 
+    // В /expense-categories/{id} может не быть name_i18n — имени хватит из /dashboard/top-categories.
     return {
       id: json?.id,
       icon: json?.icon ?? null,
       color: json?.color ?? null,
       parent_id: json?.parent_id ?? null,
-      localizedName,
+      localizedName: null,
     }
   } catch {
     return null
@@ -190,7 +182,7 @@ export default function TopCategoriesCard() {
       return {
         id,
         key: String(it.category_id ?? `${it.name ?? "cat"}-${idx}`),
-        // имя пока возьмём из ответа, позже заменим на локализованное из меты
+        // имя — локализовано на бэке по ?locale; оставляем как «сырьё», на случай fallback подменим из меты
         rawName: it.name ?? "",
         total: Number(n),
         icon: it.icon ?? null,
@@ -259,10 +251,11 @@ export default function TopCategoriesCard() {
 
       setCatMeta((prev) => {
         const next = { ...prev }
-        for (const child of Object.values(fetched)) {
+        for (const id of Object.keys(fetched).map(Number)) {
+          const child = next[id]
           if (!child) continue
           if (!child.color && child.parent_id && parentColorMap.has(child.parent_id)) {
-            next[child.id] = { ...child, color: parentColorMap.get(child.parent_id) ?? null }
+            next[id] = { ...child, color: parentColorMap.get(child.parent_id) ?? null }
           }
         }
         return next
@@ -275,15 +268,11 @@ export default function TopCategoriesCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseData.map((x) => x.id).join("|"), locale])
 
-  // Соединяем с метаданными: имя локализуем из меты, если есть
+  // Соединяем с метаданными: имя оставляем из бэка; иконка/цвет — из бэка или из меты
   const chartData = useMemo(() => {
     return baseData.map((row) => {
       const meta = catMeta[row.id]
-      const name =
-        meta?.localizedName ||
-        row.rawName || // фолбэк — то, что пришло с дашборда (может быть не на нужной локали)
-        "Категория"
-
+      const name = row.rawName || meta?.localizedName || "Категория"
       return {
         ...row,
         name,
@@ -315,7 +304,7 @@ export default function TopCategoriesCard() {
             {title}
           </div>
 
-          <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex gap-1">
             {PERIODS.map((p) => {
               const active = p === period
               return (

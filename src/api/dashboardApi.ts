@@ -68,8 +68,17 @@ export function getDashboardTopCategories(params?: {
   currency?: string
   limit?: number
   offset?: number
+  locale?: string
 }): Promise<TopCategoriesOut> {
-  return httpGet("/dashboard/top-categories", params)
+  // безопасный дефолт локали, если не передали из стора
+  const uiLocale =
+    (params?.locale ||
+      (typeof navigator !== "undefined" ? navigator.language : "ru") ||
+      "ru")
+      .split("-")[0]
+      .toLowerCase()
+
+  return httpGet("/dashboard/top-categories", { ...params, locale: uiLocale })
 }
 
 export function getDashboardSummary(params: {

@@ -21,6 +21,8 @@ export type TopCategoryItem = {
   name: string
   sum: string
   currency: string
+  icon?: string | null
+  color?: string | null
 }
 export type TopCategoriesOut = {
   period: PeriodLTYear
