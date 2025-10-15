@@ -12,7 +12,7 @@ type AnyTopCat = {
   name?: string
   sum?: string | number
   currency?: string
-  // сервер может прислать иконку/цвет (если это уже есть в ответе) — тогда используем без доп. запросов
+  // сервер может прислать иконку/цвет — используем сразу, без доп. запросов
   icon?: string | null
   color?: string | null
 }
@@ -22,6 +22,8 @@ type CatMeta = {
   icon?: string | null
   color?: string | null
   parent_id?: number | null
+  // локализованное имя на текущую локаль
+  localizedName?: string | null
 }
 
 const LIMITS: Record<PeriodLTYear, number> = { week: 3, month: 5, year: 10 }
@@ -75,7 +77,7 @@ function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
 }
-async function fetchCategoryById(id: number, signal?: AbortSignal): Promise<CatMeta | null> {
+async function fetchCategoryById(id: number, locale: string, signal?: AbortSignal): Promise<CatMeta | null> {
   try {
     const res = await fetch(`${API_URL}/expense-categories/${id}`, {
       credentials: "include",
@@ -84,11 +86,22 @@ async function fetchCategoryById(id: number, signal?: AbortSignal): Promise<CatM
     })
     if (!res.ok) return null
     const json = await res.json()
+    // Пытаемся локализовать имя на клиенте
+    const nameI18n = (json?.name_i18n ?? {}) as Record<string, string>
+    const localizedName =
+      nameI18n?.[locale] ||
+      nameI18n?.en ||
+      nameI18n?.ru ||
+      json?.name || // если сервер уже вернул name
+      json?.key ||
+      null
+
     return {
       id: json?.id,
       icon: json?.icon ?? null,
       color: json?.color ?? null,
       parent_id: json?.parent_id ?? null,
+      localizedName,
     }
   } catch {
     return null
@@ -125,28 +138,44 @@ export default function TopCategoriesCard() {
     return sortCcysByLast(raw, currenciesRecent)
   }, [items, currenciesRecent])
 
-  // Активная валюта — одна.
-  // ВАЖНО: не сбрасывать при смене периода, если текущая валюта есть в новом периоде.
+  // Активная валюта (как в DashboardSummaryCard): следуем «свежей», пока пользователь не кликал
   const [activeCcy, setActiveCcy] = useState<string>("")
+  const userTouchedRef = useRef<Record<PeriodLTYear, boolean>>({ week: false, month: false, year: false })
 
-  // На каждое изменение набора валют:
-  // - если пусто → очистить activeCcy;
-  // - если activeCcy отсутствует в списке → выбрать «самую свежую»;
-  // - иначе — не трогаем (даже если период сменился).
+  // При смене периода – забываем «юзер кликал» и оставляем валюту, если она есть в новом списке; иначе берём свежую
   useEffect(() => {
+    userTouchedRef.current[period] = false
     if (periodCcys.length === 0) {
+      setActiveCcy("")
+      return
+    }
+    const current = (activeCcy || "").toUpperCase()
+    if (!current || !periodCcys.includes(current)) {
+      setActiveCcy(periodCcys[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period])
+
+  // Если список валют обновился: держим текущую, если она есть; иначе — свежую.
+  // Если пользователь ещё не кликал в этом периоде — автоматически «подтягиваемся» к свежей.
+  useEffect(() => {
+    if (!periodCcys.length) {
       if (activeCcy) setActiveCcy("")
       return
     }
     const current = (activeCcy || "").toUpperCase()
+    const freshest = periodCcys[0]
     const inList = !!current && periodCcys.includes(current)
+
     if (!inList) {
-      setActiveCcy(periodCcys[0]) // переключаемся только когда текущей валюты нет в периоде
-    } else {
-      // ничего не делаем — сохраняем выбор пользователя
+      setActiveCcy(freshest)
+      return
+    }
+    if (!userTouchedRef.current[period] && freshest && freshest !== current) {
+      setActiveCcy(freshest)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodCcys.join("|")])
+  }, [periodCcys.join("|"), (currenciesRecent || []).join("|")])
 
   // Нормализованные строки по активной валюте, сортировка и ограничение по периоду
   const baseData = useMemo(() => {
@@ -155,82 +184,82 @@ export default function TopCategoriesCard() {
     )
 
     const mapped = src.map((it, idx) => {
-      const name = it.name ?? t("dashboard.unknown_category") ?? "Категория"
       const id = Number(it.category_id ?? idx)
       let n = typeof it.sum === "string" ? Number(it.sum) : typeof it.sum === "number" ? it.sum : 0
       if (!isFinite(Number(n))) n = 0
       return {
         id,
-        key: String(it.category_id ?? `${name}-${idx}`),
-        name,
+        key: String(it.category_id ?? `${it.name ?? "cat"}-${idx}`),
+        // имя пока возьмём из ответа, позже заменим на локализованное из меты
+        rawName: it.name ?? "",
         total: Number(n),
-        // возможная иконка/цвет из ответа бекенда (если уже есть)
         icon: it.icon ?? null,
         color: it.color ?? null,
       }
     })
 
-    // по сумме по убыванию + ограничение
     mapped.sort((a, b) => b.total - a.total)
     return mapped.slice(0, LIMITS[period])
-  }, [items, activeCcy, period, t])
+  }, [items, activeCcy, period])
 
-  // Загруженная мета по категориям (иконка/цвет/parent_id), кеш
+  // Кеш метаданных по категориям (иконка/цвет/parent_id/локализованное имя)
   const [catMeta, setCatMeta] = useState<Record<number, CatMeta>>({})
   const metaAbortRef = useRef<AbortController | null>(null)
 
-  // Догружаем недостающую мету по видимым категориям
+  // Догружаем недостающую мету по видимым категориям (+ цвет родителя)
   useEffect(() => {
     if (!baseData.length) return
-    // отмени предыдущую пачку загрузок
+
     try { metaAbortRef.current?.abort() } catch {}
     const ctrl = new AbortController()
     metaAbortRef.current = ctrl
 
-    const needIds: number[] = []
+    const toFetch: number[] = []
+    const immediatePatch: Record<number, CatMeta> = {}
+
     for (const row of baseData) {
-      if (!row.id || catMeta[row.id]) continue
-      // если сервер уже дал icon/color — положим в кеш сразу (без запроса)
+      if (!row.id) continue
+      if (catMeta[row.id]) continue
+
       if (row.icon || row.color) {
-        setCatMeta((prev) => ({
-          ...prev,
-          [row.id]: { id: row.id, icon: row.icon, color: row.color ?? null, parent_id: undefined },
-        }))
+        immediatePatch[row.id] = { id: row.id, icon: row.icon, color: row.color, parent_id: undefined, localizedName: null }
       } else {
-        needIds.push(row.id)
+        toFetch.push(row.id)
       }
     }
-    if (needIds.length === 0) return
+
+    if (Object.keys(immediatePatch).length) {
+      setCatMeta((prev) => ({ ...prev, ...immediatePatch }))
+    }
+
+    if (!toFetch.length) return
 
     ;(async () => {
-      // параллельно качаем «детей»
-      const metas = await Promise.all(needIds.map((id) => fetchCategoryById(id, ctrl.signal)))
-      // запишем детей
-      const toSet: Record<number, CatMeta> = {}
+      const metas = await Promise.all(toFetch.map((id) => fetchCategoryById(id, locale, ctrl.signal)))
+      const fetched: Record<number, CatMeta> = {}
       metas.forEach((m) => {
-        if (m && m.id) toSet[m.id] = m
+        if (m && m.id) fetched[m.id] = m
       })
-      if (Object.keys(toSet).length) {
-        setCatMeta((prev) => ({ ...prev, ...toSet }))
+      if (Object.keys(fetched).length) {
+        setCatMeta((prev) => ({ ...prev, ...fetched }))
       }
 
-      // для тех, у кого цвета нет, но есть parent_id — подтянем родителя (для цвета)
-      const needParents = Object.values(toSet)
+      // догружаем цвета родителей, если у детей цвета нет
+      const needParents = Object.values(fetched)
         .filter((m) => !m?.color && typeof m?.parent_id === "number")
         .map((m) => m.parent_id as number)
       const uniqParents = Array.from(new Set(needParents)).filter(Boolean)
       if (uniqParents.length === 0) return
 
-      const parentMetas = await Promise.all(uniqParents.map((pid) => fetchCategoryById(pid, ctrl.signal)))
+      const parentMetas = await Promise.all(uniqParents.map((pid) => fetchCategoryById(pid, locale, ctrl.signal)))
       const parentColorMap = new Map<number, string | null>()
       parentMetas.forEach((pm) => {
         if (pm && pm.id) parentColorMap.set(pm.id, pm.color ?? null)
       })
 
-      // примиксуем цвет родителя детям без цвета
       setCatMeta((prev) => {
         const next = { ...prev }
-        for (const child of Object.values(toSet)) {
+        for (const child of Object.values(fetched)) {
           if (!child) continue
           if (!child.color && child.parent_id && parentColorMap.has(child.parent_id)) {
             next[child.id] = { ...child, color: parentColorMap.get(child.parent_id) ?? null }
@@ -244,14 +273,20 @@ export default function TopCategoriesCard() {
       try { ctrl.abort() } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseData.map((x) => x.id).join("|")])
+  }, [baseData.map((x) => x.id).join("|"), locale])
 
-  // Соединяем базовые строки с метаданными (иконка/цвет)
+  // Соединяем с метаданными: имя локализуем из меты, если есть
   const chartData = useMemo(() => {
     return baseData.map((row) => {
       const meta = catMeta[row.id]
+      const name =
+        meta?.localizedName ||
+        row.rawName || // фолбэк — то, что пришло с дашборда (может быть не на нужной локали)
+        "Категория"
+
       return {
         ...row,
+        name,
         icon: row.icon ?? meta?.icon ?? "🏷️",
         color: row.color ?? meta?.color ?? null,
       }
@@ -271,7 +306,7 @@ export default function TopCategoriesCard() {
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы периода (как в других виджетах) */}
+        {/* Заголовок + чипы периода */}
         <div className="flex items-center gap-2 mb-2">
           <div
             className="font-semibold"
@@ -302,7 +337,7 @@ export default function TopCategoriesCard() {
           </div>
         </div>
 
-        {/* Чипы валют — одна активная; НЕ сбрасываем при смене периода, если валюта есть в списке */}
+        {/* Чипы валют — одна активная. Не сбрасываем, если валюта есть в новом периоде */}
         {!loading && periodCcys.length > 0 ? (
           <div className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap" style={{ WebkitOverflowScrolling: "touch" }}>
             {periodCcys.map((ccy) => {
@@ -311,7 +346,10 @@ export default function TopCategoriesCard() {
                 <button
                   key={`topcat-ccy-${ccy}`}
                   type="button"
-                  onClick={() => !isActive && setActiveCcy(ccy)}
+                  onClick={() => {
+                    userTouchedRef.current[period] = true
+                    if (!isActive) setActiveCcy(ccy)
+                  }}
                   className={[
                     "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
                     isActive
