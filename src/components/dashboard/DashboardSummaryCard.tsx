@@ -52,7 +52,7 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
   const order = new Map<string, number>()
   for (let i = 0; i < lastUp.length; i++) {
     const c = lastUp[i]
-    if (!order.has(c)) order.set(c, i) // 0 — самый свежий
+    if (!order.has(c)) order.set(c, i) // 0 — самый новый
   }
   return [...src].sort((a, b) => {
     const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
@@ -72,19 +72,17 @@ export default function DashboardSummaryCard() {
   const currency = useDashboardStore((s) => s.summaryCurrency)
   const setCurrency = useDashboardStore((s) => s.setSummaryCurrency)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
-  const lastFromBalance = useDashboardStore((s) => s.balance?.last_currencies || [])
   const summary = useDashboardStore((s) => s.summary)
   const loading = useDashboardStore((s) => s.loading.summary)
   const error = useDashboardStore((s) => s.error.summary || null)
   const load = useDashboardStore((s) => s.loadSummary)
 
-  // Глобальный recency-список: сперва из баланса, иначе — currenciesRecent
-  const lastList = (lastFromBalance.length ? lastFromBalance : currenciesRecent) || []
-
-  // Валюты периода (сортированные) + флаг «пользователь сам выбирал»
+  // Валюты, в которых реально были траты в выбранном периоде (сортированные)
   const [periodCcys, setPeriodCcys] = useState<string[]>([])
   const [hasDataInPeriod, setHasDataInPeriod] = useState<boolean>(true)
-  const [userPicked, setUserPicked] = useState(false)
+
+  // Одноразовый «автоподбор новейшей валюты» для текущего периода (чтобы не перебивать ручной выбор)
+  const autoPickedRef = useRef<Record<Period, boolean>>({ week: false, month: false, year: false })
 
   // Первичная загрузка summary
   useEffect(() => {
@@ -92,27 +90,8 @@ export default function DashboardSummaryCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // один раз
 
-  // Точная подстановка «лучшей» валюты (самая свежая) если пользователь ещё не кликал
-  const ensureBestCurrency = (sortedList: string[]) => {
-    if (!sortedList.length) return
-    const current = String(currency || "").toUpperCase()
-    const best = sortedList[0] // по recency
-    if (!userPicked) {
-      if (current !== best) {
-        try {
-          setCurrency(best) // стор сам вызовет loadSummary
-        } catch {}
-      }
-    } else if (current && !sortedList.includes(current)) {
-      // Пользователь выбирал, но текущей валюты теперь нет — мягкий дауншифт на best
-      try {
-        setCurrency(best)
-      } catch {}
-    }
-  }
-
-  // Подтягиваем список валют для текущего периода
-  const refreshPeriodCurrencies = async (p: Period, last: string[]) => {
+  // Подтягиваем список валют для текущего периода (и корректируем активную валюту при необходимости)
+  const refreshPeriodCurrencies = async (p: Period) => {
     try {
       const res = await getDashboardTopCategories({ period: p, limit: 200 })
       const raw: string[] = Array.from(
@@ -129,35 +108,61 @@ export default function DashboardSummaryCard() {
         return
       }
 
-      const sorted = sortCcysByLast(raw, last)
+      const sorted = sortCcysByLast(raw, currenciesRecent)
       setPeriodCcys(sorted)
       setHasDataInPeriod(true)
-      ensureBestCurrency(sorted)
+
+      const current = (currency || "").toUpperCase()
+      const freshest = sorted[0] || ""
+
+      // Автоподбор:
+      // - если текущая валюта отсутствует в списке — выберем подходящую;
+      // - если текущая есть, но это не «самая новая», то один раз за период
+      //   автоматически переключим на самую новую (поведение «зайти на дашборд → видим самую свежую валюту»).
+      const shouldAutoPick =
+        !autoPickedRef.current[p] &&
+        ( !sorted.includes(current) || (freshest && current !== freshest) )
+
+      if (shouldAutoPick) {
+        autoPickedRef.current[p] = true
+        const preferred = (currenciesRecent || []).find((ccy) => sorted.includes(String(ccy).toUpperCase()))
+        const next: string = (preferred ? String(preferred).toUpperCase() : freshest) || ""
+        if (next && next !== current) {
+          try {
+            setCurrency(next) // стор сам вызовет loadSummary
+          } catch {}
+        }
+      }
     } catch {
+      // В случае ошибки просто считаем, что данных нет (чтобы не рушить UI)
       setPeriodCcys([])
       setHasDataInPeriod(false)
     }
   }
 
-  // При смене периода — обновляем валюты периода и (если нужно) активную валюту
+  // При смене периода — обновляем валюты периода и заново разрешаем одноразовый автоподбор
   useEffect(() => {
-    void refreshPeriodCurrencies(period, lastList)
+    autoPickedRef.current[period] = false
+    void refreshPeriodCurrencies(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
-  // Если lastList (recency) пришёл позже — пересортируем и подправим активную валюту
-  const prevListRef = useRef<string>("")
+  // Если currenciesRecent подгрузились позже — пересортируем текущий список чипов и, если ещё не автоподбирали, подхватим свежую
   useEffect(() => {
-    const key = (lastList || []).join("|")
     if (!periodCcys.length) return
-    if (key === prevListRef.current) return
-    prevListRef.current = key
-
-    const resorted = sortCcysByLast(periodCcys, lastList)
+    const resorted = sortCcysByLast(periodCcys, currenciesRecent)
     setPeriodCcys(resorted)
-    ensureBestCurrency(resorted)
+
+    const current = (currency || "").toUpperCase()
+    const freshest = resorted[0] || ""
+    if (!autoPickedRef.current[period] && freshest && current !== freshest) {
+      autoPickedRef.current[period] = true
+      try {
+        setCurrency(freshest) // стор сам вызовет loadSummary
+      } catch {}
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(lastList || []).join("|"), periodCcys.join("|")])
+  }, [(currenciesRecent || []).join("|")])
 
   const title = t("dashboard.summary_title", "Сводка")
 
@@ -169,7 +174,7 @@ export default function DashboardSummaryCard() {
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы периода */}
+        {/* Заголовок + чипы периода (как в ActivityChart) */}
         <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
           <div
             className="font-semibold"
@@ -185,7 +190,6 @@ export default function DashboardSummaryCard() {
                 <button
                   key={p}
                   onClick={() => {
-                    setUserPicked(false) // смена периода — больше не считаем выбор «ручным»
                     setPeriod(p) // стор сам сбросит TTL и перезагрузит summary
                   }}
                   aria-pressed={active}
@@ -203,7 +207,7 @@ export default function DashboardSummaryCard() {
           </div>
         </div>
 
-        {/* Чипы валют — показываем только если в периоде есть данные */}
+        {/* Чипы валют — одна строка, ровно один активный. Показываем только если в периоде есть данные */}
         {!loading && hasDataInPeriod && periodCcys.length > 0 ? (
           <div
             className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap"
@@ -216,7 +220,6 @@ export default function DashboardSummaryCard() {
                   key={`sum-ccy-${ccy}`}
                   type="button"
                   onClick={() => {
-                    setUserPicked(true)
                     if (!isActive) {
                       try {
                         setCurrency(ccy) // стор сам вызовет loadSummary
@@ -252,7 +255,7 @@ export default function DashboardSummaryCard() {
             {t("dashboard.activity_empty_title")}
           </div>
         ) : (
-          // Основной контент: 3 мини-карточки, каждая с рамкой
+          // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
