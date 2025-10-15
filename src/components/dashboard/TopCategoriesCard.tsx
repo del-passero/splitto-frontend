@@ -1,3 +1,4 @@
+// src/components/dashboard/TopCategoriesCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
@@ -21,6 +22,7 @@ type CatMeta = {
   color?: string | null
   parent_id?: number | null
   localizedName?: string | null
+  localeTag?: string | null   // ← чтобы понимать, на каком языке лежит cached name
 }
 
 const LIMITS: Record<PeriodLTYear, number> = { week: 3, month: 5, year: 10 }
@@ -67,13 +69,13 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
   })
 }
 
-// ===== минимальный fallback-клиент для /expense-categories/{id} =====
+// ===== минимальный клиент для /expense-categories/{id} =====
 const API_URL = (import.meta.env as any).VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
 }
-async function fetchCategoryById(id: number, _locale: string, signal?: AbortSignal): Promise<CatMeta | null> {
+async function fetchCategoryById(id: number, locale: string, signal?: AbortSignal): Promise<CatMeta | null> {
   try {
     const res = await fetch(`${API_URL}/expense-categories/${id}`, {
       credentials: "include",
@@ -82,12 +84,22 @@ async function fetchCategoryById(id: number, _locale: string, signal?: AbortSign
     })
     if (!res.ok) return null
     const json = await res.json()
+    const nameI18n = (json?.name_i18n ?? {}) as Record<string, string>
+    const localizedName =
+      nameI18n?.[locale] ||
+      nameI18n?.en ||
+      nameI18n?.ru ||
+      json?.name ||
+      json?.key ||
+      null
+
     return {
       id: json?.id,
       icon: json?.icon ?? null,
       color: json?.color ?? null,
       parent_id: json?.parent_id ?? null,
-      localizedName: null, // имя уже локализует /dashboard/top-categories
+      localizedName,
+      localeTag: locale, // ← кэшируем на какой локали
     }
   } catch {
     return null
@@ -106,18 +118,20 @@ export default function TopCategoriesCard() {
   const load = useDashboardStore((s) => s.loadTopCategories)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
-  // Первая загрузка
+  // Первичная загрузка
   useEffect(() => {
     if (!items || items.length === 0) void load()
   }, [items, load])
 
-  // НОВОЕ: при смене языка перезагружаем данные (бэкенд отдаст name на новой локали)
+  // ВАЖНО: при смене языка — перезагружаем данные и чистим локальный кеш меты
   useEffect(() => {
+    // сброс кеша локализованных имён — чтобы тут же показать новый язык
+    setCatMeta({})
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [i18n.language])
 
-  // Валюты в текущей выдаче
+  // Валюты текущей выборки
   const periodCcys = useMemo(() => {
     const raw = Array.from(
       new Set(
@@ -129,17 +143,14 @@ export default function TopCategoriesCard() {
     return sortCcysByLast(raw, currenciesRecent)
   }, [items, currenciesRecent])
 
-  // Активная валюта: сохраняем между периодами, если она присутствует в новой выборке
+  // Активная валюта — не сбрасываем на смене периода, если валюта присутствует
   const [activeCcy, setActiveCcy] = useState<string>("")
   const userTouchedRef = useRef<Record<PeriodLTYear, boolean>>({ week: false, month: false, year: false })
 
-  // Период поменялся — только сбрасываем «юзер кликал». Валюту не трогаем.
   useEffect(() => {
     userTouchedRef.current[period] = false
   }, [period])
 
-  // Когда приехал новый список валют — если текущей нет, переключаемся на свежую.
-  // Если текущая есть — оставляем как есть (не следуем за «самой свежей»).
   useEffect(() => {
     if (!periodCcys.length) {
       if (activeCcy) setActiveCcy("")
@@ -153,7 +164,7 @@ export default function TopCategoriesCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodCcys.join("|")])
 
-  // Нормализация данных по активной валюте + трим по лимиту периода
+  // Нормализация и трим по лимиту периода
   const baseData = useMemo(() => {
     const src = ((items as unknown as AnyTopCat[]) || []).filter(
       (it) => !activeCcy || (it.currency || "").toUpperCase() === activeCcy
@@ -167,7 +178,7 @@ export default function TopCategoriesCard() {
       return {
         id,
         key: String(it.category_id ?? `${it.name ?? "cat"}-${idx}`),
-        rawName: it.name ?? "",        // уже локализовано бэком по ?locale
+        rawName: it.name ?? "",        // сервер уже локализует, но держим фолбэк
         total: Number(n),
         icon: it.icon ?? null,
         color: it.color ?? null,
@@ -178,10 +189,12 @@ export default function TopCategoriesCard() {
     return mapped.slice(0, LIMITS[period])
   }, [items, activeCcy, period])
 
-  // Дотягиваем недостающие метаданные (редко нужно)
+  // Кеш метаданных по категориям
   const [catMeta, setCatMeta] = useState<Record<number, CatMeta>>({})
   const metaAbortRef = useRef<AbortController | null>(null)
 
+  // Дотягиваем мету (всегда на текущей локали) — даже если есть icon/color,
+  // чтобы при смене языка сразу обновить название через name_i18n.
   useEffect(() => {
     if (!baseData.length) return
 
@@ -193,14 +206,16 @@ export default function TopCategoriesCard() {
     const patch: Record<number, CatMeta> = {}
 
     for (const row of baseData) {
-      if (!row.id) continue
-      if (catMeta[row.id]) continue
-      if (row.icon || row.color) {
-        patch[row.id] = { id: row.id, icon: row.icon, color: row.color, parent_id: undefined, localizedName: null }
-      } else {
-        toFetch.push(row.id)
+      const meta = catMeta[row.id]
+      const needsLocale = !meta || meta.localeTag !== locale
+      if (needsLocale) {
+        toFetch.push(row.id) // тянем мету, чтобы иметь локализованное имя
+      } else if (!meta.icon && (row.icon || row.color)) {
+        // если ранее не было меты, а сервер уже дал цвет/иконку — сохраним
+        patch[row.id] = { id: row.id, icon: row.icon, color: row.color, parent_id: meta?.parent_id, localizedName: meta?.localizedName, localeTag: meta?.localeTag }
       }
     }
+
     if (Object.keys(patch).length) setCatMeta((prev) => ({ ...prev, ...patch }))
     if (!toFetch.length) return
 
@@ -240,12 +255,18 @@ export default function TopCategoriesCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseData.map((x) => x.id).join("|"), locale])
 
+  // Соединяем: meta.localizedName ПРЕИМУЩЕСТВЕННО — так сразу меняется язык
   const chartData = useMemo(() => {
     return baseData.map((row) => {
       const meta = catMeta[row.id]
+      const name =
+        meta?.localizedName /* приоритет — локаль из name_i18n */ ||
+        row.rawName ||
+        "Категория"
+
       return {
         ...row,
-        name: row.rawName || meta?.localizedName || "Категория",
+        name,
         icon: row.icon ?? meta?.icon ?? "🏷️",
         color: row.color ?? meta?.color ?? null,
       }
@@ -280,7 +301,7 @@ export default function TopCategoriesCard() {
               return (
                 <button
                   key={p}
-                  onClick={() => setPeriod(p)} // стор сам перезагрузит
+                  onClick={() => setPeriod(p)}
                   aria-pressed={active}
                   className={[
                     "px-2 py-1 rounded text-sm border transition",
