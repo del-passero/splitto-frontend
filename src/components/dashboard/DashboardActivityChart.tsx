@@ -401,7 +401,7 @@ export default function DashboardActivityChart() {
                             // первая точка — подпись СПРАВА
                             <text
                               x={x + 6}
-                              y={y + 3}
+                              y={Math.max(12, y - 8)}
                               fontSize="10"
                               textAnchor="start"
                               fill={TEXT}
