@@ -18,8 +18,82 @@ type Period = "week" | "month" | "year"
 
 /* ===== helpers ===== */
 function formatCountLabel(t: (k: string, o?: any) => string) {
-  // Лейбл без числа (число выведем жирным отдельно)
   return t("dashboard.joint_expenses_label") || t("dashboard.joint_expenses_count") || "Совместных расходов"
+}
+
+function pickLocale(i18nObj: any, locale: string): string | "" {
+  if (!i18nObj || typeof i18nObj !== "object") return ""
+  const lc = locale.toLowerCase()
+  return (
+    i18nObj[lc] ||
+    i18nObj[lc.split("-")[0]] ||
+    i18nObj.en ||
+    i18nObj.ru ||
+    i18nObj.es ||
+    ""
+  )
+}
+
+/** Универсальный резолвер названия «топ-категории» по партнёру из разных форматов ответа бекенда */
+function resolveTopCategoryName(p: any, t: (k: string) => string, locale: string): string {
+  try {
+    // 1) Прямые поля
+    const direct =
+      (typeof p?.top_category_name === "string" && p.top_category_name) ||
+      (typeof p?.most_category_name === "string" && p.most_category_name) ||
+      (typeof p?.favorite_category_name === "string" && p.favorite_category_name) ||
+      (typeof p?.category_name === "string" && p.category_name)
+    if (direct) return String(direct).trim()
+
+    // 2) Объекты с name/_i18n
+    const objectCandidates = [
+      p?.top_category,
+      p?.most_spent_category,
+      p?.favorite_category,
+      p?.category,
+    ].filter(Boolean)
+    for (const obj of objectCandidates) {
+      const byI18n = pickLocale(obj?.name_i18n, locale)
+      if (byI18n) return String(byI18n).trim()
+      if (typeof obj?.name === "string" && obj.name.trim()) return obj.name.trim()
+    }
+
+    // 3) i18n-имя на верхнем уровне
+    const fromTopI18n =
+      pickLocale(p?.top_category_name_i18n, locale) ||
+      pickLocale(p?.most_spent_category_name_i18n, locale)
+    if (fromTopI18n) return String(fromTopI18n).trim()
+
+    // 4) Массивы (берём max по сумме или первый)
+    const pickFromArray = (arr: any[]) => {
+      if (!Array.isArray(arr) || arr.length === 0) return ""
+      const sorted = arr
+        .slice()
+        .sort((a, b) => Number(b?.sum ?? 0) - Number(a?.sum ?? 0))
+      const cand = sorted[0]
+      const byI18n = pickLocale(cand?.name_i18n, locale)
+      if (byI18n) return String(byI18n).trim()
+      if (typeof cand?.name === "string" && cand.name.trim()) return cand.name.trim()
+      return ""
+    }
+    const fromTopCategories = pickFromArray(p?.top_categories)
+    if (fromTopCategories) return fromTopCategories
+    const fromCategories = pickFromArray(p?.categories)
+    if (fromCategories) return fromCategories
+
+    // 5) Ключ категории → попытаться локализовать через i18n
+    const key: string | undefined =
+      p?.top_category_key || p?.category_key || p?.most_category_key || p?.favorite_category_key
+    if (key && typeof key === "string") {
+      const maybe = t(`categories.keys.${key}`)
+      if (maybe && maybe !== `categories.keys.${key}`) return maybe
+      return key
+    }
+
+    return ""
+  } catch {
+    return ""
+  }
 }
 
 /* ===== чипы периода (как в графике активности) ===== */
@@ -78,7 +152,8 @@ function PartnerSkeleton() {
 }
 
 export default function TopPartnersCarousel() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = (i18n.language || "ru").toLowerCase()
   const navigate = useNavigate()
 
   const period = useDashboardStore((s) => s.frequentPeriod as Period)
@@ -198,21 +273,13 @@ export default function TopPartnersCarousel() {
             [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.username || t("unknown") || "—"
           const count = Number(p.joint_expense_count || 0)
 
-          // Извлекаем «самую частую» категорию из разных возможных полей
-          const topCategoryName: string =
-            String(
-              (p as any)?.top_category_name ??
-              (p as any)?.most_category_name ??
-              (p as any)?.favorite_category_name ??
-              (p as any)?.category_name ??
-              ""
-            ).trim()
+          const topCategoryName = resolveTopCategoryName(p as any, t, locale)
 
           return (
             <button
               key={u.id}
               type="button"
-              onClick={() => navigate(`/contacts/${u.id}`)} // → ContactDetailsPage
+              onClick={() => navigate(`/contacts/${u.id}`)}
               className="
                 snap-center shrink-0
                 min-w-[260px] w-[70%]
@@ -231,12 +298,12 @@ export default function TopPartnersCarousel() {
                   />
                 </div>
 
-                {/* Правая колонка: фиксируем высоту = AVATAR_SIZE, чтобы не росла */}
+                {/* Правая колонка: фиксируем высоту = AVATAR_SIZE */}
                 <div
                   className="col-span-9 min-w-0"
                   style={{ height: AVATAR_SIZE, display: "grid", gridTemplateRows: "auto 1fr auto" }}
                 >
-                  {/* Имя — верхняя строка */}
+                  {/* Имя */}
                   <div
                     className="text-[16px] leading-[18px] font-semibold text-[var(--tg-text-color)] truncate self-start"
                     title={fullName}
@@ -244,18 +311,17 @@ export default function TopPartnersCarousel() {
                     {fullName}
                   </div>
 
-                  {/* заполнитель */}
                   <div />
 
-                  {/* Низ: 2 маленькие строки (влезают в высоту карточки) */}
+                  {/* Низ карточки */}
                   <div className="self-end">
-                    {/* Совместные расходы: лейбл + жирная цифра в той же строке */}
+                    {/* Совместные расходы: лейбл + жирное число */}
                     <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
                       {formatCountLabel(t)}:{" "}
                       <b className="text-[12px] text-[var(--tg-text-color)]">{count}</b>
                     </div>
 
-                    {/* Категория: лейбл как выше + следующая строка с названием категории жирным */}
+                    {/* Категория: показываем только если смогли резолвить */}
                     {topCategoryName ? (
                       <>
                         <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
@@ -302,12 +368,20 @@ export default function TopPartnersCarousel() {
         </button>
       </div>
     )
-  }, [sorted, loading, error, load, period, navigate, t])
+  }, [sorted, loading, error, load, period, navigate, t, locale])
 
   return (
     <CardSection noPadding>
       <div className="rounded-lg border border-[var(--tg-hint-color)] p-1.5 bg-[var(--tg-card-bg)]">
-        {header}
+        <div className="flex items-center gap-2 mb-2">
+          <div
+            className="font-semibold"
+            style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
+          >
+            {t("dashboard.top_partners") || "Часто делю расходы"}
+          </div>
+          <PeriodChips value={period} onChange={onChangePeriod} />
+        </div>
         {content}
       </div>
     </CardSection>
