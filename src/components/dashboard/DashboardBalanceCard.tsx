@@ -136,9 +136,10 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   }, [balance])
 
   // Источник «последних валют»: сначала из баланса (если есть), иначе — из стора (currenciesRecent)
-  const lastList = (balance?.last_currencies && balance.last_currencies.length > 0)
-    ? balance.last_currencies
-    : currenciesRecent
+  const lastList =
+    balance?.last_currencies && balance.last_currencies.length > 0
+      ? balance.last_currencies
+      : currenciesRecent
 
   // Отсортированный список валют для чипов
   const sortedDebtCcys = useMemo(
@@ -156,8 +157,10 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   // Состояние выбранных валют (обеспечиваем минимум 1)
   const [activeCcys, setActiveCcys] = useState<Set<string>>(new Set(defaultSelected))
 
-  // Флаг «однократной инициализации выбора» на текущей сессии (чтобы новая валюта стала активной сразу)
+  // Флаги/refs для корректного авто-выбора новых валют
   const didInitSelectionRef = useRef(false)
+  const userTouchedRef = useRef(false)
+  const prevCcysRef = useRef<string[]>([])
 
   // Если список валют впервые появился — один раз проставим дефолтный выбор по свежести
   useEffect(() => {
@@ -168,16 +171,27 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedDebtCcys.join("|"), defaultSelected.join("|")])
 
-  // Если набор валют изменился (валюты исчезли) — подчищаем активные, но не ломаем ручной выбор
+  // Реакция на изменение набора валют:
+  // - если активная валюта исчезла или активных не осталось — сброс к дефолту;
+  // - если появились НОВЫЕ валюты и пользователь ещё не трогал чипы — также сброс к дефолту,
+  //   чтобы новые самые свежие автоматически стали активными.
   useEffect(() => {
+    const prev = prevCcysRef.current
+    const added = sortedDebtCcys.filter((c) => !prev.includes(c))
+
     const allContain = [...activeCcys].every((c) => sortedDebtCcys.includes(c))
     if (!allContain || activeCcys.size === 0) {
       setActiveCcys(new Set(defaultSelected))
+    } else if (added.length > 0 && !userTouchedRef.current) {
+      setActiveCcys(new Set(defaultSelected))
     }
+
+    prevCcysRef.current = sortedDebtCcys
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedDebtCcys.join("|")])
+  }, [sortedDebtCcys.join("|"), defaultSelected.join("|")])
 
   const toggleCcy = (ccy: string) => {
+    userTouchedRef.current = true
     setActiveCcys((prev) => {
       const next = new Set(prev)
       if (next.has(ccy)) {
@@ -292,9 +306,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
                 {t("i_owe")}
               </div>
               {iOweSorted.length === 0 ? (
-                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">
-                  —
-                </div>
+                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">—</div>
               ) : (
                 <div className="flex flex-col gap-1">
                   {iOweSorted.map((x) => {
@@ -302,15 +314,8 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
                     if (!isFinite(num) || num === 0) return null
                     return (
                       <div key={`i-owe-${x.ccy}`} className="flex items-center gap-1">
-                        <ArrowRight
-                          size={14}
-                          style={{ color: "var(--tg-destructive-text,#d7263d)" }}
-                          aria-hidden
-                        />
-                        <span
-                          className="text-[14px] font-semibold"
-                          style={{ color: "var(--tg-destructive-text,#d7263d)" }}
-                        >
+                        <ArrowRight size={14} style={{ color: "var(--tg-destructive-text,#d7263d)" }} aria-hidden />
+                        <span className="text-[14px] font-semibold" style={{ color: "var(--tg-destructive-text,#d7263d)" }}>
                           {fmtAmountSmart(Math.abs(num), x.ccy, locale)}
                         </span>
                       </div>
@@ -326,9 +331,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
                 {t("they_owe_me")}
               </div>
               {theyOweSorted.length === 0 ? (
-                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">
-                  —
-                </div>
+                <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">—</div>
               ) : (
                 <div className="flex flex-col gap-1">
                   {theyOweSorted.map((x) => {
@@ -336,15 +339,8 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
                     if (!isFinite(num) || num === 0) return null
                     return (
                       <div key={`to-me-${x.ccy}`} className="flex items-center gap-1">
-                        <ArrowLeft
-                          size={14}
-                          style={{ color: "var(--tg-success-text,#1aab55)" }}
-                          aria-hidden
-                        />
-                        <span
-                          className="text-[14px] font-semibold"
-                          style={{ color: "var(--tg-success-text,#1aab55)" }}
-                        >
+                        <ArrowLeft size={14} style={{ color: "var(--tg-success-text,#1aab55)" }} aria-hidden />
+                        <span className="text-[14px] font-semibold" style={{ color: "var(--tg-success-text,#1aab55)" }}>
                           {fmtAmountSmart(num, x.ccy, locale)}
                         </span>
                       </div>
