@@ -2,38 +2,27 @@
 import { useEffect, useMemo, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { Users } from "lucide-react"
+import { BookUser } from "lucide-react"
 
+import CardSection from "../CardSection"
 import Avatar from "../Avatar"
 import { useDashboardStore } from "../../store/dashboardStore"
 import type { TopPartnerItem } from "../../types/dashboard"
 
-/* ===== layout consts — как в RecentGroupsCarousel ===== */
+/* ===== layout ===== */
 const CARD_MIN_W = 260
 const CARD_W_PCT = "70%"
 const AVATAR_SIZE = 48
 
 type Period = "week" | "month" | "year"
 
-type Props = {
-  /** Клик по карточке партнёра (например, открыть его профиль / фильтр транзакций). Необязательно. */
-  onOpenPartner?: (userId: number, partner: TopPartnerItem) => void
-  /** Клик по «Все контакты». Необязательно. */
-  onOpenAll?: () => void
+/* ===== helpers ===== */
+function formatCountLabel(t: (k: string, o?: any) => string) {
+  // Лейбл без числа (число выведем жирным отдельно)
+  return t("dashboard.joint_expenses_label") || t("dashboard.joint_expenses_count") || "Совместных расходов"
 }
 
-/* ===== helpers (единообразные подписи) ===== */
-function formatCountLabel(t: (k: string, o?: any) => string, n: number) {
-  // i18n-ключ: dashboard.joint_expenses_count, с pluralization
-  // ru пример: "{{count}} совместных расход(а/ов)"
-  try {
-    return t("dashboard.joint_expenses_count", { count: n })
-  } catch {
-    return `${n} ${n === 1 ? "совместный расход" : "совместных расхода"}`
-  }
-}
-
-/* ===== чипы периода — стиль как в DashboardActivity ===== */
+/* ===== чипы периода (как в графике активности) ===== */
 function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
   const { t } = useTranslation()
   const all: Period[] = ["week", "month", "year"]
@@ -61,7 +50,7 @@ function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period)
   )
 }
 
-/* ===== скелетон карточки (первичная загрузка) ===== */
+/* ===== скелетон карточки ===== */
 function PartnerSkeleton() {
   return (
     <div
@@ -88,7 +77,7 @@ function PartnerSkeleton() {
   )
 }
 
-export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props) {
+export default function TopPartnersCarousel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
@@ -101,10 +90,6 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
 
   const hadSuccessRef = useRef(false)
 
-  /* Первая загрузка:
-     - если данных нет — грузим
-     - если была ошибка и окно вернулось в фокус/онлайн — пробуем снова
-  */
   useEffect(() => {
     if (!items?.length && !loading) void load(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,7 +119,7 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
     [setPeriod, load]
   )
 
-  /* Стабильная сортировка: по количеству ↓, затем по user.id ↑ */
+  /* Стабильная сортировка: count ↓, user.id ↑ */
   const sorted = useMemo(() => {
     const arr = Array.isArray(items) ? items.slice() : []
     arr.sort((a: any, b: any) => {
@@ -192,7 +177,7 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
         <div className="rounded-lg border border-[var(--tg-hint-color)] flex items-center justify-center text-center p-3 bg-[var(--tg-card-bg)]">
           <div className="flex flex-col items-center justify-center">
             <div className="mb-2 opacity-60">
-              <Users size={56} className="text-[var(--tg-link-color)]" />
+              <BookUser size={56} className="text-[var(--tg-link-color)]" />
             </div>
             <div className="text-[15px] leading-[18px] font-semibold text-[var(--tg-text-color)] mb-1">
               {t("dashboard.top_partners_empty") || "Пока нет совместных расходов"}
@@ -213,15 +198,21 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
             [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.username || t("unknown") || "—"
           const count = Number(p.joint_expense_count || 0)
 
-          const handleClick = () => {
-            if (onOpenPartner) onOpenPartner(u.id, p as TopPartnerItem)
-          }
+          // Извлекаем «самую частую» категорию из разных возможных полей
+          const topCategoryName: string =
+            String(
+              (p as any)?.top_category_name ??
+              (p as any)?.most_category_name ??
+              (p as any)?.favorite_category_name ??
+              (p as any)?.category_name ??
+              ""
+            ).trim()
 
           return (
             <button
               key={u.id}
               type="button"
-              onClick={handleClick}
+              onClick={() => navigate(`/contacts/${u.id}`)} // → ContactDetailsPage
               className="
                 snap-center shrink-0
                 min-w-[260px] w-[70%]
@@ -234,20 +225,50 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
                 <div className="col-span-3 flex items-center justify-center">
                   <Avatar
                     name={fullName}
-                    src={u.photo_url ?? undefined}  // <-- было src={u.photo_url}
+                    src={u.photo_url ?? undefined}
                     size={AVATAR_SIZE}
                     className="relative"
                   />
                 </div>
-                <div className="col-span-9 min-w-0" style={{ display: "grid", gridTemplateRows: "auto auto" }}>
+
+                {/* Правая колонка: фиксируем высоту = AVATAR_SIZE, чтобы не росла */}
+                <div
+                  className="col-span-9 min-w-0"
+                  style={{ height: AVATAR_SIZE, display: "grid", gridTemplateRows: "auto 1fr auto" }}
+                >
+                  {/* Имя — верхняя строка */}
                   <div
                     className="text-[16px] leading-[18px] font-semibold text-[var(--tg-text-color)] truncate self-start"
                     title={fullName}
                   >
                     {fullName}
                   </div>
-                  <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate self-end">
-                    {formatCountLabel(t, count)}
+
+                  {/* заполнитель */}
+                  <div />
+
+                  {/* Низ: 2 маленькие строки (влезают в высоту карточки) */}
+                  <div className="self-end">
+                    {/* Совместные расходы: лейбл + жирная цифра в той же строке */}
+                    <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
+                      {formatCountLabel(t)}:{" "}
+                      <b className="text-[12px] text-[var(--tg-text-color)]">{count}</b>
+                    </div>
+
+                    {/* Категория: лейбл как выше + следующая строка с названием категории жирным */}
+                    {topCategoryName ? (
+                      <>
+                        <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
+                          {t("dashboard.most_spent_category") || "Чаще всего тратили в категории"}
+                        </div>
+                        <div
+                          className="text-[13px] leading-[16px] font-semibold text-[var(--tg-text-color)] truncate"
+                          title={topCategoryName}
+                        >
+                          {topCategoryName}
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -255,10 +276,10 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
           )
         })}
 
-        {/* Карточка «Все контакты» (опционально) */}
+        {/* Карточка «Все контакты» */}
         <button
           type="button"
-          onClick={() => (onOpenAll ? onOpenAll() : navigate("/contacts"))}
+          onClick={() => navigate("/contacts")}
           className="
             snap-center shrink-0 px-4
             rounded-lg p-1.5 border border-[var(--tg-hint-color)]
@@ -272,7 +293,7 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
               className="rounded-full w-[48px] h-[48px] flex items-center justify-center mb-2"
               style={{ background: "var(--tg-accent-color,#40A7E3)" }}
             >
-              <Users size={24} color="#fff" />
+              <BookUser size={24} color="#fff" />
             </div>
             <div className="text-[11px] leading-[13px] font-semibold text-[var(--tg-text-color)] uppercase tracking-wide">
               {t("dashboard.all_contacts") || "Все контакты"}
@@ -281,12 +302,14 @@ export default function TopPartnersCarousel({ onOpenPartner, onOpenAll }: Props)
         </button>
       </div>
     )
-  }, [sorted, loading, error, load, period, navigate, onOpenAll, onOpenPartner, t])
+  }, [sorted, loading, error, load, period, navigate, t])
 
   return (
-    <div className="rounded-lg border border-[var(--tg-hint-color)] p-1.5 bg-[var(--tg-card-bg)]">
-      {header}
-      {content}
-    </div>
+    <CardSection noPadding>
+      <div className="rounded-lg border border-[var(--tg-hint-color)] p-1.5 bg-[var(--tg-card-bg)]">
+        {header}
+        {content}
+      </div>
+    </CardSection>
   )
 }
