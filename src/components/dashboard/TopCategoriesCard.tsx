@@ -1,4 +1,3 @@
-// src/components/dashboard/TopCategoriesCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import CardSection from "../CardSection"
@@ -107,10 +106,16 @@ export default function TopCategoriesCard() {
   const load = useDashboardStore((s) => s.loadTopCategories)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
-  // Первая загрузка (сервер сам получает locale через клиентский API)
+  // Первая загрузка
   useEffect(() => {
     if (!items || items.length === 0) void load()
   }, [items, load])
+
+  // НОВОЕ: при смене языка перезагружаем данные (бэкенд отдаст name на новой локали)
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i18n.language])
 
   // Валюты в текущей выдаче
   const periodCcys = useMemo(() => {
@@ -128,13 +133,13 @@ export default function TopCategoriesCard() {
   const [activeCcy, setActiveCcy] = useState<string>("")
   const userTouchedRef = useRef<Record<PeriodLTYear, boolean>>({ week: false, month: false, year: false })
 
-  // Период поменялся — просто сбрасываем «юзер кликал». ВАЛЮТУ НЕ ТРОГАЕМ тут.
+  // Период поменялся — только сбрасываем «юзер кликал». Валюту не трогаем.
   useEffect(() => {
     userTouchedRef.current[period] = false
   }, [period])
 
   // Когда приехал новый список валют — если текущей нет, переключаемся на свежую.
-  // Если текущая есть — НИЧЕГО не меняем (не «следуем за свежей»).
+  // Если текущая есть — оставляем как есть (не следуем за «самой свежей»).
   useEffect(() => {
     if (!periodCcys.length) {
       if (activeCcy) setActiveCcy("")
@@ -164,8 +169,8 @@ export default function TopCategoriesCard() {
         key: String(it.category_id ?? `${it.name ?? "cat"}-${idx}`),
         rawName: it.name ?? "",        // уже локализовано бэком по ?locale
         total: Number(n),
-        icon: it.icon ?? null,         // приходит из бэка
-        color: it.color ?? null,       // цвет категории либо родителя
+        icon: it.icon ?? null,
+        color: it.color ?? null,
       }
     })
 
