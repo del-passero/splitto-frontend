@@ -99,15 +99,6 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     try {
       void reloadBalance(true)
     } catch {}
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        try {
-          void reloadBalance(true)
-        } catch {}
-      }
-    }
-    document.addEventListener("visibilitychange", onVis)
-    return () => document.removeEventListener("visibilitychange", onVis)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
