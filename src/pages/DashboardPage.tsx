@@ -51,7 +51,7 @@ const DashboardPage = () => {
   return (
     <MainLayout>
       {/* ЕДИНЫЙ вертикальный интервал между всеми блоками */}
-      <div className="space-y-3">
+      <div className="space-y-1">
         {/* Баланс (без внешнего CardSection — он уже внутри компонента) */}
         <DashboardBalanceCard />
 

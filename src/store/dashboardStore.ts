@@ -151,7 +151,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     getDashboardLastCurrencies(2)
       .then((ccys) => {
         set({ currenciesRecent: ccys })
-        set((s) => ({ summaryCurrency: s.summaryCurrency || ccys[0] || "USD" }))
+        const existing = (get().summaryCurrency || "").toUpperCase()
+        const fallback = ccys[0] ? String(ccys[0]).toUpperCase() : "USD"
+        const next = existing || fallback
+        // КЛЮЧЕВОЕ: используем метод стора, чтобы сбросить TTL и перезагрузить summary
+        get().setSummaryCurrency(next)
       })
       .catch(() => void 0)
   },

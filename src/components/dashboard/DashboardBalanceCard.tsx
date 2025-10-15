@@ -49,23 +49,26 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Сортировка валют по recency: сначала последние использованные (от самой новой к старой), затем остальные по алфавиту */
+/** ЕДИНАЯ сортировка валют: последние использованные (самая новая — раньше), затем алфавит */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
   if (!ccys.length) return []
   const order = new Map<string, number>()
   if (Array.isArray(last) && last.length) {
-    // последние использованные — раньше: идём с конца массива (самые новые) к началу
+    // предполагаем, что last отсортирован от старых к новым → идём с конца, чтобы «новые раньше»
     for (let i = last.length - 1, rank = 0; i >= 0; i--, rank++) {
-      const c = last[i]
+      const c = String(last[i] || "").toUpperCase()
+      if (!c) continue
       if (!order.has(c)) order.set(c, rank)
     }
   }
-  return [...ccys].sort((a, b) => {
-    const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
-    const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
-    if (ia !== ib) return ia - ib
-    return a.localeCompare(b) // остальные по алфавиту
-  })
+  return [...ccys]
+    .map((c) => String(c || "").toUpperCase())
+    .sort((a, b) => {
+      const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
+      const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
+      if (ia !== ib) return ia - ib
+      return a.localeCompare(b)
+    })
 }
 
 /** Единый компаратор для отображения списков долгов в обеих колонках */
@@ -136,7 +139,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     return Array.from(set)
   }, [balance])
 
-  // Отсортированный список валют для чипов
+  // Отсортированный список валют для чипов (единая логика)
   const sortedDebtCcys = useMemo(
     () => sortCcysByLast(debtCcys, balance?.last_currencies),
     [debtCcys, balance?.last_currencies]

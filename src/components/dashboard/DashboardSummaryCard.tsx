@@ -45,6 +45,27 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
+/** Единая сортировка валют — как в DashboardBalanceCard */
+function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
+  if (!ccys.length) return []
+  const order = new Map<string, number>()
+  if (Array.isArray(last) && last.length) {
+    for (let i = last.length - 1, rank = 0; i >= 0; i--, rank++) {
+      const c = String(last[i] || "").toUpperCase()
+      if (!c) continue
+      if (!order.has(c)) order.set(c, rank)
+    }
+  }
+  return [...ccys]
+    .map((c) => String(c || "").toUpperCase())
+    .sort((a, b) => {
+      const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
+      const ib = order.has(b) ? (order.get(b) as number) : Number.POSITIVE_INFINITY
+      if (ia !== ib) return ia - ib
+      return a.localeCompare(b)
+    })
+}
+
 export default function DashboardSummaryCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
@@ -74,13 +95,14 @@ export default function DashboardSummaryCard() {
   const refreshPeriodCurrencies = async (p: Period) => {
     try {
       const res = await getDashboardTopCategories({ period: p, limit: 200 })
-      const list: string[] = Array.from(
+      const base: string[] = Array.from(
         new Set(
           (res?.items || [])
             .map((it: any) => String(it?.currency || "").toUpperCase())
             .filter((ccy: string) => !!ccy && ccy !== "XXX")
         )
       )
+      const list = sortCcysByLast(base, currenciesRecent)
       setPeriodCcys(list)
 
       if (list.length === 0) {
@@ -95,14 +117,11 @@ export default function DashboardSummaryCard() {
         return
       }
       // Пытаемся предпочесть последнюю использованную
-      const recentPick = (currenciesRecent || []).find(
-        (ccy) => list.includes(String(ccy).toUpperCase())
-      )
+      const recentPick = (currenciesRecent || []).find((ccy) => list.includes(String(ccy).toUpperCase()))
       const next: string = (recentPick ? String(recentPick).toUpperCase() : list[0]) || ""
       if (next && next !== current) {
-        // setSummaryCurrency сам вызовет loadSummary
         try {
-          setCurrency(next)
+          setCurrency(next) // стор сам вызовет loadSummary
         } catch {}
       }
     } catch {
