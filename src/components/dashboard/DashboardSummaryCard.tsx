@@ -81,8 +81,8 @@ export default function DashboardSummaryCard() {
   const [periodCcys, setPeriodCcys] = useState<string[]>([])
   const [hasDataInPeriod, setHasDataInPeriod] = useState<boolean>(true)
 
-  // Одноразовый «автоподбор новейшей валюты» для текущего периода (чтобы не перебивать ручной выбор)
-  const autoPickedRef = useRef<Record<Period, boolean>>({ week: false, month: false, year: false })
+  // Флаг: пользователь вручную кликал по чипам в текущем периоде
+  const userTouchedRef = useRef<Record<Period, boolean>>({ week: false, month: false, year: false })
 
   // Первичная загрузка summary
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function DashboardSummaryCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // один раз
 
-  // Подтягиваем список валют для текущего периода (и корректируем активную валюту при необходимости)
+  // Подтягиваем список валют для текущего периода
   const refreshPeriodCurrencies = async (p: Period) => {
     try {
       const res = await getDashboardTopCategories({ period: p, limit: 200 })
@@ -111,28 +111,6 @@ export default function DashboardSummaryCard() {
       const sorted = sortCcysByLast(raw, currenciesRecent)
       setPeriodCcys(sorted)
       setHasDataInPeriod(true)
-
-      const current = (currency || "").toUpperCase()
-      const freshest = sorted[0] || ""
-
-      // Автоподбор:
-      // - если текущая валюта отсутствует в списке — выберем подходящую;
-      // - если текущая есть, но это не «самая новая», то один раз за период
-      //   автоматически переключим на самую новую (поведение «зайти на дашборд → видим самую свежую валюту»).
-      const shouldAutoPick =
-        !autoPickedRef.current[p] &&
-        ( !sorted.includes(current) || (freshest && current !== freshest) )
-
-      if (shouldAutoPick) {
-        autoPickedRef.current[p] = true
-        const preferred = (currenciesRecent || []).find((ccy) => sorted.includes(String(ccy).toUpperCase()))
-        const next: string = (preferred ? String(preferred).toUpperCase() : freshest) || ""
-        if (next && next !== current) {
-          try {
-            setCurrency(next) // стор сам вызовет loadSummary
-          } catch {}
-        }
-      }
     } catch {
       // В случае ошибки просто считаем, что данных нет (чтобы не рушить UI)
       setPeriodCcys([])
@@ -140,31 +118,43 @@ export default function DashboardSummaryCard() {
     }
   }
 
-  // При смене периода — обновляем валюты периода и заново разрешаем одноразовый автоподбор
+  // При смене периода — сбрасываем «юзер кликал» и обновляем валюты периода
   useEffect(() => {
-    autoPickedRef.current[period] = false
+    userTouchedRef.current[period] = false
     void refreshPeriodCurrencies(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
-  // Если currenciesRecent подгрузились позже — пересортируем текущий список чипов и, если ещё не автоподбирали, подхватим свежую
+  // Всегда держим активной САМУЮ свежую валюту, пока пользователь не кликнул чип в этом периоде.
+  // Также, если текущая валюта больше не входит в список — переключаем на свежую безусловно.
   useEffect(() => {
     if (!periodCcys.length) return
+
+    // Пересортировать по обновившемуся списку "последних валют"
     const resorted = sortCcysByLast(periodCcys, currenciesRecent)
-    setPeriodCcys(resorted)
+    const needResort = resorted.join("|") !== periodCcys.join("|")
+    if (needResort) setPeriodCcys(resorted)
 
     const current = (currency || "").toUpperCase()
     const freshest = resorted[0] || ""
-    if (!autoPickedRef.current[period] && freshest && current !== freshest) {
-      autoPickedRef.current[period] = true
-      try {
-        setCurrency(freshest) // стор сам вызовет loadSummary
-      } catch {}
+    const inList = resorted.includes(current)
+
+    if (!inList) {
+      // Текущая валюта исчезла — обязательно переключаемся на свежую
+      if (freshest && freshest !== current) {
+        try { setCurrency(freshest) } catch {}
+      }
+      return
+    }
+
+    // Если пользователь ещё не трогал чипы в этом периоде — следуем за самой свежей
+    if (!userTouchedRef.current[period] && freshest && current !== freshest) {
+      try { setCurrency(freshest) } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(currenciesRecent || []).join("|")])
+  }, [periodCcys.join("|"), (currenciesRecent || []).join("|"), currency, period])
 
-  const title = t("dashboard.summary_title", "Сводка")
+  const title = t("dashboard.summary_title") || "Сводка"
 
   // Значения для мини-карточек
   const spentNum = useMemo(() => Number(summary?.spent || 0), [summary])
@@ -220,6 +210,7 @@ export default function DashboardSummaryCard() {
                   key={`sum-ccy-${ccy}`}
                   type="button"
                   onClick={() => {
+                    userTouchedRef.current[period] = true
                     if (!isActive) {
                       try {
                         setCurrency(ccy) // стор сам вызовет loadSummary
@@ -255,7 +246,7 @@ export default function DashboardSummaryCard() {
             {t("dashboard.activity_empty_title")}
           </div>
         ) : (
-          // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
+          // Основной контент: 3 мини-карточки, каждая с рамкой
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
