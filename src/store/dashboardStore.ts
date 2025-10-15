@@ -1,9 +1,4 @@
 // src/store/dashboardStore.ts
-// STORE СОВМЕСТИМ С ТВОИМИ КОМПОНЕНТАМИ:
-// - error: объект (не null), есть поля .balance/.activity/.summary/.top/.frequent/.groups/.events
-// - loadActivity(period?), loadSummary(period?, currency?), loadTopCategories(period?), loadTopPartners(period?)
-// - остальные имена/поля как ожидалось компонентами
-
 import { create } from "zustand"
 import {
   getDashboardBalance,
@@ -49,7 +44,7 @@ type ErrorMap = {
 
 type DashboardState = {
   loading: LoadingFlags
-  error: ErrorMap // НЕ null
+  error: ErrorMap
 
   // данные
   balance: DashboardBalance | null
@@ -71,6 +66,9 @@ type DashboardState = {
 
   // live
   liveTimer: number | null
+
+  // внутреннее: отложенная перезагрузка summary
+  summaryNeedsReload: boolean
 
   // методы
   init: () => void
@@ -121,7 +119,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     groups: false,
     events: false,
   },
-  error: {}, // не null
+  error: {},
 
   balance: null,
   activity: null,
@@ -141,21 +139,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   liveTimer: null,
 
+  // флаг отложенной перезагрузки summary
+  summaryNeedsReload: false,
+
   init() {
-    // гарантируем первый заход
     void get().reloadBalance(true)
     void get().loadRecentGroups(10)
     void get().loadEvents(20)
 
-    // подгружаем последние валюты и дефолт для summary
+    // подтягиваем «последние валюты» и сразу триггерим первую загрузку summary
     getDashboardLastCurrencies(2)
       .then((ccys) => {
         set({ currenciesRecent: ccys })
         const existing = (get().summaryCurrency || "").toUpperCase()
         const fallback = ccys[0] ? String(ccys[0]).toUpperCase() : "USD"
         const next = existing || fallback
-        // КЛЮЧЕВОЕ: используем метод стора, чтобы сбросить TTL и перезагрузить summary
-        get().setSummaryCurrency(next)
+        get().setSummaryCurrency(next) // внутри сам вызовет load
       })
       .catch(() => void 0)
   },
@@ -225,10 +224,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   async loadSummary(periodArg?: PeriodAll, currencyArg?: string) {
+    // применяем входные аргументы к состоянию перед загрузкой
     if (periodArg) set({ summaryPeriod: periodArg })
     if (currencyArg) set({ summaryCurrency: currencyArg.toUpperCase?.() || currencyArg })
 
+    // если уже грузимся — не стартуем новую; она будет запланирована флагом
     if (get().loading.summary) return
+
     const ts = lastAt.summary ?? 0
     if (now() - ts < TTL_DEFAULT) return
 
@@ -238,25 +240,41 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, summary: true }, error: { ...s.error, summary: "" } }))
     try {
       const data = await getDashboardSummary({ period, currency })
-      set((s) => ({ summary: data, loading: { ...s.loading, summary: false } }))
-      lastAt.summary = now()
+      set((s) => ({ summary: data }))
     } catch (e: any) {
-      set((s) => ({
-        loading: { ...s.loading, summary: false },
-        error: { ...s.error, summary: e?.message || "Failed to load summary" },
-      }))
+      set((s) => ({ error: { ...s.error, summary: e?.message || "Failed to load summary" } }))
+    } finally {
+      // помечаем завершение загрузки
+      set((s) => ({ loading: { ...s.loading, summary: false } }))
+      lastAt.summary = now()
+
+      // если во время загрузки успели поменять период/валюту — сразу перезагрузим
+      if (get().summaryNeedsReload) {
+        set({ summaryNeedsReload: false })
+        lastAt.summary = 0 // снять TTL
+        void get().loadSummary()
+      }
     }
   },
 
   setSummaryPeriod(p) {
     set({ summaryPeriod: p })
     lastAt.summary = 0
+    // если идёт загрузка — отложим перезагрузку
+    if (get().loading.summary) {
+      set({ summaryNeedsReload: true })
+      return
+    }
     void get().loadSummary()
   },
 
   setSummaryCurrency(ccy) {
     set({ summaryCurrency: ccy?.toUpperCase?.() || ccy })
     lastAt.summary = 0
+    if (get().loading.summary) {
+      set({ summaryNeedsReload: true })
+      return
+    }
     void get().loadSummary()
   },
 
@@ -273,16 +291,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, top: true }, error: { ...s.error, top: "" } }))
     try {
       const data = await getDashboardTopCategories({ period, limit: 50, offset: 0 })
-      set((s) => ({
-        topCategories: data.items || [],
-        loading: { ...s.loading, top: false },
-      }))
-      lastAt.top = now()
+      set((s) => ({ topCategories: data.items || [] }))
     } catch (e: any) {
-      set((s) => ({
-        loading: { ...s.loading, top: false },
-        error: { ...s.error, top: e?.message || "Failed to load top categories" },
-      }))
+      set((s) => ({ error: { ...s.error, top: e?.message || "Failed to load top categories" } }))
+    } finally {
+      set((s) => ({ loading: { ...s.loading, top: false } }))
+      lastAt.top = now()
     }
   },
 
@@ -305,13 +319,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, frequent: true }, error: { ...s.error, frequent: "" } }))
     try {
       const data = await getDashboardTopPartners({ period, limit: 20 })
-      set((s) => ({ frequentUsers: data || [], loading: { ...s.loading, frequent: false } }))
-      lastAt.frequent = now()
+      set((s) => ({ frequentUsers: data || [] }))
     } catch (e: any) {
-      set((s) => ({
-        loading: { ...s.loading, frequent: false },
-        error: { ...s.error, frequent: e?.message || "Failed to load top partners" },
-      }))
+      set((s) => ({ error: { ...s.error, frequent: e?.message || "Failed to load top partners" } }))
+    } finally {
+      set((s) => ({ loading: { ...s.loading, frequent: false } }))
+      lastAt.frequent = now()
     }
   },
 
@@ -329,13 +342,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, groups: true }, error: { ...s.error, groups: "" } }))
     try {
       const data = await getDashboardRecentGroups(limit)
-      set((s) => ({ groups: data || [], loading: { ...s.loading, groups: false } }))
-      lastAt.groups = now()
+      set((s) => ({ groups: data || [] }))
     } catch (e: any) {
-      set((s) => ({
-        loading: { ...s.loading, groups: false },
-        error: { ...s.error, groups: e?.message || "Failed to load recent groups" },
-      }))
+      set((s) => ({ error: { ...s.error, groups: e?.message || "Failed to load recent groups" } }))
+    } finally {
+      set((s) => ({ loading: { ...s.loading, groups: false } }))
+      lastAt.groups = now()
     }
   },
 
@@ -347,16 +359,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
       const feed = await getDashboardEvents(limit)
-      set((s) => ({
-        events: feed?.items || [],
-        loading: { ...s.loading, events: false },
-      }))
-      lastAt.events = now()
+      set((s) => ({ events: feed?.items || [] }))
     } catch (e: any) {
-      set((s) => ({
-        loading: { ...s.loading, events: false },
-        error: { ...s.error, events: e?.message || "Failed to load events" },
-      }))
+      set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
+    } finally {
+      set((s) => ({ loading: { ...s.loading, events: false } }))
+      lastAt.events = now()
     }
   },
 
