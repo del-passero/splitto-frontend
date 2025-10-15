@@ -15,6 +15,7 @@ export default {
   contacts: "Контакты",
   profile: "Профиль",
   all: "ВСЕ",
+  unknown: "Неизвестно",
 
   // --- Группы и участники ---
   participants: "Участники",
@@ -416,7 +417,7 @@ export default {
   },
   dashboard: {
     activity: "Активность трат",
-    top_categories: "Топ категорий",
+    top_categories_title: "Топ категорий",
     no_categories: "Нет трат за выбранный период",
     unknown_category: "Категория",
 	summary_title: "Сводка",

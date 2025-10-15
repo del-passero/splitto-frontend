@@ -15,6 +15,7 @@ export default {
   contacts: "Contactos",
   profile: "Perfil",
   all: "TODO",
+  unknown: "Desconocido",
 
   // --- Grupos y participantes ---
   participants: "Participantes",
@@ -417,7 +418,7 @@ export default {
   },
   dashboard: {
     activity: "Actividad de gasto",
-    top_categories: "Categorías principales",
+    top_categories_title: "Categorías principales",
     no_categories: "No hay gastos en el período seleccionado",
     unknown_category: "Categoría",
 	summary_title: "Resumen",

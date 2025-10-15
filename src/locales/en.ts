@@ -15,6 +15,7 @@ export default {
   contacts: "Contacts",
   profile: "Profile",
   all: "ALL",
+  unknown: "Unknown",
 
   // --- Groups & participants ---
   participants: "Participants",
@@ -416,7 +417,7 @@ export default {
   },
   dashboard: {
     activity: "Spending activity",
-    top_categories: "Top categories",
+    top_categories_title: "Top categories",
     no_categories: "No expenses for the selected period",
     unknown_category: "Category",
 	summary_title: "Summary",

@@ -12,8 +12,12 @@ type AnyTopCat = {
   name?: string
   sum?: string | number
   currency?: string
+  // доп. поля для отображения аватарки категории
+  icon?: string | null
+  color?: string | null
 }
 
+const LIMITS: Record<PeriodLTYear, number> = { week: 3, month: 5, year: 10 }
 const nbsp = "\u00A0"
 
 /** Формат: число + код валюты с «умной» дробной частью */
@@ -74,7 +78,7 @@ export default function TopCategoriesCard() {
     if (!items || items.length === 0) void load()
   }, [items, load])
 
-  // Доступные валюты в текущей выборке
+  // Валюты, в которых есть данные для текущей выборки (сортированные по "последним")
   const periodCcys = useMemo(() => {
     const raw = Array.from(
       new Set(
@@ -86,67 +90,85 @@ export default function TopCategoriesCard() {
     return sortCcysByLast(raw, currenciesRecent)
   }, [items, currenciesRecent])
 
-  // Активная валюта — ровно одна. Автоподбор самой свежей один раз на монтирование
+  // Ровно одна активная валюта; следуем логике SummaryCard:
+  // — по умолчанию держим самую «свежую», пока пользователь не кликал чипы в ЭТОМ периоде;
+  // — если активная валюта исчезла — переключаемся на свежую безусловно.
   const [activeCcy, setActiveCcy] = useState<string>("")
-  const autoPickedRef = useRef(false)
+  const userTouchedRef = useRef<Record<PeriodLTYear, boolean>>({
+    week: false,
+    month: false,
+    year: false,
+  })
 
-  // Автовыбор валюты: при появлении списка впервые, а также если активная валюта исчезла
+  // При смене периода — «сбрасываем» флаг пользовательского выбора
   useEffect(() => {
-    if (periodCcys.length === 0) {
-      if (activeCcy) setActiveCcy("") // очистить, чтобы скрыть чипы/контент
+    userTouchedRef.current[period] = false
+  }, [period])
+
+  // Держим актуальную валюту в соответствии с periodCcys и currenciesRecent
+  useEffect(() => {
+    if (!periodCcys.length) {
+      if (activeCcy) setActiveCcy("")
       return
     }
-    const freshest = periodCcys[0]
-    if (!autoPickedRef.current && !activeCcy) {
-      autoPickedRef.current = true
-      setActiveCcy(freshest)
+
+    const resorted = sortCcysByLast(periodCcys, currenciesRecent)
+    const freshest = resorted[0] || ""
+    const current = (activeCcy || "").toUpperCase()
+    const inList = current ? resorted.includes(current) : false
+
+    if (!inList) {
+      // Текущая валюта отсутствует в списке — обяз. переключаемся на свежую
+      if (freshest && freshest !== current) setActiveCcy(freshest)
       return
     }
-    // Если активная валюта больше не присутствует — переключаемся на самую свежую
-    if (activeCcy && !periodCcys.includes(activeCcy)) {
+
+    // Пользователь ещё не трогал чипы в этом периоде — следуем за самой свежей
+    if (!userTouchedRef.current[period] && freshest && current !== freshest) {
       setActiveCcy(freshest)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodCcys.join("|")])
+  }, [periodCcys.join("|"), (currenciesRecent || []).join("|"), period])
 
-  // Пересортировать чипы, если «последние валюты» подгрузились позже — и, если активной нет, выбрать свежую
-  useEffect(() => {
-    if (!activeCcy && periodCcys.length > 0) {
-      setActiveCcy(periodCcys[0])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(currenciesRecent || []).join("|")])
-
-  // Нормализуем и фильтруем данные по активной валюте
+  // Нормализуем и фильтруем данные по активной валюте, сортируем и ограничиваем кол-во строк
   const chartData = useMemo(() => {
-    const src = (items as unknown as AnyTopCat[]) || []
-    const filtered = activeCcy ? src.filter((it) => (it.currency || "").toUpperCase() === activeCcy) : src
-    const mapped = filtered.map((it, idx) => {
-      const name = it.name ?? "Категория"
+    const src = ((items as unknown as AnyTopCat[]) || []).filter(
+      (it) => !activeCcy || (it.currency || "").toUpperCase() === activeCcy
+    )
+
+    const mapped = src.map((it, idx) => {
+      const name = it.name ?? t("dashboard.unknown_category") ?? "Категория"
       const key = String(it.category_id ?? `${name}-${idx}`)
-      let n =
-        typeof it.sum === "string" ? Number(it.sum) : typeof it.sum === "number" ? it.sum : 0
+      let n = typeof it.sum === "string" ? Number(it.sum) : typeof it.sum === "number" ? it.sum : 0
       if (!isFinite(Number(n))) n = 0
-      return { key, name, total: Number(n) }
+      return {
+        key,
+        name,
+        total: Number(n),
+        icon: it.icon ?? null,
+        color: it.color ?? null,
+      }
     })
-    // По сумме по убыванию
+
+    // По сумме по убыванию + ограничение по периоду
     mapped.sort((a, b) => b.total - a.total)
-    return mapped
-  }, [items, activeCcy])
+    return mapped.slice(0, LIMITS[period])
+  }, [items, activeCcy, period, t])
 
   const totalAmount = useMemo(
     () => chartData.reduce((acc, x) => acc + (x.total || 0), 0),
     [chartData]
   )
 
-  const title = t("dashboard.top_categories_title") || "Топ категорий"
+  const title = t("dashboard.top_categories_title") || t("dashboard.top_categories") || "Топ категорий"
   const hasError = !!error && chartData.length === 0
-  const hasData = chartData.length > 0
+  const hasAnyData = (items?.length || 0) > 0 && periodCcys.length > 0
+  const showEmpty = !loading && !hasError && !hasAnyData
 
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы периода */}
+        {/* Заголовок + чипы периода (как в других виджетах) */}
         <div className="flex items-center gap-2 mb-2">
           <div
             className="font-semibold"
@@ -177,16 +199,19 @@ export default function TopCategoriesCard() {
           </div>
         </div>
 
-        {/* Чипы валют — ровно одна активная; показываем только если есть данные/валюты */}
+        {/* Чипы валют — одна активная, как в Summary */}
         {!loading && periodCcys.length > 0 ? (
           <div className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap" style={{ WebkitOverflowScrolling: "touch" }}>
             {periodCcys.map((ccy) => {
-              const isActive = activeCcy === ccy
+              const isActive = (activeCcy || "").toUpperCase() === ccy
               return (
                 <button
                   key={`topcat-ccy-${ccy}`}
                   type="button"
-                  onClick={() => !isActive && setActiveCcy(ccy)}
+                  onClick={() => {
+                    userTouchedRef.current[period] = true
+                    if (!isActive) setActiveCcy(ccy)
+                  }}
                   className={[
                     "inline-flex items-center h-7 px-3 mr-2 rounded-full text-xs select-none transition-colors",
                     isActive
@@ -220,22 +245,41 @@ export default function TopCategoriesCard() {
               {t("retry")}
             </button>
           </div>
-        ) : !hasData ? (
+        ) : showEmpty ? (
           <div className="text-[14px] leading-[18px] text-[var(--tg-hint-color)]">
-            {t("no_data_for_period") || "Нет данных за выбранный период"}
+            {t("dashboard.activity_empty_title")}
+          </div>
+        ) : chartData.length === 0 ? (
+          // сюда попадём редко (например, если активная валюта выбрана, но в ней нет строк)
+          <div className="text-[14px] leading-[18px] text-[var(--tg-hint-color)]">
+            {t("dashboard.activity_empty_title")}
           </div>
         ) : (
-          // Контент: список категорий с прогресс-баром и суммой справа
+          // Контент: список категорий с иконкой/цветом, прогресс-баром и суммой справа
           <div className="flex flex-col gap-2">
             {chartData.map((it) => {
               const pct = totalAmount > 0 ? (it.total / totalAmount) * 100 : 0
               return (
                 <div key={it.key} className="flex items-center gap-3">
+                  {/* аватарка категории (как в CategoryPickerModal) */}
+                  <div
+                    className="flex items-center justify-center rounded-full shrink-0"
+                    style={{
+                      width: 34,
+                      height: 34,
+                      fontSize: 18,
+                      background: it.color ? `${it.color}22` : "transparent",
+                      border: it.color ? `1px solid ${it.color}55` : "1px solid var(--tg-hint-color)",
+                    }}
+                  >
+                    <span aria-hidden>{it.icon || "🏷️"}</span>
+                  </div>
+
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="truncate text-[var(--tg-text-color)]">{it.name}</span>
                       <span className="tabular-nums font-semibold text-[var(--tg-text-color)]">
-                        {fmtAmountSmart(it.total, activeCcy || (periodCcys[0] || "USD"), locale)}
+                        {fmtAmountSmart(it.total, (activeCcy || periodCcys[0] || "USD"), locale)}
                       </span>
                     </div>
                     <div
