@@ -69,6 +69,23 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
 /** Единый компаратор для отображения списков долгов в обеих колонках */
 const compareDebts = (a: { ccy: string }, b: { ccy: string }) => a.ccy.localeCompare(b.ccy)
 
+/** Нормализуем объект валют: отсортированные ключи + строковые значения */
+function normalizeCurrencyObject(input?: Record<string, unknown> | null) {
+  const o = input || {}
+  const keys = Object.keys(o).sort()
+  const out: Record<string, string> = {}
+  for (const k of keys) out[k] = String((o as any)[k])
+  return out
+}
+
+/** Строим «сигнатуру» релевантной части баланса, чтобы обновляться только когда это действительно меняется */
+function makeBalanceSignature(bal?: any): string {
+  const i = normalizeCurrencyObject(bal?.i_owe)
+  const t = normalizeCurrencyObject(bal?.they_owe_me)
+  const last = (bal?.last_currencies || []).map((x: any) => String(x)).join("|")
+  return JSON.stringify({ i, t, last })
+}
+
 const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
@@ -77,33 +94,30 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
-  // Снимок стора — чтобы виджет не «дёргался» от live-обновлений
+  // Снимок стора — минимально необходимый для UI; обновляем по изменению «сигнатуры»,
+  // чтобы не дёргаться зря, но сразу реагировать на появление/исчезновение валют.
   const [snap, setSnap] = useState(() => {
     const st = (useDashboardStore as any).getState?.() || {}
     return { loading: !!st.loading?.balance, balance: st.balance }
   })
+  const prevSigRef = useRef<string>(makeBalanceSignature(snap.balance))
+  const prevLoadingRef = useRef<boolean>(snap.loading)
 
   useEffect(() => {
-    let startedExplicitLoad = false
     // Если сейчас не идёт загрузка — инициируем (исправляет пустоту после refresh/первого захода)
-    const st = (useDashboardStore as any).getState?.()
-    if (!st?.loading?.balance) {
-      startedExplicitLoad = true
-      try {
-        void reloadBalance()
-      } catch {}
-    }
+    try {
+      const st = (useDashboardStore as any).getState?.()
+      if (!st?.loading?.balance) void reloadBalance()
+    } catch {}
 
-    let unsubscribe: () => void = () => {}
-    unsubscribe =
+    const unsubscribe =
       (useDashboardStore as any).subscribe?.((s: any) => {
         const next = { loading: !!s.loading?.balance, balance: s.balance }
-        setSnap(next)
-        // Отписываемся ПОСЛЕ первой завершённой загрузки, которую мы инициировали
-        if (startedExplicitLoad && !next.loading) {
-          try {
-            unsubscribe()
-          } catch {}
+        const sig = makeBalanceSignature(next.balance)
+        if (sig !== prevSigRef.current || next.loading !== prevLoadingRef.current) {
+          prevSigRef.current = sig
+          prevLoadingRef.current = next.loading
+          setSnap(next)
         }
       }) || (() => {})
 
@@ -173,8 +187,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
 
   // Реакция на изменение набора валют:
   // - если активная валюта исчезла или активных не осталось — сброс к дефолту;
-  // - если появились НОВЫЕ валюты и пользователь ещё не трогал чипы — также сброс к дефолту,
-  //   чтобы новые самые свежие автоматически стали активными.
+  // - если появились НОВЫЕ валюты и пользователь ещё не трогал чипы — также сброс к дефолту.
   useEffect(() => {
     const prev = prevCcysRef.current
     const added = sortedDebtCcys.filter((c) => !prev.includes(c))
@@ -267,11 +280,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
           </div>
         ) : noDebts ? (
           // ===== ПУСТОЕ СОСТОЯНИЕ (вариант B) =====
-          <div
-            className="flex flex-col items-center justify-center text-center py-6"
-            role="status"
-            aria-live="polite"
-          >
+          <div className="flex flex-col items-center justify-center text-center py-6" role="status" aria-live="polite">
             <PartyPopper size={40} style={{ color: "var(--tg-accent-color,#40A7E3)" }} aria-hidden />
             <div className="mt-2 text-[15px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
               {t("dashboard_balance_zero_title")}
@@ -302,9 +311,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
           <div className="grid grid-cols-2 gap-3">
             {/* Я должен */}
             <div>
-              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">
-                {t("i_owe")}
-              </div>
+              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">{t("i_owe")}</div>
               {iOweSorted.length === 0 ? (
                 <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">—</div>
               ) : (
@@ -327,9 +334,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
 
             {/* Мне должны */}
             <div>
-              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">
-                {t("they_owe_me")}
-              </div>
+              <div className="mb-1 text-[12px] leading-[14px] text-[var(--tg-hint-color)]">{t("they_owe_me")}</div>
               {theyOweSorted.length === 0 ? (
                 <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-70">—</div>
               ) : (
