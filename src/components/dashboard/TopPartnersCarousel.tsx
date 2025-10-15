@@ -17,7 +17,7 @@ const AVATAR_SIZE = 48
 type Period = "week" | "month" | "year"
 
 /* ===== helpers ===== */
-function formatCountLabel(t: (k: string, o?: any) => any) {
+function labelCount(t: (k: string, o?: any) => any) {
   return t("dashboard.joint_expenses_label") || t("dashboard.joint_expenses_count") || "Совместных расходов"
 }
 
@@ -39,25 +39,18 @@ function isPartnerInExpenseTx(tx: any, partnerId: number): boolean {
 function pickLocale(i18nObj: any, locale: string): string {
   if (!i18nObj || typeof i18nObj !== "object") return ""
   const lc = (locale || "ru").toLowerCase()
-  return (
-    i18nObj[lc] ||
-    i18nObj[lc.split("-")[0]] ||
-    i18nObj.en ||
-    i18nObj.ru ||
-    i18nObj.es ||
-    ""
-  )
+  return i18nObj[lc] || i18nObj[lc.split("-")[0]] || i18nObj.en || i18nObj.ru || i18nObj.es || ""
 }
 
 function txCategoryName(tx: any, locale: string): string {
-  const cat = tx?.category
+  const cat = (tx as any)?.category
   if (!cat) return ""
   const byI18n = pickLocale(cat?.name_i18n, locale)
   if (byI18n) return String(byI18n).trim()
   return String(cat?.name || "").trim()
 }
 
-/** Универсальный резолвер названия «топ-категории» из карточки топ-партнёров (если вдруг бэк начнёт отдавать) */
+/** Если когда-нибудь бэк начнёт слать топ-категорию в top-partners — заберём отсюда */
 function resolveTopCategoryNameFromDashboard(p: any, t: (k: string) => string, locale: string): string {
   try {
     const direct =
@@ -87,7 +80,7 @@ function resolveTopCategoryNameFromDashboard(p: any, t: (k: string) => string, l
   }
 }
 
-/* ===== чипы периода (как в графике активности) ===== */
+/* ===== чипы периода (как в RecentGroups/Activity) ===== */
 function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
   const { t } = useTranslation()
   const all: Period[] = ["week", "month", "year"]
@@ -115,23 +108,13 @@ function PeriodChips({ value, onChange }: { value: Period; onChange: (v: Period)
   )
 }
 
-/* ===== скелетон карточки ===== */
+/* ===== скелетон ===== */
 function PartnerSkeleton() {
   return (
-    <div
-      className="
-        snap-center shrink-0
-        min-w-[260px] w-[70%]
-        rounded-lg p-1.5 border border-[var(--tg-hint-color)]
-        bg-[var(--tg-card-bg)]
-      "
-    >
+    <div className="snap-center shrink-0 min-w-[260px] w-[70%] rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
       <div className="w-full grid grid-cols-12 gap-2 items-center">
         <div className="col-span-3 flex items-center justify-center">
-          <div
-            className="rounded-full animate-pulse"
-            style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, background: "var(--tg-hint-color)", opacity: 0.25 }}
-          />
+          <div className="rounded-full animate-pulse" style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, background: "var(--tg-hint-color)", opacity: 0.25 }} />
         </div>
         <div className="col-span-9 flex flex-col gap-2">
           <div className="h-4 rounded animate-pulse" style={{ background: "var(--tg-hint-color)", opacity: 0.25 }} />
@@ -153,12 +136,11 @@ export default function TopPartnersCarousel() {
   const loading = useDashboardStore((s) => s.loading.frequent)
   const error = useDashboardStore((s) => s.error.frequent || "")
   const loadTopPartners = useDashboardStore((s) => s.loadTopPartners)
-  const currentUser = useUserStore((s) => s.user)
-  const currentUserId = currentUser?.id
+  const currentUserId = useUserStore((s) => s.user?.id)
 
   const hadSuccessRef = useRef(false)
 
-  // Фолбэк-словарь: partnerUserId -> categoryName (подсчитано по транзакциям)
+  // Фолбэк: partnerUserId -> categoryName (рассчитано по транзакциям)
   const [topCatById, setTopCatById] = useState<Record<number, string>>({})
 
   // первичная загрузка
@@ -171,7 +153,7 @@ export default function TopPartnersCarousel() {
     if (items?.length) hadSuccessRef.current = true
   }, [items])
 
-  // тихий ретрай при фокусе/онлайне
+  // ретрай при фокусе/онлайне
   useEffect(() => {
     const onFocusOrOnline = () => {
       if (!loading && (!hadSuccessRef.current || error)) void loadTopPartners(period)
@@ -187,14 +169,13 @@ export default function TopPartnersCarousel() {
   const onChangePeriod = useCallback(
     (p: Period) => {
       setPeriod(p)
-      void loadTopPartners(p)
-      // сбрасываем фолбэк-кеш категорий при смене периода
       setTopCatById({})
+      void loadTopPartners(p)
     },
     [setPeriod, loadTopPartners]
   )
 
-  /* Стабильная сортировка: count ↓, user.id ↑ */
+  /* сортировка: count ↓, user.id ↑ */
   const sorted: TopPartnerItem[] = useMemo(() => {
     const arr = Array.isArray(items) ? items.slice() : []
     arr.sort((a: any, b: any) => {
@@ -208,18 +189,19 @@ export default function TopPartnersCarousel() {
     return arr
   }, [items])
 
-  // === ФОЛБЭК-КАТЕГОРИИ ПО ТРАНЗАКЦИЯМ ===
+  // === ФОЛБЭК: вытаскиваем категорию по транзакциям и считаем СУММУ трат по каждой категории для партнёра ===
   useEffect(() => {
     if (!sorted.length || !currentUserId) return
 
-    // у каких партнёров нет категории в ответе дашборда
+    // у кого нет категории с бэка и ещё не посчитали фолбэк
     const needIds = sorted
-      .filter((p: any) => {
-        const fromDash = resolveTopCategoryNameFromDashboard(p, t, locale)
-        return !fromDash
-      })
       .map((p) => Number(p?.user?.id))
-      .filter((id): id is number => Number.isFinite(id) && id > 0 && !topCatById[id])
+      .filter((id): id is number => Number.isFinite(id) && id > 0)
+      .filter((id) => {
+        const p = sorted.find((x) => Number(x?.user?.id) === id)
+        const fromDash = p ? resolveTopCategoryNameFromDashboard(p as any, t as any, locale) : ""
+        return !fromDash && !topCatById[id]
+      })
 
     if (!needIds.length) return
 
@@ -228,12 +210,13 @@ export default function TopPartnersCarousel() {
 
     ;(async () => {
       const start = periodStart(period)
-      const counts: Record<number, Record<string, number>> = {} // partnerId -> { categoryName -> count }
+      // партнёр -> { catName -> sum }
+      const sums: Record<number, Record<string, number>> = {}
       let offset = 0
       const limit = 50
+      let hitOlder = false
 
-      // пагинируем, пока не уйдём старше границы периода
-      outer: while (!cancelled) {
+      while (!cancelled) {
         const { items: txs } = await getTransactions({
           userId: currentUserId,
           type: "expense",
@@ -244,40 +227,41 @@ export default function TopPartnersCarousel() {
         if (cancelled || !txs.length) break
 
         for (const raw of txs as TransactionOut[]) {
-          const txDate = new Date((raw as any).date)
-          if (txDate < start) break outer // дальше только старше
+          const dt = new Date((raw as any).date)
+          if (dt < start) { hitOlder = true; continue } // дочистим текущую страницу и потом выйдем
+          const catName = txCategoryName(raw, locale)
+          if (!catName) continue
 
-          const name = txCategoryName(raw, locale)
-          if (!name) continue
+          const amt = Number((raw as any).amount || 0)
+          const inc = Number.isFinite(amt) ? Math.abs(amt) : 0
 
           for (const pid of needIds) {
             if (isPartnerInExpenseTx(raw, pid)) {
-              counts[pid] ||= {}
-              counts[pid][name] = (counts[pid][name] || 0) + 1 // по частоте
-              // Если нужен подсчёт по сумме — меняем +1 на +Number(raw.amount || 0)
+              sums[pid] ||= {}
+              sums[pid][catName] = (sums[pid][catName] || 0) + inc // ← по СУММЕ
             }
           }
         }
 
         offset += txs.length
-        if (txs.length < limit) break
+        if (hitOlder || txs.length < limit) break
       }
 
       if (cancelled) return
 
       const resolved: Record<number, string> = {}
-      Object.entries(counts).forEach(([pidStr, map]) => {
-        let top = "", best = -Infinity
+      Object.entries(sums).forEach(([pidStr, map]) => {
+        let bestName = "", bestVal = -Infinity
         Object.entries(map).forEach(([name, val]) => {
-          if (val > best) { best = val; top = name }
+          if (val > bestVal) { bestVal = val; bestName = name }
         })
-        if (top) resolved[Number(pidStr)] = top
+        if (bestName) resolved[Number(pidStr)] = bestName
       })
 
       if (!cancelled && Object.keys(resolved).length) {
         setTopCatById((prev) => ({ ...prev, ...resolved }))
       }
-    })().catch(() => { /* no-op */ })
+    })().catch(() => { /* silent */ })
 
     return () => { cancelled = true; controller.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,25 +269,11 @@ export default function TopPartnersCarousel() {
     currentUserId,
     period,
     locale,
-    t,
-    // зависимость по списку партнёров (только ids, чтобы не триггерить лишний раз)
+    // завязываемся на состав партнёров (id) — чтобы не дергать лишний раз
     sorted.map((p) => p?.user?.id).join(","),
   ])
 
-  /* ===== header ===== */
-  const header = (
-    <div className="flex items-center gap-2 mb-2">
-      <div
-        className="font-semibold"
-        style={{ fontSize: "15px", lineHeight: "18px", color: "var(--tg-accent-color,#40A7E3)" }}
-      >
-        {t("dashboard.top_partners") || "Часто делю расходы"}
-      </div>
-      <PeriodChips value={period} onChange={onChangePeriod} />
-    </div>
-  )
-
-  /* ===== content ===== */
+  /* ===== контент ===== */
   const content = useMemo(() => {
     if (loading && !hadSuccessRef.current) {
       return (
@@ -357,9 +327,11 @@ export default function TopPartnersCarousel() {
             [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.username || t("unknown") || "—"
           const count = Number(p.joint_expense_count || 0)
 
-          // 1) если бэк начнёт отдавать — берём оттуда; 2) иначе — наш фолбэк
+          // 1) если бэк когда-то пришлёт — используем его; 2) иначе — наш фолбэк; 3) плейсхолдер
           const fromDashboard = resolveTopCategoryNameFromDashboard(p as any, t as any, locale)
           const topCategoryName = fromDashboard || topCatById[Number(u.id)] || ""
+          const catLabel = t("dashboard.most_spent_category") || "Чаще всего тратили в категории"
+          const catEmpty = t("dashboard.most_spent_category_empty") || "—"
 
           return (
             <button
@@ -384,7 +356,7 @@ export default function TopPartnersCarousel() {
                   />
                 </div>
 
-                {/* Правая колонка: фиксируем высоту = AVATAR_SIZE */}
+                {/* Правая колонка фиксированной высоты */}
                 <div
                   className="col-span-9 min-w-0"
                   style={{ height: AVATAR_SIZE, display: "grid", gridTemplateRows: "auto 1fr auto" }}
@@ -401,26 +373,22 @@ export default function TopPartnersCarousel() {
 
                   {/* Низ карточки */}
                   <div className="self-end">
-                    {/* Совместные расходы: лейбл + жирное число */}
+                    {/* Совместные расходы (лейбл + жирная цифра) */}
                     <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
-                      {formatCountLabel(t as any)}:{" "}
+                      {labelCount(t as any)}:{" "}
                       <b className="text-[12px] text-[var(--tg-text-color)]">{count}</b>
                     </div>
 
-                    {/* Категория: показываем если есть (две строки, высоту не увеличиваем) */}
-                    {topCategoryName ? (
-                      <>
-                        <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
-                          {t("dashboard.most_spent_category") || "Чаще всего тратили в категории"}
-                        </div>
-                        <div
-                          className="text-[13px] leading-[16px] font-semibold text-[var(--tg-text-color)] truncate"
-                          title={topCategoryName}
-                        >
-                          {topCategoryName}
-                        </div>
-                      </>
-                    ) : null}
+                    {/* Блок категории: ВСЕГДА рисуем (с плейсхолдером), без увеличения высоты */}
+                    <div className="text-[11px] leading-[14px] text-[var(--tg-hint-color)] truncate">
+                      {catLabel}
+                    </div>
+                    <div
+                      className="text-[13px] leading-[16px] font-semibold text-[var(--tg-text-color)] truncate"
+                      title={topCategoryName || catEmpty}
+                    >
+                      {topCategoryName || catEmpty}
+                    </div>
                   </div>
                 </div>
               </div>
