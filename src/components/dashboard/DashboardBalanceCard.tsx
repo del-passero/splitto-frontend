@@ -1,7 +1,7 @@
 // src/components/dashboard/DashboardBalanceCard.tsx
 // Совместимо с текущей структурой проекта (папка /components/dashboard)
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ArrowRight, PartyPopper, HandCoins } from "lucide-react"
 import CardSection from "../CardSection"
@@ -12,7 +12,7 @@ type Props = {
 }
 
 function mapKV(rec: Record<string, string>): Array<{ ccy: string; amt: string }> {
-  return Object.entries(rec || {}).map(([ccy, amt]) => ({ ccy, amt }))
+  return Object.entries(rec || {}).map(([ccy, amt]) => ({ ccy: String(ccy).toUpperCase(), amt }))
 }
 
 /** Мягкий парсер сумм из строк: убирает пробелы, заменяет запятую на точку */
@@ -49,16 +49,14 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Унифицированная сортировка валют по «свежести»: последние (самые новые) раньше, потом — по алфавиту.
- * Если в last встречаются дубликаты — выигрывает последнее упоминание (самое новое). */
+/** Унифицированная сортировка: последние валюты (индекс 0 — самая новая) раньше, затем — по алфавиту */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
   const src = Array.from(new Set((ccys || []).map((c) => String(c).toUpperCase())))
   const lastUp = Array.isArray(last) ? last.map((c) => String(c).toUpperCase()) : []
   const order = new Map<string, number>()
-  // идём С КОНЦА: последнее упоминание получает лучший (меньший) ранг
-  for (let i = lastUp.length - 1, rank = 0; i >= 0; i--, rank++) {
+  for (let i = 0; i < lastUp.length; i++) {
     const c = lastUp[i]
-    if (!order.has(c)) order.set(c, rank)
+    if (!order.has(c)) order.set(c, i) // 0 — самый свежий
   }
   return [...src].sort((a, b) => {
     const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
@@ -75,59 +73,43 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  // из стора
+  // берём reloadBalance из стора, чтобы гарантированно стриггерить загрузки
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
-  // Снимок стора — чтобы виджет не «дёргался» от live-обновлений
+  // Снимок стора (всегда подписан, без «одноразовой» отписки)
   const [snap, setSnap] = useState(() => {
     const st = (useDashboardStore as any).getState?.() || {}
     return { loading: !!st.loading?.balance, balance: st.balance }
   })
-
   useEffect(() => {
-    let startedExplicitLoad = false
-    // Если сейчас не идёт загрузка — инициируем (исправляет пустоту после refresh/первого захода)
-    const st = (useDashboardStore as any).getState?.()
-    if (!st?.loading?.balance) {
-      startedExplicitLoad = true
+    const unsub =
+      (useDashboardStore as any).subscribe?.((s: any) => {
+        setSnap({ loading: !!s.loading?.balance, balance: s.balance })
+      }) || (() => {})
+    return () => {
       try {
-        void reloadBalance()
+        unsub()
       } catch {}
     }
+  }, [])
 
-    let unsubscribe: () => void = () => {}
-    unsubscribe =
-      (useDashboardStore as any).subscribe?.((s: any) => {
-        const next = { loading: !!s.loading?.balance, balance: s.balance }
-        setSnap(next)
-        if (startedExplicitLoad && !next.loading) {
-          try {
-            unsubscribe()
-          } catch {}
-        }
-      }) || (() => {})
-
-    // форсим обновление при возврате на вкладку/в окно — чтобы чипы не висели после удалений
-    const onVisible = () => {
+  // Форсим свежие данные при первом маунте и когда вкладка снова становится видимой
+  useEffect(() => {
+    try {
+      void reloadBalance(true)
+    } catch {}
+    const onVis = () => {
       if (document.visibilityState === "visible") {
         try {
           void reloadBalance(true)
         } catch {}
       }
     }
-    window.addEventListener("focus", onVisible)
-    document.addEventListener("visibilitychange", onVisible)
-
-    return () => {
-      try {
-        unsubscribe()
-      } catch {}
-      window.removeEventListener("focus", onVisible)
-      document.removeEventListener("visibilitychange", onVisible)
-    }
+    document.addEventListener("visibilitychange", onVis)
+    return () => document.removeEventListener("visibilitychange", onVis)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // один раз на маунт
+  }, [])
 
   const loading = snap.loading
   const balance = snap.balance
@@ -142,17 +124,19 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     const i = balance?.i_owe || {}
     const all = new Set<string>([...Object.keys(they || {}), ...Object.keys(i || {})])
     for (const c of all) {
+      const up = String(c).toUpperCase()
       const v1 = parseAmtToNumber((they as any)[c])
       const v2 = parseAmtToNumber((i as any)[c])
-      if (v1 !== 0 || v2 !== 0) set.add(String(c).toUpperCase())
+      if (v1 !== 0 || v2 !== 0) set.add(up)
     }
     return Array.from(set)
   }, [balance])
 
-  // Источник «последних валют»: сначала из баланса, иначе — из currenciesRecent
-  const lastList = (balance?.last_currencies && balance.last_currencies.length > 0)
-    ? balance.last_currencies
-    : currenciesRecent
+  // Источник «последних валют»: сперва из баланса, иначе — из стора
+  const lastList =
+    balance?.last_currencies && balance.last_currencies.length > 0
+      ? balance.last_currencies
+      : currenciesRecent
 
   // Отсортированный список валют для чипов
   const sortedDebtCcys = useMemo(
@@ -167,18 +151,39 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     return sortedDebtCcys.slice(0, n)
   }, [sortedDebtCcys])
 
-  // Состояние выбранных валют (обеспечиваем минимум 1)
+  // Состояние выбранных валют + флаг «пользователь пока сам не кликал»
   const [activeCcys, setActiveCcys] = useState<Set<string>>(new Set(defaultSelected))
-  // Если набор валют изменился — пересоберём выбор
+  const [userPicked, setUserPicked] = useState(false)
+  const prevListRef = useRef<string>("")
   useEffect(() => {
-    const allContain = [...activeCcys].every((c) => sortedDebtCcys.includes(c))
-    if (!allContain || activeCcys.size === 0) {
-      setActiveCcys(new Set(defaultSelected))
+    const newKey = sortedDebtCcys.join("|")
+    const prevKey = prevListRef.current
+    const activeArr = [...activeCcys]
+    const allValid = activeArr.every((c) => sortedDebtCcys.includes(c))
+
+    // Если состав валют поменялся — сбрасываем «userPicked»,
+    // и подхватываем дефолт на основе recency
+    if (newKey !== prevKey) {
+      prevListRef.current = newKey
+      if (!allValid || activeCcys.size === 0 || !userPicked) {
+        setActiveCcys(new Set(defaultSelected))
+        setUserPicked(false)
+        return
+      }
+    }
+
+    // Если пользователь не выбирал — поддерживаем дефолтный набор всегда актуальным
+    if (!userPicked) {
+      const target = new Set(defaultSelected)
+      const equal =
+        activeCcys.size === target.size && [...activeCcys].every((c) => target.has(c))
+      if (!equal) setActiveCcys(target)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedDebtCcys.join("|")])
+  }, [sortedDebtCcys.join("|"), defaultSelected.join("|"), userPicked])
 
   const toggleCcy = (ccy: string) => {
+    setUserPicked(true)
     setActiveCcys((prev) => {
       const next = new Set(prev)
       if (next.has(ccy)) {
