@@ -12,7 +12,6 @@ type AnyTopCat = {
   name?: string
   sum?: string | number
   currency?: string
-  // сервер может прислать иконку/цвет — используем сразу, без доп. запросов
   icon?: string | null
   color?: string | null
 }
@@ -22,14 +21,12 @@ type CatMeta = {
   icon?: string | null
   color?: string | null
   parent_id?: number | null
-  // локализованное имя на текущую локаль
   localizedName?: string | null
 }
 
 const LIMITS: Record<PeriodLTYear, number> = { week: 3, month: 5, year: 10 }
 const nbsp = "\u00A0"
 
-// ===== utils =====
 /** Формат: число + код валюты с «умной» дробной частью */
 function fmtAmountSmart(value: number, currency: string, locale?: string) {
   try {
@@ -71,13 +68,13 @@ function sortCcysByLast(ccys: string[], last: string[] | undefined | null): stri
   })
 }
 
-// ===== минимальный клиент для /expense-categories/{id} (fallback для редких случаев) =====
+// ===== минимальный fallback-клиент для /expense-categories/{id} =====
 const API_URL = (import.meta.env as any).VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 function getTelegramInitData(): string {
   // @ts-ignore
   return window?.Telegram?.WebApp?.initData || ""
 }
-async function fetchCategoryById(id: number, locale: string, signal?: AbortSignal): Promise<CatMeta | null> {
+async function fetchCategoryById(id: number, _locale: string, signal?: AbortSignal): Promise<CatMeta | null> {
   try {
     const res = await fetch(`${API_URL}/expense-categories/${id}`, {
       credentials: "include",
@@ -86,21 +83,18 @@ async function fetchCategoryById(id: number, locale: string, signal?: AbortSigna
     })
     if (!res.ok) return null
     const json = await res.json()
-
-    // В /expense-categories/{id} может не быть name_i18n — имени хватит из /dashboard/top-categories.
     return {
       id: json?.id,
       icon: json?.icon ?? null,
       color: json?.color ?? null,
       parent_id: json?.parent_id ?? null,
-      localizedName: null,
+      localizedName: null, // имя уже локализует /dashboard/top-categories
     }
   } catch {
     return null
   }
 }
 
-// ===== component =====
 export default function TopCategoriesCard() {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
@@ -113,12 +107,12 @@ export default function TopCategoriesCard() {
   const load = useDashboardStore((s) => s.loadTopCategories)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
-  // Первая загрузка
+  // Первая загрузка (сервер сам получает locale через клиентский API)
   useEffect(() => {
     if (!items || items.length === 0) void load()
   }, [items, load])
 
-  // Валюты текущей выборки (сортированные по "последним")
+  // Валюты в текущей выдаче
   const periodCcys = useMemo(() => {
     const raw = Array.from(
       new Set(
@@ -130,46 +124,31 @@ export default function TopCategoriesCard() {
     return sortCcysByLast(raw, currenciesRecent)
   }, [items, currenciesRecent])
 
-  // Активная валюта (как в DashboardSummaryCard): следуем «свежей», пока пользователь не кликал
+  // Активная валюта: сохраняем между периодами, если она присутствует в новой выборке
   const [activeCcy, setActiveCcy] = useState<string>("")
   const userTouchedRef = useRef<Record<PeriodLTYear, boolean>>({ week: false, month: false, year: false })
 
-  // При смене периода – забываем «юзер кликал» и оставляем валюту, если она есть в новом списке; иначе берём свежую
+  // Период поменялся — просто сбрасываем «юзер кликал». ВАЛЮТУ НЕ ТРОГАЕМ тут.
   useEffect(() => {
     userTouchedRef.current[period] = false
-    if (periodCcys.length === 0) {
-      setActiveCcy("")
-      return
-    }
-    const current = (activeCcy || "").toUpperCase()
-    if (!current || !periodCcys.includes(current)) {
-      setActiveCcy(periodCcys[0])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
-  // Если список валют обновился: держим текущую, если она есть; иначе — свежую.
-  // Если пользователь ещё не кликал в этом периоде — автоматически «подтягиваемся» к свежей.
+  // Когда приехал новый список валют — если текущей нет, переключаемся на свежую.
+  // Если текущая есть — НИЧЕГО не меняем (не «следуем за свежей»).
   useEffect(() => {
     if (!periodCcys.length) {
       if (activeCcy) setActiveCcy("")
       return
     }
     const current = (activeCcy || "").toUpperCase()
-    const freshest = periodCcys[0]
     const inList = !!current && periodCcys.includes(current)
-
     if (!inList) {
-      setActiveCcy(freshest)
-      return
-    }
-    if (!userTouchedRef.current[period] && freshest && freshest !== current) {
-      setActiveCcy(freshest)
+      setActiveCcy(periodCcys[0])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodCcys.join("|"), (currenciesRecent || []).join("|")])
+  }, [periodCcys.join("|")])
 
-  // Нормализованные строки по активной валюте, сортировка и ограничение по периоду
+  // Нормализация данных по активной валюте + трим по лимиту периода
   const baseData = useMemo(() => {
     const src = ((items as unknown as AnyTopCat[]) || []).filter(
       (it) => !activeCcy || (it.currency || "").toUpperCase() === activeCcy
@@ -177,16 +156,16 @@ export default function TopCategoriesCard() {
 
     const mapped = src.map((it, idx) => {
       const id = Number(it.category_id ?? idx)
-      let n = typeof it.sum === "string" ? Number(it.sum) : typeof it.sum === "number" ? it.sum : 0
+      let n =
+        typeof it.sum === "string" ? Number(it.sum) : typeof it.sum === "number" ? it.sum : 0
       if (!isFinite(Number(n))) n = 0
       return {
         id,
         key: String(it.category_id ?? `${it.name ?? "cat"}-${idx}`),
-        // имя — локализовано на бэке по ?locale; оставляем как «сырьё», на случай fallback подменим из меты
-        rawName: it.name ?? "",
+        rawName: it.name ?? "",        // уже локализовано бэком по ?locale
         total: Number(n),
-        icon: it.icon ?? null,
-        color: it.color ?? null,
+        icon: it.icon ?? null,         // приходит из бэка
+        color: it.color ?? null,       // цвет категории либо родителя
       }
     })
 
@@ -194,11 +173,10 @@ export default function TopCategoriesCard() {
     return mapped.slice(0, LIMITS[period])
   }, [items, activeCcy, period])
 
-  // Кеш метаданных по категориям (иконка/цвет/parent_id/локализованное имя)
+  // Дотягиваем недостающие метаданные (редко нужно)
   const [catMeta, setCatMeta] = useState<Record<number, CatMeta>>({})
   const metaAbortRef = useRef<AbortController | null>(null)
 
-  // Догружаем недостающую мету по видимым категориям (+ цвет родителя)
   useEffect(() => {
     if (!baseData.length) return
 
@@ -207,75 +185,62 @@ export default function TopCategoriesCard() {
     metaAbortRef.current = ctrl
 
     const toFetch: number[] = []
-    const immediatePatch: Record<number, CatMeta> = {}
+    const patch: Record<number, CatMeta> = {}
 
     for (const row of baseData) {
       if (!row.id) continue
       if (catMeta[row.id]) continue
-
       if (row.icon || row.color) {
-        immediatePatch[row.id] = { id: row.id, icon: row.icon, color: row.color, parent_id: undefined, localizedName: null }
+        patch[row.id] = { id: row.id, icon: row.icon, color: row.color, parent_id: undefined, localizedName: null }
       } else {
         toFetch.push(row.id)
       }
     }
-
-    if (Object.keys(immediatePatch).length) {
-      setCatMeta((prev) => ({ ...prev, ...immediatePatch }))
-    }
-
+    if (Object.keys(patch).length) setCatMeta((prev) => ({ ...prev, ...patch }))
     if (!toFetch.length) return
 
     ;(async () => {
       const metas = await Promise.all(toFetch.map((id) => fetchCategoryById(id, locale, ctrl.signal)))
       const fetched: Record<number, CatMeta> = {}
-      metas.forEach((m) => {
-        if (m && m.id) fetched[m.id] = m
-      })
+      metas.forEach((m) => { if (m?.id) fetched[m.id] = m })
       if (Object.keys(fetched).length) {
         setCatMeta((prev) => ({ ...prev, ...fetched }))
       }
 
-      // догружаем цвета родителей, если у детей цвета нет
+      // добираем цвета родителей, если у детей нет
       const needParents = Object.values(fetched)
         .filter((m) => !m?.color && typeof m?.parent_id === "number")
         .map((m) => m.parent_id as number)
       const uniqParents = Array.from(new Set(needParents)).filter(Boolean)
       if (uniqParents.length === 0) return
 
-      const parentMetas = await Promise.all(uniqParents.map((pid) => fetchCategoryById(pid, locale, ctrl.signal)))
-      const parentColorMap = new Map<number, string | null>()
-      parentMetas.forEach((pm) => {
-        if (pm && pm.id) parentColorMap.set(pm.id, pm.color ?? null)
-      })
+      const parents = await Promise.all(uniqParents.map((pid) => fetchCategoryById(pid, locale, ctrl.signal)))
+      const parentColor = new Map<number, string | null>()
+      parents.forEach((pm) => { if (pm?.id) parentColor.set(pm.id, pm.color ?? null) })
 
       setCatMeta((prev) => {
         const next = { ...prev }
         for (const id of Object.keys(fetched).map(Number)) {
           const child = next[id]
           if (!child) continue
-          if (!child.color && child.parent_id && parentColorMap.has(child.parent_id)) {
-            next[id] = { ...child, color: parentColorMap.get(child.parent_id) ?? null }
+          if (!child.color && child.parent_id && parentColor.has(child.parent_id)) {
+            next[id] = { ...child, color: parentColor.get(child.parent_id) ?? null }
           }
         }
         return next
       })
     })().catch(() => void 0)
 
-    return () => {
-      try { ctrl.abort() } catch {}
-    }
+    return () => { try { ctrl.abort() } catch {} }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseData.map((x) => x.id).join("|"), locale])
 
-  // Соединяем с метаданными: имя оставляем из бэка; иконка/цвет — из бэка или из меты
   const chartData = useMemo(() => {
     return baseData.map((row) => {
       const meta = catMeta[row.id]
-      const name = row.rawName || meta?.localizedName || "Категория"
       return {
         ...row,
-        name,
+        name: row.rawName || meta?.localizedName || "Категория",
         icon: row.icon ?? meta?.icon ?? "🏷️",
         color: row.color ?? meta?.color ?? null,
       }
@@ -304,7 +269,7 @@ export default function TopCategoriesCard() {
             {title}
           </div>
 
-        <div className="ml-auto flex gap-1">
+          <div className="ml-auto flex gap-1">
             {PERIODS.map((p) => {
               const active = p === period
               return (
@@ -326,7 +291,7 @@ export default function TopCategoriesCard() {
           </div>
         </div>
 
-        {/* Чипы валют — одна активная. Не сбрасываем, если валюта есть в новом периоде */}
+        {/* Чипы валют — одна активная, НЕ сбрасываем между периодами если валюта есть */}
         {!loading && periodCcys.length > 0 ? (
           <div className="mb-2 -mx-1 px-1 overflow-x-auto whitespace-nowrap" style={{ WebkitOverflowScrolling: "touch" }}>
             {periodCcys.map((ccy) => {
@@ -381,13 +346,12 @@ export default function TopCategoriesCard() {
             {t("dashboard.activity_empty_title")}
           </div>
         ) : (
-          // Контент: иконка/цвет категории, прогресс-бар, сумма справа
+          // Контент
           <div className="flex flex-col gap-2">
             {chartData.map((it) => {
               const pct = totalAmount > 0 ? (it.total / totalAmount) * 100 : 0
               return (
                 <div key={it.key} className="flex items-center gap-3">
-                  {/* аватарка категории (эмодзи + фон/бордер по цвету) */}
                   <div
                     className="flex items-center justify-center rounded-full shrink-0"
                     style={{
@@ -408,10 +372,7 @@ export default function TopCategoriesCard() {
                         {fmtAmountSmart(it.total, (activeCcy || periodCcys[0] || "USD"), locale)}
                       </span>
                     </div>
-                    <div
-                      className="mt-1 h-2 w-full rounded"
-                      style={{ background: "var(--tg-secondary-bg-color,#e7e7e7)" }}
-                    >
+                    <div className="mt-1 h-2 w-full rounded" style={{ background: "var(--tg-secondary-bg-color,#e7e7e7)" }}>
                       <div
                         className="h-2 rounded"
                         style={{

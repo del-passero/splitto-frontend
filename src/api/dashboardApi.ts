@@ -53,6 +53,28 @@ async function httpGet<T>(path: string, params?: Record<string, unknown>): Promi
   return (await res.json()) as T
 }
 
+/* ===== helpers ===== */
+function pickUiLocale(): string {
+  try {
+    const w: any = window
+    // 1) язык i18next, если он доступен глобально
+    const fromI18n =
+      w?.i18next?.language ||
+      w?.__I18N_LANG__ || // вдруг вы сами кладёте
+      w?.__APP_LOCALE__
+    // 2) lang на <html>
+    const fromHtml =
+      typeof document !== "undefined"
+        ? document.documentElement.getAttribute("lang")
+        : null
+    // 3) браузер
+    const fromNav = typeof navigator !== "undefined" ? navigator.language : null
+    return (fromI18n || fromHtml || fromNav || "ru").split("-")[0].toLowerCase()
+  } catch {
+    return "ru"
+  }
+}
+
 /* ===== API соответствуют src/routers/dashboard.py ===== */
 
 export function getDashboardBalance(): Promise<DashboardBalance> {
@@ -70,13 +92,10 @@ export function getDashboardTopCategories(params?: {
   offset?: number
   locale?: string
 }): Promise<TopCategoriesOut> {
-  // безопасный дефолт локали, если не передали из стора
-  const uiLocale =
-    (params?.locale ||
-      (typeof navigator !== "undefined" ? navigator.language : "ru") ||
-      "ru")
-      .split("-")[0]
-      .toLowerCase()
+  // ВАЖНО: по умолчанию используем язык приложения, а не браузера
+  const uiLocale = (params?.locale || pickUiLocale())
+    .split("-")[0]
+    .toLowerCase()
 
   return httpGet("/dashboard/top-categories", { ...params, locale: uiLocale })
 }
