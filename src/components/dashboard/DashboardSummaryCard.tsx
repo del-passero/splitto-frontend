@@ -230,21 +230,21 @@ export default function DashboardSummaryCard() {
         ) : (
           // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(spentNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
 
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.avg_check")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(avgNum, (currency || "").toUpperCase(), locale)}
               </div>
             </div>
 
-            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
+            <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.my_share")}</div>
               <div className="text-[14px] leading-[18px] font-semibold" style={{ color: "var(--tg-text-color)" }}>
                 {fmtAmountSmart(myShareNum, (currency || "").toUpperCase(), locale)}
