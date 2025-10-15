@@ -8,9 +8,9 @@ import MainLayout from "../layouts/MainLayout"
 import DashboardBalanceCard from "../components/dashboard/DashboardBalanceCard"
 import RecentGroupsCarousel from "../components/dashboard/RecentGroupsCarousel"
 import DashboardActivityChart from "../components/dashboard/DashboardActivityChart"
+import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
 import DashboardSummaryCard from "../components/dashboard/DashboardSummaryCard"
 import TopCategoriesCard from "../components/dashboard/TopCategoriesCard"
-import TopPartnersCarousel from "../components/dashboard/TopPartnersCarousel"
 import DashboardEventsFeed from "../components/dashboard/DashboardEventsFeed"
 
 const DashboardPage = () => {
@@ -37,9 +37,9 @@ const DashboardPage = () => {
         <DashboardBalanceCard />
         <RecentGroupsCarousel />
         <DashboardActivityChart />
+		<TopPartnersCarousel />
         <DashboardSummaryCard />
         <TopCategoriesCard />
-        <TopPartnersCarousel />
         <DashboardEventsFeed />
       </div>
     </MainLayout>

@@ -49,14 +49,16 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Унифицированная сортировка: самые последние валюты (индекс 0 — самая новая) раньше, потом — по алфавиту */
+/** Унифицированная сортировка валют по «свежести»: последние (самые новые) раньше, потом — по алфавиту.
+ * Если в last встречаются дубликаты — выигрывает последнее упоминание (самое новое). */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
   const src = Array.from(new Set((ccys || []).map((c) => String(c).toUpperCase())))
   const lastUp = Array.isArray(last) ? last.map((c) => String(c).toUpperCase()) : []
   const order = new Map<string, number>()
-  for (let i = 0; i < lastUp.length; i++) {
+  // идём С КОНЦА: последнее упоминание получает лучший (меньший) ранг
+  for (let i = lastUp.length - 1, rank = 0; i >= 0; i--, rank++) {
     const c = lastUp[i]
-    if (!order.has(c)) order.set(c, i) // индекс 0 — самый новый, самый приоритетный
+    if (!order.has(c)) order.set(c, rank)
   }
   return [...src].sort((a, b) => {
     const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
@@ -73,7 +75,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
   const { t, i18n } = useTranslation()
   const locale = (i18n.language || "ru").split("-")[0]
 
-  // берём reloadBalance из стора, чтобы гарантированно стриггерить первичную загрузку
+  // из стора
   const reloadBalance = useDashboardStore((s) => s.reloadBalance)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
 
@@ -99,7 +101,6 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
       (useDashboardStore as any).subscribe?.((s: any) => {
         const next = { loading: !!s.loading?.balance, balance: s.balance }
         setSnap(next)
-        // Отписываемся ПОСЛЕ первой завершённой загрузки, которую мы инициировали
         if (startedExplicitLoad && !next.loading) {
           try {
             unsubscribe()
@@ -107,10 +108,23 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
         }
       }) || (() => {})
 
+    // форсим обновление при возврате на вкладку/в окно — чтобы чипы не висели после удалений
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        try {
+          void reloadBalance(true)
+        } catch {}
+      }
+    }
+    window.addEventListener("focus", onVisible)
+    document.addEventListener("visibilitychange", onVisible)
+
     return () => {
       try {
         unsubscribe()
       } catch {}
+      window.removeEventListener("focus", onVisible)
+      document.removeEventListener("visibilitychange", onVisible)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // один раз на маунт
@@ -135,7 +149,7 @@ const DashboardBalanceCard = ({ onAddTransaction }: Props) => {
     return Array.from(set)
   }, [balance])
 
-  // Источник «последних валют»: сначала из баланса (если есть), иначе — из стора (currenciesRecent)
+  // Источник «последних валют»: сначала из баланса, иначе — из currenciesRecent
   const lastList = (balance?.last_currencies && balance.last_currencies.length > 0)
     ? balance.last_currencies
     : currenciesRecent

@@ -45,14 +45,14 @@ function fmtAmountSmart(value: number, currency: string, locale?: string) {
   }
 }
 
-/** Унифицированная сортировка: последние валюты (индекс 0 — самая новая) раньше, потом — по алфавиту */
+/** Унифицированная сортировка валют (последние — раньше; дубликаты: последнее упоминание выигрывает) */
 function sortCcysByLast(ccys: string[], last: string[] | undefined | null): string[] {
   const src = Array.from(new Set((ccys || []).map((c) => String(c).toUpperCase())))
   const lastUp = Array.isArray(last) ? last.map((c) => String(c).toUpperCase()) : []
   const order = new Map<string, number>()
-  for (let i = 0; i < lastUp.length; i++) {
+  for (let i = lastUp.length - 1, rank = 0; i >= 0; i--, rank++) {
     const c = lastUp[i]
-    if (!order.has(c)) order.set(c, i) // индекс 0 — самый новый
+    if (!order.has(c)) order.set(c, rank)
   }
   return [...src].sort((a, b) => {
     const ia = order.has(a) ? (order.get(a) as number) : Number.POSITIVE_INFINITY
@@ -72,6 +72,7 @@ export default function DashboardSummaryCard() {
   const currency = useDashboardStore((s) => s.summaryCurrency)
   const setCurrency = useDashboardStore((s) => s.setSummaryCurrency)
   const currenciesRecent = useDashboardStore((s) => s.currenciesRecent)
+  const balanceLast = useDashboardStore((s) => s.balance?.last_currencies || [])
   const summary = useDashboardStore((s) => s.summary)
   const loading = useDashboardStore((s) => s.loading.summary)
   const error = useDashboardStore((s) => s.error.summary || null)
@@ -80,6 +81,9 @@ export default function DashboardSummaryCard() {
   // Валюты, в которых реально были траты в выбранном периоде (сортированные)
   const [periodCcys, setPeriodCcys] = useState<string[]>([])
   const [hasDataInPeriod, setHasDataInPeriod] = useState<boolean>(true)
+
+  // "Реестр свежести": prefer balance.last_currencies, fallback currenciesRecent
+  const lastList = (balanceLast && balanceLast.length > 0) ? balanceLast : currenciesRecent
 
   // Первичная загрузка summary
   useEffect(() => {
@@ -105,44 +109,47 @@ export default function DashboardSummaryCard() {
         return
       }
 
-      const sorted = sortCcysByLast(raw, currenciesRecent)
+      const sorted = sortCcysByLast(raw, lastList)
       setPeriodCcys(sorted)
       setHasDataInPeriod(true)
 
       const current = (currency || "").toUpperCase()
-      if (sorted.includes(current)) {
-        // текущая валюта присутствует — ничего не меняем
-        return
-      }
-      // Пытаемся предпочесть последнюю использованную
-      const recentPick = (currenciesRecent || []).find((ccy) =>
-        sorted.includes(String(ccy).toUpperCase())
-      )
-      const next: string = (recentPick ? String(recentPick).toUpperCase() : sorted[0]) || ""
-      if (next && next !== current) {
-        try {
-          setCurrency(next) // стор сам вызовет loadSummary
-        } catch {}
+      if (!sorted.includes(current)) {
+        const next = sorted[0] || ""
+        if (next && next !== current) {
+          try {
+            setCurrency(next) // store сам вызовет loadSummary
+          } catch {}
+        }
       }
     } catch {
-      // В случае ошибки просто считаем, что данных нет (чтобы не рушить UI)
       setPeriodCcys([])
       setHasDataInPeriod(false)
     }
   }
 
-  // При смене периода — обновляем валюты периода и перезагружаем summary (store сам дернёт)
+  // При смене периода — обновляем валюты периода
   useEffect(() => {
     void refreshPeriodCurrencies(period)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
-  // Если currenciesRecent подгрузились позже — пересортируем текущий список чипов без запроса
+  // Если «свежесть» изменилась (последние валюты прилетели позже) — пересортируем локально и поправим активную валюту при необходимости
   useEffect(() => {
     if (!periodCcys.length) return
-    setPeriodCcys((prev) => sortCcysByLast(prev, currenciesRecent))
+    const sorted = sortCcysByLast(periodCcys, lastList)
+    setPeriodCcys(sorted)
+    const current = (currency || "").toUpperCase()
+    if (!sorted.includes(current)) {
+      const next = sorted[0] || ""
+      if (next && next !== current) {
+        try {
+          setCurrency(next)
+        } catch {}
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(currenciesRecent || []).join("|")])
+  }, [periodCcys.join("|"), (lastList || []).join("|")])
 
   const title = t("dashboard.summary_title", "Сводка")
 
@@ -154,7 +161,7 @@ export default function DashboardSummaryCard() {
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы периода (как в ActivityChart) */}
+        {/* Заголовок + чипы периода */}
         <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
           <div
             className="font-semibold"
@@ -169,9 +176,7 @@ export default function DashboardSummaryCard() {
               return (
                 <button
                   key={p}
-                  onClick={() => {
-                    setPeriod(p) // стор сам сбросит TTL и перезагрузит summary
-                  }}
+                  onClick={() => setPeriod(p)}
                   aria-pressed={active}
                   className={[
                     "px-2 py-1 rounded text-sm border transition",
@@ -235,7 +240,7 @@ export default function DashboardSummaryCard() {
             {t("dashboard.activity_empty_title")}
           </div>
         ) : (
-          // Основной контент: 3 мини-карточки, каждая с рамкой (как просили)
+          // Основной контент: 3 мини-карточки, каждая с рамкой
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] p-3">
               <div className="text-xs opacity-70 mb-1">{t("dashboard.spent")}</div>
