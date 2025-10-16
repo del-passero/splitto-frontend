@@ -92,7 +92,6 @@ type DashboardState = {
   setSummaryCurrency: (ccy: string) => void
 
   // top categories
-  /** Принимает либо период (как раньше), либо объект опций { period, locale, force } */
   loadTopCategories: (
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) => Promise<void>
@@ -148,7 +147,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   summaryNeedsReload: false,
 
-  // НОВОЕ: локаль, на которой загружены topCategories
   topLocale: null,
 
   init() {
@@ -156,14 +154,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     void get().loadRecentGroups(10)
     void get().loadEvents(20)
 
-    // подтягиваем «последние валюты» и сразу триггерим первую загрузку summary
     getDashboardLastCurrencies(2)
       .then((ccys) => {
         set({ currenciesRecent: ccys })
         const existing = (get().summaryCurrency || "").toUpperCase()
         const fallback = ccys[0] ? String(ccys[0]).toUpperCase() : "USD"
         const next = existing || fallback
-        get().setSummaryCurrency(next) // внутри сам вызовет load
+        get().setSummaryCurrency(next)
       })
       .catch(() => void 0)
   },
@@ -233,11 +230,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   async loadSummary(periodArg?: PeriodAll, currencyArg?: string) {
-    // применяем входные аргументы к состоянию перед загрузкой
     if (periodArg) set({ summaryPeriod: periodArg })
     if (currencyArg) set({ summaryCurrency: currencyArg.toUpperCase?.() || currencyArg })
 
-    // если уже грузимся — не стартуем новую; она будет запланирована флагом
     if (get().loading.summary) return
 
     const ts = lastAt.summary ?? 0
@@ -253,14 +248,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, summary: e?.message || "Failed to load summary" } }))
     } finally {
-      // помечаем завершение загрузки
       set((s) => ({ loading: { ...s.loading, summary: false } }))
       lastAt.summary = now()
-
-      // если во время загрузки успели поменять период/валюту — сразу перезагрузим
       if (get().summaryNeedsReload) {
         set({ summaryNeedsReload: false })
-        lastAt.summary = 0 // снять TTL
+        lastAt.summary = 0
         void get().loadSummary()
       }
     }
@@ -269,7 +261,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setSummaryPeriod(p) {
     set({ summaryPeriod: p })
     lastAt.summary = 0
-    // если идёт загрузка — отложим перезагрузку
     if (get().loading.summary) {
       set({ summaryNeedsReload: true })
       return
@@ -287,14 +278,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     void get().loadSummary()
   },
 
-  /** ВАЖНО: совместимость.
-   *  - старый вызов: loadTopCategories("month")
-   *  - новый вызов:  loadTopCategories({ period: "month", locale: "ru", force: true })
-   */
   async loadTopCategories(
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) {
-    // распарсим аргументы
     let requestedPeriod = get().topCategoriesPeriod
     let localeFromArg: string | undefined
     let force = false
@@ -313,22 +299,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       force = !!arg.force
     }
 
-    // вычислим локаль (ui → короткий код)
     const prevLocale = get().topLocale || null
-    const nextLocale = (localeFromArg || prevLocale || (navigator?.language || "ru"))
-      .split("-")[0]
-
+    const nextLocale = (localeFromArg || prevLocale || (navigator?.language || "ru")).split("-")[0]
     const localeChanged = prevLocale !== nextLocale
 
-    // защита от гонок
     if (get().loading.top) return
 
-    // TTL: пропускаем, если не force и не менялась локаль
     const ts = lastAt.top ?? 0
     if (!force && !localeChanged && now() - ts < TTL_DEFAULT) return
 
-    // если локаль сменилась — можно очистить список (мгновенная визуальная смена),
-    // но это безопасно: чип валют не трогаем, он хранится в компоненте.
     set((s) => ({
       loading: { ...s.loading, top: true },
       error: { ...s.error, top: "" },
@@ -341,8 +320,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         period: requestedPeriod,
         limit: 50,
         offset: 0,
-        // НОВОЕ: прокидываем локаль на бэкенд
-        // (убедись, что getDashboardTopCategories поддерживает { locale } в api)
         locale: nextLocale,
       } as any)
       set((s) => ({ topCategories: data.items || [] }))
@@ -357,7 +334,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setTopPeriod(p) {
     set({ topCategoriesPeriod: p })
     lastAt.top = 0
-    // локаль берём из состояния topLocale, чтобы не сбрасывать её при простом переключении периода
     void get().loadTopCategories()
   },
 
@@ -420,7 +396,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const rawItems: any[] = feed?.items || []
       if (!rawItems.length && prevCount) { lastAt.events = Date.now(); return }
 
-      // 1) стартовые мапы из стора
+      // стартовые мапы из стора
       const groupsMap: Record<number, { name?: string }> = {}
       for (const g of get().groups || []) {
         if (g?.id) groupsMap[g.id] = { name: g.name }
@@ -434,7 +410,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }
       }
 
-      // 2) добираем имена из самих событий
+      // добираем имена из самих событий
       const parseData = (d: any) => {
         if (typeof d === "string") { try { return JSON.parse(d) } catch { return {} } }
         return d || {}
@@ -454,11 +430,28 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }
       }
 
-      // 3) нормализация: форматируем только «сырые» записи
+      // известных типов всегда форматируем (если не помечены preformatted)
+      const KNOWN_TYPES = new Set([
+        "group_created","group_renamed","group_avatar_changed","group_archived","group_unarchived","group_deleted","group_restored",
+        "member_added","member_removed","member_left",
+        "transaction_created","transaction_updated",
+        "transaction_receipt_added","transaction_receipt_replaced","transaction_receipt_removed",
+        "friendship_created","friendship_removed",
+      ])
+
       const shouldFormat = (r: any) => {
+        const typeStr = typeof r?.type === "string" ? r.type.trim().toLowerCase() : ""
+        const known = KNOWN_TYPES.has(typeStr)
+        const preformatted =
+          r?.preformatted === true ||
+          (typeof r?.data === "object" && r?.data?.preformatted === true) ||
+          (typeof r?.data === "string" && (() => { try { return JSON.parse(r.data)?.preformatted === true } catch { return false } })())
+
+        if (known && !preformatted) return true
+
+        // fallback для сырых карточек
         const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
         const hasIcon  = typeof r?.icon === "string" && r.icon.trim() !== ""
-        const typeStr  = typeof r?.type === "string" ? r.type.trim().toLowerCase() : ""
         const titleEq  = hasTitle && typeStr && r.title.trim().toLowerCase() === typeStr
         const iconIsFallback = hasIcon && r.icon.trim().toLowerCase() === "bell"
         return !hasTitle || !hasIcon || titleEq || iconIsFallback
