@@ -23,6 +23,10 @@ import type {
   PeriodLTYear,
 } from "../types/dashboard"
 
+/** крошечные кеши на сессию: чтобы добирать имена/аватары между событиями одной группы */
+const groupNameCache = new Map<number, string>()
+const groupAvatarCache = new Map<number, string>()
+
 type LoadingFlags = {
   balance: boolean
   activity: boolean
@@ -356,6 +360,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     try {
       const data = await getDashboardRecentGroups(limit)
       set((s) => ({ groups: data || [] }))
+      // пополним кэш имён
+      for (const g of data || []) {
+        if (g?.id && g?.name) groupNameCache.set(g.id, g.name)
+      }
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, groups: e?.message || "Failed to load recent groups" } }))
     } finally {
@@ -373,16 +381,20 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     if (fresh && limit <= prevCount) return
 
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
+
     try {
       const feed = await getDashboardEvents(limit)
       const rawItems: any[] = feed?.items || []
       if (!rawItems.length && prevCount) { lastAt.events = Date.now(); return }
 
-      // подготовим мапы
+      // построим мапы на основе стора и кэшей
       const groupsMap: Record<number, { name?: string }> = {}
       for (const g of get().groups || []) {
         if (g?.id) groupsMap[g.id] = { name: g.name }
       }
+      // из кэша имён
+      groupNameCache.forEach((name, gid) => { groupsMap[gid] = { name } })
+
       const usersMap: Record<number, { name?: string }> = {}
       for (const p of get().frequentUsers || []) {
         const u = p?.user
@@ -397,29 +409,31 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return v || {}
       }
 
-      // добираем имена/названия/аватары из самих событий
+      // предварительный проход: добираем названия/аватары в кэш
       for (const r of rawItems) {
         const d = parseData(r?.data)
-
-        // group name
-        const gid = typeof r?.group_id === "number" ? r.group_id
-          : typeof d?.group_id === "number" ? d.group_id
-          : undefined
-        const gname =
-          (typeof d?.group_name === "string" && d.group_name) ||
-          (d?.group && (d.group.name || d.group.title))
-        if (gid && typeof gname === "string" && gname.trim()) {
-          groupsMap[gid] = { name: gname.trim() }
+        const gid = (typeof r?.group_id === "number" ? r.group_id : undefined) ??
+                    (typeof d?.group_id === "number" ? d.group_id : undefined)
+        if (gid) {
+          const gname =
+            (typeof d?.group_name === "string" && d.group_name) ||
+            (d?.group && (d.group.name || d.group.title)) ||
+            groupsMap[gid]?.name
+          if (gname) {
+            groupNameCache.set(gid, String(gname))
+            groupsMap[gid] = { name: String(gname) }
+          }
+          const gavatar = d?.new_avatar_url || d?.group_avatar_url || d?.group?.avatar_url
+          if (typeof gavatar === "string" && gavatar) groupAvatarCache.set(gid, gavatar)
         }
 
-        // actor / target
+        // актор/таргет по строкам имени (если бэк прислал)
         const actorName =
           d?.actor_name ||
           (d?.actor && ([d.actor.first_name, d.actor.last_name].filter(Boolean).join(" ") || d.actor.name || d.actor.username))
         if (typeof r?.actor_id === "number" && typeof actorName === "string" && actorName.trim()) {
           usersMap[r.actor_id] = { name: actorName.trim() }
         }
-
         const targetName =
           d?.target_name ||
           (d?.target && ([d.target.first_name, d.target.last_name].filter(Boolean).join(" ") || d.target.name || d.target.username))
@@ -428,48 +442,40 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }
       }
 
-      // какие записи точно форматируем
-      const KNOWN_TYPES = new Set([
-        "group_created","group_renamed","group_avatar_changed","group_archived","group_unarchived","group_deleted","group_restored",
-        "member_added","member_removed","member_left",
-        "transaction_created","transaction_updated",
-        "transaction_receipt_added","transaction_receipt_replaced","transaction_receipt_removed",
-        "friendship_created","friendship_removed",
-      ])
-
-      const shouldFormat = (r: any) => {
-        const typeStr = typeof r?.type === "string" ? r.type.trim().toLowerCase() : ""
-        const known = KNOWN_TYPES.has(typeStr)
-        const preformatted =
-          r?.preformatted === true ||
-          (typeof r?.data === "object" && r?.data?.preformatted === true) ||
-          (typeof r?.data === "string" && (() => { try { return JSON.parse(r.data)?.preformatted === true } catch { return false } })())
-        if (known && !preformatted) return true
-
-        const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
-        const hasIcon  = typeof r?.icon === "string" && r.icon.trim() !== ""
-        const titleEq  = hasTitle && typeStr && r.title.trim().toLowerCase() === typeStr
-        const iconIsFallback = hasIcon && r.icon.trim().toLowerCase() === "bell"
-        return !hasTitle || !hasIcon || titleEq || iconIsFallback
-      }
-
-      const ctx = { meId: 0, usersMap, groupsMap }
+      // всегда формируем карточку formatEventCard, но сохраняем оригинальные title/icon если они «кастомные»
       const items: EventFeedItem[] = rawItems.map((r: any) => {
-        if (!shouldFormat(r)) return r as EventFeedItem
+        const ctx = { meId: 0, usersMap, groupsMap }
         const c = formatEventCard(r as any, ctx)
-        // протаскиваем route и avatar_url внутрь entity (тип это допускает)
+
+        // подмешаем к entity маршрут и аватар
         const entity = {
           ...(r?.entity ?? {}),
           ...(c.route ? { route: c.route } : {}),
-          ...(c.avatar_url ? { avatar_url: c.avatar_url } : {}),
+          ...(c.avatar_url
+              ? { avatar_url: c.avatar_url }
+              : (typeof r?.group_id === "number" && groupAvatarCache.has(r.group_id)
+                    ? { avatar_url: groupAvatarCache.get(r.group_id) }
+                    : {})),
         }
+
+        // если у бэка уже были «причесанные» значения, и они не дефолтные — уважаем их
+        const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
+        const hasIcon = typeof r?.icon === "string" && r.icon.trim() !== ""
+        const titleLooksRaw = hasTitle && typeof r?.type === "string" &&
+          r.title.trim().toLowerCase() === r.type.trim().toLowerCase()
+        const iconIsFallback = hasIcon && r.icon.trim().toLowerCase() === "bell"
+
+        const title = hasTitle && !titleLooksRaw ? r.title : c.title
+        const icon = hasIcon && !iconIsFallback ? r.icon : c.icon
+        const subtitle = typeof r?.subtitle === "string" && r.subtitle.trim() !== "" ? r.subtitle : (c.subtitle ?? null)
+
         return {
           id: c.id,
           type: c.type,
           created_at: c.created_at,
-          icon: c.icon,
-          title: c.title,
-          subtitle: c.subtitle ?? null,
+          icon,
+          title,
+          subtitle,
           entity,
         }
       })

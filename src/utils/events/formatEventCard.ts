@@ -2,13 +2,12 @@
 export type EventRow = {
   id: number
   type: string
-  actor_id: number
+  actor_id: number | null
   group_id: number | null
   target_user_id?: number | null
   transaction_id?: number | null
   data?: any
   created_at: string
-  // иногда бэк отдаёт ссылку на сущность
   entity?: { kind?: string; id?: number } | Record<string, any> | null
 }
 
@@ -31,7 +30,7 @@ export type EventCard = {
   route?: string
   disabled?: boolean
   bucket: "tx" | "edits" | "groups" | "users" | "other"
-  // НОВОЕ: протащим аватар группы (если есть)
+  /** если знаем — положим сюда, компонент возьмёт из entity.avatar_url */
   avatar_url?: string
 }
 
@@ -63,24 +62,21 @@ function bucketOf(type: string): EventCard["bucket"] {
   return "other"
 }
 
-const unknownUser = (id?: number | null) => (id ? `Пользователь #${id}` : "Пользователь")
-const unknownGroup = (id?: number | null) => (id ? `Группа #${id}` : "Группа")
+const unknownUser = (id?: number | null) => (typeof id === "number" ? `Пользователь #${id}` : "Пользователь")
+const unknownGroup = (id?: number | null) => (typeof id === "number" ? `Группа #${id}` : "Группа")
 
 export function formatMoney(amountStr?: string | null, code?: string | null) {
   if (!amountStr) return ""
   const n = Number(amountStr)
   if (!isFinite(n)) return `${amountStr} ${code || ""}`.trim()
   try {
-    return (
-      new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) +
-      (code ? ` ${code}` : "")
-    )
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) + (code ? ` ${code}` : "")
   } catch {
     return `${amountStr} ${code || ""}`.trim()
   }
 }
 
-/* ===== helpers: мягко вытаскиваем имена/аватары из data ===== */
+/* ===== helpers ===== */
 function safeJson(data: any): any {
   if (!data) return {}
   if (typeof data === "string") {
@@ -99,18 +95,14 @@ function pickUserNameById(
   d: any,
   roleKeys: string[]
 ): string | undefined {
-  if (!id) return undefined
-  // 1) мапка из стора
-  const mapName = ctx.usersMap[id]?.name
-  if (mapName) return mapName
+  if (!id && id !== 0) return undefined
+  const m = ctx.usersMap[id]
+  if (m?.name) return m.name
 
-  // 2) прямая строка в data: actor_name / target_name / user_name
   for (const k of roleKeys) {
     const v = d?.[`${k}_name`]
     if (typeof v === "string" && v.trim()) return v.trim()
   }
-
-  // 3) объект вида data.actor / data.target / data.user
   for (const k of roleKeys) {
     const obj = d?.[k]
     if (obj && typeof obj === "object") {
@@ -120,25 +112,21 @@ function pickUserNameById(
       if (typeof obj.username === "string" && obj.username.trim()) return obj.username.trim()
     }
   }
-
   return undefined
 }
 
 function pickGroupName(groupId: number | undefined, ctx: FormatCtx, d: any): string | undefined {
-  // 1) явно в data
   if (typeof d?.group_name === "string" && d.group_name.trim()) return d.group_name.trim()
-  // 2) вложенный объект data.group
   if (d?.group && typeof d.group === "object") {
-    const g = d.group
-    const v = g.name || g.title
+    const v = d.group.name || d.group.title
     if (typeof v === "string" && v.trim()) return v.trim()
   }
-  // 3) мапка из стора
   if (groupId && ctx.groupsMap[groupId]?.name) return ctx.groupsMap[groupId]!.name
   return undefined
 }
 
 function pickGroupAvatar(d: any): string | undefined {
+  if (typeof d?.new_avatar_url === "string" && d.new_avatar_url) return d.new_avatar_url
   if (typeof d?.group_avatar_url === "string" && d.group_avatar_url) return d.group_avatar_url
   if (d?.group && typeof d.group === "object") {
     const v = d.group.avatar_url || d.group.photo_url || d.group.image_url
@@ -149,45 +137,53 @@ function pickGroupAvatar(d: any): string | undefined {
 }
 
 export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
-  const t = ctx.t ?? ((s: string) => s)
   const d = safeJson(ev.data)
-
-  // нормализуем type
   const typeNorm = String(ev.type || "").toLowerCase()
 
-  // entity → group id, если вдруг там
+  // group id из разных мест
   const entityGroupId =
     ev?.entity && typeof ev.entity === "object" && (ev.entity as any)?.kind === "group"
       ? Number((ev.entity as any)?.id) || undefined
       : undefined
-
-  // безопасный group_id: event.group_id -> data.group_id -> entity.group.id
   const groupIdSafe: number | undefined =
     (typeof ev.group_id === "number" ? ev.group_id : undefined) ??
     (typeof d.group_id === "number" ? d.group_id : undefined) ??
     entityGroupId
 
-  // имя группы
+  // имена/аватары группы
   const groupName = pickGroupName(groupIdSafe, ctx, d) || unknownGroup(groupIdSafe)
-  // аватар группы (если есть)
   const groupAvatarUrl = pickGroupAvatar(d)
 
-  // подписи юзеров
+  // ACTOR: учитываем creator_id как источник actor_id
+  const actorIdEff =
+    (typeof ev.actor_id === "number" ? ev.actor_id : undefined) ??
+    (typeof d.actor_id === "number" ? d.actor_id : undefined) ??
+    (typeof d.creator_id === "number" ? d.creator_id : undefined)
+
   const actorName =
-    (ev.actor_id === ctx.meId && "Вы") ||
-    pickUserNameById(ev.actor_id, ctx, d, ["actor", "user"]) ||
-    unknownUser(ev.actor_id)
+    (actorIdEff === ctx.meId && "Вы") ||
+    pickUserNameById(actorIdEff, ctx, d, ["actor", "creator", "user"]) ||
+    unknownUser(actorIdEff)
+
+  // TARGET
+  const targetIdEff =
+    (typeof ev.target_user_id === "number" ? ev.target_user_id : undefined) ??
+    (typeof d.target_user_id === "number" ? d.target_user_id : undefined) ??
+    (typeof d.member_id === "number" ? d.member_id : undefined)
   const targetName =
-    pickUserNameById(ev.target_user_id, ctx, d, ["target", "user"]) ||
-    unknownUser(ev.target_user_id || undefined)
+    pickUserNameById(targetIdEff, ctx, d, ["target", "member", "user"]) ||
+    unknownUser(targetIdEff)
+
+  // PAYER
+  const payerIdEff = typeof d.payer_id === "number" ? d.payer_id : undefined
   const payerName =
-    (typeof d.payer_id === "number" &&
-      (pickUserNameById(d.payer_id, ctx, d, ["payer", "user"]) || unknownUser(d.payer_id))) ||
+    (payerIdEff &&
+      (pickUserNameById(payerIdEff, ctx, d, ["payer", "user", "actor"]) || unknownUser(payerIdEff))) ||
     undefined
 
   const cardBase = {
     id: ev.id,
-    type: ev.type, // оригинал, чтобы фильтры работали
+    type: ev.type,
     created_at: ev.created_at,
     bucket: bucketOf(ev.type),
   } as const
@@ -210,6 +206,7 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         title: "Группа переименована",
         subtitle: `${d.old_name || "—"} → ${d.new_name || "—"}`,
         route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
+        avatar_url: groupAvatarUrl,
       }
 
     case "group_avatar_changed": {

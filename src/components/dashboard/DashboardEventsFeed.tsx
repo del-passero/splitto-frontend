@@ -16,10 +16,8 @@ import { useNavigate } from "react-router-dom"
 import CardSection from "../CardSection"
 import { useDashboardStore } from "../../store/dashboardStore"
 
-/* ===== тип фильтра (в сторе хранится строкой) ===== */
 type FilterKey = "all" | "tx" | "edits" | "groups" | "users"
 
-/* ===== иконка события из строки backend'а ===== */
 const IconByName: Record<string, React.ComponentType<any>> = {
   Bell,
   PlusCircle,
@@ -32,7 +30,6 @@ const IconByName: Record<string, React.ComponentType<any>> = {
   HandCoins,
 }
 
-/* ===== «ведёрко» события ===== */
 function bucketOf(type: string): Exclude<FilterKey, "all"> | null {
   const t = (type || "").toLowerCase()
   if (t.startsWith("transaction_") || t.includes("receipt")) return "tx"
@@ -42,20 +39,15 @@ function bucketOf(type: string): Exclude<FilterKey, "all"> | null {
   return null
 }
 
-/* ===== визуальные акценты под ведёрко ===== */
 function bucketStyles(type: string) {
   const link = "var(--tg-link-color,#2481CC)"
   const accent = "var(--tg-accent-color,#40A7E3)"
-  const hint = "var(--tg-hint-color)"
-
   const common = {
     stripe: link,
     bubbleBg: "rgba(36,129,204,.10)",
     hoverBg: "rgba(36,129,204,.06)",
     iconColor: link,
-    borderColor: `var(--tg-hint-color)`,
   }
-
   const b = bucketOf(type)
   if (b === "edits" || b === "users") {
     return {
@@ -69,7 +61,6 @@ function bucketStyles(type: string) {
   return common
 }
 
-/* ===== чип ===== */
 function Chip({
   active,
   onClick,
@@ -99,7 +90,6 @@ function Chip({
   )
 }
 
-/* ===== относительное время ===== */
 function relativeTime(iso: string): string {
   try {
     const d = new Date(iso).getTime()
@@ -119,7 +109,6 @@ function relativeTime(iso: string): string {
 }
 
 type Props = {
-  /** Клик по ленте ведёт на страницу «Все события» */
   onOpenAll?: () => void
 }
 
@@ -134,19 +123,16 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
   const error = useDashboardStore((s) => s.error.events || "")
   const load = useDashboardStore((s) => s.loadEvents)
 
-  // первичная загрузка
   useEffect(() => {
     if (!events?.length && !loading) void load(20)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // отфильтрованный список
   const items = useMemo(() => {
     if (filter === "all") return events || []
     return (events || []).filter((it) => bucketOf(it.type) === filter)
   }, [events, filter])
 
-  // лейблы
   const L = {
     all: t("dashboard.filter_all") || "Все",
     tx: t("dashboard.filter_tx") || "Транзакции",
@@ -162,7 +148,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
   return (
     <CardSection noPadding>
       <div className="rounded-lg p-1.5 border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)]">
-        {/* Заголовок + чипы */}
         <div className="flex items-center gap-2 mb-2">
           <div
             className="font-semibold"
@@ -172,7 +157,9 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
           </div>
 
           <div className="ml-auto flex items-center">
-            <Chip active={filter === "all"} onClick={() => setFilter("all")}>{L.all}</Chip>
+            <Chip active={filter === "all"} onClick={() => setFilter("all")}>
+              {L.all}
+            </Chip>
             <Chip active={filter === "tx"} onClick={() => setFilter("tx")} ariaLabel={L.tx}>
               <HandCoins size={16} />
             </Chip>
@@ -188,7 +175,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
           </div>
         </div>
 
-        {/* Состояния */}
         {loading ? (
           <div className="text-[14px] leading-[18px] text-[var(--tg-text-color)] opacity-80">
             {t("loading")}
@@ -208,7 +194,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
           </div>
         ) : (
           <>
-            {/* Лента карточек (кликабельна КАЖДАЯ карточка) */}
             <div className="flex flex-col gap-2">
               {items.map((it) => {
                 const Icon = IconByName[it.icon as keyof typeof IconByName] || Bell
@@ -223,21 +208,16 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
                     key={it.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      if (route) navigate(route)
-                      else onOpenAll?.()
-                    }}
+                    onClick={() => (route ? navigate(route) : onOpenAll?.())}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
-                        if (route) navigate(route)
-                        else onOpenAll?.()
+                        route ? navigate(route) : onOpenAll?.()
                       }
                     }}
                     className="relative rounded-lg border px-3 py-2 transition-colors cursor-pointer focus:outline-none focus:ring-2"
                     style={{ borderColor: "var(--tg-hint-color)" }}
                   >
-                    {/* цветная лента слева */}
                     <div
                       className="absolute inset-y-0 left-0 w-1 rounded-l-lg"
                       style={{ background: styles.stripe, opacity: 0.35 }}
@@ -245,7 +225,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
                     />
 
                     <div className="flex items-center gap-3">
-                      {/* аватар группы (если есть) иначе пузырь с иконкой */}
                       {avatarUrl ? (
                         <img
                           src={avatarUrl}
@@ -271,7 +250,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
                         </div>
                       )}
 
-                      {/* текст */}
                       <div className="min-w-0 flex-1">
                         <div className="font-medium truncate" style={{ color: "var(--tg-text-color)" }}>
                           {it.title}
@@ -281,11 +259,9 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
                         ) : null}
                       </div>
 
-                      {/* когда */}
                       <div className="text-[11px] opacity-60 shrink-0">{when}</div>
                     </div>
 
-                    {/* hover-подложка */}
                     <div
                       className="pointer-events-none absolute inset-0 rounded-lg"
                       style={{ background: styles.hoverBg, opacity: 0, transition: "opacity .15s" }}
@@ -302,7 +278,6 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
               )}
             </div>
 
-            {/* Линк «Все события» */}
             <div className="mt-2 text-right">
               <button
                 type="button"
