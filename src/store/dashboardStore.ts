@@ -418,7 +418,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       // Если бэкенд уже вернул готовые карточки (у них есть title+icon) — кладём как есть
       const looksPreformatted =
-        rawItems.length > 0 && typeof rawItems[0]?.title === "string" && !!rawItems[0]?.icon
+        rawItems.length > 0 &&
+        rawItems.every((it: any) => typeof it?.title === "string" && it.title && typeof it?.icon === "string" && it.icon)
 
       if (looksPreformatted) {
         set((s) => ({ events: rawItems }))

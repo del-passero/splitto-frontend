@@ -8,12 +8,23 @@ export type EventRow = {
   transaction_id?: number | null
   data?: any
   created_at: string
+  // НОВОЕ: иногда бэк отдаёт ссылку на сущность
+  entity?: { kind?: string; id?: number } | Record<string, any> | null
 }
 
 export type EventCard = {
   id: number
   type: string
-  icon: "Bell" | "PlusCircle" | "Edit" | "Users" | "Archive" | "UserPlus" | "UserMinus" | "FileText" | "HandCoins"
+  icon:
+    | "Bell"
+    | "PlusCircle"
+    | "Edit"
+    | "Users"
+    | "Archive"
+    | "UserPlus"
+    | "UserMinus"
+    | "FileText"
+    | "HandCoins"
   title: string
   subtitle?: string
   created_at: string
@@ -26,7 +37,7 @@ export type FormatCtx = {
   meId: number
   usersMap: Record<number, { name?: string }>
   groupsMap: Record<number, { name?: string }>
-  t?: (k: string) => string // опционально для локализации
+  t?: (k: string) => string
 }
 
 const FIELD_RU: Record<string, string> = {
@@ -58,7 +69,10 @@ export function formatMoney(amountStr?: string | null, code?: string | null) {
   const n = Number(amountStr)
   if (!isFinite(n)) return `${amountStr} ${code || ""}`.trim()
   try {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) + (code ? ` ${code}` : "")
+    return (
+      new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) +
+      (code ? ` ${code}` : "")
+    )
   } catch {
     return `${amountStr} ${code || ""}`.trim()
   }
@@ -66,35 +80,54 @@ export function formatMoney(amountStr?: string | null, code?: string | null) {
 
 export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
   const t = ctx.t ?? ((s: string) => s)
-  const data = ev.data || {}
+
+  // 1) НОРМАЛИЗУЕМ data: строка -> JSON
+  let data: any = ev.data || {}
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      data = {}
+    }
+  }
+
+  // 2) НОРМАЛИЗУЕМ type к нижнему регистру (для switch)
+  const typeNorm = String(ev.type || "").toLowerCase()
+
+  // 3) Безопасно достаём group_id: event.group_id -> data.group_id -> entity.group.id
+  const entityGroupId =
+    ev?.entity && typeof ev.entity === "object" && (ev.entity as any)?.kind === "group"
+      ? Number((ev.entity as any)?.id) || undefined
+      : undefined
 
   const groupIdSafe: number | undefined =
-    ev.group_id ?? (typeof data.group_id === "number" ? data.group_id : undefined)
+    (typeof ev.group_id === "number" ? ev.group_id : undefined) ??
+    (typeof data.group_id === "number" ? data.group_id : undefined) ??
+    entityGroupId
 
+  // 4) Имя группы: data.group_name -> groupsMap -> fallback
   const groupName =
     (typeof data.group_name === "string" && data.group_name) ||
     (groupIdSafe && ctx.groupsMap[groupIdSafe]?.name) ||
     unknownGroup(groupIdSafe)
 
-  const actorLabel = ev.actor_id === ctx.meId
-    ? "Вы"
-    : ctx.usersMap[ev.actor_id]?.name || unknownUser(ev.actor_id)
-
+  // 5) Подписи акторов
+  const actorLabel = ev.actor_id === ctx.meId ? "Вы" : ctx.usersMap[ev.actor_id]?.name || unknownUser(ev.actor_id)
   const targetLabel =
-    (ev.target_user_id && ctx.usersMap[ev.target_user_id]?.name) || unknownUser(ev.target_user_id || undefined)
-
+    (ev.target_user_id && ctx.usersMap[ev.target_user_id]?.name) ||
+    unknownUser(ev.target_user_id || undefined)
   const payerLabel =
     (data.payer_id && ctx.usersMap[data.payer_id]?.name) || unknownUser(data.payer_id || undefined)
 
   const cardBase = {
     id: ev.id,
-    type: ev.type,
+    type: ev.type, // оставляем исходный, чтобы фильтры работали по строке, а не по lower
     created_at: ev.created_at,
     bucket: bucketOf(ev.type),
   } as const
 
   // --- по типам ---
-  switch (ev.type) {
+  switch (typeNorm) {
     case "group_created":
       return {
         ...cardBase,
@@ -159,7 +192,7 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
       }
     }
 
-    // если добавишь лог на бэке:
+    // на будущее — если добавишь на бэке
     case "group_restored":
       return {
         ...cardBase,
@@ -204,18 +237,16 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "PlusCircle",
         title: `Новая трата: ${money}`,
         subtitle: `${title} • Плательщик: ${payerLabel}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined, // добавь /transactions/${ev.transaction_id} если есть роут
+        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
       }
     }
 
     case "transaction_updated": {
-      const changed: string[] = data.changed || []
-      let subtitle = ""
-      if (changed.length <= 3) {
-        subtitle = `Изменены: ${changed.map((k) => FIELD_RU[k] || k).join(", ")}`
-      } else {
-        subtitle = `Изменений: ${changed.length}`
-      }
+      const changed: string[] = Array.isArray(data.changed) ? data.changed : []
+      const subtitle =
+        changed.length <= 3
+          ? `Изменены: ${changed.map((k) => FIELD_RU[k] || k).join(", ")}`
+          : `Изменений: ${changed.length}`
       return {
         ...cardBase,
         icon: "Edit",
@@ -258,7 +289,6 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "UserPlus",
         title: `${actorLabel} и ${targetLabel} теперь друзья`,
         subtitle: undefined,
-        route: undefined,
       }
 
     case "friendship_removed":
@@ -267,15 +297,15 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "UserMinus",
         title: `${actorLabel} удалил(а) из друзей ${targetLabel}`,
         subtitle: undefined,
-        route: undefined,
       }
 
     default:
+      // более мягкий фолбэк: без «простыни» JSON
       return {
         ...cardBase,
         icon: "Bell",
         title: ev.type,
-        subtitle: JSON.stringify(data),
+        subtitle: groupIdSafe ? `Группа: ${groupName}` : undefined,
         route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
       }
   }
