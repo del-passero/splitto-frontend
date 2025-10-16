@@ -47,7 +47,6 @@ type DashboardState = {
   loading: LoadingFlags
   error: ErrorMap
 
-  // данные
   balance: DashboardBalance | null
   activity: DashboardActivity | null
   summary: DashboardSummaryOut | null
@@ -57,7 +56,6 @@ type DashboardState = {
   events: EventFeedItem[]
   currenciesRecent: string[]
 
-  // фильтры/периоды
   activityPeriod: PeriodAll
   summaryPeriod: PeriodAll
   topCategoriesPeriod: PeriodLTYear
@@ -65,46 +63,33 @@ type DashboardState = {
   summaryCurrency: string
   eventsFilter: string
 
-  // live
   liveTimer: number | null
-
-  // внутреннее: отложенная перезагрузка summary
   summaryNeedsReload: boolean
-
-  /** НОВОЕ: локаль последней загрузки топ-категорий (для инвалидации кэша по языку) */
   topLocale: string | null
 
-  // методы
   init: () => void
   startLive: (ms?: number) => void
   stopLive: () => void
 
-  // balance
   reloadBalance: (force?: boolean) => Promise<void>
 
-  // activity
   loadActivity: (period?: PeriodAll) => Promise<void>
   setActivityPeriod: (p: PeriodAll) => void
 
-  // summary
   loadSummary: (period?: PeriodAll, currency?: string) => Promise<void>
   setSummaryPeriod: (p: PeriodAll) => void
   setSummaryCurrency: (ccy: string) => void
 
-  // top categories
   loadTopCategories: (
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) => Promise<void>
   setTopPeriod: (p: PeriodLTYear) => void
 
-  // top partners
   loadTopPartners: (period?: PeriodLTYear) => Promise<void>
   setFrequentPeriod: (p: PeriodLTYear) => void
 
-  // recent groups
   loadRecentGroups: (limit?: number) => Promise<void>
 
-  // events
   loadEvents: (limit?: number) => Promise<void>
   setEventsFilter: (f: string) => void
 }
@@ -144,9 +129,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   eventsFilter: "all",
 
   liveTimer: null,
-
   summaryNeedsReload: false,
-
   topLocale: null,
 
   init() {
@@ -232,7 +215,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   async loadSummary(periodArg?: PeriodAll, currencyArg?: string) {
     if (periodArg) set({ summaryPeriod: periodArg })
     if (currencyArg) set({ summaryCurrency: currencyArg.toUpperCase?.() || currencyArg })
-
     if (get().loading.summary) return
 
     const ts = lastAt.summary ?? 0
@@ -386,9 +368,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     if (get().loading.events) return
 
     const prevCount = get().events.length
-    const ts = lastAt.events ?? 0
-    const ttlAlive = Date.now() - ts < TTL_DEFAULT
-    if (ttlAlive && limit <= prevCount) return
+    const ts0 = lastAt.events ?? 0
+    const fresh = Date.now() - ts0 < TTL_DEFAULT
+    if (fresh && limit <= prevCount) return
 
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
@@ -396,7 +378,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const rawItems: any[] = feed?.items || []
       if (!rawItems.length && prevCount) { lastAt.events = Date.now(); return }
 
-      // стартовые мапы из стора
+      // подготовим мапы
       const groupsMap: Record<number, { name?: string }> = {}
       for (const g of get().groups || []) {
         if (g?.id) groupsMap[g.id] = { name: g.name }
@@ -410,27 +392,43 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }
       }
 
-      // добираем имена из самих событий
-      const parseData = (d: any) => {
-        if (typeof d === "string") { try { return JSON.parse(d) } catch { return {} } }
-        return d || {}
+      const parseData = (v: any) => {
+        if (typeof v === "string") { try { return JSON.parse(v) } catch { return {} } }
+        return v || {}
       }
+
+      // добираем имена/названия/аватары из самих событий
       for (const r of rawItems) {
         const d = parseData(r?.data)
+
+        // group name
         const gid = typeof r?.group_id === "number" ? r.group_id
-          : typeof d?.group_id === "number" ? d.group_id : undefined
-        if (gid && typeof d?.group_name === "string" && d.group_name) {
-          groupsMap[gid] = { name: d.group_name }
+          : typeof d?.group_id === "number" ? d.group_id
+          : undefined
+        const gname =
+          (typeof d?.group_name === "string" && d.group_name) ||
+          (d?.group && (d.group.name || d.group.title))
+        if (gid && typeof gname === "string" && gname.trim()) {
+          groupsMap[gid] = { name: gname.trim() }
         }
-        if (typeof r?.actor_id === "number" && typeof d?.actor_name === "string" && d.actor_name) {
-          usersMap[r.actor_id] = { name: d.actor_name }
+
+        // actor / target
+        const actorName =
+          d?.actor_name ||
+          (d?.actor && ([d.actor.first_name, d.actor.last_name].filter(Boolean).join(" ") || d.actor.name || d.actor.username))
+        if (typeof r?.actor_id === "number" && typeof actorName === "string" && actorName.trim()) {
+          usersMap[r.actor_id] = { name: actorName.trim() }
         }
-        if (typeof r?.target_user_id === "number" && typeof d?.target_name === "string" && d.target_name) {
-          usersMap[r.target_user_id] = { name: d.target_name }
+
+        const targetName =
+          d?.target_name ||
+          (d?.target && ([d.target.first_name, d.target.last_name].filter(Boolean).join(" ") || d.target.name || d.target.username))
+        if (typeof r?.target_user_id === "number" && typeof targetName === "string" && targetName.trim()) {
+          usersMap[r.target_user_id] = { name: targetName.trim() }
         }
       }
 
-      // известных типов всегда форматируем (если не помечены preformatted)
+      // какие записи точно форматируем
       const KNOWN_TYPES = new Set([
         "group_created","group_renamed","group_avatar_changed","group_archived","group_unarchived","group_deleted","group_restored",
         "member_added","member_removed","member_left",
@@ -446,10 +444,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           r?.preformatted === true ||
           (typeof r?.data === "object" && r?.data?.preformatted === true) ||
           (typeof r?.data === "string" && (() => { try { return JSON.parse(r.data)?.preformatted === true } catch { return false } })())
-
         if (known && !preformatted) return true
 
-        // fallback для сырых карточек
         const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
         const hasIcon  = typeof r?.icon === "string" && r.icon.trim() !== ""
         const titleEq  = hasTitle && typeStr && r.title.trim().toLowerCase() === typeStr
@@ -461,6 +457,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const items: EventFeedItem[] = rawItems.map((r: any) => {
         if (!shouldFormat(r)) return r as EventFeedItem
         const c = formatEventCard(r as any, ctx)
+        // протаскиваем route и avatar_url внутрь entity (тип это допускает)
+        const entity = {
+          ...(r?.entity ?? {}),
+          ...(c.route ? { route: c.route } : {}),
+          ...(c.avatar_url ? { avatar_url: c.avatar_url } : {}),
+        }
         return {
           id: c.id,
           type: c.type,
@@ -468,7 +470,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           icon: c.icon,
           title: c.title,
           subtitle: c.subtitle ?? null,
-          entity: r?.entity ?? {},
+          entity,
         }
       })
 
