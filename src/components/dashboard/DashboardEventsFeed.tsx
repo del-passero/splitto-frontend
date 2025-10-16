@@ -28,6 +28,7 @@ const IconByName: Record<string, React.ComponentType<any>> = {
   UserPlus,
   UserMinus,
   FileText,
+  HandCoins, // добавлено: чтобы события с этой иконкой рендерились без фолбэка
 }
 
 /* ===== определение «ведёрка» для фильтра ===== */

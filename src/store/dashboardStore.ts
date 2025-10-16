@@ -1,4 +1,5 @@
 // src/store/dashboardStore.ts
+import { formatEventCard } from "../utils/events/formatEventCard"
 import { create } from "zustand"
 import {
   getDashboardBalance,
@@ -413,7 +414,34 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
       const feed = await getDashboardEvents(limit)
-      set((s) => ({ events: feed?.items || [] }))
+      const rawItems: any[] = feed?.items || []
+
+      // Если бэкенд уже вернул готовые карточки (у них есть title+icon) — кладём как есть
+      const looksPreformatted =
+        rawItems.length > 0 && typeof rawItems[0]?.title === "string" && !!rawItems[0]?.icon
+
+      if (looksPreformatted) {
+        set((s) => ({ events: rawItems }))
+      } else {
+        // Иначе: формируем карточки из сырых Event-строк через наш форматер
+        // Специально не тянем внешние сторы: безопасные дефолты, чтобы ничего не сломать.
+        const ctx = { meId: 0, usersMap: {}, groupsMap: {} }
+        const cards = rawItems.map((r) => formatEventCard(r as any, ctx))
+
+        // Приводим к ожидаемому фронтом типу EventFeedItem (title/icon/subtitle уже готовы)
+        const items = cards.map((c, i) => ({
+          id: c.id,
+          type: c.type,
+          created_at: c.created_at,
+          icon: c.icon,
+          title: c.title,
+          subtitle: c.subtitle ?? null,
+          // если бэк уже прислал entity — сохраним; иначе пустой объект (компоненты это не используют)
+          entity: (rawItems[i] as any)?.entity ?? {},
+        }))
+
+        set((s) => ({ events: items }))
+      }
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
     } finally {
