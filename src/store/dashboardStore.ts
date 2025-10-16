@@ -416,33 +416,33 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const feed = await getDashboardEvents(limit)
       const rawItems: any[] = feed?.items || []
 
-      // Если бэкенд уже вернул готовые карточки (у них есть title+icon) — кладём как есть
-      const looksPreformatted =
-        rawItems.length > 0 &&
-        rawItems.every((it: any) => typeof it?.title === "string" && it.title && typeof it?.icon === "string" && it.icon)
+      // пер-элементная нормализация: «сырые» записи форматируем локально
+      const shouldFormat = (r: any) => {
+        const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
+        const hasIcon  = typeof r?.icon === "string" && r.icon.trim() !== ""
+        const titleEq  =
+          hasTitle && typeof r?.type === "string" &&
+          r.title.trim().toLowerCase() === r.type.trim().toLowerCase()
+        const iconIsFallback = hasIcon && String(r.icon).toLowerCase() === "bell"
+        return !hasTitle || !hasIcon || titleEq || iconIsFallback
+      }
 
-      if (looksPreformatted) {
-        set((s) => ({ events: rawItems }))
-      } else {
-        // Иначе: формируем карточки из сырых Event-строк через наш форматер
-        // Специально не тянем внешние сторы: безопасные дефолты, чтобы ничего не сломать.
-        const ctx = { meId: 0, usersMap: {}, groupsMap: {} }
-        const cards = rawItems.map((r) => formatEventCard(r as any, ctx))
-
-        // Приводим к ожидаемому фронтом типу EventFeedItem (title/icon/subtitle уже готовы)
-        const items = cards.map((c, i) => ({
+      const ctx = { meId: 0, usersMap: {}, groupsMap: {} }
+      const items: EventFeedItem[] = rawItems.map((r: any) => {
+        if (!shouldFormat(r)) return r as EventFeedItem
+        const c = formatEventCard(r as any, ctx)
+        return {
           id: c.id,
           type: c.type,
           created_at: c.created_at,
           icon: c.icon,
           title: c.title,
           subtitle: c.subtitle ?? null,
-          // если бэк уже прислал entity — сохраним; иначе пустой объект (компоненты это не используют)
-          entity: (rawItems[i] as any)?.entity ?? {},
-        }))
+          entity: r?.entity ?? {},
+        }
+      })
 
-        set((s) => ({ events: items }))
-      }
+      set((s) => ({ events: items }))
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
     } finally {

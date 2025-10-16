@@ -28,10 +28,10 @@ const IconByName: Record<string, React.ComponentType<any>> = {
   UserPlus,
   UserMinus,
   FileText,
-  HandCoins, // добавлено: чтобы события с этой иконкой рендерились без фолбэка
+  HandCoins, // чтобы события с этой иконкой рендерились без фолбэка
 }
 
-/* ===== определение «ведёрка» для фильтра ===== */
+/* ===== «ведёрко» события ===== */
 function bucketOf(type: string): Exclude<FilterKey, "all"> | null {
   const t = (type || "").toLowerCase()
   if (t.startsWith("transaction_") || t.includes("receipt")) return "tx"
@@ -39,6 +39,45 @@ function bucketOf(type: string): Exclude<FilterKey, "all"> | null {
   if (t.startsWith("group_")) return "groups"
   if (t.startsWith("member_") || t.includes("user")) return "users"
   return null
+}
+
+/* ===== тонкая настройка визуальных акцентов под ведёрко ===== */
+function bucketStyles(type: string) {
+  const link = "var(--tg-link-color,#2481CC)"
+  const accent = "var(--tg-accent-color,#40A7E3)"
+  const text = "var(--tg-text-color)"
+  const hint = "var(--tg-hint-color)"
+
+  const common = {
+    ring: `ring-[${hint}]`,
+    border: `border-[${hint}]`,
+    iconColor: link,
+    stripe: link,
+    bubbleBg: "rgba(36,129,204,.10)", // link с 0.10
+    hoverBg: "rgba(36,129,204,.06)",
+  }
+
+  const b = bucketOf(type)
+  if (b === "edits") {
+    return {
+      ...common,
+      iconColor: accent,
+      stripe: accent,
+      bubbleBg: "rgba(64,167,227,.10)",
+      hoverBg: "rgba(64,167,227,.06)",
+    }
+  }
+  if (b === "users") {
+    return {
+      ...common,
+      iconColor: accent,
+      stripe: accent,
+      bubbleBg: "rgba(64,167,227,.10)",
+      hoverBg: "rgba(64,167,227,.06)",
+    }
+  }
+  // tx, groups, other -> common (link)
+  return common
 }
 
 /* ===== кнопка-чип ===== */
@@ -69,6 +108,25 @@ function Chip({
       {children}
     </button>
   )
+}
+
+/* ===== простое относительное время (ru) ===== */
+function relativeTime(iso: string): string {
+  try {
+    const d = new Date(iso).getTime()
+    const now = Date.now()
+    const diff = Math.max(0, now - d)
+    const min = Math.floor(diff / 60000)
+    const h = Math.floor(min / 60)
+    const dyy = Math.floor(h / 24)
+    if (min < 1) return "только что"
+    if (min < 60) return `${min} мин назад`
+    if (h < 24) return `${h} ч назад`
+    if (dyy === 1) return "вчера"
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
 }
 
 type Props = {
@@ -130,35 +188,19 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
             </Chip>
 
             {/* Остальные — только иконки (без текста), с aria-label */}
-            <Chip
-              active={filter === "tx"}
-              onClick={() => setFilter("tx")}
-              ariaLabel={L.tx}
-            >
+            <Chip active={filter === "tx"} onClick={() => setFilter("tx")} ariaLabel={L.tx}>
               <HandCoins size={16} />
             </Chip>
 
-            <Chip
-              active={filter === "edits"}
-              onClick={() => setFilter("edits")}
-              ariaLabel={L.edits}
-            >
+            <Chip active={filter === "edits"} onClick={() => setFilter("edits")} ariaLabel={L.edits}>
               <Edit size={16} />
             </Chip>
 
-            <Chip
-              active={filter === "groups"}
-              onClick={() => setFilter("groups")}
-              ariaLabel={L.groups}
-            >
+            <Chip active={filter === "groups"} onClick={() => setFilter("groups")} ariaLabel={L.groups}>
               <Users size={16} />
             </Chip>
 
-            <Chip
-              active={filter === "users"}
-              onClick={() => setFilter("users")}
-              ariaLabel={L.users}
-            >
+            <Chip active={filter === "users"} onClick={() => setFilter("users")} ariaLabel={L.users}>
               {/* Для «Юзеры» используем Users тоже — можно заменить на User, если хотите */}
               <UserPlus size={16} />
             </Chip>
@@ -201,46 +243,66 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
               <div className="flex flex-col gap-2 cursor-pointer">
                 {items.map((it) => {
                   const Icon =
-                    IconByName[it.icon as keyof typeof IconByName] ||
-                    Bell // фолбэк
-                  const dateStr = (() => {
-                    try {
-                      return new Date(it.created_at).toLocaleString()
-                    } catch {
-                      return String(it.created_at)
-                    }
-                  })()
+                    IconByName[it.icon as keyof typeof IconByName] || Bell
+                  const styles = bucketStyles(it.type)
+                  const when = relativeTime(it.created_at)
+
                   return (
                     <div
                       key={it.id}
-                      className="rounded-lg border border-[var(--tg-hint-color)] bg-[var(--tg-card-bg)] px-3 py-2"
+                      className="relative rounded-lg border bg-[var(--tg-card-bg)] px-3 py-2 transition-colors"
+                      style={{
+                        borderColor: "var(--tg-hint-color)",
+                      }}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        {/* слева — иконка события в кружке */}
+                      {/* цветная вертикальная лента слева */}
+                      <div
+                        className="absolute inset-y-0 left-0 w-1 rounded-l-lg"
+                        style={{ background: styles.stripe, opacity: 0.35 }}
+                        aria-hidden
+                      />
+
+                      <div className="flex items-center gap-3">
+                        {/* иконка в мяглом «пузыре» */}
                         <div
                           className="flex items-center justify-center rounded-full shrink-0"
                           style={{
                             width: 32,
                             height: 32,
+                            background: styles.bubbleBg,
+                            color: styles.iconColor,
                             border: "1px solid var(--tg-hint-color)",
-                            color: "var(--tg-link-color,#2481CC)",
                           }}
                           aria-hidden
                         >
                           <Icon size={18} />
                         </div>
 
-                        {/* текст/сабтайтл */}
+                        {/* текст */}
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium truncate text-[var(--tg-text-color)]">{it.title}</div>
+                          <div
+                            className="font-medium truncate"
+                            style={{ color: "var(--tg-text-color)" }}
+                          >
+                            {it.title}
+                          </div>
                           {it.subtitle ? (
                             <div className="text-xs opacity-70 truncate">{it.subtitle}</div>
                           ) : null}
                         </div>
 
-                        {/* дата */}
-                        <div className="text-xs opacity-60 shrink-0">{dateStr}</div>
+                        {/* время (коротко) */}
+                        <div className="text-[11px] opacity-60 shrink-0">{when}</div>
                       </div>
+
+                      {/* hover подложка — поверх цвета карточки */}
+                      <div
+                        className="pointer-events-none absolute inset-0 rounded-lg"
+                        style={{ background: styles.hoverBg, opacity: 0, transition: "opacity .15s" }}
+                      />
+                      <style>{`
+                        [data-event-card="${it.id}"]:hover > div:last-child { opacity: .6; }
+                      `}</style>
                     </div>
                   )
                 })}
