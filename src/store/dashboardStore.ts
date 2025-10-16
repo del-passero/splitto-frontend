@@ -1,5 +1,4 @@
 // src/store/dashboardStore.ts
-import { formatEventCard } from "../utils/events/formatEventCard"
 import { create } from "zustand"
 import {
   getDashboardBalance,
@@ -22,10 +21,6 @@ import type {
   PeriodAll,
   PeriodLTYear,
 } from "../types/dashboard"
-
-/** крошечные кеши на сессию: чтобы добирать имена/аватары между событиями одной группы */
-const groupNameCache = new Map<number, string>()
-const groupAvatarCache = new Map<number, string>()
 
 type LoadingFlags = {
   balance: boolean
@@ -51,6 +46,7 @@ type DashboardState = {
   loading: LoadingFlags
   error: ErrorMap
 
+  // данные
   balance: DashboardBalance | null
   activity: DashboardActivity | null
   summary: DashboardSummaryOut | null
@@ -60,6 +56,7 @@ type DashboardState = {
   events: EventFeedItem[]
   currenciesRecent: string[]
 
+  // фильтры/периоды
   activityPeriod: PeriodAll
   summaryPeriod: PeriodAll
   topCategoriesPeriod: PeriodLTYear
@@ -67,33 +64,47 @@ type DashboardState = {
   summaryCurrency: string
   eventsFilter: string
 
+  // live
   liveTimer: number | null
+
+  // внутреннее: отложенная перезагрузка summary
   summaryNeedsReload: boolean
+
+  /** НОВОЕ: локаль последней загрузки топ-категорий (для инвалидации кэша по языку) */
   topLocale: string | null
 
+  // методы
   init: () => void
   startLive: (ms?: number) => void
   stopLive: () => void
 
+  // balance
   reloadBalance: (force?: boolean) => Promise<void>
 
+  // activity
   loadActivity: (period?: PeriodAll) => Promise<void>
   setActivityPeriod: (p: PeriodAll) => void
 
+  // summary
   loadSummary: (period?: PeriodAll, currency?: string) => Promise<void>
   setSummaryPeriod: (p: PeriodAll) => void
   setSummaryCurrency: (ccy: string) => void
 
+  // top categories
+  /** Принимает либо период (как раньше), либо объект опций { period, locale, force } */
   loadTopCategories: (
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) => Promise<void>
   setTopPeriod: (p: PeriodLTYear) => void
 
+  // top partners
   loadTopPartners: (period?: PeriodLTYear) => Promise<void>
   setFrequentPeriod: (p: PeriodLTYear) => void
 
+  // recent groups
   loadRecentGroups: (limit?: number) => Promise<void>
 
+  // events
   loadEvents: (limit?: number) => Promise<void>
   setEventsFilter: (f: string) => void
 }
@@ -133,7 +144,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   eventsFilter: "all",
 
   liveTimer: null,
+
   summaryNeedsReload: false,
+
+  // НОВОЕ: локаль, на которой загружены topCategories
   topLocale: null,
 
   init() {
@@ -141,13 +155,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     void get().loadRecentGroups(10)
     void get().loadEvents(20)
 
+    // подтягиваем «последние валюты» и сразу триггерим первую загрузку summary
     getDashboardLastCurrencies(2)
       .then((ccys) => {
         set({ currenciesRecent: ccys })
         const existing = (get().summaryCurrency || "").toUpperCase()
         const fallback = ccys[0] ? String(ccys[0]).toUpperCase() : "USD"
         const next = existing || fallback
-        get().setSummaryCurrency(next)
+        get().setSummaryCurrency(next) // внутри сам вызовет load
       })
       .catch(() => void 0)
   },
@@ -217,8 +232,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   async loadSummary(periodArg?: PeriodAll, currencyArg?: string) {
+    // применяем входные аргументы к состоянию перед загрузкой
     if (periodArg) set({ summaryPeriod: periodArg })
     if (currencyArg) set({ summaryCurrency: currencyArg.toUpperCase?.() || currencyArg })
+
+    // если уже грузимся — не стартуем новую; она будет запланирована флагом
     if (get().loading.summary) return
 
     const ts = lastAt.summary ?? 0
@@ -234,11 +252,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, summary: e?.message || "Failed to load summary" } }))
     } finally {
+      // помечаем завершение загрузки
       set((s) => ({ loading: { ...s.loading, summary: false } }))
       lastAt.summary = now()
+
+      // если во время загрузки успели поменять период/валюту — сразу перезагрузим
       if (get().summaryNeedsReload) {
         set({ summaryNeedsReload: false })
-        lastAt.summary = 0
+        lastAt.summary = 0 // снять TTL
         void get().loadSummary()
       }
     }
@@ -247,6 +268,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setSummaryPeriod(p) {
     set({ summaryPeriod: p })
     lastAt.summary = 0
+    // если идёт загрузка — отложим перезагрузку
     if (get().loading.summary) {
       set({ summaryNeedsReload: true })
       return
@@ -264,9 +286,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     void get().loadSummary()
   },
 
+  /** ВАЖНО: совместимость.
+   *  - старый вызов: loadTopCategories("month")
+   *  - новый вызов:  loadTopCategories({ period: "month", locale: "ru", force: true })
+   */
   async loadTopCategories(
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) {
+    // распарсим аргументы
     let requestedPeriod = get().topCategoriesPeriod
     let localeFromArg: string | undefined
     let force = false
@@ -285,15 +312,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       force = !!arg.force
     }
 
+    // вычислим локаль (ui → короткий код)
     const prevLocale = get().topLocale || null
-    const nextLocale = (localeFromArg || prevLocale || (navigator?.language || "ru")).split("-")[0]
+    const nextLocale = (localeFromArg || prevLocale || (navigator?.language || "ru"))
+      .split("-")[0]
+
     const localeChanged = prevLocale !== nextLocale
 
+    // защита от гонок
     if (get().loading.top) return
 
+    // TTL: пропускаем, если не force и не менялась локаль
     const ts = lastAt.top ?? 0
     if (!force && !localeChanged && now() - ts < TTL_DEFAULT) return
 
+    // если локаль сменилась — можно очистить список (мгновенная визуальная смена),
+    // но это безопасно: чип валют не трогаем, он хранится в компоненте.
     set((s) => ({
       loading: { ...s.loading, top: true },
       error: { ...s.error, top: "" },
@@ -306,6 +340,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         period: requestedPeriod,
         limit: 50,
         offset: 0,
+        // НОВОЕ: прокидываем локаль на бэкенд
+        // (убедись, что getDashboardTopCategories поддерживает { locale } в api)
         locale: nextLocale,
       } as any)
       set((s) => ({ topCategories: data.items || [] }))
@@ -320,6 +356,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setTopPeriod(p) {
     set({ topCategoriesPeriod: p })
     lastAt.top = 0
+    // локаль берём из состояния topLocale, чтобы не сбрасывать её при простом переключении периода
     void get().loadTopCategories()
   },
 
@@ -360,10 +397,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     try {
       const data = await getDashboardRecentGroups(limit)
       set((s) => ({ groups: data || [] }))
-      // пополним кэш имён
-      for (const g of data || []) {
-        if (g?.id && g?.name) groupNameCache.set(g.id, g.name)
-      }
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, groups: e?.message || "Failed to load recent groups" } }))
     } finally {
@@ -374,118 +407,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   async loadEvents(limit = 20) {
     if (get().loading.events) return
-
-    const prevCount = get().events.length
-    const ts0 = lastAt.events ?? 0
-    const fresh = Date.now() - ts0 < TTL_DEFAULT
-    if (fresh && limit <= prevCount) return
+    const ts = lastAt.events ?? 0
+    if (now() - ts < TTL_DEFAULT) return
 
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
-
     try {
       const feed = await getDashboardEvents(limit)
-      const rawItems: any[] = feed?.items || []
-      if (!rawItems.length && prevCount) { lastAt.events = Date.now(); return }
-
-      // построим мапы на основе стора и кэшей
-      const groupsMap: Record<number, { name?: string }> = {}
-      for (const g of get().groups || []) {
-        if (g?.id) groupsMap[g.id] = { name: g.name }
-      }
-      // из кэша имён
-      groupNameCache.forEach((name, gid) => { groupsMap[gid] = { name } })
-
-      const usersMap: Record<number, { name?: string }> = {}
-      for (const p of get().frequentUsers || []) {
-        const u = p?.user
-        if (u?.id) {
-          const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || undefined
-          usersMap[u.id] = { name }
-        }
-      }
-
-      const parseData = (v: any) => {
-        if (typeof v === "string") { try { return JSON.parse(v) } catch { return {} } }
-        return v || {}
-      }
-
-      // предварительный проход: добираем названия/аватары в кэш
-      for (const r of rawItems) {
-        const d = parseData(r?.data)
-        const gid = (typeof r?.group_id === "number" ? r.group_id : undefined) ??
-                    (typeof d?.group_id === "number" ? d.group_id : undefined)
-        if (gid) {
-          const gname =
-            (typeof d?.group_name === "string" && d.group_name) ||
-            (d?.group && (d.group.name || d.group.title)) ||
-            groupsMap[gid]?.name
-          if (gname) {
-            groupNameCache.set(gid, String(gname))
-            groupsMap[gid] = { name: String(gname) }
-          }
-          const gavatar = d?.new_avatar_url || d?.group_avatar_url || d?.group?.avatar_url
-          if (typeof gavatar === "string" && gavatar) groupAvatarCache.set(gid, gavatar)
-        }
-
-        // актор/таргет по строкам имени (если бэк прислал)
-        const actorName =
-          d?.actor_name ||
-          (d?.actor && ([d.actor.first_name, d.actor.last_name].filter(Boolean).join(" ") || d.actor.name || d.actor.username))
-        if (typeof r?.actor_id === "number" && typeof actorName === "string" && actorName.trim()) {
-          usersMap[r.actor_id] = { name: actorName.trim() }
-        }
-        const targetName =
-          d?.target_name ||
-          (d?.target && ([d.target.first_name, d.target.last_name].filter(Boolean).join(" ") || d.target.name || d.target.username))
-        if (typeof r?.target_user_id === "number" && typeof targetName === "string" && targetName.trim()) {
-          usersMap[r.target_user_id] = { name: targetName.trim() }
-        }
-      }
-
-      // всегда формируем карточку formatEventCard, но сохраняем оригинальные title/icon если они «кастомные»
-      const items: EventFeedItem[] = rawItems.map((r: any) => {
-        const ctx = { meId: 0, usersMap, groupsMap }
-        const c = formatEventCard(r as any, ctx)
-
-        // подмешаем к entity маршрут и аватар
-        const entity = {
-          ...(r?.entity ?? {}),
-          ...(c.route ? { route: c.route } : {}),
-          ...(c.avatar_url
-              ? { avatar_url: c.avatar_url }
-              : (typeof r?.group_id === "number" && groupAvatarCache.has(r.group_id)
-                    ? { avatar_url: groupAvatarCache.get(r.group_id) }
-                    : {})),
-        }
-
-        // если у бэка уже были «причесанные» значения, и они не дефолтные — уважаем их
-        const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
-        const hasIcon = typeof r?.icon === "string" && r.icon.trim() !== ""
-        const titleLooksRaw = hasTitle && typeof r?.type === "string" &&
-          r.title.trim().toLowerCase() === r.type.trim().toLowerCase()
-        const iconIsFallback = hasIcon && r.icon.trim().toLowerCase() === "bell"
-
-        const title = hasTitle && !titleLooksRaw ? r.title : c.title
-        const icon = hasIcon && !iconIsFallback ? r.icon : c.icon
-        const subtitle = typeof r?.subtitle === "string" && r.subtitle.trim() !== "" ? r.subtitle : (c.subtitle ?? null)
-
-        return {
-          id: c.id,
-          type: c.type,
-          created_at: c.created_at,
-          icon,
-          title,
-          subtitle,
-          entity,
-        }
-      })
-
-      set((s) => ({ events: items }))
+      set((s) => ({ events: feed?.items || [] }))
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
     } finally {
       set((s) => ({ loading: { ...s.loading, events: false } }))
-      lastAt.events = Date.now()
+      lastAt.events = now()
     }
   },
 
