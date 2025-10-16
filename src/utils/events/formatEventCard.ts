@@ -369,6 +369,19 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         entity: baseEntity,
       }
 
+    case "transaction_deleted": { // NEW
+      const money = formatMoney(data?.amount, data?.currency)
+      const title = data?.title || "Без названия"
+      return {
+        ...cardBase,
+        icon: "Archive",
+        title: "Трата удалена",
+        subtitle: `${title}${money ? " • " + money : ""}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
+      }
+    }
+
     case "friendship_created":
       return {
         ...cardBase,

@@ -1,7 +1,7 @@
 // src/store/eventsStore.ts
 import { create } from "zustand"
 import type { EventItem } from "../types/event"
-import { getEvents, type GetEventsParams } from "../api/eventsApi"
+import { getEvents, type GetEventsParams } from "../api/eventsApi" // FIX: регистр файла
 
 type EventsFilters = {
   groupId: number | null
@@ -109,7 +109,8 @@ export const useEventsStore = create<EventsStore>((set, get) => ({
 
       // Сшиваем без дублей по id, новые — наверх
       const existingIds = new Set(items.map(i => i.id))
-      const newOnTop = res.items.filter(i => !existingIds.has(i.id))
+      const newOnTop = res.items.filter((i: EventItem) => !existingIds.has(i.id)) // FIX: тип
+
       set({ items: [...newOnTop, ...items] })
       return newOnTop.length
     } catch {

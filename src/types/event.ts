@@ -34,6 +34,7 @@ export type EventType =
   | "transaction_receipt_added"
   | "transaction_receipt_replaced"
   | "transaction_receipt_removed"
+  | "transaction_deleted"            // NEW
   // На будущее/совместимость:
   | "friendship_created"
   | "friendship_removed"
@@ -55,6 +56,9 @@ export interface EventItem {
   group?: GroupRef
 
   data?: Record<string, any>
+
+  // Опционально: идемпотентный ключ события (если бэк прислал)
+  idempotency_key?: string | null
 }
 
 export interface EventsResponse {

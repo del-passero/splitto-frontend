@@ -7,7 +7,8 @@ function getTelegramInitData(): string {
   return (window as any)?.Telegram?.WebApp?.initData || ""
 }
 
-const API_URL = import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://splitto-backend-prod-ugraf.amvera.io/api"
 const BASE_URL = `${API_URL}/events`
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -18,18 +19,18 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.detail?.code || errorData.detail || res.statusText)
+    throw new Error(errorData?.detail?.code || errorData?.detail || res.statusText)
   }
-  return await res.json()
+  return (await res.json()) as T
 }
 
 export interface GetEventsParams {
   limit?: number
-  before?: string | null      // ISO строка created_at последнего полученного события (пагинация назад)
-  since?: string | null       // ISO строка для подкачки новых событий сверху
+  before?: string | null      // ISO created_at последнего полученного (пагинация назад)
+  since?: string | null       // ISO для подкачки новых сверху
   groupId?: number | null
-  type?: string | null
-  actorId?: number | null
+  type?: string | null        // поддержим и это имя — превратим в ?types=...
+  actorId?: number | null     // бэкенд пока игнорирует; не мешает
 }
 
 export async function getEvents(params: GetEventsParams = {}): Promise<EventsResponse> {
@@ -38,7 +39,17 @@ export async function getEvents(params: GetEventsParams = {}): Promise<EventsRes
   if (params.before) q.set("before", params.before)
   if (params.since) q.set("since", params.since)
   if (params.groupId != null) q.set("group_id", String(params.groupId))
-  if (params.type) q.set("type", params.type)
+
+  // Бэкенд ждёт множественный параметр "types"
+  if (params.type) {
+    const list = String(params.type)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    for (const one of list) q.append("types", one)
+  }
+
+  // actorId оставляем как no-op для совместимости (сервер проигнорирует)
   if (params.actorId != null) q.set("actor_id", String(params.actorId))
 
   // Нормализуем разные возможные ответы бэка: массив / {items} / {events}
