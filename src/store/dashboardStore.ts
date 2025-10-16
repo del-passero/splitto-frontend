@@ -1,4 +1,5 @@
 // src/store/dashboardStore.ts
+import { formatEventCard } from "../utils/events/formatEventCard"
 import { create } from "zustand"
 import {
   getDashboardBalance,
@@ -91,7 +92,6 @@ type DashboardState = {
   setSummaryCurrency: (ccy: string) => void
 
   // top categories
-  /** Принимает либо период (как раньше), либо объект опций { period, locale, force } */
   loadTopCategories: (
     arg?: PeriodLTYear | { period?: PeriodLTYear; locale?: string; force?: boolean }
   ) => Promise<void>
@@ -114,6 +114,12 @@ const TTL_BALANCE = 15_000
 const TTL_DEFAULT = 60_000
 
 let lastAt: Partial<Record<keyof LoadingFlags, number>> = {}
+
+const toNum = (v: unknown): number | undefined => {
+  if (v === null || v === undefined) return undefined
+  const n = Number(v)
+  return Number.isFinite(n) ? n : undefined
+}
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   loading: {
@@ -413,7 +419,99 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
       const feed = await getDashboardEvents(limit)
-      set((s) => ({ events: feed?.items || [] }))
+      const rawItems: any[] = feed?.items || []
+
+      // Первый проход — собираем кэш по группам (имя/аватар) из сырых data
+      const groupNameCache: Record<number, string> = {}
+      const groupAvatarCache: Record<number, string | null> = {}
+
+      for (const r of rawItems) {
+        let data: any = r?.data || {}
+        if (typeof data === "string") {
+          try {
+            data = JSON.parse(data)
+          } catch {
+            data = {}
+          }
+        }
+        const gid =
+          toNum(r?.group_id) ??
+          toNum(data?.group_id) ??
+          toNum(data?.group?.id) ??
+          (r?.entity?.kind === "group" ? toNum(r?.entity?.id) : undefined)
+
+        if (gid !== undefined) {
+          const gname =
+            (typeof data?.group_name === "string" && data.group_name) ||
+            (typeof data?.group?.name === "string" && data.group.name) ||
+            undefined
+          if (gname && !groupNameCache[gid]) groupNameCache[gid] = gname
+
+          const gava: string | null | undefined =
+            data?.new_avatar_url ??
+            data?.avatar_url ??
+            data?.group_avatar_url ??
+            data?.group?.avatar_url ??
+            undefined
+          if ((gava !== undefined) && groupAvatarCache[gid] === undefined) {
+            groupAvatarCache[gid] = gava
+          }
+        }
+      }
+
+      // Готовим groupsMap для форматера
+      const groupsMap: Record<number, { name?: string; avatar_url?: string | null }> = {}
+      for (const gidStr of Object.keys(groupNameCache)) {
+        const gid = Number(gidStr)
+        groupsMap[gid] = {
+          name: groupNameCache[gid],
+          avatar_url: groupAvatarCache[gid] ?? null,
+        }
+      }
+      for (const gidStr of Object.keys(groupAvatarCache)) {
+        const gid = Number(gidStr)
+        if (!groupsMap[gid]) groupsMap[gid] = { name: undefined, avatar_url: groupAvatarCache[gid] ?? null }
+        else if (groupsMap[gid].avatar_url == null) groupsMap[gid].avatar_url = groupAvatarCache[gid] ?? null
+      }
+
+      // Второй проход — нормализация карточек
+      const ctx = { meId: 0, usersMap: {}, groupsMap }
+      const items: EventFeedItem[] = rawItems.map((r: any) => {
+        const c = formatEventCard(r as any, ctx)
+
+        // на всякий случай — добьём entity из локального кэша
+        const gid =
+          toNum((c as any)?.entity?.id) ??
+          toNum(r?.group_id) ??
+          toNum(r?.data?.group_id) ??
+          toNum(r?.data?.group?.id) ??
+          (r?.entity?.kind === "group" ? toNum(r?.entity?.id) : undefined)
+
+        let entity: any = c.entity ?? {}
+        if (gid !== undefined) {
+          const name = groupsMap[gid]?.name ?? entity?.name
+          const avatar_url = groupsMap[gid]?.avatar_url ?? entity?.avatar_url ?? null
+          entity = {
+            kind: "group",
+            id: gid,
+            name,
+            avatar_url,
+            route: `/groups/${gid}`,
+          }
+        }
+
+        return {
+          id: c.id,
+          type: c.type,
+          created_at: c.created_at,
+          icon: c.icon,
+          title: c.title,
+          subtitle: c.subtitle ?? null,
+          entity,
+        }
+      })
+
+      set((s) => ({ events: items }))
     } catch (e: any) {
       set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
     } finally {

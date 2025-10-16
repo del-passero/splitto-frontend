@@ -1,14 +1,15 @@
 // src/utils/events/formatEventCard.ts
 export type EventRow = {
-  id: number
+  id: number | string
   type: string
-  actor_id: number | null
-  group_id: number | null
-  target_user_id?: number | null
-  transaction_id?: number | null
+  actor_id: number | string
+  group_id: number | string | null
+  target_user_id?: number | string | null
+  transaction_id?: number | string | null
   data?: any
   created_at: string
-  entity?: { kind?: string; id?: number } | Record<string, any> | null
+  // иногда бэк отдаёт ссылку на сущность
+  entity?: { kind?: string; id?: number | string; [k: string]: any } | null
 }
 
 export type EventCard = {
@@ -30,15 +31,30 @@ export type EventCard = {
   route?: string
   disabled?: boolean
   bucket: "tx" | "edits" | "groups" | "users" | "other"
-  /** если знаем — положим сюда, компонент возьмёт из entity.avatar_url */
-  avatar_url?: string
+  // НОВОЕ: возвращаем обогащённую сущность (используется на фронте для аватаров/клика)
+  entity?: {
+    kind?: string
+    id?: number
+    name?: string
+    avatar_url?: string | null
+    route?: string
+    [k: string]: any
+  }
 }
 
 export type FormatCtx = {
   meId: number
   usersMap: Record<number, { name?: string }>
-  groupsMap: Record<number, { name?: string }>
+  groupsMap: Record<number, { name?: string; avatar_url?: string | null }>
   t?: (k: string) => string
+}
+
+/* ===== helpers ===== */
+
+const toNum = (v: unknown): number | undefined => {
+  if (v === null || v === undefined) return undefined
+  const n = Number(v)
+  return Number.isFinite(n) ? n : undefined
 }
 
 const FIELD_RU: Record<string, string> = {
@@ -62,141 +78,135 @@ function bucketOf(type: string): EventCard["bucket"] {
   return "other"
 }
 
-const unknownUser = (id?: number | null) => (typeof id === "number" ? `Пользователь #${id}` : "Пользователь")
-const unknownGroup = (id?: number | null) => (typeof id === "number" ? `Группа #${id}` : "Группа")
+const unknownUser = (id?: number | null) => (id ? `Пользователь #${id}` : "Пользователь")
+const unknownGroup = (id?: number | null) => (id ? `Группа #${id}` : "Группа")
 
 export function formatMoney(amountStr?: string | null, code?: string | null) {
   if (!amountStr) return ""
   const n = Number(amountStr)
   if (!isFinite(n)) return `${amountStr} ${code || ""}`.trim()
   try {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) + (code ? ` ${code}` : "")
+    return (
+      new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 }).format(n) +
+      (code ? ` ${code}` : "")
+    )
   } catch {
     return `${amountStr} ${code || ""}`.trim()
   }
 }
 
-/* ===== helpers ===== */
-function safeJson(data: any): any {
-  if (!data) return {}
-  if (typeof data === "string") {
-    try { return JSON.parse(data) } catch { return {} }
-  }
-  return data
-}
-
-function joinName(a?: string | null, b?: string | null) {
-  return [a, b].filter(Boolean).join(" ")
-}
-
-function pickUserNameById(
-  id: number | null | undefined,
-  ctx: FormatCtx,
-  d: any,
-  roleKeys: string[]
-): string | undefined {
-  if (!id && id !== 0) return undefined
-  const m = ctx.usersMap[id]
-  if (m?.name) return m.name
-
-  for (const k of roleKeys) {
-    const v = d?.[`${k}_name`]
-    if (typeof v === "string" && v.trim()) return v.trim()
-  }
-  for (const k of roleKeys) {
-    const obj = d?.[k]
-    if (obj && typeof obj === "object") {
-      const n1 = joinName(obj.first_name, obj.last_name)
-      if (n1) return n1
-      if (typeof obj.name === "string" && obj.name.trim()) return obj.name.trim()
-      if (typeof obj.username === "string" && obj.username.trim()) return obj.username.trim()
-    }
-  }
-  return undefined
-}
-
-function pickGroupName(groupId: number | undefined, ctx: FormatCtx, d: any): string | undefined {
-  if (typeof d?.group_name === "string" && d.group_name.trim()) return d.group_name.trim()
-  if (d?.group && typeof d.group === "object") {
-    const v = d.group.name || d.group.title
-    if (typeof v === "string" && v.trim()) return v.trim()
-  }
-  if (groupId && ctx.groupsMap[groupId]?.name) return ctx.groupsMap[groupId]!.name
-  return undefined
-}
-
-function pickGroupAvatar(d: any): string | undefined {
-  if (typeof d?.new_avatar_url === "string" && d.new_avatar_url) return d.new_avatar_url
-  if (typeof d?.group_avatar_url === "string" && d.group_avatar_url) return d.group_avatar_url
-  if (d?.group && typeof d.group === "object") {
-    const v = d.group.avatar_url || d.group.photo_url || d.group.image_url
-    if (typeof v === "string" && v) return v
-  }
-  if (typeof d?.avatar_url === "string" && d.avatar_url) return d.avatar_url
-  return undefined
-}
+/* ===== основной форматер ===== */
 
 export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
-  const d = safeJson(ev.data)
+  const t = ctx.t ?? ((s: string) => s)
+
+  // 1) data: строка -> объект
+  let data: any = ev.data || {}
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      data = {}
+    }
+  }
+
+  // 2) нормализация type
   const typeNorm = String(ev.type || "").toLowerCase()
 
-  // group id из разных мест
-  const entityGroupId =
+  // 3) group_id: event.group_id -> data.group_id -> data.group.id -> entity (group)
+  const entityIsGroup =
     ev?.entity && typeof ev.entity === "object" && (ev.entity as any)?.kind === "group"
-      ? Number((ev.entity as any)?.id) || undefined
-      : undefined
-  const groupIdSafe: number | undefined =
-    (typeof ev.group_id === "number" ? ev.group_id : undefined) ??
-    (typeof d.group_id === "number" ? d.group_id : undefined) ??
-    entityGroupId
+  const entGroupId = entityIsGroup ? toNum((ev.entity as any)?.id) : undefined
 
-  // имена/аватары группы
-  const groupName = pickGroupName(groupIdSafe, ctx, d) || unknownGroup(groupIdSafe)
-  const groupAvatarUrl = pickGroupAvatar(d)
-
-  // ACTOR: учитываем creator_id как источник actor_id
-  const actorIdEff =
-    (typeof ev.actor_id === "number" ? ev.actor_id : undefined) ??
-    (typeof d.actor_id === "number" ? d.actor_id : undefined) ??
-    (typeof d.creator_id === "number" ? d.creator_id : undefined)
-
-  const actorName =
-    (actorIdEff === ctx.meId && "Вы") ||
-    pickUserNameById(actorIdEff, ctx, d, ["actor", "creator", "user"]) ||
-    unknownUser(actorIdEff)
-
-  // TARGET
-  const targetIdEff =
-    (typeof ev.target_user_id === "number" ? ev.target_user_id : undefined) ??
-    (typeof d.target_user_id === "number" ? d.target_user_id : undefined) ??
-    (typeof d.member_id === "number" ? d.member_id : undefined)
-  const targetName =
-    pickUserNameById(targetIdEff, ctx, d, ["target", "member", "user"]) ||
-    unknownUser(targetIdEff)
-
-  // PAYER
-  const payerIdEff = typeof d.payer_id === "number" ? d.payer_id : undefined
-  const payerName =
-    (payerIdEff &&
-      (pickUserNameById(payerIdEff, ctx, d, ["payer", "user", "actor"]) || unknownUser(payerIdEff))) ||
+  const dataGroupId =
+    toNum((data?.group && (data.group.id ?? data.group.group_id)) ?? data?.group_id) ??
     undefined
 
+  const groupIdSafe: number | undefined =
+    toNum(ev.group_id) ?? dataGroupId ?? entGroupId
+
+  // 4) имя/аватар группы: data -> groupsMap -> fallback
+  const dataGroupName: string | undefined =
+    (typeof data?.group_name === "string" && data.group_name) ||
+    (typeof data?.group?.name === "string" && data.group.name) ||
+    undefined
+
+  const dataGroupAvatar: string | null | undefined =
+    data?.new_avatar_url ??
+    data?.avatar_url ??
+    data?.group_avatar_url ??
+    data?.group?.avatar_url ??
+    undefined
+
+  const groupMapEntry = groupIdSafe ? ctx.groupsMap[groupIdSafe] : undefined
+  const groupName =
+    dataGroupName || groupMapEntry?.name || unknownGroup(groupIdSafe)
+  const groupAvatar =
+    (dataGroupAvatar as string | null | undefined) ??
+    groupMapEntry?.avatar_url ??
+    null
+
+  // 5) подписи акторов/таргетов/плательщика
+  const actorId = toNum(ev.actor_id)
+  const targetId = toNum(ev.target_user_id)
+  const payerId = toNum(data?.payer_id)
+
+  const actorNameFromData =
+    (typeof data?.actor_name === "string" && data.actor_name) ||
+    (data?.actor && typeof data.actor.name === "string" && data.actor.name) ||
+    undefined
+
+  const targetNameFromData =
+    (typeof data?.target_name === "string" && data.target_name) ||
+    (data?.target && typeof data.target.name === "string" && data.target.name) ||
+    undefined
+
+  const payerNameFromData =
+    (typeof data?.payer_name === "string" && data.payer_name) ||
+    (data?.payer && typeof data.payer.name === "string" && data.payer.name) ||
+    undefined
+
+  const actorLabel =
+    actorNameFromData ||
+    (actorId === ctx.meId ? "Вы" : ctx.usersMap[actorId || -1]?.name) ||
+    unknownUser(actorId)
+
+  const targetLabel =
+    targetNameFromData || ctx.usersMap[targetId || -1]?.name || unknownUser(targetId)
+
+  const payerLabel =
+    payerNameFromData || ctx.usersMap[payerId || -1]?.name || unknownUser(payerId)
+
+  // 6) базовая карточка
   const cardBase = {
-    id: ev.id,
-    type: ev.type,
+    id: toNum(ev.id) ?? 0,
+    type: ev.type, // оставляем оригинальный регистр
     created_at: ev.created_at,
     bucket: bucketOf(ev.type),
   } as const
 
+  // готовим entity (если знаем группу)
+  const baseEntity =
+    groupIdSafe !== undefined
+      ? {
+          kind: "group",
+          id: groupIdSafe,
+          name: groupName,
+          avatar_url: groupAvatar ?? null,
+          route: `/groups/${groupIdSafe}`,
+        }
+      : undefined
+
+  // 7) по типам
   switch (typeNorm) {
     case "group_created":
       return {
         ...cardBase,
         icon: "PlusCircle",
         title: `Создана группа «${groupName}»`,
-        subtitle: `Создатель: ${actorName}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `Создатель: ${actorLabel}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "group_renamed":
@@ -204,14 +214,14 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         ...cardBase,
         icon: "Edit",
         title: "Группа переименована",
-        subtitle: `${d.old_name || "—"} → ${d.new_name || "—"}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `${data?.old_name || "—"} → ${data?.new_name || "—"}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "group_avatar_changed": {
-      const oldU = d.old_avatar_url
-      const newU = d.new_avatar_url
+      const oldU = data?.old_avatar_url
+      const newU = data?.new_avatar_url ?? groupAvatar
       let subtitle = "Аватар обновлён"
       if (!oldU && newU) subtitle = "Аватар добавлен"
       else if (oldU && !newU) subtitle = "Аватар удалён"
@@ -219,10 +229,10 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
       return {
         ...cardBase,
         icon: "Edit",
-        title: "Обновлён аватар группы",
+        title: `Обновлён аватар «${groupName}»`,
         subtitle,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: newU || groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: { ...(baseEntity || {}), avatar_url: newU ?? null },
       }
     }
 
@@ -232,8 +242,8 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "Archive",
         title: "Группа архивирована",
         subtitle: groupName,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "group_unarchived":
@@ -242,78 +252,79 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "Users",
         title: "Группа разархивирована",
         subtitle: groupName,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "group_deleted": {
-      const hard = d.mode === "hard"
+      const hard = (data?.mode || "").toString().toLowerCase() === "hard"
       return {
         ...cardBase,
         icon: "Archive",
         title: hard ? "Группа удалена окончательно" : "Группа отправлена в удалённые",
-        subtitle: hard ? `ID ${d.group_id || "—"}` : groupName,
-        route: hard ? undefined : groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
+        subtitle: hard ? `ID ${data?.group_id || groupIdSafe || "—"}` : groupName,
+        route: hard ? undefined : baseEntity?.route,
         disabled: hard,
-        avatar_url: groupAvatarUrl,
+        entity: baseEntity,
       }
     }
 
+    // на будущее, если появится
     case "group_restored":
       return {
         ...cardBase,
         icon: "Users",
         title: "Группа восстановлена",
         subtitle: groupName,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "member_added":
       return {
         ...cardBase,
         icon: "UserPlus",
-        title: `Добавлен участник ${targetName}`,
-        subtitle: `Группа: ${groupName} • ${actorName}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        title: `Добавлен участник ${targetLabel}`,
+        subtitle: `Группа: ${groupName} • ${actorLabel}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "member_removed":
       return {
         ...cardBase,
         icon: "UserMinus",
-        title: `Исключён участник ${targetName}`,
-        subtitle: `Группа: ${groupName} • ${actorName}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        title: `Исключён участник ${targetLabel}`,
+        subtitle: `Группа: ${groupName} • ${actorLabel}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "member_left":
       return {
         ...cardBase,
         icon: "UserMinus",
-        title: `${targetName} вышел(а) из группы`,
+        title: `${targetLabel} вышел(а) из группы`,
         subtitle: `Группа: ${groupName}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "transaction_created": {
-      const money = formatMoney(d.amount, d.currency)
-      const title = d.title || "Без названия"
+      const money = formatMoney(data?.amount, data?.currency)
+      const title = data?.title || "Без названия"
       return {
         ...cardBase,
         icon: "PlusCircle",
         title: `Новая трата: ${money}`,
-        subtitle: `${title}${payerName ? ` • Плательщик: ${payerName}` : ""}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `${title} • Плательщик: ${payerLabel}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
     }
 
     case "transaction_updated": {
-      const changed: string[] = Array.isArray(d.changed) ? d.changed : []
+      const changed: string[] = Array.isArray(data?.changed) ? data.changed : []
       const subtitle =
         changed.length <= 3
           ? `Изменены: ${changed.map((k) => FIELD_RU[k] || k).join(", ")}`
@@ -323,8 +334,8 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         icon: "Edit",
         title: "Трата обновлена",
         subtitle,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
     }
 
@@ -333,9 +344,9 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         ...cardBase,
         icon: "FileText",
         title: "Добавлен чек",
-        subtitle: `${d.title || "Без названия"} • ${formatMoney(d.amount, d.currency)}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `${data?.title || "Без названия"} • ${formatMoney(data?.amount, data?.currency)}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "transaction_receipt_replaced":
@@ -343,9 +354,9 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         ...cardBase,
         icon: "FileText",
         title: "Чек обновлён",
-        subtitle: `${d.title || "Без названия"} • ${formatMoney(d.amount, d.currency)}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `${data?.title || "Без названия"} • ${formatMoney(data?.amount, data?.currency)}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "transaction_receipt_removed":
@@ -353,35 +364,38 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
         ...cardBase,
         icon: "FileText",
         title: "Чек удалён",
-        subtitle: `${d.title || "Без названия"} • ${formatMoney(d.amount, d.currency)}`,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        subtitle: `${data?.title || "Без названия"} • ${formatMoney(data?.amount, data?.currency)}`,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
 
     case "friendship_created":
       return {
         ...cardBase,
         icon: "UserPlus",
-        title: `${actorName} и ${targetName} теперь друзья`,
+        title: `${actorLabel} и ${targetLabel} теперь друзья`,
         subtitle: undefined,
+        entity: undefined,
       }
 
     case "friendship_removed":
       return {
         ...cardBase,
         icon: "UserMinus",
-        title: `${actorName} удалил(а) из друзей ${targetName}`,
+        title: `${actorLabel} удалил(а) из друзей ${targetLabel}`,
         subtitle: undefined,
+        entity: undefined,
       }
 
     default:
+      // мягкий фолбэк
       return {
         ...cardBase,
         icon: "Bell",
         title: ev.type,
         subtitle: groupIdSafe ? `Группа: ${groupName}` : undefined,
-        route: groupIdSafe ? `/groups/${groupIdSafe}` : undefined,
-        avatar_url: groupAvatarUrl,
+        route: baseEntity?.route,
+        entity: baseEntity,
       }
   }
 }
