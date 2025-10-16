@@ -408,26 +408,63 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   async loadEvents(limit = 20) {
     if (get().loading.events) return
+
+    const prevCount = get().events.length
     const ts = lastAt.events ?? 0
-    if (now() - ts < TTL_DEFAULT) return
+    const ttlAlive = Date.now() - ts < TTL_DEFAULT
+    if (ttlAlive && limit <= prevCount) return
 
     set((s) => ({ loading: { ...s.loading, events: true }, error: { ...s.error, events: "" } }))
     try {
       const feed = await getDashboardEvents(limit)
       const rawItems: any[] = feed?.items || []
+      if (!rawItems.length && prevCount) { lastAt.events = Date.now(); return }
 
-      // пер-элементная нормализация: «сырые» записи форматируем локально
+      // 1) стартовые мапы из стора
+      const groupsMap: Record<number, { name?: string }> = {}
+      for (const g of get().groups || []) {
+        if (g?.id) groupsMap[g.id] = { name: g.name }
+      }
+      const usersMap: Record<number, { name?: string }> = {}
+      for (const p of get().frequentUsers || []) {
+        const u = p?.user
+        if (u?.id) {
+          const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || undefined
+          usersMap[u.id] = { name }
+        }
+      }
+
+      // 2) добираем имена из самих событий
+      const parseData = (d: any) => {
+        if (typeof d === "string") { try { return JSON.parse(d) } catch { return {} } }
+        return d || {}
+      }
+      for (const r of rawItems) {
+        const d = parseData(r?.data)
+        const gid = typeof r?.group_id === "number" ? r.group_id
+          : typeof d?.group_id === "number" ? d.group_id : undefined
+        if (gid && typeof d?.group_name === "string" && d.group_name) {
+          groupsMap[gid] = { name: d.group_name }
+        }
+        if (typeof r?.actor_id === "number" && typeof d?.actor_name === "string" && d.actor_name) {
+          usersMap[r.actor_id] = { name: d.actor_name }
+        }
+        if (typeof r?.target_user_id === "number" && typeof d?.target_name === "string" && d.target_name) {
+          usersMap[r.target_user_id] = { name: d.target_name }
+        }
+      }
+
+      // 3) нормализация: форматируем только «сырые» записи
       const shouldFormat = (r: any) => {
         const hasTitle = typeof r?.title === "string" && r.title.trim() !== ""
         const hasIcon  = typeof r?.icon === "string" && r.icon.trim() !== ""
-        const titleEq  =
-          hasTitle && typeof r?.type === "string" &&
-          r.title.trim().toLowerCase() === r.type.trim().toLowerCase()
-        const iconIsFallback = hasIcon && String(r.icon).toLowerCase() === "bell"
+        const typeStr  = typeof r?.type === "string" ? r.type.trim().toLowerCase() : ""
+        const titleEq  = hasTitle && typeStr && r.title.trim().toLowerCase() === typeStr
+        const iconIsFallback = hasIcon && r.icon.trim().toLowerCase() === "bell"
         return !hasTitle || !hasIcon || titleEq || iconIsFallback
       }
 
-      const ctx = { meId: 0, usersMap: {}, groupsMap: {} }
+      const ctx = { meId: 0, usersMap, groupsMap }
       const items: EventFeedItem[] = rawItems.map((r: any) => {
         if (!shouldFormat(r)) return r as EventFeedItem
         const c = formatEventCard(r as any, ctx)
@@ -447,7 +484,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       set((s) => ({ error: { ...s.error, events: e?.message || "Failed to load events" } }))
     } finally {
       set((s) => ({ loading: { ...s.loading, events: false } }))
-      lastAt.events = now()
+      lastAt.events = Date.now()
     }
   },
 

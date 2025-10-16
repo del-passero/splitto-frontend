@@ -45,29 +45,18 @@ function bucketOf(type: string): Exclude<FilterKey, "all"> | null {
 function bucketStyles(type: string) {
   const link = "var(--tg-link-color,#2481CC)"
   const accent = "var(--tg-accent-color,#40A7E3)"
-  const text = "var(--tg-text-color)"
   const hint = "var(--tg-hint-color)"
 
   const common = {
-    ring: `ring-[${hint}]`,
-    border: `border-[${hint}]`,
     iconColor: link,
     stripe: link,
     bubbleBg: "rgba(36,129,204,.10)", // link с 0.10
     hoverBg: "rgba(36,129,204,.06)",
+    hint,
   }
 
   const b = bucketOf(type)
-  if (b === "edits") {
-    return {
-      ...common,
-      iconColor: accent,
-      stripe: accent,
-      bubbleBg: "rgba(64,167,227,.10)",
-      hoverBg: "rgba(64,167,227,.06)",
-    }
-  }
-  if (b === "users") {
+  if (b === "edits" || b === "users") {
     return {
       ...common,
       iconColor: accent,
@@ -242,18 +231,16 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
             >
               <div className="flex flex-col gap-2 cursor-pointer">
                 {items.map((it) => {
-                  const Icon =
-                    IconByName[it.icon as keyof typeof IconByName] || Bell
+                  const Icon = IconByName[it.icon as keyof typeof IconByName] || Bell
                   const styles = bucketStyles(it.type)
                   const when = relativeTime(it.created_at)
 
                   return (
                     <div
                       key={it.id}
+                      data-event-card={it.id}
                       className="relative rounded-lg border bg-[var(--tg-card-bg)] px-3 py-2 transition-colors"
-                      style={{
-                        borderColor: "var(--tg-hint-color)",
-                      }}
+                      style={{ borderColor: "var(--tg-hint-color)" }}
                     >
                       {/* цветная вертикальная лента слева */}
                       <div
@@ -280,10 +267,7 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
 
                         {/* текст */}
                         <div className="min-w-0 flex-1">
-                          <div
-                            className="font-medium truncate"
-                            style={{ color: "var(--tg-text-color)" }}
-                          >
+                          <div className="font-medium truncate" style={{ color: "var(--tg-text-color)" }}>
                             {it.title}
                           </div>
                           {it.subtitle ? (
@@ -307,9 +291,7 @@ export default function DashboardEventsFeed({ onOpenAll }: Props) {
                   )
                 })}
 
-                {!items.length && (
-                  <div className="opacity-60 text-sm px-1 py-2">{empty}</div>
-                )}
+                {!items.length && <div className="opacity-60 text-sm px-1 py-2">{empty}</div>}
               </div>
             </div>
 

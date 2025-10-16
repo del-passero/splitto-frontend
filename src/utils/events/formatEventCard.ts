@@ -111,13 +111,28 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
     (groupIdSafe && ctx.groupsMap[groupIdSafe]?.name) ||
     unknownGroup(groupIdSafe)
 
-  // 5) Подписи акторов
-  const actorLabel = ev.actor_id === ctx.meId ? "Вы" : ctx.usersMap[ev.actor_id]?.name || unknownUser(ev.actor_id)
+  // 5) Подписи акторов (учитываем имена из data)
+  const actorNameFromData =
+    typeof data.actor_name === "string" && data.actor_name ? data.actor_name : undefined
+  const targetNameFromData =
+    typeof data.target_name === "string" && data.target_name ? data.target_name : undefined
+  const payerNameFromData =
+    typeof data.payer_name === "string" && data.payer_name ? data.payer_name : undefined
+
+  const actorLabel =
+    ev.actor_id === ctx.meId
+      ? "Вы"
+      : actorNameFromData || ctx.usersMap[ev.actor_id]?.name || unknownUser(ev.actor_id)
+
   const targetLabel =
+    targetNameFromData ||
     (ev.target_user_id && ctx.usersMap[ev.target_user_id]?.name) ||
     unknownUser(ev.target_user_id || undefined)
+
   const payerLabel =
-    (data.payer_id && ctx.usersMap[data.payer_id]?.name) || unknownUser(data.payer_id || undefined)
+    payerNameFromData ||
+    (data.payer_id && ctx.usersMap[data.payer_id]?.name) ||
+    unknownUser(data.payer_id || undefined)
 
   const cardBase = {
     id: ev.id,
@@ -300,7 +315,7 @@ export function formatEventCard(ev: EventRow, ctx: FormatCtx): EventCard {
       }
 
     default:
-      // более мягкий фолбэк: без «простыни» JSON
+      // мягкий фолбэк
       return {
         ...cardBase,
         icon: "Bell",
